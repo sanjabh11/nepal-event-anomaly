@@ -1,0 +1,18 @@
+# Data files (too large for git)
+data/*.nc
+data/*.grib
+data/*.zip
+data/*.tar
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS
+.DS_Store
+
+# Secrets
+.env
+.cdsapirc

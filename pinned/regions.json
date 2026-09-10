@@ -1,0 +1,14 @@
+[
+  {"name":"Colorado Rockies","bbox":[38.5,-107.5,40.5,-105.5],"center":[39.5,-106.5],"zoom":9,"timezone_name":"America/Denver"},
+  {"name":"Swiss Alps","bbox":[46.0,7.0,47.5,9.5],"center":[46.75,8.25],"zoom":9,"timezone_name":"Europe/Zurich"},
+  {"name":"French Alps","bbox":[44.5,5.5,46.5,7.5],"center":[45.5,6.5],"zoom":9,"timezone_name":"Europe/Paris"},
+  {"name":"Himalayas (Nepal)","bbox":[27.0,85.0,29.0,87.5],"center":[28.0,86.25],"zoom":8,"timezone_name":"Asia/Kathmandu","zone_type":"great_himalaya","climate_class":"continental","elevation_min":3500,"elevation_max":5500,"season_start":"11-01","lapse_rate_c_per_m":-0.0055},
+  {"name":"Andes (Patagonia)","bbox":[-42.0,-72.0,-40.0,-70.0],"center":[-41.0,-71.0],"zoom":9,"timezone_name":"America/Argentina/Bariloche"},
+  {"name":"Cascades (WA)","bbox":[46.5,-122.5,48.5,-120.5],"center":[47.5,-121.5],"zoom":9,"timezone_name":"America/Los_Angeles"},
+  {"name":"Scandinavia (Norway)","bbox":[60.0,6.0,62.0,8.0],"center":[61.0,7.0],"zoom":9,"timezone_name":"Europe/Oslo"},
+  {"name":"Japanese Alps","bbox":[35.5,137.0,37.0,139.0],"center":[36.25,138.0],"zoom":9,"timezone_name":"Asia/Tokyo"},
+  {"name":"Pir Panjal (NW Himalaya)","bbox":[33.0,73.5,35.0,75.5],"center":[34.0,74.5],"zoom":9,"timezone_name":"Asia/Kolkata","zone_type":"pir_panjal","climate_class":"maritime","elevation_min":2500,"elevation_max":4500,"season_start":"11-01","lapse_rate_c_per_m":-0.0065},
+  {"name":"Shamshabari (NW Himalaya)","bbox":[34.0,74.5,35.5,76.0],"center":[34.75,75.25],"zoom":10,"timezone_name":"Asia/Kolkata","zone_type":"shamshabari","climate_class":"transition","elevation_min":3000,"elevation_max":5000,"season_start":"11-01","lapse_rate_c_per_m":-0.0060},
+  {"name":"Great Himalaya (NW Himalaya)","bbox":[34.5,75.5,36.5,78.0],"center":[35.5,76.75],"zoom":9,"timezone_name":"Asia/Kolkata","zone_type":"great_himalaya","climate_class":"continental","elevation_min":3500,"elevation_max":5500,"season_start":"11-01","lapse_rate_c_per_m":-0.0055},
+  {"name":"Karakoram & Ladakh","bbox":[34.5,76.5,36.5,79.0],"center":[35.5,77.75],"zoom":9,"timezone_name":"Asia/Kolkata","zone_type":"karakoram_ladakh","climate_class":"polar_dry","elevation_min":4000,"elevation_max":6000,"season_start":"10-15","lapse_rate_c_per_m":-0.0050}
+]
