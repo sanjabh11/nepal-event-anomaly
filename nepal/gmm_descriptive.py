@@ -42,8 +42,14 @@ ELEVATION_DISCLAIMER = (
     f"Delta: {EVENT['elevation_gap_m']} m."
 )
 
-# Features for GMM (use daily features from Phase 2)
-GMM_FEATURES = ["t2m_daily", "pdd_7day", "pdd_daily", "freezing_height_m"]
+# GAP FIX: Previously only 4 features. Now uses ALL available daily features
+# from the Phase 2 output (up to 10-D + thermal indices).
+# Pre-registered 10 distinct quantities + thermal indices for regime context.
+GMM_FEATURES = [
+    "t2m_daily", "d2m_daily", "tp_daily", "sf_daily", "sd_daily",
+    "wind_speed_daily", "wind_dir_sin", "wind_dir_cos", "rh_daily",
+    "pdd_7day", "pdd_daily", "freezing_height_m",
+]
 
 
 def fit_gmm_range(data: np.ndarray, k_range: tuple = GMM_K_RANGE,

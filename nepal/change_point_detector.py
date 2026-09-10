@@ -52,20 +52,35 @@ def run_pelt(series: np.ndarray, model: str = PELT_MODEL,
 
 
 def run_cusum(series: np.ndarray, k: float = CUSUM_K,
-             threshold: float = CUSUM_THRESHOLD) -> list[int]:
-    """Run CUSUM change-point detection.
+             threshold: float = CUSUM_THRESHOLD,
+             min_distance: int = 7) -> list[int]:
+    """Run CUSUM change-point detection with reset and cooldown.
 
-    CUSUM detects sustained mean shifts. Returns change-point indices.
+    CUSUM detects sustained mean shifts. After a change-point is detected,
+    the cumulative sum resets to zero and a cooldown period (min_distance)
+    prevents cascade flagging of the same shift.
+
+    GAP FIX: Previous implementation didn't reset after detection, causing
+    all subsequent points to be flagged. Now resets properly with cooldown.
     """
     mean_ref = series.mean()
-    cusum_pos = np.cumsum(series - mean_ref - k)
-    cusum_neg = np.cumsum(mean_ref - series - k)
-
+    cusum_pos = 0.0
+    cusum_neg = 0.0
     change_points = []
-    for i in range(1, len(series)):
-        if abs(cusum_pos[i]) > threshold or abs(cusum_neg[i]) > threshold:
-            if i not in change_points:
-                change_points.append(i)
+    last_detection = -min_distance  # Allow first detection
+
+    for i in range(len(series)):
+        # Update cumulative sums
+        cusum_pos = max(0, cusum_pos + (series[i] - mean_ref - k))
+        cusum_neg = max(0, cusum_neg + (mean_ref - series[i] - k))
+
+        # Check threshold (with cooldown to prevent cascade)
+        if (cusum_pos > threshold or cusum_neg > threshold) and (i - last_detection >= min_distance):
+            change_points.append(i)
+            last_detection = i
+            # Reset after detection (standard CUSUM)
+            cusum_pos = 0.0
+            cusum_neg = 0.0
 
     return change_points
 

@@ -37,18 +37,17 @@ ELEVATION_DISCLAIMER = (
     f"Delta: {EVENT['elevation_gap_m']} m."
 )
 
-# Feature columns for Isolation Forest (10-D vector)
-FEATURE_COLUMNS = [
-    "t2m_daily", "pdd_7day", "pdd_daily",
-    # We'll use daily features: t2m, pdd, precipitation, snowfall, SWE,
-    # wind_speed, wind_dir (sin/cos), relative_humidity
-]
-
-# For the multivariate vector, we need to build it from hourly data
-# or from the daily features. Since Phase 2 outputs daily data, we use:
+# GAP FIX: Previously only 4 features. Now uses ALL available daily features
+# from the Phase 2 output (up to 10-D + thermal indices).
+# The feature contract pre-registers 10 distinct quantities:
+#   t2m_daily, d2m_daily, tp_daily, sf_daily, sd_daily,
+#   wind_speed_daily, wind_dir_sin, wind_dir_cos, rh_daily
+# Plus thermal indices (not counted as features but useful for anomaly):
+#   pdd_daily, pdd_7day, freezing_height_m
 DAILY_FEATURE_COLS = [
-    "t2m_daily", "pdd_7day", "pdd_daily",
-    "freezing_height_m",
+    "t2m_daily", "d2m_daily", "tp_daily", "sf_daily", "sd_daily",
+    "wind_speed_daily", "wind_dir_sin", "wind_dir_cos", "rh_daily",
+    "pdd_7day", "pdd_daily", "freezing_height_m",
 ]
 
 

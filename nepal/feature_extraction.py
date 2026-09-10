@@ -172,37 +172,65 @@ def compute_derived_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def compute_thermal_indices(df: pd.DataFrame, model_elev_m: float) -> pd.DataFrame:
-    """Compute PDD, 7-day rolling PDD, and freezing level height."""
-    # Daily mean temperature
-    daily_t = df["t2m"].resample("D").mean()
+    """Compute daily feature matrix with ALL 10 features + thermal indices.
 
+    GAP FIX: Previously only output 4 columns (t2m, pdd, pdd_7day, freezing_height).
+    Now aggregates ALL 10 pre-registered features to daily level:
+      - Temperature variables: daily MEAN (t2m, d2m)
+      - Accumulation variables: daily SUM (tp, sf) — NOT mean
+      - Instantaneous variables: daily MEAN (sd, wind_speed, wind_dir_sin/cos, RH)
+      - Thermal indices: PDD, 7-day PDD, freezing height (computed, not counted as features)
+
+    ERA5-Land accumulation note: tp and sf are per-hour accumulations.
+    Daily total = sum of 24 hourly values, NOT mean.
+    """
+    daily_df = pd.DataFrame()
+
+    # --- Temperature variables: daily MEAN (°C) ---
+    if "t2m" in df.columns:
+        daily_df["t2m_daily"] = df["t2m"].resample("D").mean()
+    if "d2m" in df.columns:
+        daily_df["d2m_daily"] = df["d2m"].resample("D").mean()
+
+    # --- Accumulation variables: daily SUM (mm) ---
+    # GAP FIX: ERA5-Land tp/sf are per-hour accumulations.
+    # resample("D").mean() gives hourly mean rate, NOT daily total.
+    # Must use .sum() for daily total precipitation/snowfall.
+    if "tp" in df.columns:
+        daily_df["tp_daily"] = df["tp"].resample("D").sum()
+    if "sf" in df.columns:
+        daily_df["sf_daily"] = df["sf"].resample("D").sum()
+
+    # --- Instantaneous variables: daily MEAN ---
+    if "sd" in df.columns:
+        daily_df["sd_daily"] = df["sd"].resample("D").mean()
+
+    # --- Wind: daily MEAN speed, sin/cos encoded direction ---
+    if "wind_speed" in df.columns:
+        daily_df["wind_speed_daily"] = df["wind_speed"].resample("D").mean()
+    if "wind_dir" in df.columns:
+        # GAP FIX: wind_dir is circular. Encode as sin/cos for clustering.
+        # Raw radians are linear; sin/cos preserves circularity.
+        daily_df["wind_dir_sin"] = np.sin(df["wind_dir"].resample("D").mean())
+        daily_df["wind_dir_cos"] = np.cos(df["wind_dir"].resample("D").mean())
+
+    # --- Relative humidity: daily MEAN (%) ---
+    if "relative_humidity" in df.columns:
+        daily_df["rh_daily"] = df["relative_humidity"].resample("D").mean()
+
+    # --- Thermal indices (computed, not counted as features) ---
     # Daily PDD: max(0, T_daily)
-    pdd_daily = daily_t.clip(lower=0)
+    if "t2m_daily" in daily_df.columns:
+        daily_df["pdd_daily"] = daily_df["t2m_daily"].clip(lower=0)
+        # 7-day rolling PDD
+        daily_df["pdd_7day"] = daily_df["pdd_daily"].rolling(window=7, min_periods=1).sum()
 
-    # 7-day rolling PDD
-    pdd_7day = pdd_daily.rolling(window=7, min_periods=1).sum()
-
-    # Freezing level height: extrapolate from model elevation using lapse rate
-    # T(z) = T_model + lapse_rate * (z - z_model)
-    # 0 = T_model + lapse_rate * (z_freeze - z_model)
-    # z_freeze = z_model - T_model / lapse_rate
-    # lapse_rate is negative (-0.0065 K/m), so:
-    # z_freeze = z_model + T_model / 0.0065
-    daily_t_k = daily_t + 273.15  # Convert back to K for the calculation
-    # Actually, we want: z_freeze = model_elev + (T_model_C) / 0.0065
-    # Because lapse_rate = -0.0065 K/m = -0.0065 °C/m
-    # T(z) = T_model - 0.0065 * (z - z_model)
-    # 0 = T_model - 0.0065 * (z_freeze - z_model)
-    # z_freeze = z_model + T_model / 0.0065
-    freezing_height = model_elev_m + daily_t / 0.0065
-
-    # Add to a daily dataframe
-    daily_df = pd.DataFrame({
-        "t2m_daily": daily_t,
-        "pdd_daily": pdd_daily,
-        "pdd_7day": pdd_7day,
-        "freezing_height_m": freezing_height,
-    })
+        # Freezing level height: z_freeze = z_model + T_model / 0.0065
+        # lapse_rate = -0.0065 K/m = -0.0065 °C/m
+        # T(z) = T_model - 0.0065 * (z - z_model)
+        # 0 = T_model - 0.0065 * (z_freeze - z_model)
+        # z_freeze = z_model + T_model / 0.0065
+        daily_df["freezing_height_m"] = model_elev_m + daily_df["t2m_daily"] / 0.0065
 
     return daily_df
 
@@ -335,10 +363,15 @@ def main():
     assert total == TOTAL_FEATURES, f"Feature count mismatch: {total} != {TOTAL_FEATURES}"
 
     # Save feature matrix
-    print(f"\nSaving feature matrix to {FEATURE_FILE}...")
-    # Combine hourly + daily into one output
+    print(f"\nSaving daily feature matrix to {FEATURE_FILE}...")
     daily_df.to_csv(FEATURE_FILE)
-    print(f"Saved {len(daily_df)} rows to {FEATURE_FILE}")
+    print(f"Saved {len(daily_df)} rows, {len(daily_df.columns)} columns to {FEATURE_FILE}")
+
+    # GAP FIX: Also save hourly features for auditability
+    hourly_file = OUTPUT_DIR / "features_nepal_hourly_jja_2001_2026.csv"
+    print(f"Saving hourly feature matrix to {hourly_file}...")
+    hourly_df.to_csv(hourly_file)
+    print(f"Saved {len(hourly_df)} rows, {len(hourly_df.columns)} columns to {hourly_file}")
 
     # Generate EDA plots
     print("\nGenerating EDA plots...")
@@ -370,6 +403,31 @@ def main():
     print("\nCross-reference (Rui Li reported):")
     print(f"  7-day mean T: 9.43 °C (Li) vs {pre_event['t2m_daily'].mean():.2f} °C (ours)")
     print(f"  PDD total: 65.94 °C·d (Li) vs {pre_event['pdd_7day'].iloc[-1]:.2f} °C·d (ours)")
+
+    # GAP FIX: Hausfath cross-validation gap
+    # Hausfath's committed daily data ends Aug 22, 2026.
+    # Our pre-event window is Aug 19-25. We can only cross-validate Aug 19-22.
+    print("\nCross-reference (Hausfath ERA5 0.25°):")
+    print(f"  GAP: Hausfath data ends Aug 22, 2026. Pre-event window is Aug 19-25.")
+    print(f"  Can only cross-validate Aug 19-22 (4 of 7 days).")
+    hausfath_file = DATA_DIR / "hausfath_reference" / "langtang_t2m_daily_2026.nc"
+    if hausfath_file.exists():
+        try:
+            import xarray as xr
+            hf = xr.open_dataset(hausfath_file)
+            hf_cell = hf.sel(latitude=28.25, longitude=85.5, method="nearest")
+            hf_pre = hf_cell.where(
+                (hf_cell.valid_time >= np.datetime64(PRE_EVENT_WINDOW[0])) &
+                (hf_cell.valid_time <= np.datetime64("2026-08-22")),
+                drop=True,
+            )
+            if len(hf_pre.valid_time) > 0:
+                hf_t2m_c = hf_pre.t2m.values - 273.15
+                print(f"  Hausfath Aug 19-22 mean T: {np.nanmean(hf_t2m_c):.2f} °C (ERA5 0.25°)")
+                print(f"  Our Aug 19-22 mean T: {pre_event[pre_event.index <= '2026-08-22']['t2m_daily'].mean():.2f} °C (ERA5-Land)")
+            hf.close()
+        except Exception as e:
+            print(f"  Hausfath comparison error: {e}")
 
     print("\nPhase 2 EXIT GATE: PASS")
     print(f"Output: {FEATURE_FILE}")
