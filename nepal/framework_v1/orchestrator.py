@@ -21,6 +21,7 @@ PIPELINE_PROFILE_ID = "FRAMEWORK_V1_FULL"
 PIPELINE_STATUS_COMPLETE = "PIPELINE_COMPLETE"
 PIPELINE_STATUS_BLOCKED = "PIPELINE_BLOCKED"
 PIPELINE_STATUS_INCOMPLETE = "PIPELINE_INCOMPLETE"
+PIPELINE_EXIT_CODES = frozenset({0, 2, 3, 4, 5})
 RESUMABLE_PIPELINE_STATES = frozenset({"RUNNING", "INCOMPLETE"})
 
 NO_CLAIMS = (
@@ -123,10 +124,14 @@ def verify_pipeline_report(payload: Mapping[str, Any]) -> tuple[bool, list[str]]
     if not isinstance(exit_code, int) or isinstance(exit_code, bool):
         problems.append("pipeline report exit_code must be an integer")
     else:
-        expected_status = _pipeline_status(exit_code, payload)
-        if payload.get("pipeline_status") != expected_status:
+        if exit_code not in PIPELINE_EXIT_CODES:
             problems.append(
-                f"pipeline report pipeline_status must be {expected_status!r}")
+                "pipeline report exit_code is not a supported framework code")
+        else:
+            expected_status = _pipeline_status(exit_code, payload)
+            if payload.get("pipeline_status") != expected_status:
+                problems.append(
+                    f"pipeline report pipeline_status must be {expected_status!r}")
     stages = ("A_CATALOG", "B_SCREEN", "E_VALIDATION", "F_BRIEFING")
     for stage in stages:
         if not isinstance(payload.get(stage), Mapping):
