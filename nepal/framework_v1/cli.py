@@ -638,7 +638,8 @@ def cmd_pipeline(args) -> int:
                            load_verified_b_input_bundle)
     from .briefing import (build_briefing_artifact, generate_briefing,
                            verify_briefing_artifact, write_briefing)
-    from .catalog import build_catalog, write_phase_a_artifacts
+    from .catalog import (build_catalog, materialize_phase_a,
+                          verify_phase_a_envelope)
     from .controls import ControlsConfig
     from . import input_manifest as input_manifest_module
     from .orchestrator import (bind_pipeline_report,
@@ -768,15 +769,27 @@ def cmd_pipeline(args) -> int:
                     if args.controls_config else ControlsConfig())
         catalog = build_catalog(raw, controls=controls,
                                 access_date=args.access_date)
-        a_paths = write_phase_a_artifacts(catalog, out / "catalog")
-        a_gate_artifact = _ensure_a_catalog_envelope(
-            catalog["gate"], a_paths, catalog["controls_lock"])
-        a_envelope_path = out / "catalog" / "catalog_gate_envelope.json"
-        write_deterministic_json(a_envelope_path, a_gate_artifact)
-        a_paths["gate_envelope"] = a_envelope_path
+        a_paths = materialize_phase_a(
+            catalog,
+            out / "catalog",
+            source_catalog_path=args.raw,
+            data_contract_sha256=args.expected_contract_sha256,
+            access_date=args.access_date,
+        )
+        a_envelope_path = a_paths["envelope"]
+        a_gate_artifact = _load_json(a_envelope_path)
         a_gate_ok, a_gate, _, a_gate_errors = verify_gate_input(
             a_gate_artifact, expected_gate_id=C.GateId.A_CATALOG.value)
+        a_deep_ok, a_deep_errors = verify_phase_a_envelope(
+            a_gate_artifact,
+            out_dir=out / "catalog",
+            source_catalog_path=args.raw,
+            data_contract_sha256=args.expected_contract_sha256,
+            expected_framework_contract_sha256=(
+                args.expected_framework_contract_sha256),
+        )
         a_gate_passed = bool(
+            a_deep_ok and
             a_gate_ok and isinstance(a_gate, Mapping) and
             a_gate.get("passed") is True)
         report["A_CATALOG"] = {
@@ -788,7 +801,8 @@ def cmd_pipeline(args) -> int:
         }
 
         if not a_gate_passed:
-            report["A_CATALOG"]["verification_errors"] = a_gate_errors
+            report["A_CATALOG"]["verification_errors"] = sorted(set(
+                a_gate_errors + a_deep_errors))
             report["B_SCREEN"] = {
                 "status": C.PHASE_STATUS_B_TO_C_BLOCKED,
                 "reason": "verified A_CATALOG gate did not pass",

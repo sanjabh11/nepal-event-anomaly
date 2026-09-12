@@ -426,9 +426,3 @@ class TestSourceCatalogLoader:
             pass
         else:
             raise AssertionError("expected ValueError")
-
-
-
-
-
-
