@@ -541,6 +541,7 @@ def cmd_pipeline(args) -> int:
                            verify_briefing_artifact, write_briefing)
     from .catalog import build_catalog, write_phase_a_artifacts
     from .controls import ControlsConfig
+    from . import input_manifest as input_manifest_module
     from .orchestrator import (bind_pipeline_report,
                                load_verified_pipeline_checkpoint,
                                pipeline_input_fingerprint,
@@ -563,8 +564,8 @@ def cmd_pipeline(args) -> int:
     fingerprint_paths = [
         args.raw,
         args.manifest,
-        Path(args.repo_root) / "nepal" / "feature_contract.py",
-        Path(args.repo_root) / "nepal" / "framework_v1" / "contract.py",
+        Path(args.repo_root) / input_manifest_module.AUTHORITATIVE_DATA_CONTRACT_PATH,
+        Path(args.repo_root) / input_manifest_module.AUTHORITATIVE_FRAMEWORK_CONTRACT_PATH,
         Path(args.repo_root) / C.PREREGISTRATION_PATH,
     ]
     for optional_path in (args.controls_config, args.events,
