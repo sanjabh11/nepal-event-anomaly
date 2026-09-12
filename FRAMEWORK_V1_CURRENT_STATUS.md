@@ -8,7 +8,9 @@ the reconciled data-lane manifest.
 
 The primary Phase B path is hash-bound and fail-closed:
 
-1. Run the read-only preflight against the authoritative checkout.
+1. Run the read-only preflight against the authoritative checkout with the
+   eight-GiB default reserve and capture the checkout, worktree, process, and
+   handoff inventory.
 2. Bind both the data-contract and framework-contract SHA-256 values.
 3. Load the canonical Phase B manifest through `load_verified_b_input_bundle`.
 4. Resolve component files only through `B_TARGET_GRID_ARTIFACT_IDS`.
@@ -22,6 +24,10 @@ The primary Phase B path is hash-bound and fail-closed:
 The compatibility loader may still be used for diagnostics, but a pretty-JSON
 manifest hash, missing explicit contract hash, arbitrary component path, or
 caller-supplied gate boolean cannot authorize a primary run.
+
+`verify_canonical_input_manifest` adds the stricter external-anchor boundary
+when a trusted canonical manifest digest is available. The regular verifier
+continues to expose pretty-JSON compatibility only as a diagnostic state.
 
 ## Current proof boundaries
 
@@ -37,6 +43,10 @@ caller-supplied gate boolean cannot authorize a primary run.
   does not participate in strict leave-one-layer-out stability.
 - C and D remain intentionally `BLOCKED`/`NOT_RUN` in v1. E requires verified
   A and B envelopes; F strict mode requires verified A, B, and E envelopes.
+- The strict pipeline binds `pipeline_report.json`, writes a self-hashed
+  checkpoint after each stage, and requires an unchanged input fingerprint for
+  `--resume`. F also has a machine-readable `briefing.json` envelope beside
+  the Markdown presentation file.
 - The preregistration file hash remains a frozen-file check, while the current
   data-source history is explicitly `POST_HOC_DATA_SOURCE_CHANGE`.
 
@@ -69,5 +79,7 @@ production readiness, or authority approval.
 
 Phase A writes an explicit `holdout_plan.json` alongside the normalized
 catalog, adjudication ledger, controls lock, gate, and artifact manifest. The
-one-shot pipeline stops at the first unmet gate and writes a deterministic
-`pipeline_report.json`; omitted strict E inputs leave E and F blocked.
+one-shot pipeline stops at the first unmet gate and writes a deterministic,
+self-authenticated `pipeline_report.json`; omitted strict E inputs leave E and
+F blocked. A resume is a verified replay boundary, not permission to skip an
+unverified stage output.
