@@ -67,6 +67,50 @@ def test_strict_screen_cli_fails_closed_without_manifest(tmp_path):
     assert result["production_authorized"] is False
 
 
+def test_strict_validate_writes_blocked_diagnostic_when_upstreams_are_missing(
+        tmp_path):
+    events = tmp_path / "events.json"
+    controls = tmp_path / "controls.json"
+    lock = tmp_path / "lock.json"
+    holdout = tmp_path / "holdout.json"
+    out = tmp_path / "validation.json"
+    events.write_text(json.dumps([{
+        "event_id": "E1", "group": "G1", "score": 1.0,
+        "event_date_min": "2020-01-01", "volume_m3": 9.0e6,
+        "observation_availability": "AVAILABLE",
+        "feature_available_from": {"insar": "2019-01-01"},
+    }]), encoding="utf-8")
+    controls.write_text(json.dumps([{
+        "unit_id": "C1", "group": "G1", "score": 0.1,
+        "observation_coverage": "FULL",
+    }]), encoding="utf-8")
+    lock.write_text(
+        json.dumps(create_controls_lock(ControlsConfig()).to_dict()),
+        encoding="utf-8")
+    holdout_payload = {
+        "groups": [{"group_id": "G1"}],
+        "n_groups": 1,
+        "frozen_before_eligibility_filtering": True,
+    }
+    holdout_payload["plan_sha256"] = hashlib.sha256(
+        json.dumps(holdout_payload, sort_keys=True, separators=(",", ":"),
+                   ensure_ascii=True).encode("utf-8")).hexdigest()
+    holdout.write_text(json.dumps(holdout_payload), encoding="utf-8")
+
+    code = main([
+        "validate", "--strict", "--events", str(events),
+        "--controls", str(controls), "--lock", str(lock),
+        "--holdout", str(holdout), "--summary", str(out),
+    ])
+
+    assert code == 4
+    result = json.loads(out.read_text(encoding="utf-8"))
+    assert verify_artifact_envelope(result) == (True, [])
+    assert result["artifact_kind"] == "E_BLOCKED_DIAGNOSTIC"
+    assert result["status"] == C.PHASE_STATUS_E_BLOCKED
+    assert result["production_authorized"] is False
+
+
 def test_strict_screen_cli_malformed_manifest_is_authenticated_block(tmp_path):
     root = tmp_path / "root"
     root.mkdir()

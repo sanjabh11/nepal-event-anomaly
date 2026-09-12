@@ -100,6 +100,28 @@ def _write_strict_b_diagnostic(path: str | Path, errors: list[str], *,
     return result
 
 
+def _strict_e_diagnostic(summary: Mapping[str, Any], *,
+                         errors: list[str]) -> dict[str, Any]:
+    """Build an authenticated diagnostic that is not an E gate artifact."""
+    unique_errors = sorted(set(str(error) for error in errors if str(error)))
+    return bind_artifact_envelope({
+        "profile_id": "FRAMEWORK_V1_FULL",
+        "framework_version": C.FRAMEWORK_VERSION,
+        "artifact_kind": "E_BLOCKED_DIAGNOSTIC",
+        "status": C.PHASE_STATUS_E_BLOCKED,
+        "gate_id": C.GateId.E_VALIDATION.value,
+        "promotion_eligible": False,
+        "production_authorized": False,
+        "summary": dict(summary),
+        "errors": unique_errors,
+        "blocked_reasons": unique_errors,
+        "no_claims": [
+            "This is not a verified E validation artifact",
+            "No warning, production, scientific, or authority claim",
+        ],
+    })
+
+
 def _ensure_a_catalog_envelope(catalog_gate: Mapping[str, Any],
                                artifact_paths: Mapping[str, Any],
                                controls_lock: Any) -> dict[str, Any]:
@@ -554,32 +576,40 @@ def cmd_validate(args) -> int:
             checks = manifest_check.get("checks")
             if isinstance(checks, Mapping):
                 manifest_hash = checks.get("manifest_sha256")
-        write_validation_artifact(
-            args.summary,
-            summary,
-            e_gate,
-            provenance={
-                "framework_contract_sha256": C.contract_hash(),
-                "a_gate_artifact_sha256": gate_input_artifact_sha256(
-                    a_gate if isinstance(a_gate, Mapping) else {}),
-                "b_artifact_sha256": gate_input_artifact_sha256(
-                    b_gate if isinstance(b_gate, Mapping) else {}),
-                "controls_lock_sha256": lock.sha256,
-                "input_manifest_sha256": manifest_hash,
-                "holdout_plan_sha256": (
-                    holdout.get("plan_sha256")
-                    if isinstance(holdout, Mapping) else None),
-                "summary_sha256": sha256_canonical(dict(summary)),
-                "event_ids": sorted(
-                    str(item.get("event_id")) for item in events
-                    if isinstance(item, Mapping) and item.get("event_id") is not None),
-                "control_unit_ids": sorted(
-                    str(item.get("unit_id")) for item in ctrl
-                    if isinstance(item, Mapping) and item.get("unit_id") is not None),
-                "claim_scope": "research_only_no_operational_authorization",
-            },
-            strict_contract=True,
-        )
+        try:
+            write_validation_artifact(
+                args.summary,
+                summary,
+                e_gate,
+                provenance={
+                    "framework_contract_sha256": C.contract_hash(),
+                    "a_gate_artifact_sha256": gate_input_artifact_sha256(
+                        a_gate if isinstance(a_gate, Mapping) else {}),
+                    "b_artifact_sha256": gate_input_artifact_sha256(
+                        b_gate if isinstance(b_gate, Mapping) else {}),
+                    "controls_lock_sha256": lock.sha256,
+                    "input_manifest_sha256": manifest_hash,
+                    "holdout_plan_sha256": (
+                        holdout.get("plan_sha256")
+                        if isinstance(holdout, Mapping) else None),
+                    "summary_sha256": sha256_canonical(dict(summary)),
+                    "event_ids": sorted(
+                        str(item.get("event_id")) for item in events
+                        if isinstance(item, Mapping) and
+                        item.get("event_id") is not None),
+                    "control_unit_ids": sorted(
+                        str(item.get("unit_id")) for item in ctrl
+                        if isinstance(item, Mapping) and
+                        item.get("unit_id") is not None),
+                    "claim_scope": "research_only_no_operational_authorization",
+                },
+                strict_contract=True,
+            )
+        except ValueError as exc:
+            diagnostic = _strict_e_diagnostic(summary, errors=[str(exc)])
+            write_deterministic_json(args.summary, diagnostic)
+            _print(f"E_VALIDATION status: {C.PHASE_STATUS_E_BLOCKED} ({exc})")
+            return 4
     else:
         write_deterministic_json(args.summary, summary)
     _print(f"E_VALIDATION status: {summary['status']}")
