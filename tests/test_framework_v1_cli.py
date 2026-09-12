@@ -227,6 +227,35 @@ def test_pipeline_rejects_output_under_repo_before_failed_preflight_writes(
     assert not output.exists()
 
 
+def test_pipeline_converts_preflight_exception_to_blocked_report(tmp_path):
+    missing_repo = tmp_path / "missing-repo"
+    expected_root = tmp_path / "expected-root"
+    manifest_root = tmp_path / "manifest-root"
+    expected_root.mkdir()
+    manifest_root.mkdir()
+    output = tmp_path / "pipeline-output"
+
+    code = main([
+        "pipeline", "--repo-root", str(missing_repo),
+        "--expected-root", str(expected_root),
+        "--raw", str(tmp_path / "raw.json"),
+        "--manifest", str(tmp_path / "manifest.json"),
+        "--manifest-root", str(manifest_root), "--out", str(output),
+        "--expected-contract-sha256", C.contract_hash(),
+        "--expected-framework-contract-sha256", C.contract_hash(),
+        "--minimum-free-gib", "0",
+    ])
+
+    assert code == 2
+    report = json.loads((output / "pipeline_report.json").read_text())
+    assert report["pipeline_status"] == "PIPELINE_BLOCKED"
+    assert report["preflight"]["ok"] is False
+    assert any("preflight" in error.lower()
+               for error in report["preflight"]["failures"])
+    assert report["A_CATALOG"]["status"] == C.PHASE_STATUS_A_BLOCKED
+    assert report["B_SCREEN"]["status"] == C.PHASE_STATUS_B_TO_C_BLOCKED
+
+
 def test_pipeline_rejects_nonempty_output_without_resume(tmp_path):
     repo_root = tmp_path / "repo"
     expected_root = tmp_path / "authoritative"

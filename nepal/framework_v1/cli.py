@@ -806,12 +806,24 @@ def cmd_pipeline(args) -> int:
             "required_features": list(args.required_feature),
         },
     )
-    preflight = run_preflight(
-        args.repo_root,
-        handoff_root=args.manifest_root,
-        expected_authoritative_root=args.expected_root,
-        minimum_free_gib=args.minimum_free_gib,
-    )
+    try:
+        preflight = run_preflight(
+            args.repo_root,
+            handoff_root=args.manifest_root,
+            expected_authoritative_root=args.expected_root,
+            minimum_free_gib=args.minimum_free_gib,
+        )
+    except (OSError, TypeError, ValueError, RuntimeError) as exc:
+        # G0 must remain machine-readable even when the preflight host path is
+        # unavailable (for example, shutil.disk_usage on a missing checkout).
+        # The report is a blocked diagnostic; no phase materialization follows.
+        preflight = {
+            "status": "BASELINE_BLOCKED",
+            "ok": False,
+            "data_source_status": C.PREREGISTRATION_DATA_SOURCE_STATUS,
+            "failures": [f"preflight could not be completed: {exc}"],
+            "checks": {},
+        }
     if preflight["ok"]:
         # The unconditional boundary check above is intentionally repeated as
         # a defensive assertion after G0; no later refactor may move writes
