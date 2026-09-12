@@ -30,6 +30,8 @@ from nepal.framework_v1.briefing import (
     build_briefing_artifact,
     verify_briefing_artifact,
 )
+from nepal.framework_v1.cli import _ensure_a_catalog_envelope
+from nepal.framework_v1.controls import ControlsConfig, create_controls_lock
 from nepal.framework_v1.validation import write_validation_artifact
 from nepal.framework_v1.preflight import run_preflight
 
@@ -164,6 +166,30 @@ def test_pipeline_checkpoint_requires_unchanged_inputs(tmp_path):
         checkpoint, input_fingerprint=changed)
     assert loaded is None
     assert any("fingerprint" in error for error in errors)
+
+
+def test_pipeline_wraps_direct_a_gate_with_catalog_artifact_provenance(tmp_path):
+    catalog_output = tmp_path / "catalog.json"
+    catalog_output.write_text("catalog", encoding="utf-8")
+    direct_gate = bind_gate_artifact({
+        "gate_id": C.GateId.A_CATALOG.value,
+        "passed": True,
+        "checks": {},
+    })
+    envelope = _ensure_a_catalog_envelope(
+        direct_gate,
+        {"catalog": catalog_output},
+        create_controls_lock(ControlsConfig()),
+    )
+    valid, inner, outer, errors = verify_gate_input(
+        envelope, expected_gate_id=C.GateId.A_CATALOG.value)
+    assert valid is True, errors
+    assert inner is not None and inner["passed"] is True
+    assert outer is not None
+    assert outer["status"] == C.PHASE_STATUS_A_READY
+    assert outer["provenance"]["framework_contract_sha256"] == C.contract_hash()
+    assert outer["provenance"]["catalog_artifact_sha256"]["catalog"] == \
+        hashlib.sha256(b"catalog").hexdigest()
 
 
 def test_briefing_artifact_binds_text_and_upstream_evidence(tmp_path):

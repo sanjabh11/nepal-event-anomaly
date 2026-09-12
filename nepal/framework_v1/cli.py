@@ -11,7 +11,7 @@ from typing import Any, Mapping
 
 from . import contract as C
 from .provenance import (bind_artifact_envelope, bind_gate_artifact,
-                         write_deterministic_json)
+                         sha256_file, write_deterministic_json)
 
 
 def _print(out: str) -> None:
@@ -97,6 +97,45 @@ def _write_strict_b_diagnostic(path: str | Path, errors: list[str], *,
     result = _strict_b_diagnostic(errors, reason=reason, details=details)
     write_deterministic_json(path, result)
     return result
+
+
+def _ensure_a_catalog_envelope(catalog_gate: Mapping[str, Any],
+                               artifact_paths: Mapping[str, Any],
+                               controls_lock: Any) -> dict[str, Any]:
+    """Bind a direct Phase-A gate into the authenticated pipeline handoff."""
+    if (isinstance(catalog_gate, Mapping) and
+            isinstance(catalog_gate.get("gate"), Mapping)):
+        return dict(catalog_gate)
+    if not isinstance(catalog_gate, Mapping):
+        raise TypeError("A_CATALOG gate must be a mapping")
+    artifact_hashes: dict[str, Any] = {}
+    for name, raw_path in sorted(artifact_paths.items(), key=lambda pair: str(pair[0])):
+        path = Path(raw_path)
+        artifact_hashes[str(name)] = sha256_file(path) if path.is_file() else None
+    controls_hash = (controls_lock.sha256
+                     if hasattr(controls_lock, "sha256") else None)
+    return bind_artifact_envelope({
+        "profile_id": "FRAMEWORK_V1_FULL",
+        "framework_version": C.FRAMEWORK_VERSION,
+        "artifact_kind": "A_CATALOG",
+        "status": (C.PHASE_STATUS_A_READY
+                    if catalog_gate.get("passed") is True
+                    else C.PHASE_STATUS_A_BLOCKED),
+        "gate_id": C.GateId.A_CATALOG.value,
+        "promotion_eligible": False,
+        "production_authorized": False,
+        "gate": dict(catalog_gate),
+        "provenance": {
+            "framework_contract_sha256": C.contract_hash(),
+            "controls_lock_sha256": controls_hash,
+            "catalog_artifact_sha256": artifact_hashes,
+            "claim_scope": "research_only_no_operational_authorization",
+        },
+        "no_claims": [
+            "No independent field adjudication",
+            "No warning, production, or authority authorization",
+        ],
+    })
 
 
 def cmd_manifest(args) -> int:
@@ -730,7 +769,11 @@ def cmd_pipeline(args) -> int:
         catalog = build_catalog(raw, controls=controls,
                                 access_date=args.access_date)
         a_paths = write_phase_a_artifacts(catalog, out / "catalog")
-        a_gate_artifact = catalog["gate"]
+        a_gate_artifact = _ensure_a_catalog_envelope(
+            catalog["gate"], a_paths, catalog["controls_lock"])
+        a_envelope_path = out / "catalog" / "catalog_gate_envelope.json"
+        write_deterministic_json(a_envelope_path, a_gate_artifact)
+        a_paths["gate_envelope"] = a_envelope_path
         a_gate_ok, a_gate, _, a_gate_errors = verify_gate_input(
             a_gate_artifact, expected_gate_id=C.GateId.A_CATALOG.value)
         a_gate_passed = bool(
