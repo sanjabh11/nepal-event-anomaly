@@ -218,11 +218,36 @@ def _strict_gate_problems(summary: Mapping[str, Any],
                 validation_gate.get("strict_contract") is not True):
             problems.append(
                 "E_VALIDATION: strict authenticated E envelope is required")
+        elif require_strict_e:
+            problems.extend(_strict_e_upstream_linkage_problems(
+                catalog_gate, screen_gate, validation_gate))
         e_gate = validation_gate.get("gate")
         if not isinstance(e_gate, Mapping) or e_gate.get("passed") is not True:
             problems.append("E_VALIDATION: verified gate is not passed")
         if validation_gate.get("summary") != dict(summary):
             problems.append("E_VALIDATION summary does not match briefing summary")
+    return problems
+
+
+def _strict_e_upstream_linkage_problems(
+        catalog_gate: Optional[Mapping],
+        screen_gate: Optional[Mapping],
+        validation_gate: Mapping) -> list[str]:
+    """Ensure strict E provenance points at the A/B envelopes carried by F."""
+    problems: list[str] = []
+    provenance = validation_gate.get("provenance")
+    if not isinstance(provenance, Mapping):
+        return ["E_VALIDATION: strict provenance is required for A/B linkage"]
+    expected_a = (gate_input_artifact_sha256(catalog_gate)
+                  if isinstance(catalog_gate, Mapping) else None)
+    expected_b = (gate_input_artifact_sha256(screen_gate)
+                  if isinstance(screen_gate, Mapping) else None)
+    if provenance.get("a_gate_artifact_sha256") != expected_a:
+        problems.append(
+            "E_VALIDATION: strict provenance A gate identity does not match F")
+    if provenance.get("b_artifact_sha256") != expected_b:
+        problems.append(
+            "E_VALIDATION: strict provenance B artifact identity does not match F")
     return problems
 
 
@@ -391,6 +416,14 @@ def verify_briefing_artifact(payload: Mapping[str, Any]) -> tuple[bool, list[str
         elif not isinstance(e_gate.get("gate"), Mapping) or e_gate["gate"].get(
                 "passed") is not True:
             problems.append("E_VALIDATION: verified gate is not passed")
+        if (e_ok and payload.get("strict_contract") is True and
+                e_gate.get("strict_contract") is True):
+            problems.extend(_strict_e_upstream_linkage_problems(
+                payload.get("a_gate")
+                if isinstance(payload.get("a_gate"), Mapping) else None,
+                payload.get("b_gate")
+                if isinstance(payload.get("b_gate"), Mapping) else None,
+                e_gate))
     if isinstance(provenance, Mapping):
         if isinstance(a_gate, Mapping) and provenance.get(
                 "a_gate_artifact_sha256") != gate_input_artifact_sha256(a_gate):

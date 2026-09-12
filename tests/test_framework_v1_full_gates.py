@@ -18,6 +18,8 @@ from nepal.framework_v1.input_manifest import (
 from nepal.framework_v1.provenance import (
     bind_artifact_envelope,
     bind_gate_artifact,
+    gate_input_artifact_sha256,
+    sha256_canonical,
     verify_gate_input,
     verify_artifact_envelope,
 )
@@ -272,6 +274,97 @@ def test_briefing_artifact_binds_text_and_upstream_evidence(tmp_path):
             catalog_gate=a_gate,
             screen_gate=b_gate,
             validation_gate=e_gate,
+            contract_hash=C.contract_hash(),
+            strict=True,
+        )
+
+
+def test_strict_f_rejects_e_provenance_detached_from_embedded_upstreams(tmp_path):
+    summary = {
+        "status": "INDETERMINATE",
+        "validation_errors": [],
+        "input_hashes": {
+            "catalog": "a" * 64,
+            "controls": "b" * 64,
+            "feature_config": "c" * 64,
+            "holdout_plan": "d" * 64,
+            "input_manifest": "e" * 64,
+            "controls_lock": "f" * 64,
+        },
+    }
+    a_gate = bind_artifact_envelope({
+        "profile_id": "FRAMEWORK_V1_FULL",
+        "artifact_kind": "A_CATALOG",
+        "gate": bind_gate_artifact({
+            "gate_id": C.GateId.A_CATALOG.value,
+            "passed": True,
+            "checks": {},
+        }),
+        "provenance": {"framework_contract_sha256": C.contract_hash()},
+    })
+    b_gate = bind_artifact_envelope({
+        "status": C.PHASE_STATUS_SCREEN_RANKED,
+        "phase_status": C.PHASE_STATUS_B_TO_C_READY,
+        "gate_passed": True,
+        "gate": bind_gate_artifact({
+            "gate_id": C.GateId.B_TO_C.value,
+            "passed": True,
+            "checks": {},
+        }),
+        "provenance": {
+            "framework_contract_sha256": C.contract_hash(),
+            "a_gate_artifact_sha256": gate_input_artifact_sha256(a_gate),
+            "controls_lock_sha256": "f" * 64,
+            "input_manifest_sha256": "e" * 64,
+            "input_manifest_hash_encoding": "canonical_json",
+            "input_manifest_contract_bound": True,
+            "input_manifest_canonical_authorized": True,
+        },
+    })
+    e_gate = write_validation_artifact(
+        tmp_path / "e.json",
+        summary,
+        bind_gate_artifact({
+            "gate_id": C.GateId.E_VALIDATION.value,
+            "passed": True,
+            "checks": {},
+        }),
+        provenance={
+            "framework_contract_sha256": C.contract_hash(),
+            "a_gate_artifact_sha256": gate_input_artifact_sha256(a_gate),
+            "b_artifact_sha256": gate_input_artifact_sha256(b_gate),
+            "controls_lock_sha256": "f" * 64,
+            "input_manifest_sha256": "e" * 64,
+            "holdout_plan_sha256": "d" * 64,
+            "summary_sha256": sha256_canonical(summary),
+            "event_ids": ["E1"],
+            "control_unit_ids": ["C1"],
+            "claim_scope": "research_only_no_operational_authorization",
+        },
+        strict_contract=True,
+    )
+    artifact = build_briefing_artifact(
+        "research-only briefing\n",
+        summary=summary,
+        catalog_gate=a_gate,
+        screen_gate=b_gate,
+        validation_gate=e_gate,
+        contract_hash=C.contract_hash(),
+        strict=True,
+    )
+    assert verify_briefing_artifact(artifact) == (True, [])
+
+    forged_e = copy.deepcopy(e_gate)
+    forged_e["provenance"] = dict(forged_e["provenance"])
+    forged_e["provenance"]["a_gate_artifact_sha256"] = "1" * 64
+    forged_e = bind_artifact_envelope(forged_e)
+    with pytest.raises(ValueError, match="provenance"):
+        build_briefing_artifact(
+            "research-only briefing\n",
+            summary=summary,
+            catalog_gate=a_gate,
+            screen_gate=b_gate,
+            validation_gate=forged_e,
             contract_hash=C.contract_hash(),
             strict=True,
         )
