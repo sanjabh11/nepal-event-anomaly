@@ -89,6 +89,11 @@ def bind_pipeline_report(
     bound["promotion_eligible"] = False
     bound["production_authorized"] = False
     bound["no_claims"] = list(NO_CLAIMS)
+    bound["stage_statuses"] = {
+        stage: (bound.get(stage, {}).get("status")
+                if isinstance(bound.get(stage), Mapping) else None)
+        for stage in ("A_CATALOG", "B_SCREEN", "E_VALIDATION", "F_BRIEFING")
+    }
     if input_fingerprint is not None:
         bound["input_fingerprint"] = input_fingerprint
     return bind_artifact_envelope(bound)
@@ -120,6 +125,14 @@ def verify_pipeline_report(payload: Mapping[str, Any]) -> tuple[bool, list[str]]
     for stage in stages:
         if not isinstance(payload.get(stage), Mapping):
             problems.append(f"pipeline report stage {stage} is required")
+    stage_statuses = payload.get("stage_statuses")
+    if not isinstance(stage_statuses, Mapping):
+        problems.append("pipeline report stage_statuses are required")
+    else:
+        for stage in stages:
+            if stage_statuses.get(stage) != payload[stage].get("status"):
+                problems.append(
+                    f"pipeline report stage_statuses does not match {stage}")
     return ok and not problems, problems
 
 
