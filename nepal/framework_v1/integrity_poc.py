@@ -1009,7 +1009,7 @@ def _baseline_snapshot(repo_root: Path, free_bytes: int) -> dict[str, Any]:
             errors.append(f"{label} source hash failed: {exc}")
             return None
 
-    data_source = repo_root / "nepal" / "feature_contract.py"
+    data_source = repo_root / input_manifest_module.AUTHORITATIVE_DATA_CONTRACT_PATH
     framework_source = repo_root / "nepal" / "framework_v1" / "contract.py"
     preregistration = repo_root / "preregistration.md"
     return {
