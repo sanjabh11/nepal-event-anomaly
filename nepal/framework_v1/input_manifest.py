@@ -18,7 +18,7 @@ import re
 from dataclasses import dataclass, field
 from fnmatch import fnmatchcase
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Optional
+from typing import Any, Callable, Iterable, Mapping, Optional
 
 from . import contract as C
 from .provenance import (canonical_json, check_no_raw_slc_tree,
@@ -39,6 +39,37 @@ REQUIRED_ARTIFACT_FIELDS = frozenset({
     "publication_or_validity_date", "processing", "language_access_status",
 })
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+def _stat_identity(path: Path) -> tuple[str, int, int, int, int, int]:
+    """Return a path-specific identity suitable for an in-call digest cache."""
+    stat = path.stat()
+    return (str(path), int(stat.st_dev), int(stat.st_ino), int(stat.st_size),
+            int(stat.st_mtime_ns), int(stat.st_ctime_ns))
+
+
+def _cached_file_digest(path: str | Path,
+                        cache: dict[tuple[str, int, int, int, int, int], str]) -> str:
+    """Hash once per stable path identity within one manifest verification.
+
+    The cache is intentionally supplied by one verifier invocation, never
+    stored globally or persisted.  Existing path authorization happens before
+    this helper is called.  A post-hash stat change prevents caching a digest
+    for a file that was being rewritten while it was read.
+    """
+    resolved = Path(path).resolve(strict=True)
+    before = _stat_identity(resolved)
+    cached = cache.get(before)
+    if cached is not None:
+        return cached
+    digest = sha256_file(resolved)
+    try:
+        after = _stat_identity(resolved)
+    except OSError:
+        return digest
+    if after == before:
+        cache[before] = digest
+    return digest
 
 AUTHORITATIVE_DATA_CONTRACT_PATH = "nepal/feature_" + "contract.py"
 AUTHORITATIVE_FRAMEWORK_CONTRACT_PATH = "nepal/framework_v1/contract.py"
@@ -399,7 +430,9 @@ def _find_authoritative_repo_root(handoff_root: Path,
 
 def _validate_contract_source_bindings(
         manifest: Mapping[str, Any], handoff_root: Path,
-        repo_root: Optional[str | Path]) -> tuple[list[str], dict[str, Any]]:
+        repo_root: Optional[str | Path],
+        *, digest_file: Optional[Callable[[str | Path], str]] = None,
+        ) -> tuple[list[str], dict[str, Any]]:
     """Compare manifest source commitments with the actual authoritative files."""
     resolved_root = _find_authoritative_repo_root(handoff_root, repo_root)
     diagnostics: dict[str, Any] = {
@@ -410,6 +443,7 @@ def _validate_contract_source_bindings(
         return ["B manifest authoritative contract source root could not be resolved"], diagnostics
 
     problems: list[str] = []
+    digest = digest_file or sha256_file
     for path_key, hash_key in (
             ("data_contract_source_path", "data_contract_source_sha256"),
             ("framework_contract_source_path", "framework_contract_source_sha256")):
@@ -430,7 +464,7 @@ def _validate_contract_source_bindings(
         if not source.is_file():
             problems.append(f"B manifest source file is missing: {relative}")
             continue
-        actual = sha256_file(source)
+        actual = digest(source)
         diagnostics["bindings"][path_key] = {
             "relative_path": relative,
             "declared_sha256": declared,
@@ -444,9 +478,13 @@ def _validate_contract_source_bindings(
 
 
 def _validate_package_inventory_files(root: Path,
-                                      manifest: Mapping[str, Any]) -> list[str]:
+                                      manifest: Mapping[str, Any],
+                                      *,
+                                      digest_file: Optional[Callable[[str | Path], str]] = None,
+                                      ) -> list[str]:
     """Verify the complete locally packaged inventory is safe and hash-bound."""
     problems: list[str] = []
+    digest_fn = digest_file or sha256_file
     inventory = manifest.get("package_inventory")
     if not isinstance(inventory, list):
         return problems
@@ -496,9 +534,9 @@ def _validate_package_inventory_files(root: Path,
         if resolved.stat().st_size != entry.get("bytes"):
             problems.append(
                 f"B package_inventory[{index}] byte count mismatch: {relative.as_posix()}")
-        digest = entry.get("sha256")
-        if isinstance(digest, str) and SHA256_RE.fullmatch(digest):
-            if sha256_file(resolved) != digest:
+        declared_digest = entry.get("sha256")
+        if isinstance(declared_digest, str) and SHA256_RE.fullmatch(declared_digest):
+            if digest_fn(resolved) != declared_digest:
                 problems.append(
                     f"B package_inventory[{index}] checksum mismatch: {relative.as_posix()}")
 
@@ -629,8 +667,11 @@ def validate_phase_artifact(artifact: Mapping[str, Any], phase: str) -> list[str
     return problems
 
 
-def validate_artifact_bundle(root: str | Path,
-                            artifact: Mapping[str, Any]) -> list[str]:
+def _validate_artifact_bundle(root: str | Path,
+                              artifact: Mapping[str, Any],
+                              *,
+                              digest_file: Optional[Callable[[str | Path], str]] = None,
+                              ) -> list[str]:
     """Verify a registered vector artifact and all consumed sidecars.
 
     The primary ``sha256``/``bytes`` fields identify the main path.  A vector
@@ -645,6 +686,7 @@ def validate_artifact_bundle(root: str | Path,
     if artifact.get("kind") != "vector":
         return []
     root_path = Path(root)
+    digest_fn = digest_file or sha256_file
     entries = artifact.get("bundle_files")
     if not isinstance(entries, list) or not entries:
         return [f"{artifact.get('artifact_id')}: vector bundle_files are required"]
@@ -687,7 +729,7 @@ def validate_artifact_bundle(root: str | Path,
         if isinstance(size, int) and resolved.stat().st_size != size:
             problems.append(f"{artifact.get('artifact_id')}: vector bundle byte count mismatch {rel_text}")
         if isinstance(digest, str) and SHA256_RE.fullmatch(digest):
-            actual = sha256_file(resolved)
+            actual = digest_fn(resolved)
             if actual != digest:
                 problems.append(f"{artifact.get('artifact_id')}: vector bundle checksum mismatch {rel_text}")
 
@@ -711,6 +753,12 @@ def validate_artifact_bundle(root: str | Path,
                 f"{artifact.get('artifact_id')}: vector bundle missing structural sidecars: "
                 + ", ".join(missing))
     return problems
+
+
+def validate_artifact_bundle(root: str | Path,
+                            artifact: Mapping[str, Any]) -> list[str]:
+    """Verify a vector bundle using a standalone, non-shared digest cache."""
+    return _validate_artifact_bundle(root, artifact)
 
 
 @dataclass(frozen=True)
@@ -768,6 +816,11 @@ def verify_input_manifest(
     nonready: list[str] = []
     checks: dict[str, Any] = {}
     root_path = Path(root)
+    digest_cache: dict[tuple[str, int, int, int, int, int], str] = {}
+
+    def _digest_file(path: str | Path) -> str:
+        return _cached_file_digest(path, digest_cache)
+
     phase_name = str(phase).upper() if phase is not None else None
     phase_contract_errors: list[str] = []
     if phase_name is not None and phase_name not in _PHASE_ARTIFACT_CONTRACTS:
@@ -963,7 +1016,8 @@ def verify_input_manifest(
                     _PHASE_ARTIFACT_CONTRACTS["B"] and
                     _PHASE_ARTIFACT_CONTRACTS["B"].get(
                         str(artifact.get("artifact_id")), {}).get("vector_bundle")):
-                phase_contract_errors.extend(validate_artifact_bundle(root_path, artifact))
+                phase_contract_errors.extend(_validate_artifact_bundle(
+                    root_path, artifact, digest_file=_digest_file))
 
         status = artifact.get("status")
         if status not in DATA_STATUSES:
@@ -1029,7 +1083,7 @@ def verify_input_manifest(
         actual_bytes = resolved.stat().st_size
         if actual_bytes != byte_count:
             errors.append(f"{artifact_id}: byte count mismatch ({byte_count} -> {actual_bytes})")
-        actual_hash = sha256_file(resolved)
+        actual_hash = _digest_file(resolved)
         if actual_hash != digest:
             errors.append(f"{artifact_id}: checksum mismatch ({digest} -> {actual_hash})")
 
@@ -1046,11 +1100,11 @@ def verify_input_manifest(
     if phase_name == "B":
         phase_contract_errors.extend(_validate_b_manifest_declarations(manifest))
         source_errors, source_diagnostics = _validate_contract_source_bindings(
-            manifest, root_path, repo_root)
+            manifest, root_path, repo_root, digest_file=_digest_file)
         phase_contract_errors.extend(source_errors)
         checks["contract_source_bindings"] = source_diagnostics
         phase_contract_errors.extend(_validate_package_inventory_files(
-            root_path, manifest))
+            root_path, manifest, digest_file=_digest_file))
         phase_contract_errors.extend(_validate_b_source_references(manifest, ids))
         declared_required = manifest.get("required_artifact_ids")
         expected_required = list(PHASE_REQUIRED_ARTIFACT_IDS["B"])
