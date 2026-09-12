@@ -754,6 +754,7 @@ def write_validation_artifact(path, summary: Mapping[str, Any],
                     else C.PHASE_STATUS_E_BLOCKED),
         "gate_id": C.GateId.E_VALIDATION.value,
         "promotion_eligible": False,
+        "production_authorized": False,
         "no_claims": [
             "No warning or production authorization",
             "No authority approval",
@@ -793,6 +794,8 @@ def verify_validation_artifact(payload: Mapping[str, Any]) -> tuple[bool, list[s
         problems.append("validation artifact gate_id must be E_VALIDATION")
     if payload.get("promotion_eligible") is not False:
         problems.append("validation artifact must not be promotion eligible")
+    if payload.get("production_authorized") is not False:
+        problems.append("validation artifact must not authorize production")
     if not isinstance(payload.get("no_claims"), list) or not payload.get(
             "no_claims"):
         problems.append("validation artifact no_claims are required")

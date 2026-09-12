@@ -7,7 +7,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from . import contract as C
 from .provenance import write_deterministic_json
@@ -370,7 +370,7 @@ def cmd_validate(args) -> int:
     from .validation import evaluate_e_gate, run_validation, write_validation_artifact
     from .controls import load_controls_lock
     from .input_manifest import InputManifestVerification, verify_phase_manifest
-    from .provenance import verify_artifact_envelope, verify_gate_artifact
+    from .provenance import verify_gate_input
     events = _load_json(args.events)
     ctrl = _load_json(args.controls)
     holdout = _load_json(args.holdout)
@@ -407,23 +407,18 @@ def cmd_validate(args) -> int:
     a_gate_passed = a_gate.get("passed") if isinstance(a_gate, dict) else None
     b_gate_passed = b_gate.get("passed") if isinstance(b_gate, dict) else None
     if args.strict:
-        a_ok, _ = verify_gate_artifact(
-            a_gate if isinstance(a_gate, dict) else {},
-            expected_gate_id=C.GateId.A_CATALOG.value)
-        b_inner = b_gate.get("gate") if isinstance(b_gate, dict) else None
-        b_gate_ok, _ = verify_gate_artifact(
-            b_inner if isinstance(b_inner, dict) else {},
-            expected_gate_id=C.GateId.B_TO_C.value)
-        b_envelope_ok, _ = verify_artifact_envelope(
-            b_gate if isinstance(b_gate, dict) else {})
+        a_ok, a_inner, _, _ = verify_gate_input(
+            a_gate, expected_gate_id=C.GateId.A_CATALOG.value)
+        b_gate_ok, b_inner, _, _ = verify_gate_input(
+            b_gate, expected_gate_id=C.GateId.B_TO_C.value,
+            require_outer_envelope=True)
         # These booleans are derived locally from verified artifacts solely to
         # let the legacy E runner construct its candidate summary.  They are
         # not passed to evaluate_e_gate, which treats caller booleans as
         # untrusted compatibility inputs.
-        a_gate_passed = bool(a_ok and isinstance(a_gate, dict) and
-                             a_gate.get("passed") is True)
-        b_gate_passed = bool(b_gate_ok and b_envelope_ok and
-                             isinstance(b_inner, dict) and
+        a_gate_passed = bool(a_ok and isinstance(a_inner, Mapping) and
+                             a_inner.get("passed") is True)
+        b_gate_passed = bool(b_gate_ok and isinstance(b_inner, Mapping) and
                              b_inner.get("passed") is True)
     summary = run_validation(events, ctrl, controls_lock=lock,
                              holdout_plan=holdout,
@@ -547,7 +542,8 @@ def cmd_pipeline(args) -> int:
                                pipeline_input_fingerprint,
                                write_pipeline_checkpoint)
     from .preflight import run_preflight
-    from .provenance import verify_artifact_envelope, verify_gate_artifact
+    from .provenance import (gate_input_artifact_sha256,
+                             verify_artifact_envelope, verify_gate_input)
     from .validation import (evaluate_e_gate, run_validation,
                              write_validation_artifact)
 
@@ -669,29 +665,32 @@ def cmd_pipeline(args) -> int:
         catalog = build_catalog(raw, controls=controls,
                                 access_date=args.access_date)
         a_paths = write_phase_a_artifacts(catalog, out / "catalog")
-        a_gate = catalog["gate"]
+        a_gate_artifact = catalog["gate"]
+        a_gate_ok, a_gate, _, a_gate_errors = verify_gate_input(
+            a_gate_artifact, expected_gate_id=C.GateId.A_CATALOG.value)
+        a_gate_passed = bool(
+            a_gate_ok and isinstance(a_gate, Mapping) and
+            a_gate.get("passed") is True)
         report["A_CATALOG"] = {
-            "status": (C.PHASE_STATUS_A_READY if a_gate["passed"]
+            "status": (C.PHASE_STATUS_A_READY if a_gate_passed
                        else C.PHASE_STATUS_A_BLOCKED),
-            "gate": a_gate,
+            "gate": a_gate_artifact,
             "artifacts": {name: str(path) for name, path in a_paths.items()},
             "controls_lock_sha256": catalog["controls_lock"].sha256,
         }
 
-        a_ok, a_errors = verify_gate_artifact(
-            a_gate if isinstance(a_gate, dict) else {},
-            expected_gate_id=C.GateId.A_CATALOG.value)
-        if not a_ok or a_gate.get("passed") is not True:
-            report["A_CATALOG"]["verification_errors"] = a_errors
+        if not a_gate_passed:
+            report["A_CATALOG"]["verification_errors"] = a_gate_errors
             report["B_SCREEN"] = {
                 "status": C.PHASE_STATUS_B_TO_C_BLOCKED,
                 "reason": "verified A_CATALOG gate did not pass",
             }
-            _checkpoint("A_CATALOG", "BLOCKED", gate_artifact_verified=a_ok)
+            _checkpoint("A_CATALOG", "BLOCKED", gate_artifact_verified=a_gate_ok)
             return _finish(3)
         _checkpoint("A_CATALOG", artifact_paths={
             name: str(path) for name, path in a_paths.items()},
-                     gate_artifact_sha256=a_gate.get("gate_artifact_sha256"))
+                     gate_artifact_sha256=gate_input_artifact_sha256(
+                         a_gate_artifact))
 
         bundle = load_verified_b_input_bundle(
             args.manifest_root, manifest,
@@ -712,7 +711,7 @@ def cmd_pipeline(args) -> int:
 
         b_result = build_b_screen_from_bundle(
             bundle, controls_lock=catalog["controls_lock"],
-            a_gate_artifact=a_gate,
+            a_gate_artifact=a_gate_artifact,
             timeout_seconds=args.timeout_seconds,
             checkpoint_path=out / "b_checkpoint.json",
         )
@@ -757,11 +756,11 @@ def cmd_pipeline(args) -> int:
             input_manifest_verification=bundle.verification,
             required_features=args.required_feature,
             strict_contract=True,
-            a_gate_artifact=a_gate,
+            a_gate_artifact=a_gate_artifact,
             b_gate_artifact=b_result,
         )
         e_gate = evaluate_e_gate(
-            summary, a_gate_artifact=a_gate, b_gate_artifact=b_result,
+            summary, a_gate_artifact=a_gate_artifact, b_gate_artifact=b_result,
             controls_lock=catalog["controls_lock"], holdout_plan=holdout,
             input_manifest_verification=bundle.verification,
         )
@@ -772,7 +771,8 @@ def cmd_pipeline(args) -> int:
             e_gate,
             provenance={
                 "framework_contract_sha256": C.contract_hash(),
-                "a_gate_artifact_sha256": a_gate.get("gate_artifact_sha256"),
+                "a_gate_artifact_sha256": gate_input_artifact_sha256(
+                    a_gate_artifact),
                 "b_artifact_sha256": b_result.get("artifact_sha256"),
                 "controls_lock_sha256": catalog["controls_lock"].sha256,
                 "input_manifest_sha256": (
@@ -807,7 +807,7 @@ def cmd_pipeline(args) -> int:
             return _finish(4)
 
         briefing = generate_briefing(
-            summary, catalog_gate=a_gate, screen_gate=b_result,
+            summary, catalog_gate=a_gate_artifact, screen_gate=b_result,
             validation_gate=e_artifact, contract_hash=C.contract_hash(),
             strict=True,
         )
@@ -816,7 +816,7 @@ def cmd_pipeline(args) -> int:
         f_artifact = build_briefing_artifact(
             briefing,
             summary=summary,
-            catalog_gate=a_gate,
+            catalog_gate=a_gate_artifact,
             screen_gate=b_result,
             validation_gate=e_artifact,
             contract_hash=C.contract_hash(),
