@@ -185,6 +185,23 @@ def test_pipeline_report_rejects_malformed_preflight_without_raising():
     assert any("preflight" in error.lower() for error in errors)
 
 
+def test_pipeline_report_rejects_non_object_stage_without_raising():
+    envelope = bind_pipeline_report({
+        "A_CATALOG": ["not-an-object"],
+        "B_SCREEN": {"status": C.PHASE_STATUS_B_TO_C_BLOCKED},
+        "E_VALIDATION": {"status": C.PHASE_STATUS_E_BLOCKED},
+        "F_BRIEFING": {"status": C.PHASE_STATUS_F_BLOCKED},
+        "status": C.PHASE_STATUS_B_TO_C_BLOCKED,
+        "provenance": {"framework_contract_sha256": C.contract_hash()},
+    }, exit_code=3)
+
+    valid, errors = verify_pipeline_report(envelope)
+
+    assert valid is False
+    assert any("stage a_catalog is required" in error.lower()
+               for error in errors)
+
+
 def test_pipeline_checkpoint_requires_unchanged_inputs(tmp_path):
     source = tmp_path / "raw.json"
     source.write_text("{}", encoding="utf-8")

@@ -136,7 +136,10 @@ def verify_pipeline_report(payload: Mapping[str, Any]) -> tuple[bool, list[str]]
         problems.append("pipeline report stage_statuses are required")
     else:
         for stage in stages:
-            if stage_statuses.get(stage) != payload[stage].get("status"):
+            stage_payload = payload.get(stage)
+            stage_status = (stage_payload.get("status")
+                            if isinstance(stage_payload, Mapping) else None)
+            if stage_statuses.get(stage) != stage_status:
                 problems.append(
                     f"pipeline report stage_statuses does not match {stage}")
         allowed_stage_statuses = {
