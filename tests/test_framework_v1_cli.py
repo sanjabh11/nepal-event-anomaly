@@ -102,7 +102,8 @@ def test_strict_screen_cli_malformed_manifest_is_authenticated_block(tmp_path):
 
 
 def test_pipeline_cli_is_wired_and_blocks_wrong_authoritative_root(tmp_path):
-    out = tmp_path / "pipeline"
+    # Pipeline output is required to be outside every input/protected root.
+    out = tmp_path.parent / f"{tmp_path.name}-pipeline"
     code = main([
         "pipeline", "--repo-root", str(tmp_path),
         "--expected-root", "/Users/sanjayb/nepal-event-anomaly",
@@ -117,6 +118,112 @@ def test_pipeline_cli_is_wired_and_blocks_wrong_authoritative_root(tmp_path):
     assert report["A_CATALOG"]["status"] == C.PHASE_STATUS_A_BLOCKED
     assert report["B_SCREEN"]["status"] == C.PHASE_STATUS_B_TO_C_BLOCKED
     assert report["F_BRIEFING"]["status"] == C.PHASE_STATUS_F_BLOCKED
+
+
+def test_pipeline_rejects_output_under_repo_before_failed_preflight_writes(
+        tmp_path):
+    repo_root = tmp_path / "repo"
+    expected_root = tmp_path / "authoritative"
+    manifest_root = tmp_path / "manifest-root"
+    repo_root.mkdir()
+    expected_root.mkdir()
+    manifest_root.mkdir()
+    raw = tmp_path / "raw.json"
+    manifest = tmp_path / "manifest.json"
+    raw.write_text("[]", encoding="utf-8")
+    manifest.write_text("{}", encoding="utf-8")
+    output = repo_root / "pipeline-output"
+
+    code = main([
+        "pipeline", "--repo-root", str(repo_root),
+        "--expected-root", str(expected_root), "--raw", str(raw),
+        "--manifest", str(manifest), "--manifest-root", str(manifest_root),
+        "--out", str(output), "--expected-contract-sha256", C.contract_hash(),
+        "--expected-framework-contract-sha256", C.contract_hash(),
+        "--minimum-free-gib", "0",
+    ])
+
+    assert code == 2
+    assert not output.exists()
+
+
+def test_pipeline_maps_b_timeout_to_incomplete_exit_and_status(
+        tmp_path, monkeypatch):
+    from nepal.framework_v1 import adapters as adapters_module
+    from nepal.framework_v1 import catalog as catalog_module
+    from nepal.framework_v1 import preflight as preflight_module
+    from nepal.framework_v1.adapters import BInputBundle
+
+    repo_root = tmp_path / "repo"
+    expected_root = tmp_path / "authoritative"
+    manifest_root = tmp_path / "manifest-root"
+    repo_root.mkdir()
+    expected_root.mkdir()
+    manifest_root.mkdir()
+    raw = tmp_path / "raw.json"
+    manifest = tmp_path / "manifest.json"
+    raw.write_text("[]", encoding="utf-8")
+    manifest.write_text("{}", encoding="utf-8")
+    output = tmp_path / "pipeline-output"
+    controls_lock = create_controls_lock(ControlsConfig())
+
+    a_gate_path = tmp_path / "a_envelope.json"
+    a_gate = bind_artifact_envelope({
+        "profile_id": "FRAMEWORK_V1_FULL",
+        "gate": bind_gate_artifact({
+            "gate_id": C.GateId.A_CATALOG.value,
+            "passed": True,
+            "checks": {},
+        }),
+        "provenance": {"framework_contract_sha256": C.contract_hash()},
+    })
+    a_gate_path.write_text(json.dumps(a_gate), encoding="utf-8")
+
+    b_timeout = bind_artifact_envelope({
+        "status": C.B_TIMEOUT_STATUS,
+        "gate_id": C.GateId.B_TO_C.value,
+        "gate_passed": False,
+        "phase_status": C.PHASE_STATUS_B_TO_C_BLOCKED,
+        "gate": bind_gate_artifact({
+            "gate_id": C.GateId.B_TO_C.value,
+            "passed": False,
+            "checks": {"bounded_execution": {"passed": False}},
+        }),
+        "errors": ["timed out"],
+        "provenance": {"framework_contract_sha256": C.contract_hash()},
+    })
+
+    monkeypatch.setattr(preflight_module, "run_preflight", lambda *args, **kwargs: {
+        "ok": True, "status": "BASELINE_READY", "failures": [],
+    })
+    monkeypatch.setattr(catalog_module, "build_catalog", lambda *args, **kwargs: {
+        "controls_lock": controls_lock,
+    })
+    monkeypatch.setattr(catalog_module, "materialize_phase_a", lambda *args, **kwargs: {
+        "envelope": a_gate_path,
+    })
+    monkeypatch.setattr(catalog_module, "verify_phase_a_envelope",
+                        lambda *args, **kwargs: (True, []))
+    monkeypatch.setattr(
+        adapters_module, "load_verified_b_input_bundle",
+        lambda *args, **kwargs: BInputBundle(
+            status=C.PHASE_STATUS_LOAD_READY, verification=None))
+    monkeypatch.setattr(adapters_module, "build_b_screen_from_bundle",
+                        lambda *args, **kwargs: b_timeout)
+
+    code = main([
+        "pipeline", "--repo-root", str(repo_root),
+        "--expected-root", str(expected_root), "--raw", str(raw),
+        "--manifest", str(manifest), "--manifest-root", str(manifest_root),
+        "--out", str(output), "--expected-contract-sha256", C.contract_hash(),
+        "--expected-framework-contract-sha256", C.contract_hash(),
+        "--minimum-free-gib", "0",
+    ])
+
+    report = json.loads((output / "pipeline_report.json").read_text())
+    assert code == 4
+    assert report["pipeline_status"] == "PIPELINE_INCOMPLETE"
+    assert report["B_SCREEN"]["screen_status"] == C.B_TIMEOUT_STATUS
 
 
 def test_pipeline_does_not_call_b_screen_when_verified_bundle_is_blocked(

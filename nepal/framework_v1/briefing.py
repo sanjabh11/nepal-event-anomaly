@@ -77,7 +77,8 @@ def generate_briefing(validation_summary: Mapping, *,
     """Deterministic markdown briefing for PASS / NULL / INDETERMINATE."""
     if strict:
         problems = _strict_gate_problems(
-            validation_summary, catalog_gate, screen_gate, validation_gate)
+            validation_summary, catalog_gate, screen_gate, validation_gate,
+            require_strict_e=True)
         if problems:
             raise ValueError("strict briefing inputs are not verified: " +
                              "; ".join(problems))
@@ -167,7 +168,8 @@ def generate_briefing(validation_summary: Mapping, *,
 def _strict_gate_problems(summary: Mapping[str, Any],
                           catalog_gate: Optional[Mapping],
                           screen_gate: Optional[Mapping],
-                          validation_gate: Optional[Mapping]) -> list[str]:
+                          validation_gate: Optional[Mapping],
+                          *, require_strict_e: bool = False) -> list[str]:
     """Return fail-closed F-input problems without trusting gate booleans."""
     problems: list[str] = []
     if not isinstance(summary, Mapping):
@@ -212,6 +214,10 @@ def _strict_gate_problems(summary: Mapping[str, Any],
     if not e_ok:
         problems.extend("E_VALIDATION: " + error for error in e_errors)
     elif isinstance(validation_gate, Mapping) and isinstance(summary, Mapping):
+        if (require_strict_e and
+                validation_gate.get("strict_contract") is not True):
+            problems.append(
+                "E_VALIDATION: strict authenticated E envelope is required")
         e_gate = validation_gate.get("gate")
         if not isinstance(e_gate, Mapping) or e_gate.get("passed") is not True:
             problems.append("E_VALIDATION: verified gate is not passed")
@@ -246,6 +252,7 @@ def build_briefing_artifact(
     screen_gate: Mapping[str, Any],
     validation_gate: Mapping[str, Any],
     contract_hash: str,
+    strict: bool = False,
 ) -> dict[str, Any]:
     """Build an authenticated F artifact from verified upstream envelopes.
 
@@ -261,13 +268,15 @@ def build_briefing_artifact(
         raise ValueError(
             "briefing contract hash does not match the runtime framework contract")
     input_problems = _strict_gate_problems(
-        summary, catalog_gate, screen_gate, validation_gate)
+        summary, catalog_gate, screen_gate, validation_gate,
+        require_strict_e=strict)
     if input_problems:
         raise ValueError("briefing upstream inputs are not verified: " +
                          "; ".join(input_problems))
     return bind_artifact_envelope({
         "profile_id": "FRAMEWORK_V1_FULL",
         "framework_version": C.FRAMEWORK_VERSION,
+        "strict_contract": strict,
         "status": C.PHASE_STATUS_F_READY,
         "gate_id": "F_BRIEFING",
         "promotion_eligible": False,
@@ -375,6 +384,10 @@ def verify_briefing_artifact(payload: Mapping[str, Any]) -> tuple[bool, list[str
         e_ok, e_errors = verify_validation_artifact(e_gate)
         if not e_ok:
             problems.extend("E_VALIDATION: " + error for error in e_errors)
+        elif (payload.get("strict_contract") is True and
+              e_gate.get("strict_contract") is not True):
+            problems.append(
+                "E_VALIDATION: strict authenticated E envelope is required")
         elif not isinstance(e_gate.get("gate"), Mapping) or e_gate["gate"].get(
                 "passed") is not True:
             problems.append("E_VALIDATION: verified gate is not passed")
@@ -394,6 +407,8 @@ def verify_briefing_artifact(payload: Mapping[str, Any]) -> tuple[bool, list[str
     no_claims = payload.get("no_claims")
     if not isinstance(no_claims, list) or not no_claims:
         problems.append("briefing artifact no_claims is required")
+    if payload.get("strict_contract") not in (False, None, True):
+        problems.append("briefing artifact strict_contract must be boolean")
     return ok and not problems, problems
 
 
@@ -406,6 +421,7 @@ def write_briefing_artifact(
     screen_gate: Mapping[str, Any],
     validation_gate: Mapping[str, Any],
     contract_hash: str,
+    strict: bool = False,
 ) -> dict[str, Any]:
     artifact = build_briefing_artifact(
         text,
@@ -414,6 +430,7 @@ def write_briefing_artifact(
         screen_gate=screen_gate,
         validation_gate=validation_gate,
         contract_hash=contract_hash,
+        strict=strict,
     )
     # Keep the complete upstream envelopes inside the authenticated object so
     # a digest-only provenance field cannot be detached from the evidence it

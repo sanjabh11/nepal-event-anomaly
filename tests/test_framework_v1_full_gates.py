@@ -6,6 +6,8 @@ import json
 import copy
 from pathlib import Path
 
+import pytest
+
 from nepal.framework_v1 import contract as C
 from nepal.framework_v1.input_manifest import (
     canonical_input_manifest_hash,
@@ -169,6 +171,24 @@ def test_pipeline_checkpoint_requires_unchanged_inputs(tmp_path):
     assert any("fingerprint" in error for error in errors)
 
 
+def test_pipeline_checkpoint_rejects_terminal_state_as_non_resumable(tmp_path):
+    source = tmp_path / "raw.json"
+    source.write_text("{}", encoding="utf-8")
+    fingerprint = pipeline_input_fingerprint([source], values={"phase": "A"})
+    checkpoint = tmp_path / "checkpoint.json"
+    write_pipeline_checkpoint(
+        checkpoint,
+        {"run_state": "TERMINAL", "stage": "pipeline_report"},
+        input_fingerprint=fingerprint,
+    )
+
+    loaded, errors = load_verified_pipeline_checkpoint(
+        checkpoint, input_fingerprint=fingerprint)
+
+    assert loaded is None
+    assert any("resumable" in error.lower() for error in errors)
+
+
 def test_pipeline_wraps_direct_a_gate_with_catalog_artifact_provenance(tmp_path):
     catalog_output = tmp_path / "catalog.json"
     catalog_output.write_text("catalog", encoding="utf-8")
@@ -244,6 +264,17 @@ def test_briefing_artifact_binds_text_and_upstream_evidence(tmp_path):
     rebound["provenance"]["b_artifact_sha256"] = forged_b["artifact_sha256"]
     rebound = bind_artifact_envelope(rebound)
     assert verify_briefing_artifact(rebound)[0] is False
+
+    with pytest.raises(ValueError, match="strict"):
+        build_briefing_artifact(
+            "research-only briefing\n",
+            summary=summary,
+            catalog_gate=a_gate,
+            screen_gate=b_gate,
+            validation_gate=e_gate,
+            contract_hash=C.contract_hash(),
+            strict=True,
+        )
 
 
 def test_strict_f_requires_outer_authenticated_a_envelope():

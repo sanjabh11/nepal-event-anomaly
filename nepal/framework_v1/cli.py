@@ -11,6 +11,7 @@ from typing import Any, Mapping
 
 from . import contract as C
 from .provenance import (bind_artifact_envelope, bind_gate_artifact,
+                         gate_input_artifact_sha256, sha256_canonical,
                          sha256_file, write_deterministic_json)
 
 
@@ -546,7 +547,39 @@ def cmd_validate(args) -> int:
             holdout_plan=holdout,
             input_manifest_verification=manifest_check,
         )
-        write_validation_artifact(args.summary, summary, e_gate)
+        manifest_hash = None
+        if isinstance(manifest_check, InputManifestVerification):
+            manifest_hash = manifest_check.checks.get("manifest_sha256")
+        elif isinstance(manifest_check, Mapping):
+            checks = manifest_check.get("checks")
+            if isinstance(checks, Mapping):
+                manifest_hash = checks.get("manifest_sha256")
+        write_validation_artifact(
+            args.summary,
+            summary,
+            e_gate,
+            provenance={
+                "framework_contract_sha256": C.contract_hash(),
+                "a_gate_artifact_sha256": gate_input_artifact_sha256(
+                    a_gate if isinstance(a_gate, Mapping) else {}),
+                "b_artifact_sha256": gate_input_artifact_sha256(
+                    b_gate if isinstance(b_gate, Mapping) else {}),
+                "controls_lock_sha256": lock.sha256,
+                "input_manifest_sha256": manifest_hash,
+                "holdout_plan_sha256": (
+                    holdout.get("plan_sha256")
+                    if isinstance(holdout, Mapping) else None),
+                "summary_sha256": sha256_canonical(dict(summary)),
+                "event_ids": sorted(
+                    str(item.get("event_id")) for item in events
+                    if isinstance(item, Mapping) and item.get("event_id") is not None),
+                "control_unit_ids": sorted(
+                    str(item.get("unit_id")) for item in ctrl
+                    if isinstance(item, Mapping) and item.get("unit_id") is not None),
+                "claim_scope": "research_only_no_operational_authorization",
+            },
+            strict_contract=True,
+        )
     else:
         write_deterministic_json(args.summary, summary)
     _print(f"E_VALIDATION status: {summary['status']}")
@@ -654,13 +687,15 @@ def cmd_pipeline(args) -> int:
 
     out = Path(args.out)
     output_path = out.resolve()
-    # The expected authoritative checkout is protected before any output is
-    # created.  External successor handoff roots are checked after G0 passes;
-    # a failed G0 still needs an atomic diagnostic report for callers.
-    protected_root = Path(args.expected_root).resolve()
-    if output_path == protected_root or protected_root in output_path.parents:
-        _print("pipeline output must be outside the authoritative checkout and "
-               "handoff root")
+    # Protect every input root before preflight or any output directory is
+    # created.  A failed G0 cannot justify writing a diagnostic into a root
+    # that the pipeline is supposed to treat as immutable.
+    protected_roots = [Path(value).resolve() for value in (
+        args.repo_root, args.expected_root, args.manifest_root) if value]
+    if any(output_path == root or root in output_path.parents
+           for root in protected_roots):
+        _print("pipeline output must be outside the repository, authoritative "
+               "checkout, and handoff root")
         return 2
     fingerprint_paths = [
         args.raw,
@@ -684,6 +719,8 @@ def cmd_pipeline(args) -> int:
             "minimum_free_gib": args.minimum_free_gib,
             "timeout_seconds": args.timeout_seconds,
             "min_pairs": args.min_pairs,
+            "access_date": args.access_date,
+            "required_features": list(args.required_feature),
         },
     )
     checkpoint_path = out / "pipeline_checkpoint.json"
@@ -694,11 +731,12 @@ def cmd_pipeline(args) -> int:
         minimum_free_gib=args.minimum_free_gib,
     )
     if preflight["ok"]:
-        external_protected_roots = [Path(args.repo_root).resolve(),
-                                    Path(args.manifest_root).resolve()]
+        # The unconditional boundary check above is intentionally repeated as
+        # a defensive assertion after G0; no later refactor may move writes
+        # ahead of the immutable-root guard.
         if any(output_path == root or root in output_path.parents
-               for root in external_protected_roots):
-            _print("pipeline output must be outside the repository and handoff root")
+               for root in protected_roots):
+            _print("pipeline output must be outside protected roots")
             return 2
     out.mkdir(parents=True, exist_ok=True)
     report: dict[str, object] = {
@@ -855,6 +893,8 @@ def cmd_pipeline(args) -> int:
         if not b_envelope_ok:
             report["B_SCREEN"]["reason"] = "B result envelope failed verification"
             return _finish(5)
+        if b_result.get("status") == C.B_TIMEOUT_STATUS:
+            return _finish(4)
         if b_result.get("gate_passed") is not True:
             return _finish(3)
 
@@ -900,6 +940,7 @@ def cmd_pipeline(args) -> int:
                 "input_manifest_sha256": (
                     bundle.verification.checks.get("manifest_sha256")
                     if bundle.verification is not None else None),
+                "summary_sha256": sha256_canonical(dict(summary)),
                 "event_ids": sorted(
                     str(item.get("event_id")) for item in events
                     if isinstance(item, dict) and item.get("event_id") is not None),
@@ -910,6 +951,7 @@ def cmd_pipeline(args) -> int:
                 if isinstance(holdout, dict) else None,
                 "claim_scope": "research_only_no_operational_authorization",
             },
+            strict_contract=True,
         )
         e_envelope_ok, e_envelope_errors = verify_artifact_envelope(e_artifact)
         report["E_VALIDATION"] = {
@@ -942,6 +984,7 @@ def cmd_pipeline(args) -> int:
             screen_gate=b_result,
             validation_gate=e_artifact,
             contract_hash=C.contract_hash(),
+            strict=True,
         )
         f_artifact_path = out / "briefing.json"
         # The builder includes the complete upstream envelopes.  Persist with

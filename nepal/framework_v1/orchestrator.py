@@ -21,6 +21,7 @@ PIPELINE_PROFILE_ID = "FRAMEWORK_V1_FULL"
 PIPELINE_STATUS_COMPLETE = "PIPELINE_COMPLETE"
 PIPELINE_STATUS_BLOCKED = "PIPELINE_BLOCKED"
 PIPELINE_STATUS_INCOMPLETE = "PIPELINE_INCOMPLETE"
+RESUMABLE_PIPELINE_STATES = frozenset({"RUNNING", "INCOMPLETE"})
 
 NO_CLAIMS = (
     "Framework implementation evidence is not scientific validation",
@@ -186,4 +187,9 @@ def load_verified_pipeline_checkpoint(
         problems.append("pipeline checkpoint must not be promotion eligible")
     if payload.get("input_fingerprint") != input_fingerprint:
         problems.append("pipeline checkpoint input fingerprint does not match")
+    run_state = payload.get("run_state")
+    if run_state not in RESUMABLE_PIPELINE_STATES:
+        problems.append(
+            "pipeline checkpoint run_state is not resumable: "
+            f"{run_state!r}")
     return (dict(payload) if ok and not problems else None), problems

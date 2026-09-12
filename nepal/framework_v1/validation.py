@@ -32,10 +32,65 @@ from .controls import (ControlsLock, ControlsLockMismatch,
 from .input_manifest import (InputManifestVerification, SHA256_RE,
                               canonical_input_manifest_hash)
 from .provenance import (bind_artifact_envelope, bind_gate_artifact,
-                         sha256_canonical, verify_artifact_envelope,
-                         verify_gate_artifact, verify_gate_input)
+                         gate_input_artifact_sha256, sha256_canonical,
+                         verify_artifact_envelope, verify_gate_artifact,
+                         verify_gate_input)
 
 Z95 = 1.959963984540054  # two-sided 95% normal quantile
+
+_STRICT_E_HASH_FIELDS = (
+    "framework_contract_sha256",
+    "a_gate_artifact_sha256",
+    "b_artifact_sha256",
+    "controls_lock_sha256",
+    "input_manifest_sha256",
+    "holdout_plan_sha256",
+    "summary_sha256",
+)
+_STRICT_E_ID_FIELDS = ("event_ids", "control_unit_ids")
+_STRICT_E_CLAIM_SCOPE = "research_only_no_operational_authorization"
+
+
+def _strict_e_provenance_errors(summary: Mapping[str, Any],
+                                provenance: Mapping[str, Any]) -> list[str]:
+    """Validate the complete provenance required by the strict E envelope."""
+    errors: list[str] = []
+    for field in _STRICT_E_HASH_FIELDS:
+        value = provenance.get(field)
+        if not isinstance(value, str) or not SHA256_RE.fullmatch(value):
+            errors.append(f"strict E provenance {field} must be a SHA-256 digest")
+
+    summary_hashes = summary.get("input_hashes")
+    if not isinstance(summary_hashes, Mapping):
+        errors.append("strict E summary input_hashes are required")
+    else:
+        for provenance_key, summary_key in (
+                ("controls_lock_sha256", "controls_lock"),
+                ("input_manifest_sha256", "input_manifest"),
+                ("holdout_plan_sha256", "holdout_plan")):
+            if provenance.get(provenance_key) != summary_hashes.get(summary_key):
+                errors.append(
+                    f"strict E provenance {provenance_key} does not match "
+                    f"summary input_hashes.{summary_key}")
+
+    try:
+        summary_hash = sha256_canonical(dict(summary))
+    except (TypeError, ValueError) as exc:
+        errors.append(f"strict E summary is not canonical JSON: {exc}")
+    else:
+        if provenance.get("summary_sha256") != summary_hash:
+            errors.append("strict E provenance summary_sha256 does not match summary")
+
+    for field in _STRICT_E_ID_FIELDS:
+        value = provenance.get(field)
+        if (not isinstance(value, list) or
+                any(not isinstance(item, str) or not item for item in value) or
+                len(value) != len(set(value)) or value != sorted(value)):
+            errors.append(
+                f"strict E provenance {field} must be a sorted unique string list")
+    if provenance.get("claim_scope") != _STRICT_E_CLAIM_SCOPE:
+        errors.append("strict E provenance claim_scope is not research-only")
+    return errors
 
 
 # ---------------------------------------------------------------------------
@@ -650,6 +705,30 @@ def evaluate_e_gate(summary: Mapping[str, Any], *,
             "input_manifest_framework_runtime_bound",
             b_envelope["provenance"].get(
                 "input_manifest_framework_contract_bound")) is True)
+    b_provenance: Mapping[str, Any] = {}
+    if isinstance(b_envelope, Mapping):
+        candidate_provenance = b_envelope.get("provenance")
+        if isinstance(candidate_provenance, Mapping):
+            b_provenance = candidate_provenance
+    expected_a_identity = (gate_input_artifact_sha256(a_gate_artifact)
+                           if isinstance(a_gate_artifact, Mapping) else None)
+    b_a_gate_binding = bool(
+        expected_a_identity is not None and
+        b_provenance.get("a_gate_artifact_sha256") == expected_a_identity)
+    b_controls_lock_binding = bool(
+        isinstance(hashes.get("controls_lock"), str) and
+        b_provenance.get("controls_lock_sha256") == hashes.get("controls_lock") and
+        controls_lock is not None and
+        b_provenance.get("controls_lock_sha256") == controls_lock.sha256)
+    b_manifest_canonical_binding = bool(
+        b_provenance.get("input_manifest_hash_encoding") == "canonical_json" and
+        b_provenance.get("input_manifest_contract_bound") is True and
+        b_provenance.get("input_manifest_canonical_authorized") is True)
+    b_result_stage_state = bool(
+        isinstance(b_envelope, Mapping) and
+        b_envelope.get("status") == C.PHASE_STATUS_SCREEN_RANKED and
+        b_envelope.get("phase_status") == C.PHASE_STATUS_B_TO_C_READY and
+        b_envelope.get("gate_passed") is True)
 
     controls_ok = isinstance(controls_lock, ControlsLock) and controls_lock.verify()
     controls_hash_match = bool(
@@ -703,6 +782,11 @@ def evaluate_e_gate(summary: Mapping[str, Any], *,
             "passed": b_framework_contract_match},
         "B_manifest_framework_binding": {
             "passed": b_manifest_framework_binding},
+        "B_A_gate_binding": {"passed": b_a_gate_binding},
+        "B_controls_lock_binding": {"passed": b_controls_lock_binding},
+        "B_manifest_canonical_binding": {
+            "passed": b_manifest_canonical_binding},
+        "B_result_stage_state": {"passed": b_result_stage_state},
         "typed_manifest_verification": {"passed": manifest_ok},
         "manifest_hash_matches_summary": {"passed": manifest_hash_match},
         "verified_controls_lock": {"passed": controls_ok},
@@ -743,9 +827,12 @@ def evaluate_e_gate(summary: Mapping[str, Any], *,
 
 def write_validation_artifact(path, summary: Mapping[str, Any],
                              gate: Mapping[str, Any], *,
-                             provenance: Optional[Mapping[str, Any]] = None):
+                             provenance: Optional[Mapping[str, Any]] = None,
+                             strict_contract: bool = False):
     """Write the hash-bound E summary, gate, provenance, and outer envelope."""
     from .provenance import write_deterministic_json
+    if not isinstance(summary, Mapping):
+        raise TypeError("validation artifact summary must be a mapping")
     gate_payload = dict(gate) if isinstance(gate, Mapping) else {}
     # Recompute this binding at the write boundary so a caller cannot pair a
     # valid-looking gate with a different summary.  The outer envelope then
@@ -763,8 +850,15 @@ def write_validation_artifact(path, summary: Mapping[str, Any],
         provenance_payload = dict(provenance)
     else:
         raise TypeError("validation artifact provenance must be a mapping")
+    if strict_contract:
+        strict_errors = _strict_e_provenance_errors(
+            summary, provenance_payload)
+        if strict_errors:
+            raise ValueError("strict E provenance is incomplete: " +
+                             "; ".join(strict_errors))
     artifact = {
         "framework_version": C.FRAMEWORK_VERSION,
+        "strict_contract": strict_contract,
         "status": (C.PHASE_STATUS_E_READY
                     if gate_payload.get("passed") is True
                     else C.PHASE_STATUS_E_BLOCKED),
@@ -821,6 +915,16 @@ def verify_validation_artifact(payload: Mapping[str, Any]) -> tuple[bool, list[s
     elif provenance.get("framework_contract_sha256") != C.contract_hash():
         problems.append(
             "validation artifact framework contract does not match runtime")
+    if payload.get("strict_contract") is True:
+        if not isinstance(payload.get("summary"), Mapping):
+            problems.append("strict validation artifact summary is required")
+        elif isinstance(provenance, Mapping):
+            problems.extend(_strict_e_provenance_errors(
+                payload["summary"], provenance))
+        else:
+            problems.append("strict validation artifact provenance is required")
+    elif payload.get("strict_contract") not in (False, None):
+        problems.append("validation artifact strict_contract must be boolean")
     expected_status = (C.PHASE_STATUS_E_READY
                        if isinstance(gate, Mapping) and gate.get("passed") is True
                        else C.PHASE_STATUS_E_BLOCKED)

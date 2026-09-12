@@ -350,6 +350,48 @@ class TestStrictValidationContract:
         tampered_envelope = bind_artifact_envelope(tampered_envelope)
         assert verify_validation_artifact(tampered_envelope)[0] is False
 
+    def test_strict_validation_artifact_requires_complete_provenance(self, tmp_path):
+        summary = {
+            "status": "INDETERMINATE",
+            "validation_errors": [],
+            "input_hashes": {
+                "catalog": "a" * 64,
+                "controls": "b" * 64,
+                "feature_config": "c" * 64,
+                "holdout_plan": "d" * 64,
+                "input_manifest": "e" * 64,
+                "controls_lock": "f" * 64,
+            },
+        }
+        gate = bind_gate_artifact({
+            "gate_id": C.GateId.E_VALIDATION.value,
+            "passed": False,
+            "checks": {},
+        })
+        incomplete = {"framework_contract_sha256": C.contract_hash()}
+        with pytest.raises(ValueError, match="strict E provenance"):
+            write_validation_artifact(
+                tmp_path / "incomplete.json", summary, gate,
+                provenance=incomplete, strict_contract=True)
+
+        provenance = {
+            "framework_contract_sha256": C.contract_hash(),
+            "a_gate_artifact_sha256": "1" * 64,
+            "b_artifact_sha256": "2" * 64,
+            "controls_lock_sha256": "f" * 64,
+            "input_manifest_sha256": "e" * 64,
+            "holdout_plan_sha256": "d" * 64,
+            "summary_sha256": sha256_canonical(summary),
+            "event_ids": ["E1"],
+            "control_unit_ids": ["C1"],
+            "claim_scope": "research_only_no_operational_authorization",
+        }
+        artifact = write_validation_artifact(
+            tmp_path / "strict.json", summary, gate,
+            provenance=provenance, strict_contract=True)
+        assert artifact["strict_contract"] is True
+        assert verify_validation_artifact(artifact) == (True, [])
+
     def _strict_plan(self, groups):
         plan = {"groups": [{"group_id": group} for group in groups],
                 "n_groups": len(groups),
@@ -509,6 +551,7 @@ class TestStrictValidationContract:
 
     def test_e_gate_accepts_honest_indeterminate_only_with_bound_evidence(self):
         from nepal.framework_v1.provenance import (bind_artifact_envelope,
+                                                    gate_input_artifact_sha256,
                                                     sha256_canonical)
         from nepal.framework_v1.input_manifest import canonical_input_manifest_hash
         plan = self._strict_plan(["G1"])
@@ -530,11 +573,19 @@ class TestStrictValidationContract:
         a_gate = _outer_a(a_gate)
         b_gate = {"gate": {"gate_id": "B_TO_C", "passed": True},
                   "provenance": {
+                      "a_gate_artifact_sha256": gate_input_artifact_sha256(a_gate),
+                      "controls_lock_sha256": LOCK.sha256,
                       "input_manifest_sha256": manifest_hash,
+                      "input_manifest_hash_encoding": "canonical_json",
+                      "input_manifest_contract_bound": True,
+                      "input_manifest_canonical_authorized": True,
                       "framework_contract_sha256": C.contract_hash(),
                       "input_manifest_framework_runtime_bound": True,
                       "input_manifest_framework_contract_bound": True,
-                  }}
+                  },
+                  "status": C.PHASE_STATUS_SCREEN_RANKED,
+                  "phase_status": C.PHASE_STATUS_B_TO_C_READY,
+                  "gate_passed": True}
         b_gate["gate"]["gate_artifact_sha256"] = sha256_canonical(b_gate["gate"])
         b_gate = bind_artifact_envelope(b_gate)
         gate = evaluate_e_gate(
@@ -542,6 +593,74 @@ class TestStrictValidationContract:
             controls_lock=LOCK, holdout_plan=plan,
             input_manifest_verification=verification)
         assert gate["passed"] is True
+
+        forged = dict(b_gate)
+        forged["provenance"] = dict(forged["provenance"])
+        forged["provenance"]["controls_lock_sha256"] = "0" * 64
+        forged = bind_artifact_envelope(forged)
+        forged_gate = evaluate_e_gate(
+            summary, a_gate_artifact=a_gate, b_gate_artifact=forged,
+            controls_lock=LOCK, holdout_plan=plan,
+            input_manifest_verification=verification)
+        assert forged_gate["passed"] is False
+        assert forged_gate["checks"]["B_controls_lock_binding"]["passed"] is False
+
+    def test_e_gate_rejects_b_provenance_bound_to_different_a_envelope(self):
+        from nepal.framework_v1.input_manifest import canonical_input_manifest_hash
+
+        plan = self._strict_plan(["G1"])
+        manifest = self._strict_manifest()
+        manifest_hash = canonical_input_manifest_hash(manifest)
+        summary = {
+            "status": "INDETERMINATE",
+            "input_hashes": {
+                "catalog": "a" * 64,
+                "controls": "b" * 64,
+                "feature_config": "c" * 64,
+                "holdout_plan": plan["plan_sha256"],
+                "input_manifest": manifest_hash,
+                "controls_lock": LOCK.sha256,
+            },
+            "validation_errors": [],
+        }
+        verification = self._strict_manifest_verification()
+        a_gate = _outer_a(bind_gate_artifact({
+            "gate_id": C.GateId.A_CATALOG.value,
+            "passed": True,
+            "catalog_sha256": summary["input_hashes"]["catalog"],
+            "holdout_plan_sha256": plan["plan_sha256"],
+            "checks": {},
+        }))
+        b_gate = bind_artifact_envelope({
+            "status": C.PHASE_STATUS_SCREEN_RANKED,
+            "phase_status": C.PHASE_STATUS_B_TO_C_READY,
+            "gate_passed": True,
+            "gate": bind_gate_artifact({
+                "gate_id": C.GateId.B_TO_C.value,
+                "passed": True,
+                "checks": {},
+            }),
+            "provenance": {
+                "a_gate_artifact_sha256": "1" * 64,
+                "controls_lock_sha256": LOCK.sha256,
+                "input_manifest_sha256": manifest_hash,
+                "input_manifest_hash_encoding": "canonical_json",
+                "input_manifest_contract_bound": True,
+                "input_manifest_canonical_authorized": True,
+                "framework_contract_sha256": C.contract_hash(),
+                "input_manifest_framework_runtime_bound": True,
+                "input_manifest_framework_contract_bound": True,
+            },
+        })
+
+        gate = evaluate_e_gate(
+            summary, a_gate_artifact=a_gate, b_gate_artifact=b_gate,
+            controls_lock=LOCK, holdout_plan=plan,
+            input_manifest_verification=verification)
+
+        assert gate["passed"] is False
+        assert gate["checks"]["B_A_gate_binding"]["passed"] is False
+        assert gate["checks"]["B_result_stage_state"]["passed"] is True
 
     def test_e_gate_rejects_b_envelope_for_different_framework_contract(self):
         from nepal.framework_v1.input_manifest import canonical_input_manifest_hash
