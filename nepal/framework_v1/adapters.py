@@ -863,6 +863,7 @@ def build_b_screen(
         raise C.ContractViolation(
             "B timeout_seconds must be finite and non-negative")
     started = time.monotonic()
+    perf_started = time.perf_counter()
     deadline = started + effective_timeout_seconds
 
     def _checkpoint(stage: str, status: str = "RUNNING", **extra: Any) -> None:
@@ -907,6 +908,8 @@ def build_b_screen(
                 "framework_contract_sha256": C.contract_hash(),
                 "component_registry_version": C.COMPONENT_REGISTRY_VERSION,
                 "timeout_seconds": effective_timeout_seconds,
+                "elapsed_seconds": time.perf_counter() - perf_started,
+                "timeout": True,
                 "checkpoint_path": str(checkpoint_path) if checkpoint_path else None,
             },
         })
@@ -974,6 +977,8 @@ def build_b_screen(
         "optional_exposure_components": list(C.OPTIONAL_EXPOSURE_COMPONENTS),
         "a_gate_artifact_sha256": a_gate_artifact_hash,
         "timeout_seconds": effective_timeout_seconds,
+        "elapsed_seconds": None,
+        "timeout": False,
         "checkpoint_path": str(checkpoint_path) if checkpoint_path else None,
     }
     try:
@@ -1053,6 +1058,11 @@ def build_b_screen(
             "gate": gate,
             "errors": sorted(set(problems)),
             "provenance": provenance,
+            "runtime": {
+                "elapsed_seconds": time.perf_counter() - perf_started,
+                "timeout_seconds": effective_timeout_seconds,
+                "timeout": False,
+            },
         })
 
     try:
@@ -1114,6 +1124,12 @@ def build_b_screen(
         C.PHASE_STATUS_B_TO_C_READY
         if result["gate_passed"] else C.PHASE_STATUS_B_TO_C_BLOCKED)
     bound = bind_artifact_envelope(result)
+    bound["runtime"] = {
+        "elapsed_seconds": time.perf_counter() - perf_started,
+        "timeout_seconds": effective_timeout_seconds,
+        "timeout": False,
+    }
+    bound = bind_artifact_envelope(bound)
     try:
         _checkpoint("completed", "COMPLETED",
                     artifact_sha256=bound["artifact_sha256"],

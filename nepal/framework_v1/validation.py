@@ -160,7 +160,9 @@ def run_validation(events: Sequence, controls: Sequence, *,
                    z: float = Z95,
                    strict_contract: bool = False,
                    a_gate_passed: Optional[bool] = None,
-                   b_gate_passed: Optional[bool] = None) -> dict:
+                   b_gate_passed: Optional[bool] = None,
+                   a_gate_artifact: Optional[Mapping[str, Any]] = None,
+                   b_gate_artifact: Optional[Mapping[str, Any]] = None) -> dict:
     """Geographic leave-one-group-out validation.
 
     - Verifies the controls lock before observing any score.
@@ -190,6 +192,8 @@ def run_validation(events: Sequence, controls: Sequence, *,
         manifest_hash = sha256_canonical({})
 
     validation_errors: list[str] = []
+    verified_a_passed: Optional[bool] = a_gate_passed
+    verified_b_passed: Optional[bool] = b_gate_passed
     plan_groups: set[str] = set()
     raw_plan_groups = (holdout_plan.get("groups", [])
                        if isinstance(holdout_plan, Mapping) else None)
@@ -266,9 +270,31 @@ def run_validation(events: Sequence, controls: Sequence, *,
                         "input manifest framework contract is not bound")
                 if verification_checks.get("raw_slc_scan") != "PASS":
                     validation_errors.append("input manifest raw SLC scan did not pass")
-        if a_gate_passed is not True:
+        if a_gate_artifact is not None:
+            a_ok, a_errors = verify_gate_artifact(
+                a_gate_artifact, expected_gate_id=C.GateId.A_CATALOG.value)
+            verified_a_passed = bool(a_ok and a_gate_artifact.get("passed") is True)
+            if not a_ok:
+                validation_errors.extend("A_CATALOG: " + error for error in a_errors)
+        if verified_a_passed is not True:
             validation_errors.append("A_CATALOG gate must pass before strict E")
-        if b_gate_passed is not True:
+
+        if b_gate_artifact is not None:
+            b_outer_ok, b_outer_errors = verify_artifact_envelope(b_gate_artifact)
+            b_inner = b_gate_artifact.get("gate")
+            b_inner_ok, b_inner_errors = verify_gate_artifact(
+                b_inner if isinstance(b_inner, Mapping) else {},
+                expected_gate_id=C.GateId.B_TO_C.value)
+            verified_b_passed = bool(
+                b_outer_ok and b_inner_ok and isinstance(b_inner, Mapping) and
+                b_inner.get("passed") is True)
+            if not b_outer_ok:
+                validation_errors.extend("B_SCREEN: " + error
+                                         for error in b_outer_errors)
+            if not b_inner_ok:
+                validation_errors.extend("B_TO_C: " + error
+                                         for error in b_inner_errors)
+        if verified_b_passed is not True:
             validation_errors.append("B_SCREEN/B_TO_C gate must pass before strict E")
         if len({str(e.get("event_id")) for e in events}) != len(events):
             validation_errors.append("event_id values must be unique")
@@ -429,8 +455,8 @@ def run_validation(events: Sequence, controls: Sequence, *,
         "strict_contract": bool(strict_contract),
         "validation_errors": validation_errors,
         "gate_id": C.GateId.E_VALIDATION.value,
-        "a_gate_passed": a_gate_passed,
-        "b_gate_passed": b_gate_passed,
+        "a_gate_passed": verified_a_passed,
+        "b_gate_passed": verified_b_passed,
         "input_hashes": {
             "catalog": catalog_hash,
             "controls": controls_hash,
@@ -691,8 +717,9 @@ def evaluate_e_gate(summary: Mapping[str, Any], *,
 
 
 def write_validation_artifact(path, summary: Mapping[str, Any],
-                             gate: Mapping[str, Any]):
-    """Write the hash-bound E summary, gate, and outer envelope."""
+                             gate: Mapping[str, Any], *,
+                             provenance: Optional[Mapping[str, Any]] = None):
+    """Write the hash-bound E summary, gate, provenance, and outer envelope."""
     from .provenance import write_deterministic_json
     gate_payload = dict(gate) if isinstance(gate, Mapping) else {}
     # Recompute this binding at the write boundary so a caller cannot pair a
@@ -700,14 +727,32 @@ def write_validation_artifact(path, summary: Mapping[str, Any],
     # authenticates both the gate and summary bytes together.
     gate_payload["summary_sha256"] = sha256_canonical(dict(summary))
     gate_payload = bind_gate_artifact(gate_payload)
+    if provenance is None:
+        provenance_payload: dict[str, Any] = {
+            "input_hashes": dict(summary.get("input_hashes", {}))
+            if isinstance(summary.get("input_hashes"), Mapping) else {},
+            "framework_contract_sha256": C.contract_hash(),
+            "provenance_mode": "derived_from_summary",
+        }
+    elif isinstance(provenance, Mapping):
+        provenance_payload = dict(provenance)
+    else:
+        raise TypeError("validation artifact provenance must be a mapping")
     artifact = {
         "framework_version": C.FRAMEWORK_VERSION,
         "status": (C.PHASE_STATUS_E_READY
                     if gate_payload.get("passed") is True
                     else C.PHASE_STATUS_E_BLOCKED),
         "gate_id": C.GateId.E_VALIDATION.value,
+        "promotion_eligible": False,
+        "no_claims": [
+            "No warning or production authorization",
+            "No authority approval",
+            "Mechanism labels are not independent field adjudication",
+        ],
         "gate": gate_payload,
         "summary": dict(summary),
+        "provenance": provenance_payload,
     }
     bound = bind_artifact_envelope(artifact)
     write_deterministic_json(path, bound)
@@ -737,6 +782,13 @@ def verify_validation_artifact(payload: Mapping[str, Any]) -> tuple[bool, list[s
                     "validation artifact summary_sha256 does not match summary content")
     if payload.get("gate_id") != C.GateId.E_VALIDATION.value:
         problems.append("validation artifact gate_id must be E_VALIDATION")
+    if payload.get("promotion_eligible") is not False:
+        problems.append("validation artifact must not be promotion eligible")
+    if not isinstance(payload.get("no_claims"), list) or not payload.get(
+            "no_claims"):
+        problems.append("validation artifact no_claims are required")
+    if not isinstance(payload.get("provenance"), Mapping):
+        problems.append("validation artifact provenance must be a mapping")
     expected_status = (C.PHASE_STATUS_E_READY
                        if isinstance(gate, Mapping) and gate.get("passed") is True
                        else C.PHASE_STATUS_E_BLOCKED)

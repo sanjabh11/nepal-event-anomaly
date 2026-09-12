@@ -238,8 +238,11 @@ def build_manifest(files: Mapping[str, "str | bytes | Path"],
         "manifest_type": manifest_type,
         "files": entries,
     }
+    # The self-hash domain is canonical JSON with only the self-hash field
+    # omitted.  This is the same domain used by verify_manifest and prevents a
+    # freshly generated manifest from being unverifiable by construction.
     manifest["manifest_sha256"] = sha256_canonical(
-        {k: v for k, v in manifest.items()})
+        {k: v for k, v in manifest.items() if k != "manifest_sha256"})
     return manifest
 
 

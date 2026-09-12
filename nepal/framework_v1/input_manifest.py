@@ -662,6 +662,7 @@ def verify_input_manifest(
     *,
     expected_contract_sha256: Optional[str] = None,
     expected_framework_contract_sha256: Optional[str] = None,
+    trusted_manifest_sha256: Optional[str] = None,
     required_artifact_ids: Optional[Iterable[str]] = None,
     required_role: Optional[str] = None,
     primary_roles: Iterable[str] = PRIMARY_ROLES,
@@ -707,6 +708,7 @@ def verify_input_manifest(
         errors.append(f"manifest root is not an existing directory: {root_path}")
 
     stored_hash = manifest.get("manifest_sha256")
+    canonical_hash_value: Optional[str] = None
     self_hash_verified = False
     if require_self_hash and not isinstance(stored_hash, str):
         errors.append("manifest_sha256 is required")
@@ -717,6 +719,7 @@ def verify_input_manifest(
             expected_hash = None
             errors.append(f"manifest contains non-canonical JSON values: {exc}")
         if expected_hash is not None:
+            canonical_hash_value = expected_hash
             checks["manifest_sha256"] = expected_hash
             if stored_hash == expected_hash:
                 checks["manifest_hash_encoding"] = "canonical_json"
@@ -738,6 +741,21 @@ def verify_input_manifest(
     checks["canonical_manifest_authorized"] = bool(
         self_hash_verified and
         checks.get("manifest_hash_encoding") == "canonical_json")
+
+    trusted_anchor_valid = (
+        isinstance(trusted_manifest_sha256, str) and
+        bool(SHA256_RE.fullmatch(trusted_manifest_sha256)))
+    if trusted_manifest_sha256 is not None and not trusted_anchor_valid:
+        errors.append(
+            "trusted_manifest_sha256 must be a lowercase 64-character SHA-256")
+    trusted_anchor_bound = bool(
+        trusted_anchor_valid and canonical_hash_value is not None and
+        canonical_hash_value == trusted_manifest_sha256)
+    if trusted_anchor_valid and not trusted_anchor_bound:
+        errors.append(
+            "canonical manifest hash does not match the trusted manifest anchor")
+    checks["trusted_manifest_anchor_bound"] = trusted_anchor_bound
+    checks["trusted_manifest_sha256_supplied"] = trusted_manifest_sha256 is not None
 
     data_contract = manifest.get("contract_sha256")
     if not isinstance(data_contract, str) or not SHA256_RE.fullmatch(data_contract):
@@ -975,6 +993,8 @@ def verify_input_manifest(
         checks.get("contract_bound") and
         checks.get("framework_contract_bound") and required_ids and
         not missing_required and not blocking_required and
+        (trusted_manifest_sha256 is None or
+         checks.get("trusted_manifest_anchor_bound") is True) and
         (phase_name is None or checks.get("phase_contract_valid") is True))
     checks["required_declaration"] = bool(required_ids)
     checks["artifact_count"] = len(artifacts)
@@ -1007,6 +1027,7 @@ def verify_phase_manifest(
     manifest: Mapping[str, Any], root: str | Path, phase: str, *,
     expected_contract_sha256: Optional[str] = None,
     expected_framework_contract_sha256: Optional[str] = None,
+    trusted_manifest_sha256: Optional[str] = None,
     repo_root: Optional[str | Path] = None,
     scan_root_for_raw_slc: bool = True,
 ) -> InputManifestVerification:
@@ -1019,9 +1040,65 @@ def verify_phase_manifest(
         manifest, root,
         expected_contract_sha256=expected_contract_sha256,
         expected_framework_contract_sha256=expected_framework_contract_sha256,
+        trusted_manifest_sha256=trusted_manifest_sha256,
         repo_root=repo_root,
         required_artifact_ids=required,
         required_role=str(phase).upper(),
         phase=str(phase).upper(),
+        scan_root_for_raw_slc=scan_root_for_raw_slc,
+    )
+
+
+def verify_canonical_input_manifest(
+    manifest: Mapping[str, Any],
+    root: str | Path,
+    *,
+    trusted_manifest_sha256: Optional[str],
+    expected_contract_sha256: Optional[str],
+    expected_framework_contract_sha256: Optional[str],
+    required_artifact_ids: Optional[Iterable[str]] = None,
+    required_role: Optional[str] = None,
+    primary_roles: Iterable[str] = PRIMARY_ROLES,
+    phase: Optional[str] = None,
+    repo_root: Optional[str | Path] = None,
+    scan_root_for_raw_slc: bool = True,
+) -> InputManifestVerification:
+    """Run the non-compatibility manifest authorization boundary.
+
+    ``verify_input_manifest`` intentionally retains the downloader's pretty
+    JSON result as a diagnostic for historical manifests.  This helper is the
+    strict production-facing boundary: both contract domains and an external
+    trusted canonical manifest digest are required, so a generated or
+    compatibility-only self-hash cannot authorize a primary run.
+    """
+    required_values = (
+        ("expected_contract_sha256", expected_contract_sha256),
+        ("expected_framework_contract_sha256", expected_framework_contract_sha256),
+        ("trusted_manifest_sha256", trusted_manifest_sha256),
+    )
+    invalid = [
+        f"{name} must be an explicit lowercase SHA-256"
+        for name, value in required_values
+        if not isinstance(value, str) or not SHA256_RE.fullmatch(value)
+    ]
+    if invalid:
+        return InputManifestVerification(
+            ok=False,
+            can_run_primary=False,
+            errors=tuple(invalid),
+            checks={"strict_canonical_authorization": False},
+        )
+    return verify_input_manifest(
+        manifest,
+        root,
+        expected_contract_sha256=expected_contract_sha256,
+        expected_framework_contract_sha256=expected_framework_contract_sha256,
+        trusted_manifest_sha256=trusted_manifest_sha256,
+        required_artifact_ids=required_artifact_ids,
+        required_role=required_role,
+        primary_roles=primary_roles,
+        phase=phase,
+        repo_root=repo_root,
+        require_self_hash=True,
         scan_root_for_raw_slc=scan_root_for_raw_slc,
     )

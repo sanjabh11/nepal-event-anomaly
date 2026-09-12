@@ -7,6 +7,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 from . import contract as C
 from .provenance import write_deterministic_json
@@ -433,7 +434,9 @@ def cmd_validate(args) -> int:
                              required_features=args.required_feature,
                              strict_contract=args.strict,
                              a_gate_passed=a_gate_passed,
-                             b_gate_passed=b_gate_passed)
+                             b_gate_passed=b_gate_passed,
+                             a_gate_artifact=(a_gate if args.strict else None),
+                             b_gate_artifact=(b_gate if args.strict else None))
     e_gate = {"passed": True}
     if args.strict:
         e_gate = evaluate_e_gate(
@@ -534,24 +537,74 @@ def cmd_pipeline(args) -> int:
     """Run the verified A-to-B-to-E-to-F path with fail-closed handoffs."""
     from .adapters import (build_b_screen_from_bundle,
                            load_verified_b_input_bundle)
-    from .briefing import generate_briefing, write_briefing
+    from .briefing import (build_briefing_artifact, generate_briefing,
+                           verify_briefing_artifact, write_briefing)
     from .catalog import build_catalog, write_phase_a_artifacts
     from .controls import ControlsConfig
+    from .orchestrator import (bind_pipeline_report,
+                               load_verified_pipeline_checkpoint,
+                               pipeline_input_fingerprint,
+                               write_pipeline_checkpoint)
     from .preflight import run_preflight
+    from .provenance import verify_artifact_envelope, verify_gate_artifact
     from .validation import (evaluate_e_gate, run_validation,
                              write_validation_artifact)
 
     out = Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
+    output_path = out.resolve()
+    # The expected authoritative checkout is protected before any output is
+    # created.  External successor handoff roots are checked after G0 passes;
+    # a failed G0 still needs an atomic diagnostic report for callers.
+    protected_root = Path(args.expected_root).resolve()
+    if output_path == protected_root or protected_root in output_path.parents:
+        _print("pipeline output must be outside the authoritative checkout and "
+               "handoff root")
+        return 2
+    fingerprint_paths = [
+        args.raw,
+        args.manifest,
+        Path(args.repo_root) / "nepal" / "feature_contract.py",
+        Path(args.repo_root) / "nepal" / "framework_v1" / "contract.py",
+        Path(args.repo_root) / C.PREREGISTRATION_PATH,
+    ]
+    for optional_path in (args.controls_config, args.events,
+                          args.validation_controls, args.holdout, args.features):
+        if optional_path:
+            fingerprint_paths.append(optional_path)
+    input_fingerprint = pipeline_input_fingerprint(
+        fingerprint_paths,
+        values={
+            "expected_root": str(Path(args.expected_root).resolve()),
+            "manifest_root": str(Path(args.manifest_root).resolve()),
+            "expected_contract_sha256": args.expected_contract_sha256,
+            "expected_framework_contract_sha256": (
+                args.expected_framework_contract_sha256),
+            "minimum_free_gib": args.minimum_free_gib,
+            "timeout_seconds": args.timeout_seconds,
+            "min_pairs": args.min_pairs,
+        },
+    )
+    checkpoint_path = out / "pipeline_checkpoint.json"
     preflight = run_preflight(
         args.repo_root,
         handoff_root=args.manifest_root,
         expected_authoritative_root=args.expected_root,
         minimum_free_gib=args.minimum_free_gib,
     )
+    if preflight["ok"]:
+        external_protected_roots = [Path(args.repo_root).resolve(),
+                                    Path(args.manifest_root).resolve()]
+        if any(output_path == root or root in output_path.parents
+               for root in external_protected_roots):
+            _print("pipeline output must be outside the repository and handoff root")
+            return 2
+    out.mkdir(parents=True, exist_ok=True)
     report: dict[str, object] = {
+        "profile_id": "FRAMEWORK_V1_FULL",
         "framework_version": C.FRAMEWORK_VERSION,
         "preflight": preflight,
+        "resume_requested": bool(args.resume),
+        "input_fingerprint": input_fingerprint,
         "A_CATALOG": {"status": C.PHASE_STATUS_A_BLOCKED,
                       "reason": "not run"},
         "B_SCREEN": {"status": C.PHASE_STATUS_B_TO_C_BLOCKED,
@@ -563,12 +616,49 @@ def cmd_pipeline(args) -> int:
     }
 
     def _finish(code: int) -> int:
-        write_deterministic_json(out / "pipeline_report.json", report)
-        _print(json.dumps(report, sort_keys=True, indent=2))
+        bound = bind_pipeline_report(
+            report, exit_code=code, input_fingerprint=input_fingerprint)
+        try:
+            write_deterministic_json(out / "pipeline_report.json", bound)
+        except OSError as exc:
+            _print(f"pipeline report write failed: {exc}")
+            return 5
+        try:
+            _checkpoint("pipeline_report", "TERMINAL",
+                        report_sha256=bound["artifact_sha256"],
+                        exit_code=code)
+        except OSError as exc:
+            _print(f"pipeline checkpoint write failed: {exc}")
+            return 5
+        _print(json.dumps(bound, sort_keys=True, indent=2))
         return code
+
+    def _checkpoint(stage: str, run_state: str = "RUNNING",
+                    **extra: object) -> None:
+        payload: dict[str, Any] = {"run_state": run_state, "stage": stage}
+        payload.update(extra)
+        write_pipeline_checkpoint(checkpoint_path, payload,
+                                  input_fingerprint=input_fingerprint)
 
     if not preflight["ok"]:
         return _finish(2)
+
+    if args.resume:
+        previous, checkpoint_errors = load_verified_pipeline_checkpoint(
+            checkpoint_path, input_fingerprint=input_fingerprint)
+        if previous is None:
+            report["resume"] = {"status": "BLOCKED",
+                                 "errors": checkpoint_errors}
+            return _finish(2)
+        report["resume"] = {
+            "status": "VERIFIED_REPLAY",
+            "previous_stage": previous.get("stage"),
+            "previous_run_state": previous.get("run_state"),
+            "checkpoint_sha256": previous.get("artifact_sha256"),
+            "note": ("Outputs are never trusted for gate skipping; the pipeline "
+                     "replays from the first verified stage."),
+        }
+    _checkpoint("preflight", preflight_status=preflight.get("status"))
 
     try:
         manifest = _load_json(args.manifest)
@@ -587,6 +677,21 @@ def cmd_pipeline(args) -> int:
             "controls_lock_sha256": catalog["controls_lock"].sha256,
         }
 
+        a_ok, a_errors = verify_gate_artifact(
+            a_gate if isinstance(a_gate, dict) else {},
+            expected_gate_id=C.GateId.A_CATALOG.value)
+        if not a_ok or a_gate.get("passed") is not True:
+            report["A_CATALOG"]["verification_errors"] = a_errors
+            report["B_SCREEN"] = {
+                "status": C.PHASE_STATUS_B_TO_C_BLOCKED,
+                "reason": "verified A_CATALOG gate did not pass",
+            }
+            _checkpoint("A_CATALOG", "BLOCKED", gate_artifact_verified=a_ok)
+            return _finish(3)
+        _checkpoint("A_CATALOG", artifact_paths={
+            name: str(path) for name, path in a_paths.items()},
+                     gate_artifact_sha256=a_gate.get("gate_artifact_sha256"))
+
         bundle = load_verified_b_input_bundle(
             args.manifest_root, manifest,
             expected_contract_sha256=args.expected_contract_sha256,
@@ -601,6 +706,7 @@ def cmd_pipeline(args) -> int:
                 "errors": list(bundle.errors),
                 "warnings": list(bundle.warnings),
             }
+            _checkpoint("B_INPUT", "BLOCKED", errors=list(bundle.errors))
             return _finish(2)
 
         b_result = build_b_screen_from_bundle(
@@ -611,13 +717,22 @@ def cmd_pipeline(args) -> int:
         )
         b_path = out / "b_screen.json"
         write_deterministic_json(b_path, b_result)
+        b_envelope_ok, b_envelope_errors = verify_artifact_envelope(b_result)
         report["B_SCREEN"] = {
             "status": b_result.get("phase_status", C.PHASE_STATUS_B_TO_C_BLOCKED),
             "screen_status": b_result.get("status"),
             "gate_passed": b_result.get("gate_passed", False),
+            "envelope_verified": b_envelope_ok,
+            "verification_errors": b_envelope_errors,
             "artifact": str(b_path),
             "artifact_sha256": b_result.get("artifact_sha256"),
         }
+        _checkpoint("B_SCREEN", "COMPLETED" if b_envelope_ok else "FAILED",
+                     artifact_sha256=b_result.get("artifact_sha256"),
+                     gate_passed=b_result.get("gate_passed", False))
+        if not b_envelope_ok:
+            report["B_SCREEN"]["reason"] = "B result envelope failed verification"
+            return _finish(5)
         if b_result.get("gate_passed") is not True:
             return _finish(3)
 
@@ -626,6 +741,7 @@ def cmd_pipeline(args) -> int:
                 "status": C.PHASE_STATUS_E_BLOCKED,
                 "reason": "E requires --events, --validation-controls, and --holdout",
             }
+            _checkpoint("E_VALIDATION", "BLOCKED", reason="required inputs missing")
             return _finish(3)
 
         events = _load_json(args.events)
@@ -640,8 +756,8 @@ def cmd_pipeline(args) -> int:
             input_manifest_verification=bundle.verification,
             required_features=args.required_feature,
             strict_contract=True,
-            a_gate_passed=bool(a_gate.get("passed")),
-            b_gate_passed=True,
+            a_gate_artifact=a_gate,
+            b_gate_artifact=b_result,
         )
         e_gate = evaluate_e_gate(
             summary, a_gate_artifact=a_gate, b_gate_artifact=b_result,
@@ -649,13 +765,43 @@ def cmd_pipeline(args) -> int:
             input_manifest_verification=bundle.verification,
         )
         e_path = out / "validation.json"
-        e_artifact = write_validation_artifact(e_path, summary, e_gate)
+        e_artifact = write_validation_artifact(
+            e_path,
+            summary,
+            e_gate,
+            provenance={
+                "framework_contract_sha256": C.contract_hash(),
+                "a_gate_artifact_sha256": a_gate.get("gate_artifact_sha256"),
+                "b_artifact_sha256": b_result.get("artifact_sha256"),
+                "controls_lock_sha256": catalog["controls_lock"].sha256,
+                "input_manifest_sha256": (
+                    bundle.verification.checks.get("manifest_sha256")
+                    if bundle.verification is not None else None),
+                "event_ids": sorted(
+                    str(item.get("event_id")) for item in events
+                    if isinstance(item, dict) and item.get("event_id") is not None),
+                "control_unit_ids": sorted(
+                    str(item.get("unit_id")) for item in validation_controls
+                    if isinstance(item, dict) and item.get("unit_id") is not None),
+                "holdout_plan_sha256": holdout.get("plan_sha256")
+                if isinstance(holdout, dict) else None,
+                "claim_scope": "research_only_no_operational_authorization",
+            },
+        )
+        e_envelope_ok, e_envelope_errors = verify_artifact_envelope(e_artifact)
         report["E_VALIDATION"] = {
             "status": e_artifact["status"],
             "gate_passed": e_gate.get("passed", False),
+            "envelope_verified": e_envelope_ok,
+            "verification_errors": e_envelope_errors,
             "artifact": str(e_path),
             "artifact_sha256": e_artifact.get("artifact_sha256"),
         }
+        _checkpoint("E_VALIDATION", "COMPLETED" if e_envelope_ok else "FAILED",
+                     artifact_sha256=e_artifact.get("artifact_sha256"),
+                     gate_passed=e_gate.get("passed", False))
+        if not e_envelope_ok:
+            return _finish(5)
         if not e_gate.get("passed", False):
             return _finish(4)
 
@@ -666,12 +812,39 @@ def cmd_pipeline(args) -> int:
         )
         f_path = out / "briefing.md"
         write_briefing(f_path, briefing)
+        f_artifact = build_briefing_artifact(
+            briefing,
+            summary=summary,
+            catalog_gate=a_gate,
+            screen_gate=b_result,
+            validation_gate=e_artifact,
+            contract_hash=C.contract_hash(),
+        )
+        f_artifact_path = out / "briefing.json"
+        # The builder includes the complete upstream envelopes.  Persist with
+        # the deterministic writer so the result is atomic, then verify the
+        # exact object that is handed to the report.
+        write_deterministic_json(f_artifact_path, f_artifact)
+        f_ok, f_errors = verify_briefing_artifact(f_artifact)
         report["F_BRIEFING"] = {
-            "status": C.PHASE_STATUS_F_READY,
+            "status": C.PHASE_STATUS_F_READY if f_ok else C.PHASE_STATUS_F_BLOCKED,
             "artifact": str(f_path),
+            "envelope": str(f_artifact_path),
+            "envelope_verified": f_ok,
+            "verification_errors": f_errors,
+            "artifact_sha256": f_artifact.get("artifact_sha256"),
         }
+        _checkpoint("F_BRIEFING", "COMPLETED" if f_ok else "FAILED",
+                     artifact=str(f_path),
+                     envelope_sha256=f_artifact.get("artifact_sha256"))
+        if not f_ok:
+            return _finish(5)
     except (OSError, TypeError, ValueError, RuntimeError, C.FrameworkError) as exc:
         report["pipeline_error"] = str(exc)
+        try:
+            _checkpoint("exception", "FAILED", error=str(exc))
+        except OSError:
+            pass
         return _finish(5)
 
     return _finish(0)
@@ -809,7 +982,7 @@ def build_parser() -> argparse.ArgumentParser:
     q.add_argument("--repo-root", default=".")
     q.add_argument("--handoff-root", default=None)
     q.add_argument("--expected-root", default=None)
-    q.add_argument("--minimum-free-gib", type=float, default=4.0)
+    q.add_argument("--minimum-free-gib", type=float, default=8.0)
     q.add_argument("--out", default=None)
     q.set_defaults(func=cmd_preflight)
 
@@ -833,6 +1006,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="root containing the manifest's registered files")
     p0.add_argument("--out", required=True,
                     help="successor output directory; existing data is not removed")
+    p0.add_argument("--resume", action="store_true",
+                    help="resume only after verifying the pipeline checkpoint and input fingerprint")
     p0.add_argument("--controls-config", default=None,
                     help="pre-scoring A/B controls JSON; defaults to frozen controls")
     p0.add_argument("--access-date", default=None)
@@ -840,7 +1015,7 @@ def build_parser() -> argparse.ArgumentParser:
                     help="explicit data-contract SHA-256")
     p0.add_argument("--expected-framework-contract-sha256", required=True,
                     help="explicit framework-contract SHA-256")
-    p0.add_argument("--minimum-free-gib", type=float, default=4.0)
+    p0.add_argument("--minimum-free-gib", type=float, default=8.0)
     p0.add_argument("--timeout-seconds", type=float, default=None,
                     help="bounded Phase B deadline")
     p0.add_argument("--events", default=None,

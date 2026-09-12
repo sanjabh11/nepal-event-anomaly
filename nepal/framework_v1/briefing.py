@@ -11,8 +11,10 @@ from pathlib import Path
 from typing import Any, Mapping, Optional
 
 from . import contract as C
-from .provenance import (verify_artifact_envelope, verify_gate_artifact,
-                         write_deterministic_text)
+from .provenance import (bind_artifact_envelope, canonical_json,
+                         sha256_canonical, sha256_text,
+                         verify_artifact_envelope, verify_gate_artifact,
+                         write_deterministic_json, write_deterministic_text)
 
 NOT_EVACUATION = (
     "This is NOT an evacuation map, NOT a prediction, and NOT an early-warning "
@@ -213,3 +215,166 @@ def write_briefing(path, text: str) -> Path:
     p = Path(path)
     write_deterministic_text(p, text)
     return p
+
+
+def build_briefing_artifact(
+    text: str,
+    *,
+    summary: Mapping[str, Any],
+    catalog_gate: Mapping[str, Any],
+    screen_gate: Mapping[str, Any],
+    validation_gate: Mapping[str, Any],
+    contract_hash: str,
+) -> dict[str, Any]:
+    """Build an authenticated F artifact from verified upstream envelopes.
+
+    The Markdown file remains a convenient presentation output.  This JSON
+    envelope is the machine-readable handoff and binds the exact text,
+    summary, upstream artifact identities, and research-only claim boundary.
+    """
+    if not isinstance(text, str):
+        raise TypeError("briefing text must be a string")
+    if not isinstance(summary, Mapping):
+        raise TypeError("briefing summary must be a mapping")
+    return bind_artifact_envelope({
+        "profile_id": "FRAMEWORK_V1_FULL",
+        "framework_version": C.FRAMEWORK_VERSION,
+        "status": C.PHASE_STATUS_F_READY,
+        "gate_id": "F_BRIEFING",
+        "promotion_eligible": False,
+        "production_authorized": False,
+        "briefing": text,
+        "briefing_sha256": sha256_text(text),
+        "summary": dict(summary),
+        "summary_sha256": sha256_canonical(dict(summary)),
+        "a_gate": dict(catalog_gate),
+        "b_gate": dict(screen_gate),
+        "e_gate": dict(validation_gate),
+        "provenance": {
+            "framework_contract_sha256": contract_hash,
+            "a_gate_artifact_sha256": catalog_gate.get("gate_artifact_sha256"),
+            "b_artifact_sha256": screen_gate.get("artifact_sha256"),
+            "e_artifact_sha256": validation_gate.get("artifact_sha256"),
+        },
+        "no_claims": [
+            "No operational warning or production authorization",
+            "No scientific validation beyond the verified E result",
+            "No authority approval or external publication",
+        ],
+    })
+
+
+def verify_briefing_artifact(payload: Mapping[str, Any]) -> tuple[bool, list[str]]:
+    """Verify the complete F envelope and every upstream gate it references."""
+    ok, problems = verify_artifact_envelope(payload)
+    if not isinstance(payload, Mapping):
+        return False, problems
+    if payload.get("profile_id") != "FRAMEWORK_V1_FULL":
+        problems.append("briefing artifact profile_id is invalid")
+    if payload.get("gate_id") != "F_BRIEFING":
+        problems.append("briefing artifact gate_id must be F_BRIEFING")
+    if payload.get("status") != C.PHASE_STATUS_F_READY:
+        problems.append("briefing artifact status must be F_READY")
+    if payload.get("promotion_eligible") is not False:
+        problems.append("briefing artifact must not be promotion eligible")
+    if payload.get("production_authorized") is not False:
+        problems.append("briefing artifact must not authorize production")
+    text = payload.get("briefing")
+    if not isinstance(text, str):
+        problems.append("briefing artifact text is required")
+    elif payload.get("briefing_sha256") != sha256_text(text):
+        problems.append("briefing artifact briefing_sha256 does not match text")
+    summary = payload.get("summary")
+    if not isinstance(summary, Mapping):
+        problems.append("briefing artifact summary is required")
+    elif payload.get("summary_sha256") != sha256_canonical(dict(summary)):
+        problems.append("briefing artifact summary_sha256 does not match summary")
+
+    provenance = payload.get("provenance")
+    if not isinstance(provenance, Mapping):
+        problems.append("briefing artifact provenance is required")
+    else:
+        for key in ("framework_contract_sha256", "a_gate_artifact_sha256",
+                    "b_artifact_sha256", "e_artifact_sha256"):
+            value = provenance.get(key)
+            if not isinstance(value, str) or len(value) != 64 or any(
+                    char not in "0123456789abcdef" for char in value):
+                problems.append(f"briefing artifact provenance {key} is invalid")
+
+    a_gate = payload.get("a_gate")
+    if isinstance(a_gate, Mapping):
+        a_ok, a_errors = verify_gate_artifact(
+            a_gate, expected_gate_id=C.GateId.A_CATALOG.value)
+        if not a_ok:
+            problems.extend("A_CATALOG: " + error for error in a_errors)
+        if a_gate.get("passed") is not True:
+            problems.append("A_CATALOG: verified gate is not passed")
+    b_gate = payload.get("b_gate")
+    if isinstance(b_gate, Mapping):
+        b_ok, b_errors = verify_artifact_envelope(b_gate)
+        if not b_ok:
+            problems.extend("B_SCREEN: " + error for error in b_errors)
+        else:
+            inner = b_gate.get("gate")
+            inner_ok, inner_errors = verify_gate_artifact(
+                inner if isinstance(inner, Mapping) else {},
+                expected_gate_id=C.GateId.B_TO_C.value)
+            if not inner_ok:
+                problems.extend("B_TO_C: " + error for error in inner_errors)
+            if not isinstance(inner, Mapping) or inner.get("passed") is not True:
+                problems.append("B_TO_C: verified gate is not passed")
+    e_gate = payload.get("e_gate")
+    if isinstance(e_gate, Mapping):
+        from .validation import verify_validation_artifact
+        e_ok, e_errors = verify_validation_artifact(e_gate)
+        if not e_ok:
+            problems.extend("E_VALIDATION: " + error for error in e_errors)
+        elif not isinstance(e_gate.get("gate"), Mapping) or e_gate["gate"].get(
+                "passed") is not True:
+            problems.append("E_VALIDATION: verified gate is not passed")
+    if isinstance(provenance, Mapping):
+        if isinstance(a_gate, Mapping) and provenance.get(
+                "a_gate_artifact_sha256") != a_gate.get("gate_artifact_sha256"):
+            problems.append("briefing artifact A gate provenance does not match gate")
+        if isinstance(b_gate, Mapping) and provenance.get(
+                "b_artifact_sha256") != b_gate.get("artifact_sha256"):
+            problems.append("briefing artifact B provenance does not match envelope")
+        if isinstance(e_gate, Mapping) and provenance.get(
+                "e_artifact_sha256") != e_gate.get("artifact_sha256"):
+            problems.append("briefing artifact E provenance does not match envelope")
+    for key in ("a_gate", "b_gate", "e_gate"):
+        if key not in payload:
+            problems.append(f"briefing artifact upstream {key} is required")
+    no_claims = payload.get("no_claims")
+    if not isinstance(no_claims, list) or not no_claims:
+        problems.append("briefing artifact no_claims is required")
+    return ok and not problems, problems
+
+
+def write_briefing_artifact(
+    path: str | Path,
+    text: str,
+    *,
+    summary: Mapping[str, Any],
+    catalog_gate: Mapping[str, Any],
+    screen_gate: Mapping[str, Any],
+    validation_gate: Mapping[str, Any],
+    contract_hash: str,
+) -> dict[str, Any]:
+    artifact = build_briefing_artifact(
+        text,
+        summary=summary,
+        catalog_gate=catalog_gate,
+        screen_gate=screen_gate,
+        validation_gate=validation_gate,
+        contract_hash=contract_hash,
+    )
+    # Keep the complete upstream envelopes inside the authenticated object so
+    # a digest-only provenance field cannot be detached from the evidence it
+    # claims to reference.
+    artifact["a_gate"] = dict(catalog_gate)
+    artifact["b_gate"] = dict(screen_gate)
+    artifact["e_gate"] = dict(validation_gate)
+    artifact = bind_artifact_envelope(artifact)
+    write_deterministic_json(path, artifact)
+    return artifact
