@@ -10,7 +10,9 @@ from nepal.framework_v1.validation import (wilson_interval, as_of_event_valid,
                                            verify_validation_artifact)
 from nepal.framework_v1.controls import ControlsConfig, create_controls_lock
 from nepal.framework_v1.briefing import generate_briefing
-from nepal.framework_v1.provenance import sha256_canonical
+from nepal.framework_v1.provenance import (bind_artifact_envelope,
+                                            bind_gate_artifact,
+                                            sha256_canonical)
 from nepal.framework_v1.validation import evaluate_e_gate
 from nepal.framework_v1.input_manifest import InputManifestVerification
 
@@ -304,6 +306,20 @@ class TestNullStillProducesBriefing:
 
 
 class TestStrictValidationContract:
+    def test_strict_validation_rejects_caller_gate_booleans_without_artifacts(self):
+        plan = self._strict_plan(["G1"])
+        summary = run_validation(
+            [_event("E1", "G1", 0.9)], [_control("C1", "G1", 0.1)],
+            controls_lock=LOCK, holdout_plan=plan,
+            input_manifest=self._strict_manifest(),
+            input_manifest_verification=self._strict_manifest_verification(),
+            strict_contract=True, a_gate_passed=True, b_gate_passed=True,
+            min_pairwise_n=1,
+        )
+        assert summary["status"] == "BLOCKED"
+        assert any("gate artifact" in error.lower()
+                   for error in summary["validation_errors"])
+
     def test_validation_artifact_binds_summary_and_gate(self, tmp_path):
         from nepal.framework_v1.provenance import (bind_artifact_envelope,
                                                    bind_gate_artifact)
@@ -359,13 +375,27 @@ class TestStrictValidationContract:
     def test_strict_path_uses_one_to_one_pairs(self):
         events = [_event("E1", "G1", 0.9), _event("E2", "G2", 0.8)]
         controls = [_control("C1", "G1", 0.1), _control("C2", "G2", 0.2)]
+        a_gate = bind_gate_artifact({
+            "gate_id": C.GateId.A_CATALOG.value,
+            "passed": True,
+            "checks": {},
+        })
+        b_gate = bind_artifact_envelope({
+            "gate": bind_gate_artifact({
+                "gate_id": C.GateId.B_TO_C.value,
+                "passed": True,
+                "checks": {},
+            }),
+            "provenance": {"framework_contract_sha256": C.contract_hash()},
+        })
         summary = run_validation(
             events, controls, controls_lock=LOCK,
             holdout_plan=self._strict_plan(["G1", "G2"]),
             feature_config={"b_screen_sha256": "a" * 64},
             input_manifest=self._strict_manifest(),
             input_manifest_verification=self._strict_manifest_verification(),
-            strict_contract=True, a_gate_passed=True, b_gate_passed=True,
+            strict_contract=True, a_gate_artifact=a_gate,
+            b_gate_artifact=b_gate,
             min_pairwise_n=1,
         )
         assert summary["status"] in {"PASS", "NULL", "INDETERMINATE"}

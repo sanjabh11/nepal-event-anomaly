@@ -192,12 +192,20 @@ def run_validation(events: Sequence, controls: Sequence, *,
         manifest_hash = sha256_canonical({})
 
     validation_errors: list[str] = []
-    verified_a_passed: Optional[bool] = a_gate_passed
-    verified_b_passed: Optional[bool] = b_gate_passed
+    # Strict E authorization is derived only from typed/hash-bound artifacts.
+    # The boolean parameters remain for legacy non-strict callers but can
+    # never seed a strict validation run.
+    verified_a_passed: Optional[bool] = (
+        None if strict_contract else a_gate_passed)
+    verified_b_passed: Optional[bool] = (
+        None if strict_contract else b_gate_passed)
     plan_groups: set[str] = set()
     raw_plan_groups = (holdout_plan.get("groups", [])
                        if isinstance(holdout_plan, Mapping) else None)
     if strict_contract:
+        if any(value is not None for value in (a_gate_passed, b_gate_passed)):
+            validation_errors.append(
+                "caller-supplied A/B gate booleans are not authorization evidence")
         if not isinstance(holdout_plan, Mapping):
             validation_errors.append("holdout plan must be a mapping")
         else:
@@ -278,6 +286,9 @@ def run_validation(events: Sequence, controls: Sequence, *,
                 a_inner.get("passed") is True)
             if not a_ok:
                 validation_errors.extend("A_CATALOG: " + error for error in a_errors)
+        else:
+            validation_errors.append(
+                "hash-bound A_CATALOG gate artifact is required")
         if verified_a_passed is not True:
             validation_errors.append("A_CATALOG gate must pass before strict E")
 
@@ -291,6 +302,9 @@ def run_validation(events: Sequence, controls: Sequence, *,
             if not b_ok:
                 validation_errors.extend("B_SCREEN/B_TO_C: " + error
                                          for error in b_errors)
+        else:
+            validation_errors.append(
+                "hash-bound B_SCREEN/B_TO_C gate artifact is required")
         if verified_b_passed is not True:
             validation_errors.append("B_SCREEN/B_TO_C gate must pass before strict E")
         if len({str(e.get("event_id")) for e in events}) != len(events):
