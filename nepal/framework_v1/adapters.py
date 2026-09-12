@@ -938,12 +938,11 @@ def build_b_screen(
 
     manifest_checks = {}
     verification_payload = None
-    if manifest_verification is not None:
-        to_dict = getattr(manifest_verification, "to_dict", None)
-        if callable(to_dict):
-            verification_payload = to_dict()
-        elif isinstance(manifest_verification, Mapping):
-            verification_payload = manifest_verification
+    if isinstance(manifest_verification, InputManifestVerification):
+        verification_payload = manifest_verification.to_dict()
+    elif manifest_verification is not None:
+        problems.append(
+            "typed input manifest verification is required; mappings are not trusted")
     if isinstance(verification_payload, Mapping):
         checks = verification_payload.get("checks", {})
         if isinstance(checks, Mapping):

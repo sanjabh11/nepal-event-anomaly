@@ -20,14 +20,15 @@ from nepal.framework_v1.adapters import (
     validate_target_array,
 )
 from nepal.framework_v1.controls import ControlsConfig, create_controls_lock
+from nepal.framework_v1.input_manifest import InputManifestVerification
 from nepal.framework_v1.provenance import bind_gate_artifact, verify_artifact_envelope
 
 
 def _verified_manifest():
-    return {
-        "ok": True,
-        "can_run_primary": True,
-        "checks": {
+    return InputManifestVerification(
+        ok=True,
+        can_run_primary=True,
+        checks={
             "manifest_sha256": "a" * 64,
             "self_hash_verified": True,
             "contract_bound": True,
@@ -35,8 +36,7 @@ def _verified_manifest():
             "framework_contract_runtime_bound": True,
             "canonical_manifest_authorized": True,
             "raw_slc_scan": "PASS",
-        },
-    }
+        })
 
 
 def _verified_a_gate():
@@ -200,6 +200,18 @@ class TestPerUnitObservability:
 
 
 class TestStrictBAssembly:
+    def test_direct_b_rejects_forged_manifest_mapping(self):
+        result = build_b_screen(
+            {}, {}, {},
+            controls_lock=create_controls_lock(
+                ControlsConfig(expected_winter_pairs=1)),
+            a_gate_artifact=_verified_a_gate(),
+            manifest_verification=_verified_manifest().to_dict(),
+        )
+        assert result["status"] == "BLOCKED"
+        assert any("typed input manifest verification" in error
+                   for error in result["errors"])
+
     def test_caller_gate_boolean_cannot_authorize_b_without_a_artifact(self):
         result = build_b_screen(
             {}, {}, {},
