@@ -73,6 +73,46 @@ def cmd_manifest(args) -> int:
     return 0 if result.ok and (not args.require_primary or result.can_run_primary) else 2
 
 
+def cmd_integrity_poc(args) -> int:
+    from .integrity_poc import IntegrityPocConfig, run_integrity_poc
+
+    config = IntegrityPocConfig(
+        repo_root=Path(args.repo_root),
+        source_manifest=(Path(args.source_manifest)
+                         if args.source_manifest else None),
+        real_root=Path(args.real_root),
+        real_artifact_id=args.real_artifact_id,
+        output_path=Path(args.out),
+        expected_data_contract_sha256=args.expected_data_contract_sha256,
+        expected_framework_contract_sha256=args.expected_framework_contract_sha256,
+        timeout_seconds=args.timeout_seconds,
+        warning_seconds=args.warning_seconds,
+        chunk_bytes=args.chunk_bytes,
+        fixture_bytes=args.fixture_bytes,
+        max_peak_rss_mib=args.max_peak_rss_mib,
+        minimum_free_gib=args.minimum_free_gib,
+        scope_manifest=(Path(args.scope_manifest)
+                        if args.scope_manifest else None),
+        scope_root=(Path(args.scope_root) if args.scope_root else None),
+        trusted_manifest_sha256=args.trusted_manifest_sha256,
+        generate_demo_anchor=args.generate_demo_anchor,
+        run_b_loader_boundary=args.run_b_loader_boundary,
+    )
+    try:
+        result = run_integrity_poc(config)
+    except (OSError, TypeError, ValueError, RuntimeError, C.FrameworkError) as exc:
+        result = {
+            "profile_id": "INTEGRITY_POC_V1",
+            "poc_status": "INTEGRITY_POC_FAILED",
+            "gate_id": "INTEGRITY_POC_V1",
+            "promotion_eligible": False,
+            "errors": [str(exc)],
+            "exit_code": 5,
+        }
+    _print(json.dumps(result, sort_keys=True, indent=2, ensure_ascii=True))
+    return int(result.get("exit_code", 5))
+
+
 def cmd_preflight(args) -> int:
     from .preflight import run_preflight
     result = run_preflight(
@@ -733,6 +773,37 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--require-artifact", action="append", default=[])
     m.add_argument("--require-primary", action="store_true")
     m.set_defaults(func=cmd_manifest)
+
+    i = sub.add_parser(
+        "integrity-poc",
+        help="run the narrow SHA-256 integrity PoC and tamper benchmark",
+    )
+    i.add_argument("--repo-root", required=True)
+    i.add_argument("--source-manifest", default=None,
+                   help="live source manifest used to select one real artifact")
+    i.add_argument("--real-root", required=True,
+                   help="root containing the selected real artifact")
+    i.add_argument("--real-artifact-id", default="osm_geofabrik_nepal")
+    i.add_argument("--scope-manifest", default=None,
+                   help="previously materialized PoC scope manifest for strict replay")
+    i.add_argument("--scope-root", default=None,
+                   help="root containing the strict replay scope artifact")
+    i.add_argument("--trusted-manifest-sha256", default=None,
+                   help="external trusted digest for a materialized scope manifest")
+    i.add_argument("--generate-demo-anchor", action="store_true",
+                   help="explicit PoC-only run-generated anchor; not authenticity proof")
+    i.add_argument("--expected-data-contract-sha256", required=True)
+    i.add_argument("--expected-framework-contract-sha256", required=True)
+    i.add_argument("--out", required=True)
+    i.add_argument("--timeout-seconds", type=float, default=120.0)
+    i.add_argument("--warning-seconds", type=float, default=30.0)
+    i.add_argument("--chunk-bytes", type=int, default=1 << 20)
+    i.add_argument("--fixture-bytes", type=int, default=64 << 10)
+    i.add_argument("--max-peak-rss-mib", type=float, default=512.0)
+    i.add_argument("--minimum-free-gib", type=float, default=4.0)
+    i.add_argument("--run-b-loader-boundary", action="store_true",
+                   help="optional diagnostic of the current full B loader")
+    i.set_defaults(func=cmd_integrity_poc)
 
     q = sub.add_parser("preflight", help="capture a read-only checkout/data baseline")
     q.add_argument("--repo-root", default=".")
