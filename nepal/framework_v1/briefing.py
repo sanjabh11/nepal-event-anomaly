@@ -8,7 +8,7 @@ no randomness, no external publication or email actions).
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping, Optional, cast
 
 from . import contract as C
 from .provenance import (bind_artifact_envelope, canonical_json,
@@ -352,6 +352,44 @@ def verify_briefing_artifact(payload: Mapping[str, Any]) -> tuple[bool, list[str
         problems.append("briefing artifact summary is required")
     elif payload.get("summary_sha256") != sha256_canonical(dict(summary)):
         problems.append("briefing artifact summary_sha256 does not match summary")
+
+    embedded_e = payload.get("e_gate")
+    if isinstance(summary, Mapping) and isinstance(embedded_e, Mapping):
+        embedded_summary = embedded_e.get("summary")
+        if (isinstance(embedded_summary, Mapping) and
+                embedded_summary != dict(summary)):
+            problems.append(
+                "briefing artifact summary does not match embedded E summary")
+
+    strict_contract = payload.get("strict_contract") is True
+    if strict_contract:
+        upstream = {
+            "a_gate": payload.get("a_gate"),
+            "b_gate": payload.get("b_gate"),
+            "e_gate": payload.get("e_gate"),
+        }
+        malformed = [name for name, value in upstream.items()
+                     if not isinstance(value, Mapping)]
+        if malformed:
+            problems.append(
+                "strict briefing upstream envelopes must be mappings: " +
+                ", ".join(malformed))
+        elif isinstance(summary, Mapping):
+            from .orchestrator import verify_typed_handoff
+            a_upstream = cast(Mapping[str, Any], upstream["a_gate"])
+            b_upstream = cast(Mapping[str, Any], upstream["b_gate"])
+            e_upstream = cast(Mapping[str, Any], upstream["e_gate"])
+
+            handoff_ok, handoff_errors = verify_typed_handoff(
+                a_upstream, b_upstream, e_upstream,
+                summary=summary, require_strict_e=True)
+            if not handoff_ok:
+                problems.extend("strict handoff: " + error
+                                for error in handoff_errors)
+            e_summary = e_upstream.get("summary")
+            if e_summary != dict(summary):
+                problems.append(
+                    "strict briefing summary does not match embedded E summary")
 
     provenance = payload.get("provenance")
     if not isinstance(provenance, Mapping):

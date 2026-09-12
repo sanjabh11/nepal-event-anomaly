@@ -670,10 +670,15 @@ def evaluate_e_gate(summary: Mapping[str, Any], *,
     a_errors = a_extract_errors + a_hash_errors
     b_errors = b_extract_errors + b_hash_errors
     a_envelope_hash_ok = False
+    a_framework_contract_match = False
     if isinstance(a_envelope, Mapping):
         a_envelope_hash_ok, a_envelope_errors = verify_artifact_envelope(
             a_envelope)
         a_errors.extend(a_envelope_errors)
+        a_provenance = a_envelope.get("provenance")
+        a_framework_contract_match = bool(
+            isinstance(a_provenance, Mapping) and
+            a_provenance.get("framework_contract_sha256") == C.contract_hash())
     b_envelope_hash_ok = False
     if isinstance(b_envelope, Mapping):
         b_envelope_hash_ok, b_envelope_errors = verify_artifact_envelope(
@@ -772,6 +777,9 @@ def evaluate_e_gate(summary: Mapping[str, Any], *,
             "passed": a_envelope_hash_ok,
             "required": True,
         },
+        "A_framework_contract_matches_runtime": {
+            "passed": a_framework_contract_match,
+        },
         "A_catalog_hash_matches_summary": {"passed": a_catalog_match},
         "A_holdout_plan_hash_matches_summary": {"passed": a_plan_match},
         "hash_bound_B_gate_artifact": {
@@ -806,6 +814,13 @@ def evaluate_e_gate(summary: Mapping[str, Any], *,
             "passed": True,
             "summary_sha256": summary_sha256,
         },
+    }
+    from .orchestrator import verify_typed_handoff
+    typed_handoff_ok, typed_handoff_errors = verify_typed_handoff(
+        a_gate_artifact, b_gate_artifact)
+    checks["typed_A_B_handoff"] = {
+        "passed": typed_handoff_ok,
+        "errors": typed_handoff_errors,
     }
     if any(value is not None for value in
            (a_gate_passed, b_gate_passed, input_manifest_verified)):

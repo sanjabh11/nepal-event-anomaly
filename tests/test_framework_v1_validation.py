@@ -697,6 +697,32 @@ class TestStrictValidationContract:
         assert gate["passed"] is False
         assert gate["checks"]["B_framework_contract_matches_runtime"]["passed"] is False
 
+    def test_e_gate_rejects_a_envelope_for_different_framework_contract(self):
+        from nepal.framework_v1.provenance import bind_artifact_envelope
+
+        a_gate = bind_artifact_envelope({
+            "profile_id": "FRAMEWORK_V1_FULL",
+            "artifact_kind": "A_CATALOG",
+            "gate": bind_gate_artifact({
+                "gate_id": C.GateId.A_CATALOG.value,
+                "passed": True,
+                "checks": {},
+            }),
+            "provenance": {
+                "framework_contract_sha256": "0" * 64,
+            },
+        })
+        gate = evaluate_e_gate(
+            {"status": "INDETERMINATE", "input_hashes": {},
+             "validation_errors": []},
+            a_gate_artifact=a_gate,
+            controls_lock=LOCK,
+        )
+
+        assert gate["passed"] is False
+        assert gate["checks"][
+            "A_framework_contract_matches_runtime"]["passed"] is False
+
     def test_e_gate_rejects_caller_supplied_booleans(self):
         summary = {"status": "INDETERMINATE", "input_hashes": {},
                    "validation_errors": []}

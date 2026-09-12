@@ -304,9 +304,10 @@ def test_pipeline_maps_b_timeout_to_incomplete_exit_and_status(
     raw.write_text("[]", encoding="utf-8")
     manifest.write_text("{}", encoding="utf-8")
     output = tmp_path / "pipeline-output"
+    output.mkdir()
     controls_lock = create_controls_lock(ControlsConfig())
 
-    a_gate_path = tmp_path / "a_envelope.json"
+    a_gate_path = output / "a_envelope.json"
     a_gate = bind_artifact_envelope({
         "profile_id": "FRAMEWORK_V1_FULL",
         "gate": bind_gate_artifact({
@@ -316,7 +317,6 @@ def test_pipeline_maps_b_timeout_to_incomplete_exit_and_status(
         }),
         "provenance": {"framework_contract_sha256": C.contract_hash()},
     })
-    a_gate_path.write_text(json.dumps(a_gate), encoding="utf-8")
 
     b_timeout = bind_artifact_envelope({
         "status": C.B_TIMEOUT_STATUS,
@@ -338,9 +338,12 @@ def test_pipeline_maps_b_timeout_to_incomplete_exit_and_status(
     monkeypatch.setattr(catalog_module, "build_catalog", lambda *args, **kwargs: {
         "controls_lock": controls_lock,
     })
-    monkeypatch.setattr(catalog_module, "materialize_phase_a", lambda *args, **kwargs: {
-        "envelope": a_gate_path,
-    })
+    def fake_materialize_phase_a(*args, **kwargs):
+        a_gate_path.write_text(json.dumps(a_gate), encoding="utf-8")
+        return {"envelope": a_gate_path}
+
+    monkeypatch.setattr(catalog_module, "materialize_phase_a",
+                        fake_materialize_phase_a)
     monkeypatch.setattr(catalog_module, "verify_phase_a_envelope",
                         lambda *args, **kwargs: (True, []))
     monkeypatch.setattr(
@@ -385,8 +388,9 @@ def test_pipeline_does_not_call_b_screen_when_verified_bundle_is_blocked(
     manifest_path = tmp_path / "manifest.json"
     manifest_path.write_text("{}", encoding="utf-8")
     output = tmp_path / "pipeline-output"
+    output.mkdir()
     controls_lock = create_controls_lock(ControlsConfig())
-    a_gate_path = tmp_path / "a_envelope.json"
+    a_gate_path = output / "a_envelope.json"
     a_gate = bind_artifact_envelope({
         "profile_id": "FRAMEWORK_V1_FULL",
         "gate": bind_gate_artifact({
@@ -394,9 +398,8 @@ def test_pipeline_does_not_call_b_screen_when_verified_bundle_is_blocked(
             "passed": True,
             "checks": {},
         }),
-        "provenance": {},
+        "provenance": {"framework_contract_sha256": C.contract_hash()},
     })
-    a_gate_path.write_text(json.dumps(a_gate), encoding="utf-8")
     ranking_called = False
 
     def fake_build_b_screen(*args, **kwargs):
@@ -412,9 +415,12 @@ def test_pipeline_does_not_call_b_screen_when_verified_bundle_is_blocked(
     monkeypatch.setattr(catalog_module, "build_catalog", lambda *args, **kwargs: {
         "controls_lock": controls_lock,
     })
-    monkeypatch.setattr(catalog_module, "materialize_phase_a", lambda *args, **kwargs: {
-        "envelope": a_gate_path,
-    })
+    def fake_materialize_phase_a(*args, **kwargs):
+        a_gate_path.write_text(json.dumps(a_gate), encoding="utf-8")
+        return {"envelope": a_gate_path}
+
+    monkeypatch.setattr(catalog_module, "materialize_phase_a",
+                        fake_materialize_phase_a)
     monkeypatch.setattr(catalog_module, "verify_phase_a_envelope",
                         lambda *args, **kwargs: (True, []))
     monkeypatch.setattr(

@@ -20,6 +20,8 @@ from nepal.framework_v1.provenance import (
     bind_gate_artifact,
     gate_input_artifact_sha256,
     sha256_canonical,
+    sha256_file,
+    sha256_text,
     verify_gate_input,
     verify_artifact_envelope,
 )
@@ -178,7 +180,7 @@ def test_pipeline_report_requires_runtime_framework_contract_provenance():
     assert any("framework contract" in error.lower() for error in errors)
 
 
-def test_pipeline_report_requires_authenticated_a_evidence_when_a_is_ready():
+def test_pipeline_report_requires_authenticated_a_evidence_when_a_is_ready(tmp_path):
     blocked = {
         "B_SCREEN": {"status": "B_TO_C_BLOCKED"},
         "E_VALIDATION": {"status": "E_BLOCKED"},
@@ -205,12 +207,20 @@ def test_pipeline_report_requires_authenticated_a_evidence_when_a_is_ready():
         }),
         "provenance": {"framework_contract_sha256": C.contract_hash()},
     })
+    a_path = tmp_path / "a_envelope.json"
+    a_path.write_text(json.dumps(a_gate), encoding="utf-8")
     complete = bind_pipeline_report({
         **blocked,
-        "A_CATALOG": {"status": "A_READY", "gate": a_gate},
+        "A_CATALOG": {
+            "status": "A_READY", "gate": a_gate,
+            "envelope_verified": True,
+            "artifact": str(a_path),
+            "artifact_sha256": a_gate["artifact_sha256"],
+            "artifact_file_sha256": sha256_file(a_path),
+        },
     }, exit_code=3)
 
-    assert verify_pipeline_report(complete) == (True, [])
+    assert verify_pipeline_report(complete, artifact_root=tmp_path) == (True, [])
 
 
 def _ready_a_catalog_envelope():
@@ -227,7 +237,7 @@ def _ready_a_catalog_envelope():
     })
 
 
-def test_pipeline_report_requires_downstream_ready_stage_evidence():
+def test_pipeline_report_requires_downstream_ready_stage_evidence(tmp_path):
     a_gate = _ready_a_catalog_envelope()
     base = {
         "A_CATALOG": {"status": C.PHASE_STATUS_A_READY, "gate": a_gate},
@@ -280,8 +290,162 @@ def test_pipeline_report_requires_downstream_ready_stage_evidence():
         "envelope": "/external/briefing.json",
         "artifact_sha256": "c" * 64,
     }
+    # Build a complete, file-bound chain for the positive case.  A report
+    # cannot become valid merely by carrying plausible paths and digests.
+    a_path = tmp_path / "a_envelope.json"
+    a_path.write_text(json.dumps(a_gate), encoding="utf-8")
+    b_gate = bind_artifact_envelope({
+        "status": C.PHASE_STATUS_SCREEN_RANKED,
+        "phase_status": C.PHASE_STATUS_B_TO_C_READY,
+        "gate_passed": True,
+        "gate": bind_gate_artifact({
+            "gate_id": C.GateId.B_TO_C.value,
+            "passed": True,
+            "checks": {},
+        }),
+        "provenance": {
+            "framework_contract_sha256": C.contract_hash(),
+            "a_gate_artifact_sha256": gate_input_artifact_sha256(a_gate),
+        },
+    })
+    b_path = tmp_path / "b_screen.json"
+    b_path.write_text(json.dumps(b_gate), encoding="utf-8")
+    summary = {
+        "status": "INDETERMINATE",
+        "validation_errors": [],
+        "input_hashes": {
+            "catalog": "a" * 64,
+            "controls": "b" * 64,
+            "feature_config": "c" * 64,
+            "holdout_plan": "d" * 64,
+            "input_manifest": "e" * 64,
+            "controls_lock": "f" * 64,
+        },
+    }
+    e_path = tmp_path / "validation.json"
+    e_gate = write_validation_artifact(
+        e_path,
+        summary,
+        bind_gate_artifact({
+            "gate_id": C.GateId.E_VALIDATION.value,
+            "passed": True,
+            "checks": {},
+        }),
+        provenance={
+            "framework_contract_sha256": C.contract_hash(),
+            "a_gate_artifact_sha256": gate_input_artifact_sha256(a_gate),
+            "b_artifact_sha256": gate_input_artifact_sha256(b_gate),
+            "controls_lock_sha256": "f" * 64,
+            "input_manifest_sha256": "e" * 64,
+            "holdout_plan_sha256": "d" * 64,
+            "summary_sha256": sha256_canonical(summary),
+            "event_ids": ["E1"],
+            "control_unit_ids": ["C1"],
+            "claim_scope": "research_only_no_operational_authorization",
+        },
+        strict_contract=True,
+    )
+    briefing_text = "research-only briefing\n"
+    f_gate = build_briefing_artifact(
+        briefing_text,
+        summary=summary,
+        catalog_gate=a_gate,
+        screen_gate=b_gate,
+        validation_gate=e_gate,
+        contract_hash=C.contract_hash(),
+        strict=True,
+    )
+    f_md_path = tmp_path / "briefing.md"
+    f_md_path.write_text(briefing_text, encoding="utf-8")
+    f_json_path = tmp_path / "briefing.json"
+    f_json_path.write_text(json.dumps(f_gate), encoding="utf-8")
+    base.update({
+        "A_CATALOG": {
+            "status": C.PHASE_STATUS_A_READY,
+            "gate": a_gate,
+            "envelope_verified": True,
+            "artifact": str(a_path),
+            "artifact_sha256": a_gate["artifact_sha256"],
+            "artifact_file_sha256": sha256_file(a_path),
+        },
+        "B_SCREEN": {
+            "status": C.PHASE_STATUS_B_TO_C_READY,
+            "screen_status": C.PHASE_STATUS_SCREEN_RANKED,
+            "gate_passed": True,
+            "envelope_verified": True,
+            "artifact": str(b_path),
+            "artifact_sha256": b_gate["artifact_sha256"],
+            "artifact_file_sha256": sha256_file(b_path),
+        },
+        "E_VALIDATION": {
+            "status": C.PHASE_STATUS_E_READY,
+            "gate_passed": True,
+            "envelope_verified": True,
+            "artifact": str(e_path),
+            "artifact_sha256": e_gate["artifact_sha256"],
+            "artifact_file_sha256": sha256_file(e_path),
+        },
+        "F_BRIEFING": {
+            "status": C.PHASE_STATUS_F_READY,
+            "envelope_verified": True,
+            "artifact": str(f_md_path),
+            "envelope": str(f_json_path),
+            "artifact_sha256": f_gate["artifact_sha256"],
+            "artifact_file_sha256": sha256_file(f_md_path),
+            "envelope_file_sha256": sha256_file(f_json_path),
+        },
+        "status": C.PHASE_STATUS_F_READY,
+    })
     complete = bind_pipeline_report(base, exit_code=0)
-    assert verify_pipeline_report(complete) == (True, [])
+    assert verify_pipeline_report(complete, artifact_root=tmp_path) == (True, [])
+
+
+def test_pipeline_report_ready_stage_requires_bound_file_evidence(tmp_path):
+    a_gate = _ready_a_catalog_envelope()
+    base = {
+        "A_CATALOG": {"status": C.PHASE_STATUS_A_READY, "gate": a_gate},
+        "B_SCREEN": {"status": C.PHASE_STATUS_B_TO_C_BLOCKED},
+        "E_VALIDATION": {"status": C.PHASE_STATUS_E_BLOCKED},
+        "F_BRIEFING": {"status": C.PHASE_STATUS_F_BLOCKED},
+        "status": C.PHASE_STATUS_B_TO_C_BLOCKED,
+        "provenance": {"framework_contract_sha256": C.contract_hash()},
+    }
+    unbound = bind_pipeline_report(base, exit_code=3)
+
+    valid, errors = verify_pipeline_report(unbound)
+
+    assert valid is False
+    assert any("artifact root" in error.lower() or
+               "file evidence" in error.lower() for error in errors)
+
+
+def test_pipeline_report_checks_ready_stage_file_bytes(tmp_path):
+    a_gate = _ready_a_catalog_envelope()
+    a_path = tmp_path / "a_envelope.json"
+    a_path.write_text(json.dumps(a_gate), encoding="utf-8")
+    base = {
+        "A_CATALOG": {
+            "status": C.PHASE_STATUS_A_READY,
+            "gate": a_gate,
+            "envelope_verified": True,
+            "artifact": str(a_path),
+            "artifact_sha256": a_gate["artifact_sha256"],
+            "artifact_file_sha256": sha256_file(a_path),
+        },
+        "B_SCREEN": {"status": C.PHASE_STATUS_B_TO_C_BLOCKED},
+        "E_VALIDATION": {"status": C.PHASE_STATUS_E_BLOCKED},
+        "F_BRIEFING": {"status": C.PHASE_STATUS_F_BLOCKED},
+        "status": C.PHASE_STATUS_B_TO_C_BLOCKED,
+        "provenance": {"framework_contract_sha256": C.contract_hash()},
+    }
+    report = bind_pipeline_report(base, exit_code=3)
+
+    assert verify_pipeline_report(report, artifact_root=tmp_path) == (True, [])
+    a_path.write_text("tampered", encoding="utf-8")
+    valid, errors = verify_pipeline_report(report, artifact_root=tmp_path)
+    assert valid is False
+    assert any("file" in error.lower() and "sha" in error.lower()
+               for error in errors)
 
 
 def test_pipeline_report_rejects_incoherent_downstream_ready_states():
@@ -429,6 +593,24 @@ def test_pipeline_checkpoint_rejects_terminal_state_as_non_resumable(tmp_path):
     assert any("resumable" in error.lower() for error in errors)
 
 
+def test_pipeline_checkpoint_accepts_completed_stage_for_replay(tmp_path):
+    source = tmp_path / "raw.json"
+    source.write_text("{}", encoding="utf-8")
+    fingerprint = pipeline_input_fingerprint([source], values={"phase": "B"})
+    checkpoint = tmp_path / "checkpoint.json"
+    write_pipeline_checkpoint(
+        checkpoint,
+        {"run_state": "COMPLETED", "stage": "B_SCREEN"},
+        input_fingerprint=fingerprint,
+    )
+
+    loaded, errors = load_verified_pipeline_checkpoint(
+        checkpoint, input_fingerprint=fingerprint)
+
+    assert errors == []
+    assert loaded is not None
+
+
 def test_pipeline_wraps_direct_a_gate_with_catalog_artifact_provenance(tmp_path):
     catalog_output = tmp_path / "catalog.json"
     catalog_output.write_text("catalog", encoding="utf-8")
@@ -494,6 +676,23 @@ def test_briefing_artifact_binds_text_and_upstream_evidence(tmp_path):
     tampered = dict(artifact)
     tampered["briefing"] = "forged\n"
     assert verify_briefing_artifact(tampered)[0] is False
+
+    detached_e = copy.deepcopy(e_gate)
+    detached_e["summary"] = {"status": "PASS", "input_hashes": {}}
+    detached_e["gate"] = dict(detached_e["gate"])
+    detached_e["gate"]["summary_sha256"] = sha256_canonical(
+        detached_e["summary"])
+    detached_e["gate"] = bind_gate_artifact(detached_e["gate"])
+    detached_e = bind_artifact_envelope(detached_e)
+    detached_summary = copy.deepcopy(artifact)
+    detached_summary["e_gate"] = detached_e
+    detached_summary["provenance"] = dict(detached_summary["provenance"])
+    detached_summary["provenance"]["e_artifact_sha256"] = \
+        detached_e["artifact_sha256"]
+    detached_summary = bind_artifact_envelope(detached_summary)
+    valid, errors = verify_briefing_artifact(detached_summary)
+    assert valid is False
+    assert any("summary" in error.lower() for error in errors)
     forged_b = dict(artifact["b_gate"])
     forged_b["gate"] = dict(forged_b["gate"])
     forged_b["gate"]["passed"] = False
@@ -515,6 +714,39 @@ def test_briefing_artifact_binds_text_and_upstream_evidence(tmp_path):
             contract_hash=C.contract_hash(),
             strict=True,
         )
+
+
+def test_strict_f_rejects_non_mapping_rebound_upstreams():
+    summary = {"status": "INDETERMINATE", "input_hashes": {}}
+    text = "research-only briefing\n"
+    forged = bind_artifact_envelope({
+        "profile_id": "FRAMEWORK_V1_FULL",
+        "framework_version": C.FRAMEWORK_VERSION,
+        "strict_contract": True,
+        "status": C.PHASE_STATUS_F_READY,
+        "gate_id": "F_BRIEFING",
+        "promotion_eligible": False,
+        "production_authorized": False,
+        "briefing": text,
+        "briefing_sha256": sha256_text(text),
+        "summary": summary,
+        "summary_sha256": sha256_canonical(summary),
+        "a_gate": "detached",
+        "b_gate": "detached",
+        "e_gate": "detached",
+        "provenance": {
+            "framework_contract_sha256": C.contract_hash(),
+            "a_gate_artifact_sha256": "a" * 64,
+            "b_artifact_sha256": "b" * 64,
+            "e_artifact_sha256": "c" * 64,
+        },
+        "no_claims": ["research only"],
+    })
+
+    valid, errors = verify_briefing_artifact(forged)
+
+    assert valid is False
+    assert any("mapping" in error.lower() for error in errors)
 
 
 def test_strict_f_rejects_e_provenance_detached_from_embedded_upstreams(tmp_path):

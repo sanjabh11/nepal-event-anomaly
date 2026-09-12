@@ -14,6 +14,7 @@ from typing import Any, Iterable, Mapping, Optional
 
 from . import contract as C
 from .provenance import (bind_artifact_envelope, canonical_json,
+                         gate_input_artifact_sha256,
                          sha256_file, verify_artifact_envelope,
                          verify_gate_input,
                          write_deterministic_json)
@@ -24,7 +25,7 @@ PIPELINE_STATUS_BLOCKED = "PIPELINE_BLOCKED"
 PIPELINE_STATUS_INCOMPLETE = "PIPELINE_INCOMPLETE"
 PIPELINE_STATUS_FAILED = "PIPELINE_FAILED"
 PIPELINE_EXIT_CODES = frozenset({0, 2, 3, 4, 5})
-RESUMABLE_PIPELINE_STATES = frozenset({"RUNNING", "INCOMPLETE"})
+RESUMABLE_PIPELINE_STATES = frozenset({"RUNNING", "INCOMPLETE", "COMPLETED"})
 
 NO_CLAIMS = (
     "Framework implementation evidence is not scientific validation",
@@ -65,6 +66,13 @@ def _ready_stage_evidence_problems(
     artifact = stage.get("artifact")
     if not isinstance(artifact, str) or not artifact:
         problems.append(f"{stage_name} evidence must include an artifact reference")
+    file_hash_key = ("envelope_file_sha256"
+                     if stage_name == "F_BRIEFING" and
+                     isinstance(stage.get("envelope"), str)
+                     else "artifact_file_sha256")
+    if not _is_sha256(stage.get(file_hash_key)):
+        problems.append(
+            f"{stage_name} evidence must include {file_hash_key}")
     if require_gate_passed and stage.get("gate_passed") is not True:
         problems.append(f"{stage_name} evidence must report gate_passed=True")
     if (required_inner_status is not None and
@@ -81,6 +89,249 @@ def _ready_stage_evidence_problems(
     if verification_errors not in (None, []):
         problems.append(f"{stage_name} evidence contains verification errors")
     return problems
+
+
+def _resolve_stage_file(
+        raw_path: Any,
+        root: Path,
+        label: str,
+) -> tuple[Optional[Path], list[str]]:
+    """Resolve a stage evidence path without permitting root escapes."""
+    if not isinstance(raw_path, str) or not raw_path:
+        return None, [f"{label} file reference is required"]
+    candidate = Path(raw_path) if Path(raw_path).is_absolute() else root / raw_path
+    if not Path(raw_path).is_absolute() and ".." in Path(raw_path).parts:
+        return None, [f"{label} file reference contains path traversal"]
+    try:
+        resolved = candidate.resolve(strict=False)
+        resolved.relative_to(root)
+    except (OSError, ValueError):
+        return None, [f"{label} file reference escapes the artifact root"]
+    current = root
+    try:
+        relative = candidate.relative_to(root)
+    except ValueError:
+        return None, [f"{label} file reference escapes the artifact root"]
+    for part in relative.parts:
+        current = current / part
+        if current.is_symlink():
+            return None, [f"{label} file reference must not traverse a symlink"]
+    if not candidate.is_file():
+        return None, [f"{label} file is missing or is not a regular file"]
+    return candidate, []
+
+
+def _outer_framework_contract_problems(
+        name: str,
+        outer: Optional[Mapping[str, Any]],
+) -> list[str]:
+    if not isinstance(outer, Mapping):
+        return [f"{name} outer artifact envelope is required"]
+    provenance = outer.get("provenance")
+    if (not isinstance(provenance, Mapping) or
+            provenance.get("framework_contract_sha256") != C.contract_hash()):
+        return [f"{name} outer envelope framework contract does not match runtime"]
+    return []
+
+
+def verify_typed_handoff(
+        a_gate: Any,
+        b_gate: Any = None,
+        e_gate: Any = None,
+        *,
+        summary: Optional[Mapping[str, Any]] = None,
+        require_strict_e: bool = False,
+) -> tuple[bool, list[str]]:
+    """Verify typed A/B/E handoff identity and cross-stage bindings.
+
+    This is the shared in-memory boundary used by E, F, and the pipeline
+    report verifier.  It validates the complete outer envelopes and their
+    cross-links; file-byte evidence is added by
+    :func:`verify_stage_file_evidence` when a report root is available.
+    """
+    problems: list[str] = []
+    a_inner: Optional[Mapping[str, Any]] = None
+    b_inner: Optional[Mapping[str, Any]] = None
+    a_outer: Optional[Mapping[str, Any]] = None
+    b_outer: Optional[Mapping[str, Any]] = None
+
+    a_ok, a_inner, a_outer, a_errors = verify_gate_input(
+        a_gate, expected_gate_id=C.GateId.A_CATALOG.value,
+        require_outer_envelope=True)
+    problems.extend(f"A_CATALOG: {error}" for error in a_errors)
+    problems.extend(_outer_framework_contract_problems("A_CATALOG", a_outer))
+    if a_ok and (not isinstance(a_inner, Mapping) or
+                 a_inner.get("passed") is not True):
+        problems.append("A_CATALOG: verified gate is not passed")
+
+    if b_gate is not None:
+        b_ok, b_inner, b_outer, b_errors = verify_gate_input(
+            b_gate, expected_gate_id=C.GateId.B_TO_C.value,
+            require_outer_envelope=True)
+        problems.extend(f"B_SCREEN: {error}" for error in b_errors)
+        problems.extend(_outer_framework_contract_problems("B_SCREEN", b_outer))
+        if b_ok and (not isinstance(b_inner, Mapping) or
+                     b_inner.get("passed") is not True):
+            problems.append("B_SCREEN: verified gate is not passed")
+        if isinstance(b_outer, Mapping):
+            if b_outer.get("status") != C.PHASE_STATUS_SCREEN_RANKED:
+                problems.append("B_SCREEN: status must be SCREEN_RANKED")
+            if b_outer.get("phase_status") != C.PHASE_STATUS_B_TO_C_READY:
+                problems.append("B_SCREEN: phase_status must be B_TO_C_READY")
+            if b_outer.get("gate_passed") is not True:
+                problems.append("B_SCREEN: gate_passed must be true")
+            b_provenance = b_outer.get("provenance")
+            expected_a = (gate_input_artifact_sha256(a_gate)
+                          if isinstance(a_gate, Mapping) else None)
+            if (not isinstance(b_provenance, Mapping) or
+                    b_provenance.get("a_gate_artifact_sha256") != expected_a):
+                problems.append("B_SCREEN: A gate identity does not match")
+
+    if e_gate is not None:
+        from .validation import verify_validation_artifact
+
+        if not isinstance(e_gate, Mapping):
+            problems.append("E_VALIDATION: artifact envelope must be a mapping")
+        else:
+            e_ok, e_errors = verify_validation_artifact(e_gate)
+            problems.extend(f"E_VALIDATION: {error}" for error in e_errors)
+            if require_strict_e and e_gate.get("strict_contract") is not True:
+                problems.append("E_VALIDATION: strict authenticated envelope is required")
+            if e_gate.get("status") != C.PHASE_STATUS_E_READY:
+                problems.append("E_VALIDATION: status must be E_READY")
+            e_inner = e_gate.get("gate")
+            if (e_ok and (not isinstance(e_inner, Mapping) or
+                          e_inner.get("passed") is not True)):
+                problems.append("E_VALIDATION: verified gate is not passed")
+            if summary is not None and e_gate.get("summary") != dict(summary):
+                problems.append("E_VALIDATION: summary does not match handoff summary")
+            e_provenance = e_gate.get("provenance")
+            expected_a = (gate_input_artifact_sha256(a_gate)
+                          if isinstance(a_gate, Mapping) else None)
+            expected_b = (gate_input_artifact_sha256(b_gate)
+                          if isinstance(b_gate, Mapping) else None)
+            if (not isinstance(e_provenance, Mapping) or
+                    e_provenance.get("a_gate_artifact_sha256") != expected_a):
+                problems.append("E_VALIDATION: A gate identity does not match")
+            if (not isinstance(e_provenance, Mapping) or
+                    e_provenance.get("b_artifact_sha256") != expected_b):
+                problems.append("E_VALIDATION: B artifact identity does not match")
+
+    return not problems, problems
+
+
+def verify_stage_file_evidence(
+        stage_name: str,
+        stage: Any,
+        *,
+        artifact_root: str | Path | None,
+) -> tuple[Optional[Mapping[str, Any]], list[str]]:
+    """Verify ready-stage paths, raw bytes, envelope identity, and stage type."""
+    if not isinstance(stage, Mapping):
+        return None, [f"{stage_name} stage evidence must be a mapping"]
+    if artifact_root is None:
+        return None, [f"{stage_name} artifact root is required for file evidence"]
+    try:
+        root = Path(artifact_root).resolve(strict=True)
+    except (OSError, RuntimeError):
+        return None, [f"{stage_name} artifact root is unavailable"]
+    if not root.is_dir():
+        return None, [f"{stage_name} artifact root is not a directory"]
+
+    envelope_ref = stage.get("envelope") if stage_name == "F_BRIEFING" \
+        else stage.get("artifact")
+    envelope_path, problems = _resolve_stage_file(
+        envelope_ref, root, f"{stage_name} envelope")
+    if envelope_path is None:
+        return None, problems
+    file_hash_key = ("envelope_file_sha256"
+                     if stage_name == "F_BRIEFING" and
+                     isinstance(stage.get("envelope"), str)
+                     else "artifact_file_sha256")
+    expected_file_hash = stage.get(file_hash_key)
+    if not _is_sha256(expected_file_hash):
+        problems.append(f"{stage_name} evidence {file_hash_key} is invalid")
+    else:
+        try:
+            actual_file_hash = sha256_file(envelope_path)
+        except OSError as exc:
+            problems.append(f"{stage_name} envelope file could not be hashed: {exc}")
+        else:
+            if actual_file_hash != expected_file_hash:
+                problems.append(
+                    f"{stage_name} envelope file sha256 does not match evidence")
+    try:
+        loaded = json.loads(envelope_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError) as exc:
+        return None, problems + [f"{stage_name} envelope is not valid JSON: {exc}"]
+    if not isinstance(loaded, Mapping):
+        return None, problems + [f"{stage_name} envelope must be a mapping"]
+    _, envelope_errors = verify_artifact_envelope(loaded)
+    problems.extend(f"{stage_name} envelope: {error}" for error in envelope_errors)
+    if loaded.get("artifact_sha256") != stage.get("artifact_sha256"):
+        problems.append(f"{stage_name} semantic artifact identity does not match evidence")
+
+    if stage_name == "A_CATALOG":
+        a_ok, a_inner, _, a_errors = verify_gate_input(
+            loaded, expected_gate_id=C.GateId.A_CATALOG.value,
+            require_outer_envelope=True)
+        problems.extend(f"A_CATALOG envelope: {error}" for error in a_errors)
+        if a_ok and (not isinstance(a_inner, Mapping) or
+                     a_inner.get("passed") is not True):
+            problems.append("A_CATALOG envelope gate is not passed")
+    elif stage_name == "B_SCREEN":
+        b_ok, b_inner, _, b_errors = verify_gate_input(
+            loaded, expected_gate_id=C.GateId.B_TO_C.value,
+            require_outer_envelope=True)
+        problems.extend(f"B_SCREEN envelope: {error}" for error in b_errors)
+        if b_ok and (not isinstance(b_inner, Mapping) or
+                     b_inner.get("passed") is not True):
+            problems.append("B_SCREEN envelope gate is not passed")
+        if loaded.get("phase_status") != stage.get("status"):
+            problems.append("B_SCREEN phase_status does not match report status")
+        if loaded.get("status") != stage.get("screen_status"):
+            problems.append("B_SCREEN screen_status does not match envelope")
+        if loaded.get("gate_passed") != stage.get("gate_passed"):
+            problems.append("B_SCREEN gate_passed does not match envelope")
+    elif stage_name == "E_VALIDATION":
+        from .validation import verify_validation_artifact
+
+        _, e_errors = verify_validation_artifact(loaded)
+        problems.extend(f"E_VALIDATION envelope: {error}" for error in e_errors)
+        if loaded.get("strict_contract") is not True:
+            problems.append("E_VALIDATION envelope must use strict_contract=True")
+        if loaded.get("status") != stage.get("status"):
+            problems.append("E_VALIDATION status does not match report status")
+        gate = loaded.get("gate")
+        gate_passed = (gate.get("passed")
+                       if isinstance(gate, Mapping) else None)
+        if gate_passed != stage.get("gate_passed"):
+            problems.append("E_VALIDATION gate_passed does not match envelope")
+    elif stage_name == "F_BRIEFING":
+        from .briefing import verify_briefing_artifact
+
+        _, f_errors = verify_briefing_artifact(loaded)
+        problems.extend(f"F_BRIEFING envelope: {error}" for error in f_errors)
+        if loaded.get("strict_contract") is not True:
+            problems.append("F_BRIEFING envelope must use strict_contract=True")
+        if loaded.get("status") != stage.get("status"):
+            problems.append("F_BRIEFING status does not match report status")
+        artifact_path, artifact_errors = _resolve_stage_file(
+            stage.get("artifact"), root, "F_BRIEFING briefing")
+        problems.extend(artifact_errors)
+        expected_artifact_hash = stage.get("artifact_file_sha256")
+        if not _is_sha256(expected_artifact_hash):
+            problems.append("F_BRIEFING evidence artifact_file_sha256 is invalid")
+        elif artifact_path is not None:
+            try:
+                actual_artifact_hash = sha256_file(artifact_path)
+            except OSError as exc:
+                problems.append(f"F_BRIEFING briefing file could not be hashed: {exc}")
+            else:
+                if actual_artifact_hash != expected_artifact_hash:
+                    problems.append("F_BRIEFING briefing file sha256 does not match evidence")
+
+    return loaded, problems
 
 
 def pipeline_input_fingerprint(
@@ -162,8 +413,18 @@ def bind_pipeline_report(
     return bind_artifact_envelope(bound)
 
 
-def verify_pipeline_report(payload: Mapping[str, Any]) -> tuple[bool, list[str]]:
-    """Verify a complete pipeline report before it is used for handoff."""
+def verify_pipeline_report(
+        payload: Mapping[str, Any],
+        *,
+        artifact_root: str | Path | None = None,
+) -> tuple[bool, list[str]]:
+    """Verify a complete pipeline report before it is used for handoff.
+
+    A report with any ready stage must provide the output root so the stage
+    references can be resolved and their actual bytes can be checked.  The
+    optional root remains useful for reports containing only blocked stages,
+    which have no stage artifacts to inspect.
+    """
     ok, problems = verify_artifact_envelope(payload)
     if not isinstance(payload, Mapping):
         return False, problems
@@ -246,6 +507,35 @@ def verify_pipeline_report(payload: Mapping[str, Any]) -> tuple[bool, list[str]]
             if stage_statuses.get(stage) not in allowed:
                 problems.append(
                     f"pipeline report {stage} has an invalid stage status")
+
+        ready_payloads: dict[str, Mapping[str, Any]] = {}
+        for stage in stages:
+            stage_payload = payload.get(stage)
+            if (not isinstance(stage_payload, Mapping) or
+                    stage_statuses.get(stage) not in (
+                        C.PHASE_STATUS_A_READY,
+                        C.PHASE_STATUS_B_TO_C_READY,
+                        C.PHASE_STATUS_E_READY,
+                        C.PHASE_STATUS_F_READY,
+                    )):
+                continue
+            loaded, file_errors = verify_stage_file_evidence(
+                stage, stage_payload, artifact_root=artifact_root)
+            problems.extend(file_errors)
+            if loaded is not None:
+                ready_payloads[stage] = loaded
+
+        if ("A_CATALOG" in ready_payloads and
+                "B_SCREEN" in ready_payloads):
+            typed_ok, typed_errors = verify_typed_handoff(
+                ready_payloads["A_CATALOG"], ready_payloads["B_SCREEN"],
+                ready_payloads.get("E_VALIDATION"),
+                summary=(ready_payloads["E_VALIDATION"].get("summary")
+                         if "E_VALIDATION" in ready_payloads else None),
+                require_strict_e="E_VALIDATION" in ready_payloads)
+            if not typed_ok:
+                problems.extend("typed handoff: " + error
+                                for error in typed_errors)
 
         b_stage = payload.get("B_SCREEN")
         if (stage_statuses.get("B_SCREEN") == C.PHASE_STATUS_B_TO_C_READY and

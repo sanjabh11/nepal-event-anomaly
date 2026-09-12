@@ -727,6 +727,7 @@ def cmd_pipeline(args) -> int:
     from .orchestrator import (bind_pipeline_report,
                                load_verified_pipeline_checkpoint,
                                pipeline_input_fingerprint,
+                               verify_pipeline_report,
                                write_pipeline_checkpoint)
     from .preflight import run_preflight
     from .provenance import (gate_input_artifact_sha256,
@@ -852,6 +853,12 @@ def cmd_pipeline(args) -> int:
     def _finish(code: int) -> int:
         bound = bind_pipeline_report(
             report, exit_code=code, input_fingerprint=input_fingerprint)
+        report_ok, report_errors = verify_pipeline_report(
+            bound, artifact_root=out)
+        if not report_ok:
+            _print("pipeline report failed strict handoff verification: " +
+                   "; ".join(report_errors))
+            return 5
         try:
             write_deterministic_json(out / "pipeline_report.json", bound)
         except OSError as exc:
@@ -875,15 +882,20 @@ def cmd_pipeline(args) -> int:
                                   input_fingerprint=input_fingerprint)
 
     if not preflight["ok"]:
+        if args.resume:
+            _print("pipeline resume blocked by failed preflight: " +
+                   "; ".join(str(item) for item in
+                             preflight.get("failures", [])))
+            return 2
         return _finish(2)
 
     if args.resume:
         previous, checkpoint_errors = load_verified_pipeline_checkpoint(
             checkpoint_path, input_fingerprint=input_fingerprint)
         if previous is None:
-            report["resume"] = {"status": "BLOCKED",
-                                 "errors": checkpoint_errors}
-            return _finish(2)
+            _print("pipeline resume blocked by checkpoint verification: " +
+                   "; ".join(checkpoint_errors))
+            return 2
         report["resume"] = {
             "status": "VERIFIED_REPLAY",
             "previous_stage": previous.get("stage"),
@@ -931,6 +943,13 @@ def cmd_pipeline(args) -> int:
             "artifacts": {name: str(path) for name, path in a_paths.items()},
             "controls_lock_sha256": catalog["controls_lock"].sha256,
         }
+        if a_gate_passed:
+            report["A_CATALOG"].update({
+                "envelope_verified": True,
+                "artifact": str(a_envelope_path),
+                "artifact_sha256": a_gate_artifact.get("artifact_sha256"),
+                "artifact_file_sha256": sha256_file(a_envelope_path),
+            })
 
         if not a_gate_passed:
             report["A_CATALOG"]["verification_errors"] = sorted(set(
@@ -980,6 +999,7 @@ def cmd_pipeline(args) -> int:
             "verification_errors": b_envelope_errors,
             "artifact": str(b_path),
             "artifact_sha256": b_result.get("artifact_sha256"),
+            "artifact_file_sha256": sha256_file(b_path),
         }
         _checkpoint("B_SCREEN", "COMPLETED" if b_envelope_ok else "FAILED",
                      artifact_sha256=b_result.get("artifact_sha256"),
@@ -1055,6 +1075,7 @@ def cmd_pipeline(args) -> int:
             "verification_errors": e_envelope_errors,
             "artifact": str(e_path),
             "artifact_sha256": e_artifact.get("artifact_sha256"),
+            "artifact_file_sha256": sha256_file(e_path),
         }
         _checkpoint("E_VALIDATION", "COMPLETED" if e_envelope_ok else "FAILED",
                      artifact_sha256=e_artifact.get("artifact_sha256"),
@@ -1062,7 +1083,7 @@ def cmd_pipeline(args) -> int:
         if not e_envelope_ok:
             return _finish(5)
         if not e_gate.get("passed", False):
-            return _finish(4)
+            return _finish(3)
 
         briefing = generate_briefing(
             summary, catalog_gate=a_gate_artifact, screen_gate=b_result,
@@ -1093,6 +1114,8 @@ def cmd_pipeline(args) -> int:
             "envelope_verified": f_ok,
             "verification_errors": f_errors,
             "artifact_sha256": f_artifact.get("artifact_sha256"),
+            "artifact_file_sha256": sha256_file(f_path),
+            "envelope_file_sha256": sha256_file(f_artifact_path),
         }
         _checkpoint("F_BRIEFING", "COMPLETED" if f_ok else "FAILED",
                      artifact=str(f_path),
