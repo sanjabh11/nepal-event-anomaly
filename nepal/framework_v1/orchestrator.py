@@ -95,6 +95,11 @@ def bind_pipeline_report(
     bound["exit_code"] = int(exit_code)
     bound["promotion_eligible"] = False
     bound["production_authorized"] = False
+    provenance = bound.get("provenance")
+    bound["provenance"] = (dict(provenance)
+                            if isinstance(provenance, Mapping) else {})
+    bound["provenance"].setdefault(
+        "framework_contract_sha256", C.contract_hash())
     bound["no_claims"] = list(NO_CLAIMS)
     bound["stage_statuses"] = {
         stage: (bound.get(stage, {}).get("status")
@@ -117,6 +122,12 @@ def verify_pipeline_report(payload: Mapping[str, Any]) -> tuple[bool, list[str]]
         problems.append("pipeline report must not be promotion eligible")
     if payload.get("production_authorized") is not False:
         problems.append("pipeline report must not authorize production")
+    provenance = payload.get("provenance")
+    if not isinstance(provenance, Mapping):
+        problems.append("pipeline report provenance is required")
+    elif provenance.get("framework_contract_sha256") != C.contract_hash():
+        problems.append(
+            "pipeline report framework contract does not match runtime")
     if not isinstance(payload.get("no_claims"), list) or not payload.get(
             "no_claims"):
         problems.append("pipeline report no_claims is required")

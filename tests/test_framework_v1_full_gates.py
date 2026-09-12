@@ -151,6 +151,33 @@ def test_pipeline_style_envelope_binds_status_and_provenance():
     assert verify_artifact_envelope(tampered)[0] is False
 
 
+def test_pipeline_report_requires_runtime_framework_contract_provenance():
+    envelope = bind_pipeline_report({
+        "A_CATALOG": {"status": "A_BLOCKED"},
+        "B_SCREEN": {"status": "B_TO_C_BLOCKED"},
+        "E_VALIDATION": {"status": "E_BLOCKED"},
+        "F_BRIEFING": {"status": "F_BLOCKED"},
+        "status": "B_TO_C_BLOCKED",
+    }, exit_code=3)
+
+    assert envelope["provenance"]["framework_contract_sha256"] == C.contract_hash()
+    assert verify_pipeline_report(envelope) == (True, [])
+
+    forged = bind_pipeline_report({
+        "A_CATALOG": {"status": "A_BLOCKED"},
+        "B_SCREEN": {"status": "B_TO_C_BLOCKED"},
+        "E_VALIDATION": {"status": "E_BLOCKED"},
+        "F_BRIEFING": {"status": "F_BLOCKED"},
+        "status": "B_TO_C_BLOCKED",
+        "provenance": {"framework_contract_sha256": "0" * 64},
+    }, exit_code=3)
+
+    valid, errors = verify_pipeline_report(forged)
+
+    assert valid is False
+    assert any("framework contract" in error.lower() for error in errors)
+
+
 def test_pipeline_report_rejects_incoherent_downstream_ready_states():
     envelope = bind_pipeline_report({
         "A_CATALOG": {"status": C.PHASE_STATUS_A_BLOCKED},
