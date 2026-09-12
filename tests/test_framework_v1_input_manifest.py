@@ -13,6 +13,7 @@ from nepal.framework_v1.input_manifest import (
     canonical_input_manifest_hash,
     _validate_contract_source_bindings,
     _validate_b_manifest_declarations,
+    _validate_package_inventory_files,
     validate_artifact_bundle,
     validate_phase_artifact,
     verify_input_manifest,
@@ -302,6 +303,53 @@ class TestInputManifestVerification:
         problems = _validate_b_manifest_declarations(manifest)
         assert any("waiver" in problem.lower() and "strict b" in problem.lower()
                    for problem in problems)
+
+    def test_package_inventory_rejects_unlisted_files_but_honors_exclusions(
+            self, tmp_path):
+        listed = tmp_path / "listed.json"
+        listed.write_text("listed", encoding="utf-8")
+        (tmp_path / "unlisted.json").write_text("unlisted", encoding="utf-8")
+        cache = tmp_path / "scripts" / "__pycache__"
+        cache.mkdir(parents=True)
+        (cache / "fixture.pyc").write_bytes(b"excluded")
+        manifest = {
+            "package_inventory": [{
+                "relative_path": "listed.json",
+                "sha256": hashlib.sha256(b"listed").hexdigest(),
+                "bytes": len(b"listed"),
+            }],
+            "package_inventory_policy": {
+                "excluded": [
+                    "manifest.json",
+                    "**/__pycache__/**",
+                    "**/*.pyc",
+                    "**/*.partial*",
+                ],
+            },
+        }
+
+        problems = _validate_package_inventory_files(tmp_path, manifest)
+
+        assert any("unlisted.json" in problem for problem in problems)
+        assert not any("fixture.pyc" in problem for problem in problems)
+
+    def test_b_manifest_requires_an_explicit_inventory_policy(self):
+        manifest = {
+            "manifest_hash_encoding": "canonical_json",
+            "canonical_hash_domain": "canonical_json_without_manifest_sha256",
+            "data_contract_source_path": "nepal/feature_contract.py",
+            "framework_contract_source_path": "nepal/framework_v1/contract.py",
+            "data_contract_source_sha256": "a" * 64,
+            "framework_contract_source_sha256": "b" * 64,
+            "dirty_diff_sha256": "c" * 64,
+            "code_revision": "test-revision",
+            "package_inventory": [],
+            "waivers": [],
+        }
+
+        problems = _validate_b_manifest_declarations(manifest)
+
+        assert any("package_inventory_policy" in problem for problem in problems)
 
     def test_vector_bundle_requires_and_verifies_sidecars(self, tmp_path):
         main = tmp_path / "subset.shp"

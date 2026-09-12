@@ -16,6 +16,7 @@ import json
 import math
 import re
 from dataclasses import dataclass, field
+from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional
 
@@ -348,6 +349,17 @@ def _validate_b_manifest_declarations(manifest: Mapping[str, Any]) -> list[str]:
             if not isinstance(size, int) or isinstance(size, bool) or size < 0:
                 problems.append(
                     f"B package_inventory[{index}] bytes is required")
+    policy = manifest.get("package_inventory_policy")
+    if not isinstance(policy, Mapping):
+        problems.append("B manifest package_inventory_policy must be an object")
+    else:
+        excluded = policy.get("excluded")
+        if (not isinstance(excluded, list) or not excluded or
+                not all(isinstance(pattern, str) and pattern
+                        for pattern in excluded)):
+            problems.append(
+                "B manifest package_inventory_policy.excluded must be a non-empty "
+                "list of strings")
     waivers = manifest.get("waivers")
     if not isinstance(waivers, list):
         problems.append("B manifest waivers must be an explicit list")
@@ -433,11 +445,28 @@ def _validate_contract_source_bindings(
 
 def _validate_package_inventory_files(root: Path,
                                       manifest: Mapping[str, Any]) -> list[str]:
-    """Verify every locally packaged extra is safe, present, and hash-bound."""
+    """Verify the complete locally packaged inventory is safe and hash-bound."""
     problems: list[str] = []
     inventory = manifest.get("package_inventory")
     if not isinstance(inventory, list):
         return problems
+    policy = manifest.get("package_inventory_policy")
+    excluded = (policy.get("excluded") if isinstance(policy, Mapping)
+                else None)
+    if (not isinstance(excluded, list) or not excluded or
+            not all(isinstance(pattern, str) and pattern for pattern in excluded)):
+        return problems
+
+    def is_excluded(relative: str) -> bool:
+        for pattern in excluded:
+            if fnmatchcase(relative, pattern):
+                return True
+            # Treat a leading **/ as recursive, including files at the root.
+            # This matches the package policy's intended glob semantics.
+            if pattern.startswith("**/") and fnmatchcase(relative, pattern[3:]):
+                return True
+        return False
+
     seen_paths: set[str] = set()
     for index, entry in enumerate(inventory):
         if not isinstance(entry, Mapping):
@@ -448,6 +477,9 @@ def _validate_package_inventory_files(root: Path,
                 f"B package_inventory[{index}] has unsafe relative_path")
             continue
         rel_text = relative.as_posix()
+        if is_excluded(rel_text):
+            problems.append(
+                f"B package_inventory[{index}] lists an excluded path: {rel_text}")
         if rel_text in seen_paths:
             problems.append(
                 f"B package_inventory[{index}] duplicates relative_path: {rel_text}")
@@ -469,6 +501,34 @@ def _validate_package_inventory_files(root: Path,
             if sha256_file(resolved) != digest:
                 problems.append(
                     f"B package_inventory[{index}] checksum mismatch: {relative.as_posix()}")
+
+    actual_paths: set[str] = set()
+    try:
+        filesystem_entries = sorted(root.rglob("*"),
+                                    key=lambda path: path.as_posix())
+    except OSError as exc:
+        problems.append(f"B package inventory scan failed: {exc}")
+        filesystem_entries = []
+    for path in filesystem_entries:
+        try:
+            relative = path.relative_to(root).as_posix()
+        except ValueError:
+            continue
+        if path.is_symlink():
+            problems.append(
+                f"B package inventory contains a symlink: {relative}")
+            continue
+        if path.is_dir():
+            continue
+        if not path.is_file():
+            problems.append(
+                f"B package inventory contains a non-regular path: {relative}")
+            continue
+        if not is_excluded(relative):
+            actual_paths.add(relative)
+    for relative in sorted(actual_paths - seen_paths):
+        problems.append(
+            f"B package inventory does not declare file: {relative}")
     return problems
 
 
