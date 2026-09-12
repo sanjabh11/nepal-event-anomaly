@@ -134,6 +134,72 @@ def verify_pipeline_report(payload: Mapping[str, Any]) -> tuple[bool, list[str]]
             if stage_statuses.get(stage) != payload[stage].get("status"):
                 problems.append(
                     f"pipeline report stage_statuses does not match {stage}")
+        allowed_stage_statuses = {
+            "A_CATALOG": {C.PHASE_STATUS_A_READY, C.PHASE_STATUS_A_BLOCKED},
+            "B_SCREEN": {C.PHASE_STATUS_B_TO_C_READY,
+                          C.PHASE_STATUS_B_TO_C_BLOCKED},
+            "E_VALIDATION": {C.PHASE_STATUS_E_READY,
+                              C.PHASE_STATUS_E_BLOCKED},
+            "F_BRIEFING": {C.PHASE_STATUS_F_READY,
+                            C.PHASE_STATUS_F_BLOCKED},
+        }
+        for stage, allowed in allowed_stage_statuses.items():
+            if stage_statuses.get(stage) not in allowed:
+                problems.append(
+                    f"pipeline report {stage} has an invalid stage status")
+
+        a_status = stage_statuses.get("A_CATALOG")
+        b_status = stage_statuses.get("B_SCREEN")
+        e_status = stage_statuses.get("E_VALIDATION")
+        f_status = stage_statuses.get("F_BRIEFING")
+        if a_status == C.PHASE_STATUS_A_BLOCKED and any(
+                status != C.PHASE_STATUS_B_TO_C_BLOCKED
+                for status in (b_status,)
+        ):
+            problems.append(
+                "stage dependency: B cannot be ready when A is blocked")
+        if a_status == C.PHASE_STATUS_A_BLOCKED and any(
+                status != blocked for status, blocked in (
+                    (e_status, C.PHASE_STATUS_E_BLOCKED),
+                    (f_status, C.PHASE_STATUS_F_BLOCKED),
+                )):
+            problems.append(
+                "stage dependency: E/F cannot be ready when A is blocked")
+        if b_status == C.PHASE_STATUS_B_TO_C_BLOCKED and any(
+                status != blocked for status, blocked in (
+                    (e_status, C.PHASE_STATUS_E_BLOCKED),
+                    (f_status, C.PHASE_STATUS_F_BLOCKED),
+                )):
+            problems.append(
+                "stage dependency: E/F cannot be ready when B is blocked")
+        if e_status == C.PHASE_STATUS_E_BLOCKED and \
+                f_status == C.PHASE_STATUS_F_READY:
+            problems.append(
+                "stage dependency: F cannot be ready when E is blocked")
+        if e_status == C.PHASE_STATUS_E_READY and any(
+                status != ready for status, ready in (
+                    (a_status, C.PHASE_STATUS_A_READY),
+                    (b_status, C.PHASE_STATUS_B_TO_C_READY),
+                )):
+            problems.append(
+                "stage dependency: E cannot be ready before A and B")
+        if f_status == C.PHASE_STATUS_F_READY and any(
+                status != ready for status, ready in (
+                    (a_status, C.PHASE_STATUS_A_READY),
+                    (b_status, C.PHASE_STATUS_B_TO_C_READY),
+                    (e_status, C.PHASE_STATUS_E_READY),
+                )):
+            problems.append(
+                "stage dependency: F cannot be ready before A, B, and E")
+        if exit_code == 0 and any(
+                status != ready for status, ready in (
+                    (a_status, C.PHASE_STATUS_A_READY),
+                    (b_status, C.PHASE_STATUS_B_TO_C_READY),
+                    (e_status, C.PHASE_STATUS_E_READY),
+                    (f_status, C.PHASE_STATUS_F_READY),
+                )):
+            problems.append(
+                "pipeline exit 0 requires every stage to be ready")
     return ok and not problems, problems
 
 

@@ -697,6 +697,26 @@ def cmd_pipeline(args) -> int:
         _print("pipeline output must be outside the repository, authoritative "
                "checkout, and handoff root")
         return 2
+    checkpoint_path = output_path / "pipeline_checkpoint.json"
+    if output_path.exists():
+        if output_path.is_symlink() or not output_path.is_dir():
+            _print("pipeline output must be a non-symlink directory")
+            return 2
+        try:
+            existing_entries = tuple(output_path.iterdir())
+        except OSError as exc:
+            _print(f"pipeline output directory could not be inspected: {exc}")
+            return 2
+        if existing_entries and not args.resume:
+            _print("pipeline output must be a fresh directory; use --resume "
+                   "only with a verified resumable checkpoint")
+            return 2
+        if args.resume and not checkpoint_path.is_file():
+            _print("--resume requires an existing pipeline checkpoint")
+            return 2
+    elif args.resume:
+        _print("--resume requires an existing pipeline output directory")
+        return 2
     fingerprint_paths = [
         args.raw,
         args.manifest,
@@ -723,7 +743,6 @@ def cmd_pipeline(args) -> int:
             "required_features": list(args.required_feature),
         },
     )
-    checkpoint_path = out / "pipeline_checkpoint.json"
     preflight = run_preflight(
         args.repo_root,
         handoff_root=args.manifest_root,

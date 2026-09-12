@@ -151,6 +151,23 @@ def test_pipeline_style_envelope_binds_status_and_provenance():
     assert verify_artifact_envelope(tampered)[0] is False
 
 
+def test_pipeline_report_rejects_incoherent_downstream_ready_states():
+    envelope = bind_pipeline_report({
+        "A_CATALOG": {"status": C.PHASE_STATUS_A_BLOCKED},
+        "B_SCREEN": {"status": C.PHASE_STATUS_B_TO_C_BLOCKED},
+        "E_VALIDATION": {"status": C.PHASE_STATUS_E_READY},
+        "F_BRIEFING": {"status": C.PHASE_STATUS_F_READY},
+        "status": C.PHASE_STATUS_B_TO_C_BLOCKED,
+        "provenance": {"framework_contract_sha256": C.contract_hash()},
+    }, exit_code=3)
+
+    valid, errors = verify_pipeline_report(envelope)
+
+    assert valid is False
+    assert any("stage" in error.lower() and "dependency" in error.lower()
+               for error in errors)
+
+
 def test_pipeline_checkpoint_requires_unchanged_inputs(tmp_path):
     source = tmp_path / "raw.json"
     source.write_text("{}", encoding="utf-8")
