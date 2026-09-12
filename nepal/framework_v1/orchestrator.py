@@ -21,6 +21,7 @@ PIPELINE_PROFILE_ID = "FRAMEWORK_V1_FULL"
 PIPELINE_STATUS_COMPLETE = "PIPELINE_COMPLETE"
 PIPELINE_STATUS_BLOCKED = "PIPELINE_BLOCKED"
 PIPELINE_STATUS_INCOMPLETE = "PIPELINE_INCOMPLETE"
+PIPELINE_STATUS_FAILED = "PIPELINE_FAILED"
 PIPELINE_EXIT_CODES = frozenset({0, 2, 3, 4, 5})
 RESUMABLE_PIPELINE_STATES = frozenset({"RUNNING", "INCOMPLETE"})
 
@@ -70,6 +71,8 @@ def _pipeline_status(exit_code: int, report: Mapping[str, Any]) -> str:
         return PIPELINE_STATUS_COMPLETE
     if exit_code == 4:
         return PIPELINE_STATUS_INCOMPLETE
+    if exit_code == 5:
+        return PIPELINE_STATUS_FAILED
     preflight = report.get("preflight")
     if (isinstance(preflight, Mapping) and
             preflight.get("status") == "BASELINE_READY"):

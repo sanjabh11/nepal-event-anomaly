@@ -236,6 +236,26 @@ def test_pipeline_report_rejects_unsupported_exit_code():
     assert any("exit_code" in error.lower() for error in errors)
 
 
+def test_pipeline_exit_five_is_distinct_from_a_gate_block():
+    envelope = bind_pipeline_report({
+        "A_CATALOG": {"status": C.PHASE_STATUS_A_BLOCKED},
+        "B_SCREEN": {"status": C.PHASE_STATUS_B_TO_C_BLOCKED},
+        "E_VALIDATION": {"status": C.PHASE_STATUS_E_BLOCKED},
+        "F_BRIEFING": {"status": C.PHASE_STATUS_F_BLOCKED},
+        "status": C.PHASE_STATUS_A_BLOCKED,
+        "provenance": {"framework_contract_sha256": C.contract_hash()},
+    }, exit_code=5)
+
+    assert envelope["pipeline_status"] == "PIPELINE_FAILED"
+    assert verify_pipeline_report(envelope) == (True, [])
+
+    tampered = copy.deepcopy(envelope)
+    tampered["pipeline_status"] = "PIPELINE_BLOCKED"
+    valid, errors = verify_pipeline_report(tampered)
+    assert valid is False
+    assert any("pipeline_status" in error for error in errors)
+
+
 def test_pipeline_checkpoint_requires_unchanged_inputs(tmp_path):
     source = tmp_path / "raw.json"
     source.write_text("{}", encoding="utf-8")
