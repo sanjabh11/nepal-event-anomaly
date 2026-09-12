@@ -412,6 +412,34 @@ def test_pipeline_does_not_call_b_screen_when_verified_bundle_is_blocked(
     assert not (output / "b_screen.json").exists()
 
 
+def test_pipeline_rejects_symlink_output_before_writing(tmp_path):
+    repo_root = tmp_path / "repo"
+    expected_root = tmp_path / "authoritative"
+    manifest_root = tmp_path / "manifest-root"
+    repo_root.mkdir()
+    expected_root.mkdir()
+    manifest_root.mkdir()
+    raw = tmp_path / "raw.json"
+    manifest = tmp_path / "manifest.json"
+    raw.write_text("[]", encoding="utf-8")
+    manifest.write_text("{}", encoding="utf-8")
+    target = tmp_path / "pipeline-target"
+    target.mkdir()
+    output = tmp_path / "pipeline-link"
+    output.symlink_to(target, target_is_directory=True)
+
+    code = main([
+        "pipeline", "--repo-root", str(repo_root),
+        "--expected-root", str(expected_root), "--raw", str(raw),
+        "--manifest", str(manifest), "--manifest-root", str(manifest_root),
+        "--out", str(output), "--expected-contract-sha256", C.contract_hash(),
+        "--expected-framework-contract-sha256", C.contract_hash(),
+    ])
+
+    assert code == 2
+    assert not (target / "pipeline_report.json").exists()
+
+
 def test_strict_screen_cli_rejects_inline_components(tmp_path):
     root = tmp_path / "root"
     root.mkdir()

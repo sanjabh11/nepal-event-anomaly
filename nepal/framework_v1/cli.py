@@ -735,6 +735,9 @@ def cmd_pipeline(args) -> int:
                              write_validation_artifact)
 
     out = Path(args.out)
+    if out.is_symlink():
+        _print("pipeline output must not be a symlink")
+        return 2
     output_path = out.resolve()
     # Protect every input root before preflight or any output directory is
     # created.  A failed G0 cannot justify writing a diagnostic into a root
