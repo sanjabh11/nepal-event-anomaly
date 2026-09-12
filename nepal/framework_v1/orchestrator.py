@@ -33,6 +33,56 @@ NO_CLAIMS = (
 )
 
 
+def _is_sha256(value: Any) -> bool:
+    """Return whether *value* is a lowercase hexadecimal SHA-256 digest."""
+    return (isinstance(value, str) and len(value) == 64 and
+            all(char in "0123456789abcdef" for char in value))
+
+
+def _ready_stage_evidence_problems(
+        stage_name: str,
+        stage: Mapping[str, Any],
+        *,
+        require_gate_passed: bool = False,
+        required_inner_status: Optional[str] = None,
+        require_envelope_path: bool = False,
+) -> list[str]:
+    """Check the report-level evidence contract for a ready stage.
+
+    The pipeline report does not receive an artifact root, so it cannot
+    re-hash the stage file here.  The stage executor must verify the complete
+    envelope before writing these fields; this helper prevents a report from
+    declaring readiness while omitting the executor's verification marker,
+    digest, or artifact reference.
+    """
+    problems: list[str] = []
+    if stage.get("envelope_verified") is not True:
+        problems.append(
+            f"{stage_name} evidence must report envelope_verified=True")
+    if not _is_sha256(stage.get("artifact_sha256")):
+        problems.append(
+            f"{stage_name} evidence must include a lowercase artifact_sha256")
+    artifact = stage.get("artifact")
+    if not isinstance(artifact, str) or not artifact:
+        problems.append(f"{stage_name} evidence must include an artifact reference")
+    if require_gate_passed and stage.get("gate_passed") is not True:
+        problems.append(f"{stage_name} evidence must report gate_passed=True")
+    if (required_inner_status is not None and
+            stage.get("screen_status") != required_inner_status):
+        problems.append(
+            f"{stage_name} evidence must report screen_status="
+            f"{required_inner_status!r}")
+    if require_envelope_path:
+        envelope = stage.get("envelope")
+        if not isinstance(envelope, str) or not envelope:
+            problems.append(
+                f"{stage_name} evidence must include an envelope reference")
+    verification_errors = stage.get("verification_errors")
+    if verification_errors not in (None, []):
+        problems.append(f"{stage_name} evidence contains verification errors")
+    return problems
+
+
 def pipeline_input_fingerprint(
     paths: Iterable[str | Path],
     *,
@@ -196,6 +246,25 @@ def verify_pipeline_report(payload: Mapping[str, Any]) -> tuple[bool, list[str]]
             if stage_statuses.get(stage) not in allowed:
                 problems.append(
                     f"pipeline report {stage} has an invalid stage status")
+
+        b_stage = payload.get("B_SCREEN")
+        if (stage_statuses.get("B_SCREEN") == C.PHASE_STATUS_B_TO_C_READY and
+                isinstance(b_stage, Mapping)):
+            problems.extend(_ready_stage_evidence_problems(
+                "B_SCREEN", b_stage,
+                require_gate_passed=True,
+                required_inner_status=C.PHASE_STATUS_SCREEN_RANKED,
+            ))
+        e_stage = payload.get("E_VALIDATION")
+        if (stage_statuses.get("E_VALIDATION") == C.PHASE_STATUS_E_READY and
+                isinstance(e_stage, Mapping)):
+            problems.extend(_ready_stage_evidence_problems(
+                "E_VALIDATION", e_stage, require_gate_passed=True))
+        f_stage = payload.get("F_BRIEFING")
+        if (stage_statuses.get("F_BRIEFING") == C.PHASE_STATUS_F_READY and
+                isinstance(f_stage, Mapping)):
+            problems.extend(_ready_stage_evidence_problems(
+                "F_BRIEFING", f_stage, require_envelope_path=True))
 
         a_status = stage_statuses.get("A_CATALOG")
         b_status = stage_statuses.get("B_SCREEN")

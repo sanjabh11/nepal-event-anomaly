@@ -213,6 +213,77 @@ def test_pipeline_report_requires_authenticated_a_evidence_when_a_is_ready():
     assert verify_pipeline_report(complete) == (True, [])
 
 
+def _ready_a_catalog_envelope():
+    return bind_artifact_envelope({
+        "profile_id": "FRAMEWORK_V1_FULL",
+        "artifact_kind": "A_CATALOG",
+        "status": C.PHASE_STATUS_A_READY,
+        "gate": bind_gate_artifact({
+            "gate_id": C.GateId.A_CATALOG.value,
+            "passed": True,
+            "checks": {},
+        }),
+        "provenance": {"framework_contract_sha256": C.contract_hash()},
+    })
+
+
+def test_pipeline_report_requires_downstream_ready_stage_evidence():
+    a_gate = _ready_a_catalog_envelope()
+    base = {
+        "A_CATALOG": {"status": C.PHASE_STATUS_A_READY, "gate": a_gate},
+        "B_SCREEN": {"status": C.PHASE_STATUS_B_TO_C_READY},
+        "E_VALIDATION": {"status": C.PHASE_STATUS_E_BLOCKED},
+        "F_BRIEFING": {"status": C.PHASE_STATUS_F_BLOCKED},
+        "status": C.PHASE_STATUS_B_TO_C_READY,
+        "provenance": {"framework_contract_sha256": C.contract_hash()},
+    }
+
+    missing_b = bind_pipeline_report(base, exit_code=3)
+    valid, errors = verify_pipeline_report(missing_b)
+    assert valid is False
+    assert any("b_screen" in error.lower() and "evidence" in error.lower()
+               for error in errors)
+
+    base["B_SCREEN"] = {
+        "status": C.PHASE_STATUS_B_TO_C_READY,
+        "screen_status": C.PHASE_STATUS_SCREEN_RANKED,
+        "gate_passed": True,
+        "envelope_verified": True,
+        "artifact": "/external/b_screen.json",
+        "artifact_sha256": "a" * 64,
+    }
+    base["E_VALIDATION"] = {"status": C.PHASE_STATUS_E_READY}
+    missing_e = bind_pipeline_report(base, exit_code=3)
+    valid, errors = verify_pipeline_report(missing_e)
+    assert valid is False
+    assert any("e_validation" in error.lower() and "evidence" in error.lower()
+               for error in errors)
+
+    base["E_VALIDATION"] = {
+        "status": C.PHASE_STATUS_E_READY,
+        "gate_passed": True,
+        "envelope_verified": True,
+        "artifact": "/external/validation.json",
+        "artifact_sha256": "b" * 64,
+    }
+    base["F_BRIEFING"] = {"status": C.PHASE_STATUS_F_READY}
+    missing_f = bind_pipeline_report(base, exit_code=3)
+    valid, errors = verify_pipeline_report(missing_f)
+    assert valid is False
+    assert any("f_briefing" in error.lower() and "evidence" in error.lower()
+               for error in errors)
+
+    base["F_BRIEFING"] = {
+        "status": C.PHASE_STATUS_F_READY,
+        "envelope_verified": True,
+        "artifact": "/external/briefing.md",
+        "envelope": "/external/briefing.json",
+        "artifact_sha256": "c" * 64,
+    }
+    complete = bind_pipeline_report(base, exit_code=0)
+    assert verify_pipeline_report(complete) == (True, [])
+
+
 def test_pipeline_report_rejects_incoherent_downstream_ready_states():
     envelope = bind_pipeline_report({
         "A_CATALOG": {"status": C.PHASE_STATUS_A_BLOCKED},
