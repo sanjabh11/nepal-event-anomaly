@@ -465,11 +465,17 @@ def validate_target_array(name: str, array: Any,
                           semantic: Optional[Mapping[str, Any]] = None) -> list[str]:
     """Validate an adapter array without coercing missing data to zero."""
     problems = target.validate()
-    arr = np.asarray(array)
+    try:
+        arr = np.asarray(array, dtype=float)
+    except (TypeError, ValueError):
+        problems.append(f"{name} must contain numeric values")
+        return problems
     if arr.shape != target.shape:
         problems.append(f"{name} shape {arr.shape} != target {target.shape}")
     if arr.ndim != 2:
         problems.append(f"{name} must be a two-dimensional grid")
+    if arr.ndim == 2 and np.isinf(arr).any():
+        problems.append(f"{name} contains infinite values")
     if semantic is not None and arr.ndim == 2:
         finite = np.isfinite(arr)
         if not finite.any():

@@ -253,6 +253,31 @@ class TestStrictBAssembly:
         assert any("built-up surface" in error for error in result["errors"])
         assert result["blocked_reasons"] == result["errors"]
 
+    def test_direct_b_rejects_infinity_and_non_numeric_arrays(self):
+        infinity_result = build_b_screen(
+            {"slope": np.full((300, 300), np.inf)},
+            {}, {},
+            controls_lock=create_controls_lock(
+                ControlsConfig(expected_winter_pairs=1)),
+            a_gate_artifact=_verified_a_gate(),
+            manifest_verification=_verified_manifest(),
+        )
+        assert infinity_result["status"] == "BLOCKED"
+        assert any("infinite" in error.lower()
+                   for error in infinity_result["errors"])
+
+        non_numeric_result = build_b_screen(
+            {"slope": np.asarray([["not-a-number"]], dtype=object)},
+            {}, {},
+            controls_lock=create_controls_lock(
+                ControlsConfig(expected_winter_pairs=1)),
+            a_gate_artifact=_verified_a_gate(),
+            manifest_verification=_verified_manifest(),
+        )
+        assert non_numeric_result["status"] == "BLOCKED"
+        assert any("numeric" in error.lower()
+                   for error in non_numeric_result["errors"])
+
     def test_missing_optional_population_is_reported_not_imputed(self):
         shape = (300, 300)
         terrain = {name: np.ones(shape, dtype=float)
