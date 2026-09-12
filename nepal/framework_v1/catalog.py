@@ -1219,9 +1219,12 @@ def verify_phase_a_envelope(
     if not isinstance(provenance, Mapping):
         problems.append("envelope provenance is missing or malformed")
         provenance = {}
-    runtime_contract = (expected_framework_contract_sha256
-                        if expected_framework_contract_sha256 is not None
-                        else C.contract_hash())
+    runtime_contract = C.contract_hash()
+    if (expected_framework_contract_sha256 is not None and
+            expected_framework_contract_sha256 != runtime_contract):
+        problems.append(
+            "expected framework contract hash does not match the runtime "
+            "framework contract")
     if provenance.get("framework_contract_sha256") != runtime_contract:
         problems.append("envelope framework contract hash does not match the "
                         "runtime framework contract")

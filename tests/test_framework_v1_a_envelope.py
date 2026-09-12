@@ -337,6 +337,23 @@ class TestContractAndPreregistrationBinding:
         assert ok is False
         assert any("framework contract" in p.lower() for p in problems)
 
+    def test_stale_expected_framework_hash_cannot_authorize_forged_envelope(
+            self, tmp_path):
+        out, env = self._materialized(tmp_path)
+
+        def forge(payload):
+            payload["provenance"]["framework_contract_sha256"] = "0" * 64
+            return payload
+
+        ok, problems = verify_phase_a_envelope(
+            rebind_envelope(env, forge),
+            out_dir=out,
+            expected_framework_contract_sha256="0" * 64,
+        )
+        assert ok is False
+        assert any("runtime framework contract" in p.lower()
+                   for p in problems)
+
     def test_changed_preregistration_hash_rejected(self, tmp_path):
         out, env = self._materialized(tmp_path)
 
