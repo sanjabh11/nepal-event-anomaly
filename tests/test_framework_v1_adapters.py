@@ -356,7 +356,7 @@ class TestStrictBAssembly:
         checkpoint_payload = json.loads(checkpoint.read_text(encoding="utf-8"))
         assert verify_artifact_envelope(checkpoint_payload) == (True, [])
 
-    def test_b_screen_with_complete_map_has_explicit_gate(self):
+    def test_b_screen_with_complete_map_has_explicit_gate(self, tmp_path):
         shape = (300, 300)
         terrain = {name: np.ones(shape, dtype=float)
                    for name in C.TERRAIN_COMPONENTS}
@@ -377,6 +377,7 @@ class TestStrictBAssembly:
             a_gate_artifact=_verified_a_gate(),
             manifest_verification=_verified_manifest(),
             sidecar_grids={"thermal": np.zeros(shape)},
+            checkpoint_path=tmp_path / "b_checkpoint.json",
         )
         assert result["gate"]["gate_id"] == "B_TO_C"
         assert result["gate"]["checks"][
@@ -385,6 +386,10 @@ class TestStrictBAssembly:
         assert result["status"] == C.PHASE_STATUS_SCREEN_RANKED
         assert result["phase_status"] == C.PHASE_STATUS_B_TO_C_READY
         assert verify_artifact_envelope(result) == (True, [])
+        checkpoint = json.loads(
+            (tmp_path / "b_checkpoint.json").read_text(encoding="utf-8"))
+        assert verify_artifact_envelope(checkpoint) == (True, [])
+        assert checkpoint["result_artifact_sha256"] == result["artifact_sha256"]
 
 
 def test_b_input_loader_is_read_only_and_fail_closed_without_manifest(tmp_path):

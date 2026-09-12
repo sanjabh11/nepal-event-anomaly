@@ -1177,7 +1177,7 @@ def build_b_screen(
     bound = bind_artifact_envelope(bound)
     try:
         _checkpoint("completed", "COMPLETED",
-                    artifact_sha256=bound["artifact_sha256"],
+                    result_artifact_sha256=bound["artifact_sha256"],
                     phase_status=bound["phase_status"])
     except OSError as exc:
         # A result cannot be advertised as resumable if its checkpoint could
