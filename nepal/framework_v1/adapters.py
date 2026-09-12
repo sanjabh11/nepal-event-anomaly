@@ -352,6 +352,12 @@ def load_verified_b_input_bundle(
              expected_framework_contract_sha256)):
         if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value):
             problems.append(f"{name} must be an explicit lowercase SHA-256")
+    if (isinstance(expected_framework_contract_sha256, str) and
+            re.fullmatch(r"[0-9a-f]{64}", expected_framework_contract_sha256) and
+            expected_framework_contract_sha256 != C.contract_hash()):
+        problems.append(
+            "expected framework contract hash does not match the runtime "
+            "framework contract")
     if problems:
         return BInputBundle("BLOCKED", None, tuple(problems))
     return load_b_input_bundle(

@@ -389,6 +389,17 @@ def test_verified_b_loader_requires_both_explicit_contract_hashes(tmp_path):
     assert any("explicit" in error for error in bundle.errors)
 
 
+def test_verified_b_loader_rejects_stale_runtime_framework_hash(tmp_path):
+    bundle = load_verified_b_input_bundle(
+        tmp_path,
+        expected_contract_sha256="a" * 64,
+        expected_framework_contract_sha256="0" * 64,
+    )
+    assert bundle.status == "BLOCKED"
+    assert any("runtime framework contract" in error.lower()
+               for error in bundle.errors)
+
+
 def test_current_reconciled_handoff_stays_blocked_until_semantic_b_inputs_exist():
     from pathlib import Path
     root = Path(__file__).resolve().parents[1] / "data" / \

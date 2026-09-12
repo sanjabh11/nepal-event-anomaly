@@ -84,6 +84,19 @@ class TestInputManifestVerification:
         assert result.checks["framework_contract_declared"] is False
         assert result.checks["framework_contract_declaration_bound"] is False
 
+    def test_stale_expected_framework_hash_cannot_authorize_current_runtime(
+            self, tmp_path):
+        manifest = _manifest(tmp_path)
+        result = verify_input_manifest(
+            manifest, tmp_path,
+            expected_contract_sha256=C.contract_hash(),
+            expected_framework_contract_sha256="0" * 64)
+        assert result.ok is False
+        assert result.can_run_primary is False
+        assert result.checks["framework_contract_runtime_bound"] is False
+        assert any("runtime framework contract" in error.lower()
+                   for error in result.errors)
+
     def test_self_hash_is_canonical_not_pretty_json(self, tmp_path):
         manifest = _manifest(tmp_path)
         assert manifest["manifest_sha256"] == hashlib.sha256(

@@ -790,6 +790,13 @@ def verify_input_manifest(
     expected_framework_valid = (
         isinstance(expected_framework_contract_sha256, str) and
         bool(SHA256_RE.fullmatch(expected_framework_contract_sha256)))
+    runtime_framework_match = (
+        expected_framework_valid and
+        expected_framework_contract_sha256 == C.contract_hash())
+    if expected_framework_valid and not runtime_framework_match:
+        errors.append(
+            "requested framework contract hash does not match the runtime "
+            "framework contract")
     declared_framework_valid = (
         declared_framework is None or
         (isinstance(declared_framework, str) and
@@ -801,9 +808,10 @@ def verify_input_manifest(
     checks["framework_contract_declaration_valid"] = declared_framework_valid
     checks["framework_contract_declaration_bound"] = (
         declared_framework is not None and expected_framework_valid and
+        runtime_framework_match and
         declared_framework == expected_framework_contract_sha256)
     checks["framework_contract_runtime_bound"] = (
-        expected_framework_valid and declared_framework_valid and
+        runtime_framework_match and declared_framework_valid and
         (declared_framework is None or
          declared_framework == expected_framework_contract_sha256))
     # Backward-compatible alias: this field means runtime binding, not merely
