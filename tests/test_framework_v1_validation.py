@@ -37,6 +37,15 @@ def _control(uid, group, score, coverage="FULL"):
             "observation_coverage": coverage}
 
 
+def _outer_a(gate):
+    return bind_artifact_envelope({
+        "profile_id": "FRAMEWORK_V1_FULL",
+        "artifact_kind": "A_CATALOG",
+        "gate": gate,
+        "provenance": {"framework_contract_sha256": C.contract_hash()},
+    })
+
+
 class TestWilson:
     def test_reference_8_of_10(self):
         lo, hi = wilson_interval(8, 10)
@@ -380,6 +389,7 @@ class TestStrictValidationContract:
             "passed": True,
             "checks": {},
         })
+        a_gate = _outer_a(a_gate)
         b_gate = bind_artifact_envelope({
             "gate": bind_gate_artifact({
                 "gate_id": C.GateId.B_TO_C.value,
@@ -517,6 +527,7 @@ class TestStrictValidationContract:
                   "catalog_sha256": summary["input_hashes"]["catalog"],
                   "holdout_plan_sha256": plan["plan_sha256"]}
         a_gate["gate_artifact_sha256"] = sha256_canonical(a_gate)
+        a_gate = _outer_a(a_gate)
         b_gate = {"gate": {"gate_id": "B_TO_C", "passed": True},
                   "provenance": {
                       "input_manifest_sha256": manifest_hash,
@@ -574,3 +585,18 @@ class TestStrictValidationContract:
                                b_gate_passed=True,
                                input_manifest_verified=True)
         assert gate["passed"] is False
+
+    def test_e_gate_rejects_direct_a_gate_without_authenticated_envelope(self):
+        direct_a = bind_gate_artifact({
+            "gate_id": C.GateId.A_CATALOG.value,
+            "passed": True,
+            "checks": {},
+        })
+        gate = evaluate_e_gate(
+            {"status": "INDETERMINATE", "input_hashes": {},
+             "validation_errors": []},
+            a_gate_artifact=direct_a,
+            controls_lock=LOCK,
+        )
+        assert gate["passed"] is False
+        assert gate["checks"]["hash_bound_A_outer_envelope"]["passed"] is False

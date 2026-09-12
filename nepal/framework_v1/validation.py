@@ -280,7 +280,8 @@ def run_validation(events: Sequence, controls: Sequence, *,
                     validation_errors.append("input manifest raw SLC scan did not pass")
         if a_gate_artifact is not None:
             a_ok, a_inner, _, a_errors = verify_gate_input(
-                a_gate_artifact, expected_gate_id=C.GateId.A_CATALOG.value)
+                a_gate_artifact, expected_gate_id=C.GateId.A_CATALOG.value,
+                require_outer_envelope=True)
             verified_a_passed = bool(
                 a_ok and isinstance(a_inner, Mapping) and
                 a_inner.get("passed") is True)
@@ -558,7 +559,8 @@ def _gate_envelope(value: Any, *, expected_gate_id: str) -> tuple[
     """Extract a gate and its optional envelope without trusting booleans."""
     ok, inner, outer, errors = verify_gate_input(
         value, expected_gate_id=expected_gate_id,
-        require_outer_envelope=(expected_gate_id == C.GateId.B_TO_C.value))
+        require_outer_envelope=(expected_gate_id in {
+            C.GateId.A_CATALOG.value, C.GateId.B_TO_C.value}))
     # ``ok`` is intentionally not returned: callers separately verify the
     # nested gate so that their checks can expose distinct A/B evidence.
     del ok
@@ -612,7 +614,7 @@ def evaluate_e_gate(summary: Mapping[str, Any], *,
         b_gate or {}, expected_gate_id=C.GateId.B_TO_C.value)
     a_errors = a_extract_errors + a_hash_errors
     b_errors = b_extract_errors + b_hash_errors
-    a_envelope_hash_ok = a_envelope is None
+    a_envelope_hash_ok = False
     if isinstance(a_envelope, Mapping):
         a_envelope_hash_ok, a_envelope_errors = verify_artifact_envelope(
             a_envelope)
@@ -689,7 +691,7 @@ def evaluate_e_gate(summary: Mapping[str, Any], *,
             "passed": a_passed, "errors": a_errors},
         "hash_bound_A_outer_envelope": {
             "passed": a_envelope_hash_ok,
-            "required": isinstance(a_envelope, Mapping),
+            "required": True,
         },
         "A_catalog_hash_matches_summary": {"passed": a_catalog_match},
         "A_holdout_plan_hash_matches_summary": {"passed": a_plan_match},
