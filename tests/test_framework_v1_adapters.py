@@ -223,6 +223,24 @@ class TestStrictBAssembly:
         assert any("manifest verification" in error
                    for error in result["errors"])
 
+    def test_direct_b_assembly_enforces_component_value_domains(self):
+        shape = (300, 300)
+        terrain = {name: np.ones(shape, dtype=float)
+                   for name in C.ACTIVE_TERRAIN_COMPONENTS}
+        exposure = {name: np.ones(shape, dtype=float)
+                    for name in C.ACTIVE_EXPOSURE_COMPONENTS}
+        exposure["built_up"][0, 0] = -1.0
+        result = build_b_screen(
+            terrain, exposure, {},
+            controls_lock=create_controls_lock(
+                ControlsConfig(expected_winter_pairs=1)),
+            a_gate_artifact=_verified_a_gate(),
+            manifest_verification=_verified_manifest(),
+        )
+        assert result["status"] == "BLOCKED"
+        assert any("built-up surface" in error for error in result["errors"])
+        assert result["blocked_reasons"] == result["errors"]
+
     def test_missing_optional_population_is_reported_not_imputed(self):
         shape = (300, 300)
         terrain = {name: np.ones(shape, dtype=float)

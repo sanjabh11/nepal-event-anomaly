@@ -384,6 +384,7 @@ def build_b_screen_from_bundle(
             "gate_passed": False,
             "phase_status": C.PHASE_STATUS_B_TO_C_BLOCKED,
             "errors": sorted(set(problems)),
+            "blocked_reasons": sorted(set(problems)),
             "gate": bind_gate_artifact({
                 "gate_id": C.GateId.B_TO_C.value, "passed": False,
                 "checks": {}, "problems": sorted(set(problems)),
@@ -398,6 +399,7 @@ def build_b_screen_from_bundle(
             "gate_passed": False,
             "phase_status": C.PHASE_STATUS_B_TO_C_BLOCKED,
             "errors": [problem],
+            "blocked_reasons": [problem],
             "gate": bind_gate_artifact({
                 "gate_id": C.GateId.B_TO_C.value, "passed": False,
                 "checks": {"gate_A_passed": {"passed": False}},
@@ -418,6 +420,7 @@ def build_b_screen_from_bundle(
                 "gate_passed": False,
                 "phase_status": C.PHASE_STATUS_B_TO_C_BLOCKED,
                 "errors": sorted(set(problems)),
+                "blocked_reasons": sorted(set(problems)),
                 "provenance": {"a_gate_artifact_sha256":
                                 gate_input_artifact_sha256(a_gate_artifact)},
                 "gate": bind_gate_artifact({
@@ -491,6 +494,23 @@ def validate_target_array(name: str, array: Any,
                     (values >= 0.0) & (values <= 1.0)):
                 problems.append(f"{name} contains values outside fraction domain [0, 1]")
     return problems
+
+
+_COMPONENT_SEMANTICS: dict[str, Mapping[str, Any]] = {
+    "built_up": C.B_ARTIFACT_SEMANTICS["ghsl_built_up_surface"],
+    "infrastructure": C.B_ARTIFACT_SEMANTICS[
+        "osm_infrastructure_grid_300x300_100m_32645"],
+    "river_connectivity": C.B_ARTIFACT_SEMANTICS[
+        "hydrorivers_connectivity_grid_300x300_100m_32645"],
+    "hanging_ice_support": C.B_ARTIFACT_SEMANTICS[
+        "hanging_ice_support_grid"],
+    "population": C.B_ARTIFACT_SEMANTICS["worldpop_population"],
+}
+
+
+def _component_semantic(name: str) -> Optional[Mapping[str, Any]]:
+    """Return the artifact semantic contract for a derived component name."""
+    return _COMPONENT_SEMANTICS.get(name)
 
 
 def reproject_dem_to_target(dem_path: str, *,
@@ -904,6 +924,7 @@ def build_b_screen(
             "gate_passed": False,
             "phase_status": C.PHASE_STATUS_B_TO_C_BLOCKED,
             "errors": [problem],
+            "blocked_reasons": [problem],
             "gate": gate,
             "provenance": {
                 "framework_contract_sha256": C.contract_hash(),
@@ -1009,7 +1030,9 @@ def build_b_screen(
         if name not in terrain_grids:
             problems.append(f"missing terrain component: {name}")
         else:
-            problems.extend(validate_target_array(name, terrain_grids[name], target))
+            problems.extend(validate_target_array(
+                name, terrain_grids[name], target,
+                semantic=_component_semantic(name)))
     for name in (*C.ACTIVE_EXPOSURE_COMPONENTS,
                  *C.OPTIONAL_EXPOSURE_COMPONENTS):
         if name not in C.ACTIVE_EXPOSURE_COMPONENTS and name not in exposure_grids:
@@ -1017,7 +1040,9 @@ def build_b_screen(
         if name not in exposure_grids:
             problems.append(f"missing exposure component: {name}")
         else:
-            problems.extend(validate_target_array(name, exposure_grids[name], target))
+            problems.extend(validate_target_array(
+                name, exposure_grids[name], target,
+                semantic=_component_semantic(name)))
     if not isinstance(observability_by_unit, Mapping):
         problems.append("per-analysis-unit winter observability must be a mapping")
     else:
@@ -1059,6 +1084,7 @@ def build_b_screen(
             "phase_status": C.PHASE_STATUS_B_TO_C_BLOCKED,
             "gate": gate,
             "errors": sorted(set(problems)),
+            "blocked_reasons": sorted(set(problems)),
             "provenance": provenance,
             "runtime": {
                 "elapsed_seconds": time.perf_counter() - perf_started,
