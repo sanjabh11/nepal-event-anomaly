@@ -69,7 +69,9 @@ def _pipeline_status(exit_code: int, report: Mapping[str, Any]) -> str:
         return PIPELINE_STATUS_COMPLETE
     if exit_code == 4:
         return PIPELINE_STATUS_INCOMPLETE
-    if report.get("preflight", {}).get("status") == "BASELINE_READY":
+    preflight = report.get("preflight")
+    if (isinstance(preflight, Mapping) and
+            preflight.get("status") == "BASELINE_READY"):
         return PIPELINE_STATUS_BLOCKED
     return PIPELINE_STATUS_BLOCKED
 
@@ -114,6 +116,9 @@ def verify_pipeline_report(payload: Mapping[str, Any]) -> tuple[bool, list[str]]
     if not isinstance(payload.get("no_claims"), list) or not payload.get(
             "no_claims"):
         problems.append("pipeline report no_claims is required")
+    if ("preflight" in payload and
+            not isinstance(payload.get("preflight"), Mapping)):
+        problems.append("pipeline report preflight must be an object")
     exit_code = payload.get("exit_code")
     if not isinstance(exit_code, int) or isinstance(exit_code, bool):
         problems.append("pipeline report exit_code must be an integer")
