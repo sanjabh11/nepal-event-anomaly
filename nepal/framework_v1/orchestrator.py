@@ -200,6 +200,12 @@ def verify_pipeline_report(payload: Mapping[str, Any]) -> tuple[bool, list[str]]
                 )):
             problems.append(
                 "pipeline exit 0 requires every stage to be ready")
+        if (a_status == C.PHASE_STATUS_A_READY and
+                b_status == C.PHASE_STATUS_B_TO_C_READY and
+                e_status == C.PHASE_STATUS_E_READY and
+                f_status == C.PHASE_STATUS_F_READY and exit_code != 0):
+            problems.append(
+                "all stages ready requires pipeline exit 0")
     return ok and not problems, problems
 
 
