@@ -755,6 +755,17 @@ def cmd_pipeline(args) -> int:
             _print("pipeline output must be a non-symlink directory")
             return 2
         try:
+            output_symlinks = sorted(
+                path for path in output_path.rglob("*")
+                if path.is_symlink())
+        except OSError as exc:
+            _print(f"pipeline output symlink scan failed: {exc}")
+            return 2
+        if output_symlinks:
+            _print("pipeline output must not contain symlinks: "
+                   f"{output_symlinks[0]}")
+            return 2
+        try:
             existing_entries = tuple(output_path.iterdir())
         except OSError as exc:
             _print(f"pipeline output directory could not be inspected: {exc}")

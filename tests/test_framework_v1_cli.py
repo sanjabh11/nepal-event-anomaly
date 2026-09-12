@@ -440,6 +440,84 @@ def test_pipeline_rejects_symlink_output_before_writing(tmp_path):
     assert not (target / "pipeline_report.json").exists()
 
 
+def test_pipeline_rejects_descendant_symlink_on_resume_before_materializing(
+        tmp_path, monkeypatch):
+    """A resumed run must not write through a symlinked output child."""
+    from nepal.framework_v1 import catalog as catalog_module
+    from nepal.framework_v1 import orchestrator as orchestrator_module
+    from nepal.framework_v1 import preflight as preflight_module
+    from nepal.framework_v1 import input_manifest as input_manifest_module
+
+    repo_root = tmp_path / "repo"
+    expected_root = tmp_path / "authoritative"
+    manifest_root = tmp_path / "manifest-root"
+    repo_root.mkdir()
+    expected_root.mkdir()
+    manifest_root.mkdir()
+    raw = tmp_path / "raw.json"
+    manifest = tmp_path / "manifest.json"
+    raw.write_text("[]", encoding="utf-8")
+    manifest.write_text("{}", encoding="utf-8")
+
+    output = tmp_path / "pipeline-output"
+    output.mkdir()
+    target = tmp_path / "redirected-output"
+    target.mkdir()
+    (output / "catalog").symlink_to(target, target_is_directory=True)
+
+    fingerprint_paths = [
+        raw,
+        manifest,
+        repo_root / input_manifest_module.AUTHORITATIVE_DATA_CONTRACT_PATH,
+        repo_root / input_manifest_module.AUTHORITATIVE_FRAMEWORK_CONTRACT_PATH,
+        repo_root / C.PREREGISTRATION_PATH,
+    ]
+    fingerprint = orchestrator_module.pipeline_input_fingerprint(
+        fingerprint_paths,
+        values={
+            "expected_root": str(expected_root.resolve()),
+            "manifest_root": str(manifest_root.resolve()),
+            "expected_contract_sha256": C.contract_hash(),
+            "expected_framework_contract_sha256": C.contract_hash(),
+            "minimum_free_gib": 0.0,
+            "timeout_seconds": None,
+            "min_pairs": 30,
+            "access_date": None,
+            "required_features": [],
+        },
+    )
+    orchestrator_module.write_pipeline_checkpoint(
+        output / "pipeline_checkpoint.json",
+        {"run_state": "INCOMPLETE", "stage": "A_CATALOG"},
+        input_fingerprint=fingerprint,
+    )
+
+    monkeypatch.setattr(preflight_module, "run_preflight", lambda *args, **kwargs: {
+        "ok": True, "status": "BASELINE_READY", "failures": [],
+    })
+    materialization_called = False
+
+    def fail_if_materialized(*args, **kwargs):
+        nonlocal materialization_called
+        materialization_called = True
+        raise AssertionError("pipeline materialized through a symlinked child")
+
+    monkeypatch.setattr(catalog_module, "build_catalog", fail_if_materialized)
+
+    code = main([
+        "pipeline", "--resume", "--repo-root", str(repo_root),
+        "--expected-root", str(expected_root), "--raw", str(raw),
+        "--manifest", str(manifest), "--manifest-root", str(manifest_root),
+        "--out", str(output), "--expected-contract-sha256", C.contract_hash(),
+        "--expected-framework-contract-sha256", C.contract_hash(),
+        "--minimum-free-gib", "0",
+    ])
+
+    assert code == 2
+    assert materialization_called is False
+    assert not (target / "pipeline_report.json").exists()
+
+
 def test_strict_screen_cli_rejects_inline_components(tmp_path):
     root = tmp_path / "root"
     root.mkdir()
