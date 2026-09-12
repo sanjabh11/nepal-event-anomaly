@@ -119,6 +119,82 @@ def test_pipeline_cli_is_wired_and_blocks_wrong_authoritative_root(tmp_path):
     assert report["F_BRIEFING"]["status"] == C.PHASE_STATUS_F_BLOCKED
 
 
+def test_pipeline_does_not_call_b_screen_when_verified_bundle_is_blocked(
+        tmp_path, monkeypatch):
+    """A blocked bundle must stop before any B ranking invocation."""
+    from nepal.framework_v1 import adapters as adapters_module
+    from nepal.framework_v1 import catalog as catalog_module
+    from nepal.framework_v1 import preflight as preflight_module
+    from nepal.framework_v1.controls import create_controls_lock
+    from nepal.framework_v1.adapters import BInputBundle
+
+    repo_root = tmp_path / "repo"
+    expected_root = tmp_path / "authoritative"
+    manifest_root = tmp_path / "manifest-root"
+    repo_root.mkdir()
+    expected_root.mkdir()
+    manifest_root.mkdir()
+    raw_path = tmp_path / "raw.json"
+    raw_path.write_text("[]", encoding="utf-8")
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    output = tmp_path / "pipeline-output"
+    controls_lock = create_controls_lock(ControlsConfig())
+    a_gate_path = tmp_path / "a_envelope.json"
+    a_gate = bind_artifact_envelope({
+        "profile_id": "FRAMEWORK_V1_FULL",
+        "gate": bind_gate_artifact({
+            "gate_id": C.GateId.A_CATALOG.value,
+            "passed": True,
+            "checks": {},
+        }),
+        "provenance": {},
+    })
+    a_gate_path.write_text(json.dumps(a_gate), encoding="utf-8")
+    ranking_called = False
+
+    def fake_build_b_screen(*args, **kwargs):
+        nonlocal ranking_called
+        ranking_called = True
+        raise AssertionError("B ranking called for a blocked bundle")
+
+    monkeypatch.setattr(preflight_module, "run_preflight", lambda *args, **kwargs: {
+        "ok": True,
+        "status": "BASELINE_READY",
+        "failures": [],
+    })
+    monkeypatch.setattr(catalog_module, "build_catalog", lambda *args, **kwargs: {
+        "controls_lock": controls_lock,
+    })
+    monkeypatch.setattr(catalog_module, "materialize_phase_a", lambda *args, **kwargs: {
+        "envelope": a_gate_path,
+    })
+    monkeypatch.setattr(catalog_module, "verify_phase_a_envelope",
+                        lambda *args, **kwargs: (True, []))
+    monkeypatch.setattr(
+        adapters_module, "load_verified_b_input_bundle",
+        lambda *args, **kwargs: BInputBundle(
+            status="BLOCKED", verification=None,
+            errors=("required B artifact is incomplete",)))
+    monkeypatch.setattr(adapters_module, "build_b_screen_from_bundle",
+                        fake_build_b_screen)
+
+    code = main([
+        "pipeline", "--repo-root", str(repo_root),
+        "--expected-root", str(expected_root), "--raw", str(raw_path),
+        "--manifest", str(manifest_path), "--manifest-root", str(manifest_root),
+        "--out", str(output), "--expected-contract-sha256", C.contract_hash(),
+        "--expected-framework-contract-sha256", C.contract_hash(),
+        "--minimum-free-gib", "0",
+    ])
+
+    report = json.loads((output / "pipeline_report.json").read_text())
+    assert code == 2
+    assert ranking_called is False
+    assert report["B_SCREEN"]["status"] == C.PHASE_STATUS_B_TO_C_BLOCKED
+    assert not (output / "b_screen.json").exists()
+
+
 def test_strict_screen_cli_rejects_inline_components(tmp_path):
     root = tmp_path / "root"
     root.mkdir()
