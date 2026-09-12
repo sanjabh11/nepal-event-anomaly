@@ -351,6 +351,25 @@ def _validate_b_manifest_declarations(manifest: Mapping[str, Any]) -> list[str]:
     waivers = manifest.get("waivers")
     if not isinstance(waivers, list):
         problems.append("B manifest waivers must be an explicit list")
+    else:
+        required_ids = set(PHASE_REQUIRED_ARTIFACT_IDS["B"])
+        blocking_statuses = {
+            "INCOMPLETE", "INVALID", "PROVISIONAL", "UNAVAILABLE",
+            "UNAVAILABLE_OR_INCOMPLETE",
+        }
+        for index, waiver in enumerate(waivers):
+            if not isinstance(waiver, Mapping):
+                problems.append(f"B manifest waiver[{index}] must be an object")
+                continue
+            artifact_id = waiver.get("artifact_id")
+            if artifact_id not in required_ids:
+                continue
+            status = str(waiver.get("status", "")).upper()
+            boundary = _phase_text(waiver.get("claim_boundary")).lower()
+            if status in blocking_statuses or "must not authorize strict b" in boundary:
+                problems.append(
+                    f"B manifest waiver[{index}] blocks strict B for required "
+                    f"artifact {artifact_id!r}")
     return problems
 
 
@@ -519,6 +538,10 @@ def validate_phase_artifact(artifact: Mapping[str, Any], phase: str) -> list[str
             f"{artifact_id}: required phase {phase_name} artifact status is "
             f"{artifact.get('status')!r}, not READY")
         return problems
+    if artifact.get("incomplete_reason") not in (None, ""):
+        problems.append(
+            f"{artifact_id}: READY artifact has incomplete_reason; it cannot "
+            "be consumed by a strict phase")
 
     processing = _phase_text(artifact.get("processing")).lower()
     for marker in _READY_PROCESSING_MARKERS:

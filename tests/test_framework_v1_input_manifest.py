@@ -12,6 +12,7 @@ from nepal.framework_v1.input_manifest import (
     B_TARGET_GRID_ARTIFACT_IDS,
     canonical_input_manifest_hash,
     _validate_contract_source_bindings,
+    _validate_b_manifest_declarations,
     validate_artifact_bundle,
     validate_phase_artifact,
     verify_input_manifest,
@@ -264,6 +265,43 @@ class TestInputManifestVerification:
         }
         problems = validate_phase_artifact(artifact, "B")
         assert any("substitut" in problem.lower() for problem in problems)
+
+    def test_ready_artifact_with_incomplete_reason_is_not_phase_consumable(self):
+        artifact = {
+            "artifact_id": "hanging_ice_support_grid",
+            "role": "B",
+            "kind": "raster",
+            "status": "READY",
+            "processing": "support proxy only; not independent detection",
+            "incomplete_reason": "producer linkage is missing",
+        }
+        problems = validate_phase_artifact(artifact, "B")
+        assert any("incomplete_reason" in problem for problem in problems)
+
+    def test_required_artifact_waiver_blocks_strict_b(self):
+        manifest = {
+            "manifest_hash_encoding": "canonical_json",
+            "canonical_hash_domain": "canonical_json_without_manifest_sha256",
+            "data_contract_source_path": "nepal/feature_contract.py",
+            "framework_contract_source_path": "nepal/framework_v1/contract.py",
+            "data_contract_source_sha256": "a" * 64,
+            "framework_contract_source_sha256": "b" * 64,
+            "dirty_diff_sha256": "c" * 64,
+            "code_revision": "test-revision",
+            "package_inventory": [{
+                "relative_path": "test.json",
+                "sha256": "d" * 64,
+                "bytes": 0,
+            }],
+            "waivers": [{
+                "artifact_id": "dem_300x300_100m_32645",
+                "claim_boundary": "must not authorize strict B",
+                "status": "INCOMPLETE",
+            }],
+        }
+        problems = _validate_b_manifest_declarations(manifest)
+        assert any("waiver" in problem.lower() and "strict b" in problem.lower()
+                   for problem in problems)
 
     def test_vector_bundle_requires_and_verifies_sidecars(self, tmp_path):
         main = tmp_path / "subset.shp"
