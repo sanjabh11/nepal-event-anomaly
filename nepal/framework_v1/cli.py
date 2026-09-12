@@ -335,6 +335,11 @@ def cmd_screen(args) -> int:
                for root in protected_roots):
             _print("strict B output must be outside protected roots")
             return 2
+        requested_output = Path(args.out)
+        if requested_output.exists() or requested_output.is_symlink():
+            _print("strict B output must be a new path; refusing to overwrite "
+                   "an existing result")
+            return 2
 
         try:
             config = _load_json(args.config) if args.config else {}

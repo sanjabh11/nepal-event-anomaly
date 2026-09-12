@@ -67,6 +67,19 @@ def test_strict_screen_cli_fails_closed_without_manifest(tmp_path):
     assert result["production_authorized"] is False
 
 
+def test_strict_screen_does_not_overwrite_existing_output(tmp_path):
+    config = tmp_path / "config.json"
+    config.write_text("{}", encoding="utf-8")
+    out = tmp_path / "screen.json"
+    out.write_text("sentinel", encoding="utf-8")
+
+    code = main(["screen", "--config", str(config), "--strict",
+                 "--out", str(out)])
+
+    assert code == 2
+    assert out.read_text(encoding="utf-8") == "sentinel"
+
+
 def test_strict_validate_writes_blocked_diagnostic_when_upstreams_are_missing(
         tmp_path):
     events = tmp_path / "events.json"
