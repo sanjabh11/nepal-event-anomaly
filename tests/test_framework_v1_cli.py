@@ -80,6 +80,29 @@ def test_strict_screen_does_not_overwrite_existing_output(tmp_path):
     assert out.read_text(encoding="utf-8") == "sentinel"
 
 
+def test_strict_screen_rejects_checkpoint_inside_protected_root(tmp_path):
+    repo_root = tmp_path / "repo"
+    manifest_root = tmp_path / "manifest-root"
+    expected_root = tmp_path / "expected-root"
+    repo_root.mkdir()
+    manifest_root.mkdir()
+    expected_root.mkdir()
+    out = tmp_path / "screen.json"
+    checkpoint = manifest_root / "screen.checkpoint.json"
+
+    code = main([
+        "screen", "--strict", "--out", str(out),
+        "--checkpoint", str(checkpoint),
+        "--repo-root", str(repo_root),
+        "--manifest-root", str(manifest_root),
+        "--expected-root", str(expected_root),
+    ])
+
+    assert code == 2
+    assert not out.exists()
+    assert not checkpoint.exists()
+
+
 def test_strict_validate_writes_blocked_diagnostic_when_upstreams_are_missing(
         tmp_path):
     events = tmp_path / "events.json"

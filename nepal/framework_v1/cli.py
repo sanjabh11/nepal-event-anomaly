@@ -340,6 +340,23 @@ def cmd_screen(args) -> int:
             _print("strict B output must be a new path; refusing to overwrite "
                    "an existing result")
             return 2
+        requested_checkpoint = (Path(args.checkpoint) if args.checkpoint else
+                                requested_output.with_name(
+                                    requested_output.name + ".checkpoint.json"))
+        checkpoint_path = requested_checkpoint.resolve(strict=False)
+        if (checkpoint_path == output_path or
+                output_path in checkpoint_path.parents):
+            _print("strict B checkpoint must be distinct from the result path")
+            return 2
+        if any(checkpoint_path == root or root in checkpoint_path.parents
+               for root in protected_roots):
+            _print("strict B checkpoint must be outside protected roots")
+            return 2
+        if (requested_checkpoint.exists() or
+                requested_checkpoint.is_symlink()):
+            _print("strict B checkpoint must be a new path; refusing to "
+                   "overwrite an existing checkpoint")
+            return 2
 
         try:
             config = _load_json(args.config) if args.config else {}
@@ -449,13 +466,10 @@ def cmd_screen(args) -> int:
             _print(f"B_SCREEN status: {result['status']}")
             return 2
         try:
-            checkpoint = (args.checkpoint or
-                          str(Path(args.out).with_name(
-                              Path(args.out).name + ".checkpoint.json")))
             result = build_b_screen_from_bundle(
                 bundle, controls_lock=lock, a_gate_artifact=a_gate,
                 timeout_seconds=args.timeout_seconds,
-                checkpoint_path=checkpoint)
+                checkpoint_path=checkpoint_path)
         except (OSError, TypeError, ValueError, RuntimeError, C.FrameworkError) as exc:
             result = _strict_b_diagnostic(
                 [f"strict B execution failed: {exc}"],
