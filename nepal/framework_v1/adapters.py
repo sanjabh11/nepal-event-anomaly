@@ -912,7 +912,12 @@ def build_b_screen(
             "active_exposure_components": list(C.ACTIVE_EXPOSURE_COMPONENTS),
         }
         payload.update(extra)
-        write_deterministic_json(checkpoint_path, payload)
+        # A checkpoint is a resumability/security boundary, so authenticate
+        # the complete payload just like the result envelope.  This prevents
+        # a mutable progress file from being mistaken for the stage state it
+        # claims to describe.
+        write_deterministic_json(
+            checkpoint_path, bind_artifact_envelope(payload))
 
     def _check(stage: str) -> None:
         if progress_callback is not None:

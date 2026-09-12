@@ -353,6 +353,8 @@ class TestStrictBAssembly:
         assert result["gate_passed"] is False
         assert checkpoint.exists()
         assert checkpoint.read_text().find('"status":"TIMEOUT"') >= 0
+        checkpoint_payload = json.loads(checkpoint.read_text(encoding="utf-8"))
+        assert verify_artifact_envelope(checkpoint_payload) == (True, [])
 
     def test_b_screen_with_complete_map_has_explicit_gate(self):
         shape = (300, 300)
