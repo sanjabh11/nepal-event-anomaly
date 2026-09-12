@@ -15,6 +15,7 @@ from typing import Any, Iterable, Mapping, Optional
 from . import contract as C
 from .provenance import (bind_artifact_envelope, canonical_json,
                          sha256_file, verify_artifact_envelope,
+                         verify_gate_input,
                          write_deterministic_json)
 
 PIPELINE_PROFILE_ID = "FRAMEWORK_V1_FULL"
@@ -150,6 +151,27 @@ def verify_pipeline_report(payload: Mapping[str, Any]) -> tuple[bool, list[str]]
     for stage in stages:
         if not isinstance(payload.get(stage), Mapping):
             problems.append(f"pipeline report stage {stage} is required")
+    a_stage = payload.get("A_CATALOG")
+    if (isinstance(a_stage, Mapping) and
+            a_stage.get("status") == C.PHASE_STATUS_A_READY):
+        a_ok, a_inner, a_outer, a_errors = verify_gate_input(
+            a_stage.get("gate"),
+            expected_gate_id=C.GateId.A_CATALOG.value,
+            require_outer_envelope=True,
+        )
+        if not a_ok:
+            problems.extend("A_CATALOG evidence: " + error
+                            for error in a_errors)
+        elif not isinstance(a_inner, Mapping) or a_inner.get("passed") is not True:
+            problems.append("A_CATALOG evidence: verified gate is not passed")
+        if isinstance(a_outer, Mapping):
+            a_provenance = a_outer.get("provenance")
+            if (not isinstance(a_provenance, Mapping) or
+                    a_provenance.get("framework_contract_sha256") !=
+                    C.contract_hash()):
+                problems.append(
+                    "A_CATALOG evidence: outer envelope framework contract "
+                    "does not match runtime")
     stage_statuses = payload.get("stage_statuses")
     if not isinstance(stage_statuses, Mapping):
         problems.append("pipeline report stage_statuses are required")

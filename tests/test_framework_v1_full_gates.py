@@ -178,6 +178,41 @@ def test_pipeline_report_requires_runtime_framework_contract_provenance():
     assert any("framework contract" in error.lower() for error in errors)
 
 
+def test_pipeline_report_requires_authenticated_a_evidence_when_a_is_ready():
+    blocked = {
+        "B_SCREEN": {"status": "B_TO_C_BLOCKED"},
+        "E_VALIDATION": {"status": "E_BLOCKED"},
+        "F_BRIEFING": {"status": "F_BLOCKED"},
+        "status": "B_TO_C_BLOCKED",
+    }
+    missing = bind_pipeline_report({
+        **blocked,
+        "A_CATALOG": {"status": "A_READY"},
+    }, exit_code=3)
+
+    valid, errors = verify_pipeline_report(missing)
+
+    assert valid is False
+    assert any("a_catalog" in error.lower() and "evidence" in error.lower()
+               for error in errors)
+
+    a_gate = bind_artifact_envelope({
+        "profile_id": "FRAMEWORK_V1_FULL",
+        "gate": bind_gate_artifact({
+            "gate_id": C.GateId.A_CATALOG.value,
+            "passed": True,
+            "checks": {},
+        }),
+        "provenance": {"framework_contract_sha256": C.contract_hash()},
+    })
+    complete = bind_pipeline_report({
+        **blocked,
+        "A_CATALOG": {"status": "A_READY", "gate": a_gate},
+    }, exit_code=3)
+
+    assert verify_pipeline_report(complete) == (True, [])
+
+
 def test_pipeline_report_rejects_incoherent_downstream_ready_states():
     envelope = bind_pipeline_report({
         "A_CATALOG": {"status": C.PHASE_STATUS_A_BLOCKED},
