@@ -20,16 +20,20 @@ Policies implemented here (see contract.CATALOG_ELIGIBILITY_RULES):
 """
 from __future__ import annotations
 
+import json
 import re
 import math
 from datetime import date, timedelta
+from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
 from . import contract as C
-from .controls import ControlsConfig, create_controls_lock
-from .provenance import (sha256_canonical, write_deterministic_csv,
+from .controls import ControlsConfig, ControlsLock, create_controls_lock
+from .provenance import (sha256_canonical, sha256_file, write_deterministic_csv,
                          write_deterministic_json, build_manifest,
-                         bind_gate_artifact)
+                         bind_gate_artifact, verify_gate_artifact,
+                         bind_artifact_envelope, verify_artifact_envelope,
+                         verify_manifest)
 
 
 
@@ -937,3 +941,480 @@ def write_phase_a_artifacts(result: Mapping, out_dir) -> dict:
 def hashlib_sha256(text: str) -> str:
     import hashlib
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# Authenticated Phase A envelope (primary materialization path)
+# ---------------------------------------------------------------------------
+#
+# The five artifacts written by ``write_phase_a_artifacts`` are kept unchanged
+# for compatibility; that path is NON-PRIMARY (it publishes a self-hashed gate
+# but no outer binding).  The authenticated envelope below is the primary
+# Phase A output: an outer, self-hashed document binding the exact source
+# catalog bytes, the controls lock, the frozen holdout plan, both contract
+# hashes, the preregistration hash, the processing configuration, the per-row
+# source-row hashes, the complete source/output hash inventory, and the frozen
+# source-supported claim boundary.
+#
+# Verification never trusts a caller-supplied boolean.  With the exact source
+# catalog bytes available it recomputes the entire Phase A pipeline
+# independently and requires canonical equality with the materialized state.
+
+A_ENVELOPE_FILENAME = "a_envelope.json"
+A_ENVELOPE_TYPE = "PHASE_A_CATALOG_ENVELOPE"
+A_PRIMARY_ARTIFACTS = A_ARTIFACTS + (A_ENVELOPE_FILENAME,)
+
+A_ELIGIBILITY_STATUSES = frozenset({
+    C.OutputStatus.ELIGIBLE.value, C.OutputStatus.INELIGIBLE.value})
+
+A_SOURCE_LIMITATIONS: dict[str, Any] = {
+    "mechanism_independently_adjudicated": False,
+    "catalog_source_validated": True,
+    "mechanism_confirmation_scope":
+        "SOURCE_CITATION_ONLY_NOT_INDEPENDENT_FIELD_ADJUDICATION",
+    "claim_scope": "source_supported_catalog_claims_only",
+    "data_source_status": C.PREREGISTRATION_DATA_SOURCE_STATUS,
+}
+
+_SHA256_RE = re.compile(r"[0-9a-f]{64}")
+
+
+def load_source_catalog_records(path: "str | Path") -> list[dict[str, Any]]:
+    """Load raw catalog records deterministically from a source document.
+
+    Accepted shapes: a JSON array of records, or a JSON object carrying the
+    records under ``events`` or ``records``.  Anything else is rejected.
+    """
+    document = json.loads(Path(path).read_text(encoding="utf-8"))
+    if isinstance(document, list):
+        return [dict(rec) for rec in document if isinstance(rec, Mapping)]
+    if isinstance(document, Mapping):
+        for key in ("events", "records"):
+            value = document.get(key)
+            if isinstance(value, list):
+                return [dict(rec) for rec in value if isinstance(rec, Mapping)]
+    raise ValueError(
+        f"source catalog {Path(path).name} is not a record collection "
+        "(expected a JSON array, or an object with an 'events'/'records' list)")
+
+
+def _event_ledger(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Per-event source-row hash + status ledger, sorted by event id."""
+    return [{
+        "event_id": row["event_id"],
+        "source_row_index": row.get("source_row_index"),
+        "eligibility_status": row["eligibility_status"],
+        "holdout_group": row["holdout_group"],
+        "raw_row_sha256": row[RAW_ROW_HASH_FIELD],
+    } for row in sorted(rows, key=lambda r: r["event_id"])]
+
+def materialize_phase_a(
+    result: Mapping[str, Any],
+    out_dir: "str | Path",
+    *,
+    source_catalog_path: "str | Path",
+    source_artifacts: Optional[Mapping[str, "str | Path"]] = None,
+    data_contract_sha256: Optional[str] = None,
+    language: str = "en",
+    access_date: Optional[str] = None,
+) -> dict[str, Path]:
+    """Write the primary, authenticated Phase A artifact set.
+
+    Writes the five compatibility artifacts unchanged, then adds
+    ``a_envelope.json``: an outer self-hashed envelope binding the gate state,
+    event ledger, holdout groups, controls, source limitations, provenance,
+    and the complete source/output hash inventory.  All writes are atomic and
+    deterministic; identical inputs produce byte-identical outputs.
+    """
+    if data_contract_sha256 is not None and not _SHA256_RE.fullmatch(
+            str(data_contract_sha256)):
+        raise ValueError(
+            "data_contract_sha256 must be a lowercase sha256 hex digest")
+    named_sources = dict(source_artifacts or {})
+    for name in named_sources:
+        if not isinstance(name, str) or not name or name in A_PRIMARY_ARTIFACTS:
+            raise ValueError(f"invalid source artifact name: {name!r}")
+
+    out = Path(out_dir)
+    paths = write_phase_a_artifacts(result, out)
+    gate = json.loads(paths["gate"].read_text(encoding="utf-8"))
+    holdout_plan = json.loads(paths["holdout_plan"].read_text(encoding="utf-8"))
+    lock_document = json.loads(paths["controls_lock"].read_text(encoding="utf-8"))
+    rows = sorted(result["rows"], key=lambda r: r["event_id"])
+
+    envelope: dict[str, Any] = {
+        "envelope_type": A_ENVELOPE_TYPE,
+        "algorithm": C.HASH_ALGORITHM,
+        "framework_version": C.FRAMEWORK_VERSION,
+        "gate": gate,
+        "holdout_plan": holdout_plan,
+        "controls_lock": lock_document,
+        "events": _event_ledger(rows),
+        "holdout_groups": sorted({row["holdout_group"] for row in rows}),
+        "source_limitations": dict(A_SOURCE_LIMITATIONS),
+        "processing_config": {
+            "language": language,
+            "access_date": access_date,
+            "controls_sha256": lock_document["sha256"],
+            "recompute_policy": (
+                "full_authentication_requires_rebuild_from_exact_source_bytes"),
+        },
+        "provenance": {
+            "gate_id": C.GateId.A_CATALOG.value,
+            "framework_version": C.FRAMEWORK_VERSION,
+            "framework_contract_sha256": C.contract_hash(),
+            "preregistration_sha256": C.PREREGISTRATION_SHA256,
+            "preregistration_data_source_status":
+                C.PREREGISTRATION_DATA_SOURCE_STATUS,
+            "data_contract_sha256": data_contract_sha256,
+            "source_catalog_sha256": sha256_file(source_catalog_path),
+            "source_catalog_name": Path(source_catalog_path).name,
+            "source_artifact_hashes": {
+                name: sha256_file(path)
+                for name, path in sorted(named_sources.items())
+            },
+        },
+        "output_artifact_hashes": {
+            name: sha256_file(out / name) for name in A_ARTIFACTS
+        },
+    }
+    bound = bind_artifact_envelope(envelope)
+    envelope_path = out / A_ENVELOPE_FILENAME
+    write_deterministic_json(envelope_path, bound)
+    paths["envelope"] = envelope_path
+    return paths
+
+
+def _verify_holdout_plan_document(plan: Any, problems: list[str]) -> Optional[str]:
+    if not isinstance(plan, Mapping) or "plan_sha256" not in plan:
+        problems.append("envelope holdout plan is missing or malformed")
+        return None
+    recomputed = sha256_canonical(
+        {k: v for k, v in plan.items() if k != "plan_sha256"})
+    if plan["plan_sha256"] != recomputed:
+        problems.append("holdout plan sha256 does not match its content "
+                        "(plan was modified after freezing)")
+    if plan.get("frozen_before_eligibility_filtering") is not True:
+        problems.append("holdout plan is not marked frozen before eligibility "
+                        "filtering")
+    return plan["plan_sha256"]
+
+
+def _verify_gate_document(gate: Any, plan_sha256: Optional[str],
+                          problems: list[str]) -> None:
+    if not isinstance(gate, Mapping):
+        problems.append("envelope gate is missing or malformed")
+        return
+    gate_ok, gate_problems = verify_gate_artifact(
+        gate, expected_gate_id=C.GateId.A_CATALOG.value)
+    if not gate_ok:
+        problems.extend(gate_problems)
+    if plan_sha256 is not None and gate.get("holdout_plan_sha256") != plan_sha256:
+        problems.append("gate holdout-plan binding does not match the "
+                        "envelope holdout plan")
+    checks = gate.get("checks")
+    if not isinstance(checks, Mapping) or not checks:
+        problems.append("gate checks are missing or malformed")
+        checks = {}
+    for name, check in checks.items():
+        if not isinstance(check, Mapping) or not isinstance(
+                check.get("passed"), bool):
+            problems.append(f"gate check {name!r} has no boolean verdict")
+    boolean_checks = [check for check in checks.values()
+                      if isinstance(check, Mapping)
+                      and isinstance(check.get("passed"), bool)]
+    recomputed_pass = all(bool(check["passed"]) for check in boolean_checks) \
+        if boolean_checks else None
+    recorded_pass = gate.get("passed")
+    if not isinstance(recorded_pass, bool):
+        problems.append("gate passed flag must be a boolean")
+    elif recomputed_pass is not None and recorded_pass != recomputed_pass:
+        problems.append("gate passed flag does not match its recorded checks "
+                        "(forged or stale gate boolean)")
+    if gate.get("claim_scope") != A_SOURCE_LIMITATIONS["claim_scope"]:
+        problems.append("gate claim scope deviates from the frozen "
+                        "source-supported boundary")
+    mechanism = gate.get("mechanism_validation")
+    if (not isinstance(mechanism, Mapping)
+            or mechanism.get("mechanism_independently_adjudicated") is not False):
+        problems.append("gate does not preserve the frozen limitation that "
+                        "mechanisms are NOT independently adjudicated")
+
+
+def _verify_event_ledger(events: Any, gate: Mapping[str, Any],
+                         problems: list[str]) -> None:
+    if not isinstance(events, list):
+        problems.append("envelope event ledger is missing or malformed")
+        return
+    for event in events:
+        if not isinstance(event, Mapping):
+            problems.append("event ledger entry is not a mapping")
+            continue
+        if not isinstance(event.get("event_id"), str) or not event["event_id"]:
+            problems.append("event ledger entry has no event_id")
+        if event.get("eligibility_status") not in A_ELIGIBILITY_STATUSES:
+            problems.append(
+                f"unsupported eligibility status "
+                f"{event.get('eligibility_status')!r} for "
+                f"{event.get('event_id')!r}")
+        group = event.get("holdout_group")
+        if not isinstance(group, str) or not group:
+            problems.append(f"event {event.get('event_id')!r} has no fixed "
+                            "holdout group")
+        digest = event.get("raw_row_sha256")
+        if not isinstance(digest, str) or not _SHA256_RE.fullmatch(digest):
+            problems.append(
+                f"event {event.get('event_id')!r} has no valid source-row "
+                "sha256")
+    if gate.get("n_rows_total") != len(events):
+        problems.append("gate row count does not match the event ledger")
+    eligible = [e for e in events
+                if isinstance(e, Mapping)
+                and e.get("eligibility_status") == C.OutputStatus.ELIGIBLE.value]
+    if gate.get("n_eligible") != len(eligible):
+        problems.append("gate eligible count does not match the event ledger")
+    elig_groups = sorted({e["holdout_group"] for e in eligible
+                          if isinstance(e, Mapping)
+                          and isinstance(e.get("holdout_group"), str)})
+    if gate.get("eligible_holdout_groups") != elig_groups:
+        problems.append("gate eligible holdout groups do not match the "
+                        "event ledger")
+
+
+def verify_phase_a_envelope(
+    envelope: Any,
+    *,
+    out_dir: Optional["str | Path"] = None,
+    source_catalog_path: Optional["str | Path"] = None,
+    source_artifacts: Optional[Mapping[str, "str | Path"]] = None,
+    data_contract_sha256: Optional[str] = None,
+    expected_framework_contract_sha256: Optional[str] = None,
+) -> tuple[bool, list[str]]:
+    """Typed verification of a Phase A authenticated envelope.
+
+    Hash-level verification (``out_dir``) re-checks every recorded output
+    artifact byte.  Full authentication additionally requires
+    ``source_catalog_path``: the Phase A pipeline is recomputed independently
+    from the exact source bytes and must reproduce the envelope's gate,
+    holdout plan, and event ledger canonically.  No caller-supplied boolean
+    can authorize A: a ``passed`` flag is evidence only when every recorded
+    check, hash, and recomputation agrees with it.
+    """
+    problems: list[str] = []
+    if not isinstance(envelope, Mapping):
+        return False, ["phase A envelope must be a mapping"]
+
+    envelope_ok, envelope_problems = verify_artifact_envelope(envelope)
+    if not envelope_ok:
+        problems.extend(envelope_problems)
+
+    if envelope.get("envelope_type") != A_ENVELOPE_TYPE:
+        problems.append(f"envelope_type must be {A_ENVELOPE_TYPE!r}")
+    if envelope.get("algorithm") != C.HASH_ALGORITHM:
+        problems.append("envelope algorithm must be " + C.HASH_ALGORITHM)
+    if envelope.get("framework_version") != C.FRAMEWORK_VERSION:
+        problems.append("envelope framework_version does not match the runtime")
+
+    provenance = envelope.get("provenance")
+    if not isinstance(provenance, Mapping):
+        problems.append("envelope provenance is missing or malformed")
+        provenance = {}
+    runtime_contract = (expected_framework_contract_sha256
+                        if expected_framework_contract_sha256 is not None
+                        else C.contract_hash())
+    if provenance.get("framework_contract_sha256") != runtime_contract:
+        problems.append("envelope framework contract hash does not match the "
+                        "runtime framework contract")
+    if provenance.get("preregistration_sha256") != C.PREREGISTRATION_SHA256:
+        problems.append("envelope preregistration hash does not match the "
+                        "frozen preregistration")
+    if provenance.get("preregistration_data_source_status") != \
+            C.PREREGISTRATION_DATA_SOURCE_STATUS:
+        problems.append("envelope data-source status is not "
+                        f"{C.PREREGISTRATION_DATA_SOURCE_STATUS!r}")
+    recorded_data_contract = provenance.get("data_contract_sha256")
+    if recorded_data_contract is not None and (
+            not isinstance(recorded_data_contract, str)
+            or not _SHA256_RE.fullmatch(recorded_data_contract)):
+        problems.append("envelope data contract hash is not a sha256 digest")
+    if data_contract_sha256 is not None:
+        if recorded_data_contract is None:
+            problems.append("envelope carries no data-contract binding but an "
+                            "expected data contract hash was supplied")
+        elif recorded_data_contract != data_contract_sha256:
+            problems.append("envelope data contract hash does not match the "
+                            "expected data contract")
+    source_catalog_sha256 = provenance.get("source_catalog_sha256")
+    if not isinstance(source_catalog_sha256, str) or not _SHA256_RE.fullmatch(
+            source_catalog_sha256):
+        problems.append("envelope source catalog sha256 is missing or invalid")
+
+    limitations = envelope.get("source_limitations")
+    if limitations != A_SOURCE_LIMITATIONS:
+        problems.append("envelope source limitations deviate from the frozen "
+                        "source-supported boundary (mechanisms are NOT "
+                        "independently adjudicated; claims are "
+                        "source-supported catalog claims only; data source "
+                        "status is POST_HOC_DATA_SOURCE_CHANGE)")
+
+    lock_document = envelope.get("controls_lock")
+    lock_sha256: Optional[str] = None
+    if isinstance(lock_document, Mapping):
+        try:
+            lock = ControlsLock.from_dict(lock_document)
+        except (KeyError, TypeError) as exc:
+            problems.append(f"controls lock is malformed: {exc}")
+        else:
+            if not lock.verify():
+                problems.append("controls lock sha256 does not match its "
+                                "controls payload (controls were modified "
+                                "after freezing)")
+            lock_sha256 = lock_document.get("sha256")
+    else:
+        problems.append("envelope controls lock is missing or malformed")
+
+    processing = envelope.get("processing_config")
+    if not isinstance(processing, Mapping):
+        problems.append("envelope processing config is missing or malformed")
+        processing = {}
+    if lock_sha256 is not None and processing.get("controls_sha256") != lock_sha256:
+        problems.append("processing config controls hash does not match the "
+                        "envelope controls lock")
+
+    plan_sha256 = _verify_holdout_plan_document(
+        envelope.get("holdout_plan"), problems)
+    gate = envelope.get("gate")
+    _verify_gate_document(gate, plan_sha256, problems)
+    if isinstance(gate, Mapping):
+        _verify_event_ledger(envelope.get("events"), gate, problems)
+
+    # ---- hash-level verification against the materialized outputs ----------
+    if out_dir is not None:
+        out = Path(out_dir)
+        recorded_outputs = envelope.get("output_artifact_hashes")
+        if not isinstance(recorded_outputs, Mapping):
+            problems.append("envelope output artifact inventory is missing or "
+                            "malformed")
+            recorded_outputs = {}
+        for name in recorded_outputs:
+            if name not in A_ARTIFACTS:
+                problems.append(f"unexpected output artifact inventory entry: "
+                                f"{name!r}")
+        for name in A_ARTIFACTS:
+            digest = recorded_outputs.get(name)
+            artifact = out / name
+            if not isinstance(digest, str) or not _SHA256_RE.fullmatch(digest):
+                problems.append(f"invalid recorded sha256 for output artifact: "
+                                f"{name}")
+                continue
+            if not artifact.exists():
+                problems.append(f"missing artifact: {name}")
+                continue
+            if not artifact.is_file():
+                problems.append(f"artifact path is not a file: {name}")
+                continue
+            actual = sha256_file(artifact)
+            if actual != digest:
+                problems.append(f"checksum mismatch: {name} ({digest} -> "
+                                f"{actual})")
+        manifest_path = out / "catalog_manifest.json"
+        if not manifest_path.exists():
+            problems.append("missing artifact: catalog_manifest.json")
+        else:
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except ValueError as exc:
+                problems.append(f"catalog manifest is not valid JSON: {exc}")
+            else:
+                manifest_ok, manifest_problems = verify_manifest(out, manifest)
+                if not manifest_ok:
+                    problems.extend(manifest_problems)
+                files = manifest.get("files")
+                if (isinstance(files, Mapping) and set(files) !=
+                        set(recorded_outputs) - {"catalog_manifest.json"}):
+                    problems.append("manifest artifact inventory does not "
+                                    "match the envelope output inventory")
+        for name, filename in (("gate", "catalog_gate.json"),
+                               ("holdout_plan", "holdout_plan.json"),
+                               ("controls_lock", "controls_lock.json")):
+            artifact = out / filename
+            if not artifact.exists():
+                continue
+            try:
+                on_disk = json.loads(artifact.read_text(encoding="utf-8"))
+            except ValueError as exc:
+                problems.append(f"{filename} is not valid JSON: {exc}")
+                continue
+            if on_disk != envelope.get(name):
+                problems.append(f"envelope {name} does not match the "
+                                f"materialized {filename}")
+
+    # ---- full authentication: independent recomputation --------------------
+    if source_catalog_path is not None and isinstance(lock_document, Mapping):
+        source = Path(source_catalog_path)
+        if not source.exists():
+            problems.append(f"source catalog not found: {source.name}")
+        else:
+            actual_source = sha256_file(source)
+            if actual_source != source_catalog_sha256:
+                problems.append(
+                    f"source catalog bytes do not match the envelope binding "
+                    f"({source_catalog_sha256} -> {actual_source})")
+            try:
+                raw_records = load_source_catalog_records(source)
+                rebuilt = build_catalog(
+                    raw_records,
+                    controls=ControlsConfig.from_dict(
+                        dict(lock_document.get("controls", {}))),
+                    language=str(processing.get("language", "en")),
+                    access_date=processing.get("access_date"))
+            except ValueError as exc:
+                problems.append(f"source catalog is not loadable: {exc}")
+            except Exception as exc:  # fail closed on any recomputation error
+                problems.append(f"independent Phase A recomputation failed: "
+                                f"{type(exc).__name__}: {exc}")
+            else:
+                if sha256_canonical(rebuilt["gate"]) != sha256_canonical(gate):
+                    problems.append(
+                        "gate does not match an independent recomputation "
+                        "from the exact source catalog bytes (catalog, "
+                        "controls, or holdout plan were changed)")
+                if sha256_canonical(rebuilt["holdout_plan"]) != \
+                        sha256_canonical(envelope.get("holdout_plan")):
+                    problems.append(
+                        "holdout plan does not match an independent "
+                        "recomputation from the exact source catalog bytes")
+                rebuilt_ledger = _event_ledger(rebuilt["rows"])
+                if sha256_canonical(rebuilt_ledger) != sha256_canonical(
+                        envelope.get("events")):
+                    problems.append(
+                        "event ledger does not match an independent "
+                        "recomputation from the exact source catalog bytes")
+
+    # ---- recorded source artifacts ----------------------------------------
+    recorded_sources = provenance.get("source_artifact_hashes")
+    if not isinstance(recorded_sources, Mapping):
+        problems.append("envelope source artifact inventory is missing or "
+                        "malformed")
+        recorded_sources = {}
+    provided = dict(source_artifacts or {})
+    for name, path in sorted(provided.items()):
+        recorded = recorded_sources.get(name)
+        if not isinstance(recorded, str):
+            problems.append(f"source artifact {name!r} is not recorded in the "
+                            "envelope")
+            continue
+        if not Path(path).exists():
+            problems.append(f"missing source artifact: {name}")
+            continue
+        actual = sha256_file(path)
+        if actual != recorded:
+            problems.append(f"source artifact checksum mismatch: {name} "
+                            f"({recorded} -> {actual})")
+    if source_catalog_path is not None:
+        for name in sorted(recorded_sources):
+            if name not in provided:
+                problems.append(f"source artifact {name!r} not provided for "
+                                "verification")
+
+    return (not problems, problems)
