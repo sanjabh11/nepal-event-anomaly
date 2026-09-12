@@ -414,7 +414,8 @@ def build_b_screen_from_bundle(
         })
     if a_gate_artifact is not None:
         a_ok, a_inner, _, a_problems = verify_gate_input(
-            a_gate_artifact, expected_gate_id=C.GateId.A_CATALOG.value)
+            a_gate_artifact, expected_gate_id=C.GateId.A_CATALOG.value,
+            require_outer_envelope=True)
         if not a_ok:
             problems = [f"A gate artifact: {problem}" for problem in a_problems]
         elif not isinstance(a_inner, Mapping) or a_inner.get("passed") is not True:

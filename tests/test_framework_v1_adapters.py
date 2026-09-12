@@ -8,9 +8,11 @@ import pytest
 
 from nepal.framework_v1 import contract as C
 from nepal.framework_v1.adapters import (
+    BInputBundle,
     TargetGrid,
     _load_b_observability,
     build_b_screen,
+    build_b_screen_from_bundle,
     load_b_input_bundle,
     load_verified_b_input_bundle,
     per_unit_winter_observability,
@@ -200,6 +202,21 @@ class TestPerUnitObservability:
 
 
 class TestStrictBAssembly:
+    def test_bundle_b_rejects_direct_a_gate_without_outer_envelope(self):
+        bundle = BInputBundle(
+            C.PHASE_STATUS_LOAD_READY,
+            _verified_manifest(),
+        )
+        result = build_b_screen_from_bundle(
+            bundle,
+            controls_lock=create_controls_lock(
+                ControlsConfig(expected_winter_pairs=1)),
+            a_gate_artifact=_verified_a_gate(),
+        )
+        assert result["status"] == "BLOCKED"
+        assert any("outer artifact envelope is required" in error
+                   for error in result["errors"])
+
     def test_direct_b_rejects_forged_manifest_mapping(self):
         result = build_b_screen(
             {}, {}, {},
