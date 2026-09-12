@@ -143,13 +143,13 @@ def verify_pipeline_report(payload: Mapping[str, Any]) -> tuple[bool, list[str]]
                 problems.append(
                     f"pipeline report stage_statuses does not match {stage}")
         allowed_stage_statuses = {
-            "A_CATALOG": {C.PHASE_STATUS_A_READY, C.PHASE_STATUS_A_BLOCKED},
-            "B_SCREEN": {C.PHASE_STATUS_B_TO_C_READY,
-                          C.PHASE_STATUS_B_TO_C_BLOCKED},
-            "E_VALIDATION": {C.PHASE_STATUS_E_READY,
-                              C.PHASE_STATUS_E_BLOCKED},
-            "F_BRIEFING": {C.PHASE_STATUS_F_READY,
-                            C.PHASE_STATUS_F_BLOCKED},
+            "A_CATALOG": (C.PHASE_STATUS_A_READY, C.PHASE_STATUS_A_BLOCKED),
+            "B_SCREEN": (C.PHASE_STATUS_B_TO_C_READY,
+                          C.PHASE_STATUS_B_TO_C_BLOCKED),
+            "E_VALIDATION": (C.PHASE_STATUS_E_READY,
+                              C.PHASE_STATUS_E_BLOCKED),
+            "F_BRIEFING": (C.PHASE_STATUS_F_READY,
+                            C.PHASE_STATUS_F_BLOCKED),
         }
         for stage, allowed in allowed_stage_statuses.items():
             if stage_statuses.get(stage) not in allowed:

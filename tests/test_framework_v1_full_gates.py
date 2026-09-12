@@ -202,6 +202,24 @@ def test_pipeline_report_rejects_non_object_stage_without_raising():
                for error in errors)
 
 
+def test_pipeline_report_rejects_unhashable_stage_status_without_raising():
+    envelope = bind_pipeline_report({
+        "A_CATALOG": {"status": C.PHASE_STATUS_A_BLOCKED},
+        "B_SCREEN": {"status": C.PHASE_STATUS_B_TO_C_BLOCKED},
+        "E_VALIDATION": {"status": C.PHASE_STATUS_E_BLOCKED},
+        "F_BRIEFING": {"status": C.PHASE_STATUS_F_BLOCKED},
+        "status": C.PHASE_STATUS_B_TO_C_BLOCKED,
+        "provenance": {"framework_contract_sha256": C.contract_hash()},
+    }, exit_code=3)
+    tampered = copy.deepcopy(envelope)
+    tampered["stage_statuses"]["A_CATALOG"] = []
+
+    valid, errors = verify_pipeline_report(tampered)
+
+    assert valid is False
+    assert any("stage_statuses" in error.lower() for error in errors)
+
+
 def test_pipeline_checkpoint_requires_unchanged_inputs(tmp_path):
     source = tmp_path / "raw.json"
     source.write_text("{}", encoding="utf-8")
