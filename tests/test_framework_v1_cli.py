@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from pathlib import Path
 import subprocess
 import sys
 
@@ -11,7 +12,8 @@ from nepal.framework_v1.cli import main
 from nepal.framework_v1.controls import ControlsConfig, create_controls_lock
 from nepal.framework_v1.input_manifest import canonical_input_manifest_hash
 from nepal.framework_v1.provenance import (bind_artifact_envelope,
-                                            bind_gate_artifact)
+                                            bind_gate_artifact,
+                                            verify_artifact_envelope)
 from nepal.framework_v1.validation import write_validation_artifact
 
 
@@ -58,7 +60,45 @@ def test_strict_screen_cli_fails_closed_without_manifest(tmp_path):
     out = tmp_path / "screen.json"
     code = main(["screen", "--config", str(config), "--strict", "--out", str(out)])
     assert code == 2
-    assert json.loads(out.read_text())["status"] == "BLOCKED"
+    result = json.loads(out.read_text())
+    assert result["status"] == "BLOCKED"
+    assert verify_artifact_envelope(result) == (True, [])
+    assert result["blocked_reasons"]
+    assert result["production_authorized"] is False
+
+
+def test_strict_screen_cli_malformed_manifest_is_authenticated_block(tmp_path):
+    root = tmp_path / "root"
+    root.mkdir()
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text("{not-json", encoding="utf-8")
+    lock_path = tmp_path / "controls_lock.json"
+    lock_path.write_text(
+        json.dumps(create_controls_lock(ControlsConfig()).to_dict()),
+        encoding="utf-8")
+    a_gate_path = tmp_path / "a.json"
+    a_gate_path.write_text(json.dumps(bind_gate_artifact({
+        "gate_id": C.GateId.A_CATALOG.value,
+        "passed": True,
+        "checks": {},
+    })), encoding="utf-8")
+    config = tmp_path / "config.json"
+    config.write_text("{}", encoding="utf-8")
+    out = tmp_path / "screen.json"
+    code = main([
+        "screen", "--config", str(config), "--strict",
+        "--manifest", str(manifest_path), "--manifest-root", str(root),
+        "--controls-lock", str(lock_path), "--a-gate", str(a_gate_path),
+        "--repo-root", str(Path(__file__).resolve().parents[1]),
+        "--expected-root", str(Path(__file__).resolve().parents[1]),
+        "--expected-contract-sha256", C.contract_hash(),
+        "--expected-framework-contract-sha256", C.contract_hash(),
+        "--out", str(out),
+    ])
+    assert code == 2
+    result = json.loads(out.read_text())
+    assert verify_artifact_envelope(result) == (True, [])
+    assert any("manifest" in error.lower() for error in result["errors"])
 
 
 def test_pipeline_cli_is_wired_and_blocks_wrong_authoritative_root(tmp_path):
@@ -103,10 +143,11 @@ def test_strict_screen_cli_rejects_inline_components(tmp_path):
         "--expected-framework-contract-sha256", C.contract_hash(),
         "--require-artifact", "cli_payload", "--out", str(out),
     ])
-    assert code == 3
+    assert code == 2
     result = json.loads(out.read_text())
     assert result["status"] == "BLOCKED"
     assert any("inline" in error.lower() for error in result["errors"])
+    assert verify_artifact_envelope(result) == (True, [])
 
 
 def test_contract_cli_verification_remains_available(capsys):

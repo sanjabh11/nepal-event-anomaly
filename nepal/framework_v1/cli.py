@@ -10,7 +10,8 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from . import contract as C
-from .provenance import write_deterministic_json
+from .provenance import (bind_artifact_envelope, bind_gate_artifact,
+                         write_deterministic_json)
 
 
 def _print(out: str) -> None:
@@ -55,6 +56,47 @@ def cmd_catalog(args) -> int:
 
 def _load_json(path: str | Path):
     return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def _strict_b_diagnostic(errors: list[str], *, reason: str,
+                         details: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Build an authenticated, fail-closed strict-B diagnostic envelope."""
+    unique_errors = sorted(set(str(error) for error in errors if str(error)))
+    gate = bind_gate_artifact({
+        "gate_id": C.GateId.B_TO_C.value,
+        "passed": False,
+        "checks": {"strict_input_preconditions": {"passed": False}},
+        "problems": unique_errors,
+    })
+    result: dict[str, Any] = {
+        "profile_id": "FRAMEWORK_V1_FULL",
+        "framework_version": C.FRAMEWORK_VERSION,
+        "status": C.OutputStatus.BLOCKED.value,
+        "gate_id": C.GateId.B_TO_C.value,
+        "gate_passed": False,
+        "phase_status": C.PHASE_STATUS_B_TO_C_BLOCKED,
+        "reason": reason,
+        "errors": unique_errors,
+        "blocked_reasons": unique_errors,
+        "promotion_eligible": False,
+        "production_authorized": False,
+        "no_claims": [
+            "No B-to-C authorization",
+            "No scientific, warning, production, or authority claim",
+        ],
+        "gate": gate,
+    }
+    if isinstance(details, Mapping):
+        result.update(dict(details))
+    return bind_artifact_envelope(result)
+
+
+def _write_strict_b_diagnostic(path: str | Path, errors: list[str], *,
+                               reason: str,
+                               details: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    result = _strict_b_diagnostic(errors, reason=reason, details=details)
+    write_deterministic_json(path, result)
+    return result
 
 
 def cmd_manifest(args) -> int:
@@ -221,7 +263,25 @@ def cmd_screen(args) -> int:
                                load_verified_b_input_bundle)
         from .controls import load_controls_lock
         from .preflight import run_preflight
-        config = _load_json(args.config) if args.config else {}
+        from .provenance import verify_artifact_envelope
+
+        output_path = Path(args.out).resolve(strict=False)
+        protected_roots = [Path(value).resolve(strict=False) for value in (
+            args.repo_root, args.manifest_root, args.expected_root)
+            if value]
+        if any(output_path == root or root in output_path.parents
+               for root in protected_roots):
+            _print("strict B output must be outside protected roots")
+            return 2
+
+        try:
+            config = _load_json(args.config) if args.config else {}
+        except (OSError, TypeError, ValueError) as exc:
+            result = _write_strict_b_diagnostic(
+                args.out, [f"strict screen config could not be loaded: {exc}"],
+                reason="strict screen input loading failed")
+            _print(f"B_SCREEN status: {result['status']}")
+            return 2
         config_errors: list[str] = []
         if not isinstance(config, dict):
             config_errors.append("strict screen config must be an object")
@@ -245,53 +305,54 @@ def cmd_screen(args) -> int:
                     config_errors.append(
                         f"strict screen config field {key!r} is not an authorization input")
         if config_errors:
-            result = {
-                "status": C.OutputStatus.BLOCKED.value,
-                "gate_id": C.GateId.B_TO_C.value,
-                "gate_passed": False,
-                "phase_status": C.PHASE_STATUS_B_TO_C_BLOCKED,
-                "errors": sorted(set(config_errors)),
-                "reason": "strict screen accepts only the verified B bundle",
-            }
-            write_deterministic_json(args.out, result)
-            _print(f"B_SCREEN status: {result['status']}")
-            return 3
-        manifest = _load_json(args.manifest) if args.manifest else None
-        if (manifest is None or not args.manifest_root or not args.controls_lock or
-                not args.a_gate or not args.repo_root or not args.expected_root):
-            result = {"status": C.OutputStatus.BLOCKED.value,
-                      "gate_id": C.GateId.B_TO_C.value,
-                      "gate_passed": False,
-                      "phase_status": C.PHASE_STATUS_B_TO_C_BLOCKED,
-                      "errors": ["strict screen requires --manifest, --manifest-root, "
-                                 "--controls-lock, --a-gate, --repo-root, and "
-                                 "--expected-root"]}
-            write_deterministic_json(args.out, result)
+            result = _write_strict_b_diagnostic(
+                args.out, config_errors,
+                reason="strict screen accepts only the verified B bundle")
             _print(f"B_SCREEN status: {result['status']}")
             return 2
-        preflight = run_preflight(
-            args.repo_root, handoff_root=args.manifest_root,
-            expected_authoritative_root=args.expected_root)
+        if (not args.manifest or not args.manifest_root or
+                not args.controls_lock or not args.a_gate or
+                not args.repo_root or not args.expected_root):
+            result = _write_strict_b_diagnostic(
+                args.out,
+                ["strict screen requires --manifest, --manifest-root, "
+                 "--controls-lock, --a-gate, --repo-root, and --expected-root"],
+                reason="strict screen required inputs are missing")
+            _print(f"B_SCREEN status: {result['status']}")
+            return 2
+        try:
+            manifest = _load_json(args.manifest)
+        except (OSError, TypeError, ValueError) as exc:
+            result = _write_strict_b_diagnostic(
+                args.out, [f"strict screen manifest could not be loaded: {exc}"],
+                reason="strict screen input loading failed")
+            _print(f"B_SCREEN status: {result['status']}")
+            return 2
+        try:
+            preflight = run_preflight(
+                args.repo_root, handoff_root=args.manifest_root,
+                expected_authoritative_root=args.expected_root)
+        except (OSError, TypeError, ValueError, RuntimeError) as exc:
+            result = _write_strict_b_diagnostic(
+                args.out, [f"strict screen preflight failed: {exc}"],
+                reason="authoritative preflight could not be completed")
+            _print(f"B_SCREEN status: {result['status']}")
+            return 2
         if not preflight["ok"]:
-            result = {
-                "status": C.OutputStatus.BLOCKED.value,
-                "gate_id": C.GateId.B_TO_C.value,
-                "gate_passed": False,
-                "phase_status": C.PHASE_STATUS_B_TO_C_BLOCKED,
-                "reason": "authoritative preflight did not pass",
-                "preflight": preflight,
-            }
-            write_deterministic_json(args.out, result)
+            result = _write_strict_b_diagnostic(
+                args.out, list(preflight.get("failures", [])) or
+                ["authoritative preflight did not pass"],
+                reason="authoritative preflight did not pass",
+                details={"preflight": preflight})
             _print(f"B_SCREEN status: {result['status']}")
             return 2
         if (not args.expected_contract_sha256 or
                 not args.expected_framework_contract_sha256):
-            result = {"status": C.OutputStatus.BLOCKED.value,
-                      "gate_id": C.GateId.B_TO_C.value,
-                      "gate_passed": False,
-                      "phase_status": C.PHASE_STATUS_B_TO_C_BLOCKED,
-                      "errors": ["strict screen requires both explicit data and framework contract hashes"]}
-            write_deterministic_json(args.out, result)
+            result = _write_strict_b_diagnostic(
+                args.out,
+                ["strict screen requires both explicit data and framework "
+                 "contract hashes"],
+                reason="strict screen contract bindings are missing")
             _print(f"B_SCREEN status: {result['status']}")
             return 2
         try:
@@ -305,26 +366,19 @@ def cmd_screen(args) -> int:
                 repo_root=args.repo_root,
             )
         except (OSError, ValueError, TypeError, RuntimeError, C.FrameworkError) as exc:
-            result = {"status": C.OutputStatus.BLOCKED.value,
-                      "gate_id": C.GateId.B_TO_C.value,
-                      "gate_passed": False,
-                      "phase_status": C.PHASE_STATUS_B_TO_C_BLOCKED,
-                      "errors": [f"strict screen input loading failed: {exc}"]}
-            write_deterministic_json(args.out, result)
+            result = _write_strict_b_diagnostic(
+                args.out, [f"strict screen input loading failed: {exc}"],
+                reason="strict screen input loading failed")
             _print(f"B_SCREEN status: {result['status']}")
             return 2
         if not bundle.ok:
-            result = {
-                "status": C.OutputStatus.BLOCKED.value,
-                "gate_id": C.GateId.B_TO_C.value,
-                "gate_passed": False,
-                "phase_status": C.PHASE_STATUS_B_TO_C_BLOCKED,
-                "reason": "verified B bundle did not authorize primary inputs",
-                "errors": list(bundle.errors),
-                "warnings": list(bundle.warnings),
-                "bundle": bundle.to_dict(),
-            }
-            write_deterministic_json(args.out, result)
+            result = _write_strict_b_diagnostic(
+                args.out,
+                list(bundle.errors) or
+                ["verified B bundle did not authorize primary inputs"],
+                reason="verified B bundle did not authorize primary inputs",
+                details={"warnings": list(bundle.warnings),
+                         "bundle": bundle.to_dict()})
             _print(f"B_SCREEN status: {result['status']}")
             return 2
         try:
@@ -336,16 +390,27 @@ def cmd_screen(args) -> int:
                 timeout_seconds=args.timeout_seconds,
                 checkpoint_path=checkpoint)
         except (OSError, TypeError, ValueError, RuntimeError, C.FrameworkError) as exc:
-            result = {
-                "status": C.OutputStatus.BLOCKED.value,
-                "gate_id": C.GateId.B_TO_C.value,
-                "gate_passed": False,
-                "phase_status": C.PHASE_STATUS_B_TO_C_BLOCKED,
-                "errors": [f"strict B execution failed: {exc}"],
-            }
+            result = _strict_b_diagnostic(
+                [f"strict B execution failed: {exc}"],
+                reason="strict B execution failed")
+        envelope_ok, envelope_errors = verify_artifact_envelope(result)
+        if not envelope_ok:
+            result = _strict_b_diagnostic(
+                ["strict B result envelope failed verification", *envelope_errors],
+                reason="strict B result envelope failed verification",
+                details={"candidate_result": result})
+            write_deterministic_json(args.out, result)
+            _print(f"B_SCREEN status: {result['status']}")
+            return 5
         write_deterministic_json(args.out, result)
         _print(f"B_SCREEN status: {result.get('status', C.OutputStatus.BLOCKED.value)}")
-        return 0 if result.get("gate_passed", False) else 3
+        if result.get("gate_passed") is True:
+            return 0
+        if result.get("status") == C.B_TIMEOUT_STATUS:
+            return 4
+        if result.get("status") == C.PHASE_STATUS_SCREEN_RANKED:
+            return 3
+        return 2
 
     if not args.config:
         result = {"status": C.OutputStatus.BLOCKED.value,

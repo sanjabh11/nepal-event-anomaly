@@ -799,8 +799,12 @@ def verify_validation_artifact(payload: Mapping[str, Any]) -> tuple[bool, list[s
     if not isinstance(payload.get("no_claims"), list) or not payload.get(
             "no_claims"):
         problems.append("validation artifact no_claims are required")
-    if not isinstance(payload.get("provenance"), Mapping):
+    provenance = payload.get("provenance")
+    if not isinstance(provenance, Mapping):
         problems.append("validation artifact provenance must be a mapping")
+    elif provenance.get("framework_contract_sha256") != C.contract_hash():
+        problems.append(
+            "validation artifact framework contract does not match runtime")
     expected_status = (C.PHASE_STATUS_E_READY
                        if isinstance(gate, Mapping) and gate.get("passed") is True
                        else C.PHASE_STATUS_E_BLOCKED)

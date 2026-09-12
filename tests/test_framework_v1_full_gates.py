@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import copy
 from pathlib import Path
 
 from nepal.framework_v1 import contract as C
@@ -178,7 +179,7 @@ def test_briefing_artifact_binds_text_and_upstream_evidence(tmp_path):
             "passed": True,
             "checks": {},
         }),
-        "provenance": {},
+        "provenance": {"framework_contract_sha256": C.contract_hash()},
     })
     e_gate = write_validation_artifact(
         tmp_path / "e.json",
@@ -224,7 +225,10 @@ def test_outer_a_envelope_is_verified_by_strict_f_boundary(tmp_path):
         "profile_id": "FRAMEWORK_V1_FULL",
         "artifact_kind": "A_CATALOG",
         "gate": inner_a,
-        "provenance": {"source": "test"},
+        "provenance": {
+            "source": "test",
+            "framework_contract_sha256": C.contract_hash(),
+        },
     })
     valid, _, _, errors = verify_gate_input(
         outer_a, expected_gate_id=C.GateId.A_CATALOG.value)
@@ -236,7 +240,7 @@ def test_outer_a_envelope_is_verified_by_strict_f_boundary(tmp_path):
             "passed": True,
             "checks": {},
         }),
-        "provenance": {},
+        "provenance": {"framework_contract_sha256": C.contract_hash()},
     })
     e_gate = write_validation_artifact(
         tmp_path / "e.json",
@@ -287,3 +291,46 @@ def test_preflight_records_worktree_process_and_input_inventory_keys():
     assert "worktrees" in checks
     assert "active_processes" in checks
     assert "handoff_inventory" in checks
+
+
+def test_f_rejects_rebound_contract_drift_in_its_provenance(tmp_path):
+    summary = {"status": "INDETERMINATE", "input_hashes": {}}
+    a_gate = bind_gate_artifact({
+        "gate_id": C.GateId.A_CATALOG.value,
+        "passed": True,
+        "checks": {},
+    })
+    b_gate = bind_artifact_envelope({
+        "gate": bind_gate_artifact({
+            "gate_id": C.GateId.B_TO_C.value,
+            "passed": True,
+            "checks": {},
+        }),
+        "provenance": {"framework_contract_sha256": C.contract_hash()},
+    })
+    e_gate = write_validation_artifact(
+        tmp_path / "e.json",
+        summary,
+        bind_gate_artifact({
+            "gate_id": C.GateId.E_VALIDATION.value,
+            "passed": True,
+            "checks": {},
+        }),
+        provenance={"framework_contract_sha256": C.contract_hash()},
+    )
+    artifact = build_briefing_artifact(
+        "research-only briefing\n",
+        summary=summary,
+        catalog_gate=a_gate,
+        screen_gate=b_gate,
+        validation_gate=e_gate,
+        contract_hash=C.contract_hash(),
+    )
+    assert verify_briefing_artifact(artifact) == (True, [])
+
+    forged = copy.deepcopy(artifact)
+    forged["provenance"]["framework_contract_sha256"] = "0" * 64
+    forged = bind_artifact_envelope(forged)
+    valid, errors = verify_briefing_artifact(forged)
+    assert valid is False
+    assert any("framework contract" in error.lower() for error in errors)

@@ -173,15 +173,22 @@ def _strict_gate_problems(summary: Mapping[str, Any],
     if not isinstance(summary, Mapping):
         problems.append("validation summary must be a mapping")
 
-    a_ok, a_inner, _, a_errors = verify_gate_input(
+    a_ok, a_inner, a_outer, a_errors = verify_gate_input(
         catalog_gate,
         expected_gate_id=C.GateId.A_CATALOG.value)
     if not a_ok:
         problems.extend("A_CATALOG: " + error for error in a_errors)
     elif not isinstance(a_inner, Mapping) or a_inner.get("passed") is not True:
         problems.append("A_CATALOG: verified gate is not passed")
+    if isinstance(a_outer, Mapping):
+        a_provenance = a_outer.get("provenance")
+        if (not isinstance(a_provenance, Mapping) or
+                a_provenance.get("framework_contract_sha256") !=
+                C.contract_hash()):
+            problems.append(
+                "A_CATALOG: outer envelope framework contract does not match runtime")
 
-    b_ok, b_inner, _, b_errors = verify_gate_input(
+    b_ok, b_inner, b_outer, b_errors = verify_gate_input(
         screen_gate,
         expected_gate_id=C.GateId.B_TO_C.value,
         require_outer_envelope=True)
@@ -189,6 +196,13 @@ def _strict_gate_problems(summary: Mapping[str, Any],
         problems.extend("B_SCREEN: " + error for error in b_errors)
     elif not isinstance(b_inner, Mapping) or b_inner.get("passed") is not True:
         problems.append("B_TO_C: verified gate is not passed")
+    if isinstance(b_outer, Mapping):
+        b_provenance = b_outer.get("provenance")
+        if (not isinstance(b_provenance, Mapping) or
+                b_provenance.get("framework_contract_sha256") !=
+                C.contract_hash()):
+            problems.append(
+                "B_SCREEN: outer envelope framework contract does not match runtime")
 
     from .validation import verify_validation_artifact
     e_ok, e_errors = verify_validation_artifact(
@@ -241,6 +255,14 @@ def build_briefing_artifact(
         raise TypeError("briefing text must be a string")
     if not isinstance(summary, Mapping):
         raise TypeError("briefing summary must be a mapping")
+    if contract_hash != C.contract_hash():
+        raise ValueError(
+            "briefing contract hash does not match the runtime framework contract")
+    input_problems = _strict_gate_problems(
+        summary, catalog_gate, screen_gate, validation_gate)
+    if input_problems:
+        raise ValueError("briefing upstream inputs are not verified: " +
+                         "; ".join(input_problems))
     return bind_artifact_envelope({
         "profile_id": "FRAMEWORK_V1_FULL",
         "framework_version": C.FRAMEWORK_VERSION,
@@ -305,25 +327,44 @@ def verify_briefing_artifact(payload: Mapping[str, Any]) -> tuple[bool, list[str
             if not isinstance(value, str) or len(value) != 64 or any(
                     char not in "0123456789abcdef" for char in value):
                 problems.append(f"briefing artifact provenance {key} is invalid")
+        if provenance.get("framework_contract_sha256") != C.contract_hash():
+            problems.append(
+                "briefing artifact framework contract does not match runtime")
 
     a_gate = payload.get("a_gate")
     a_inner: Optional[Mapping[str, Any]] = None
     if isinstance(a_gate, Mapping):
-        a_ok, a_inner, _, a_errors = verify_gate_input(
+        a_ok, a_inner, a_outer, a_errors = verify_gate_input(
             a_gate, expected_gate_id=C.GateId.A_CATALOG.value)
         if not a_ok:
             problems.extend("A_CATALOG: " + error for error in a_errors)
         if not isinstance(a_inner, Mapping) or a_inner.get("passed") is not True:
             problems.append("A_CATALOG: verified gate is not passed")
+        if isinstance(a_outer, Mapping):
+            outer_provenance = a_outer.get("provenance")
+            if (not isinstance(outer_provenance, Mapping) or
+                    outer_provenance.get("framework_contract_sha256") !=
+                    C.contract_hash()):
+                problems.append(
+                    "A_CATALOG: outer envelope framework contract does not "
+                    "match runtime")
     b_gate = payload.get("b_gate")
     if isinstance(b_gate, Mapping):
-        b_ok, b_inner, _, b_errors = verify_gate_input(
+        b_ok, b_inner, b_outer, b_errors = verify_gate_input(
             b_gate, expected_gate_id=C.GateId.B_TO_C.value,
             require_outer_envelope=True)
         if not b_ok:
             problems.extend("B_SCREEN: " + error for error in b_errors)
         if not isinstance(b_inner, Mapping) or b_inner.get("passed") is not True:
             problems.append("B_TO_C: verified gate is not passed")
+        if isinstance(b_outer, Mapping):
+            outer_provenance = b_outer.get("provenance")
+            if (not isinstance(outer_provenance, Mapping) or
+                    outer_provenance.get("framework_contract_sha256") !=
+                    C.contract_hash()):
+                problems.append(
+                    "B_SCREEN: outer envelope framework contract does not "
+                    "match runtime")
     e_gate = payload.get("e_gate")
     if isinstance(e_gate, Mapping):
         from .validation import verify_validation_artifact
