@@ -25,7 +25,8 @@ from .input_manifest import (B_TARGET_GRID_ARTIFACT_IDS,
                               validate_artifact_semantics,
                               verify_phase_manifest)
 from .provenance import (bind_artifact_envelope, bind_gate_artifact,
-                         verify_gate_artifact, write_deterministic_json)
+                         gate_input_artifact_sha256, verify_gate_input,
+                         write_deterministic_json)
 from .screen import (leave_one_layer_out_top5, rank_box, separate_hyp3_signals,
                      terrain_components_from_dem, validate_acquisition_record,
                      evaluate_b_to_c_gate)
@@ -404,11 +405,11 @@ def build_b_screen_from_bundle(
             }),
         })
     if a_gate_artifact is not None:
-        a_ok, a_problems = verify_gate_artifact(
+        a_ok, a_inner, _, a_problems = verify_gate_input(
             a_gate_artifact, expected_gate_id=C.GateId.A_CATALOG.value)
         if not a_ok:
             problems = [f"A gate artifact: {problem}" for problem in a_problems]
-        elif a_gate_artifact.get("passed") is not True:
+        elif not isinstance(a_inner, Mapping) or a_inner.get("passed") is not True:
             problems = ["A_CATALOG gate artifact is not passed"]
         if problems:
             return bind_artifact_envelope({
@@ -417,8 +418,8 @@ def build_b_screen_from_bundle(
                 "gate_passed": False,
                 "phase_status": C.PHASE_STATUS_B_TO_C_BLOCKED,
                 "errors": sorted(set(problems)),
-                "provenance": {"a_gate_artifact_sha256": a_gate_artifact.get(
-                    "gate_artifact_sha256")},
+                "provenance": {"a_gate_artifact_sha256":
+                                gate_input_artifact_sha256(a_gate_artifact)},
                 "gate": bind_gate_artifact({
                     "gate_id": C.GateId.B_TO_C.value, "passed": False,
                     "checks": {"gate_A_passed": {"passed": False}},
@@ -932,14 +933,15 @@ def build_b_screen(
             problems.append("A gate artifact must be a mapping")
             a_gate_passed = False
         else:
-            a_ok, a_problems = verify_gate_artifact(
+            a_ok, a_inner, _, a_problems = verify_gate_input(
                 a_gate_artifact, expected_gate_id=C.GateId.A_CATALOG.value)
-            a_gate_artifact_hash = a_gate_artifact.get("gate_artifact_sha256")
+            a_gate_artifact_hash = gate_input_artifact_sha256(a_gate_artifact)
             if not a_ok:
                 problems.extend(f"A gate artifact: {problem}"
                                 for problem in a_problems)
                 a_gate_passed = False
-            elif a_gate_artifact.get("passed") is not True:
+            elif not isinstance(a_inner, Mapping) or a_inner.get(
+                    "passed") is not True:
                 problems.append("A_CATALOG gate artifact is not passed")
                 a_gate_passed = False
             else:

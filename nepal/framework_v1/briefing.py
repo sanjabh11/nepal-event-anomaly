@@ -12,8 +12,10 @@ from typing import Any, Mapping, Optional
 
 from . import contract as C
 from .provenance import (bind_artifact_envelope, canonical_json,
+                         gate_input_artifact_sha256,
                          sha256_canonical, sha256_text,
-                         verify_artifact_envelope, verify_gate_artifact,
+                         verify_artifact_envelope,
+                         verify_gate_input,
                          write_deterministic_json, write_deterministic_text)
 
 NOT_EVACUATION = (
@@ -154,11 +156,11 @@ def generate_briefing(validation_summary: Mapping, *,
     if contract_hash:
         add(f"Contract hash: {contract_hash}.")
     if catalog_gate is not None:
-        add(f"A_CATALOG gate passed: {bool(catalog_gate.get('passed'))}.")
+        add(f"A_CATALOG gate passed: {_gate_passed(catalog_gate)}.")
     if screen_gate is not None:
-        add(f"B_TO_C gate passed: {bool(screen_gate.get('passed'))}.")
+        add(f"B_TO_C gate passed: {_gate_passed(screen_gate)}.")
     if validation_gate is not None:
-        add(f"E_VALIDATION gate passed: {bool(validation_gate.get('passed'))}.")
+        add(f"E_VALIDATION gate passed: {_gate_passed(validation_gate)}.")
     return "\n".join(lines) + "\n"
 
 
@@ -171,27 +173,22 @@ def _strict_gate_problems(summary: Mapping[str, Any],
     if not isinstance(summary, Mapping):
         problems.append("validation summary must be a mapping")
 
-    a_ok, a_errors = verify_gate_artifact(
-        catalog_gate if isinstance(catalog_gate, Mapping) else {},
+    a_ok, a_inner, _, a_errors = verify_gate_input(
+        catalog_gate,
         expected_gate_id=C.GateId.A_CATALOG.value)
     if not a_ok:
         problems.extend("A_CATALOG: " + error for error in a_errors)
-    elif isinstance(catalog_gate, Mapping) and catalog_gate.get("passed") is not True:
+    elif not isinstance(a_inner, Mapping) or a_inner.get("passed") is not True:
         problems.append("A_CATALOG: verified gate is not passed")
 
-    b_ok, b_errors = verify_artifact_envelope(
-        screen_gate if isinstance(screen_gate, Mapping) else {})
+    b_ok, b_inner, _, b_errors = verify_gate_input(
+        screen_gate,
+        expected_gate_id=C.GateId.B_TO_C.value,
+        require_outer_envelope=True)
     if not b_ok:
         problems.extend("B_SCREEN: " + error for error in b_errors)
-    elif isinstance(screen_gate, Mapping):
-        inner = screen_gate.get("gate")
-        inner_ok, inner_errors = verify_gate_artifact(
-            inner if isinstance(inner, Mapping) else {},
-            expected_gate_id=C.GateId.B_TO_C.value)
-        if not inner_ok:
-            problems.extend("B_TO_C: " + error for error in inner_errors)
-        elif isinstance(inner, Mapping) and inner.get("passed") is not True:
-            problems.append("B_TO_C: verified gate is not passed")
+    elif not isinstance(b_inner, Mapping) or b_inner.get("passed") is not True:
+        problems.append("B_TO_C: verified gate is not passed")
 
     from .validation import verify_validation_artifact
     e_ok, e_errors = verify_validation_artifact(
@@ -205,6 +202,14 @@ def _strict_gate_problems(summary: Mapping[str, Any],
         if validation_gate.get("summary") != dict(summary):
             problems.append("E_VALIDATION summary does not match briefing summary")
     return problems
+
+
+def _gate_passed(value: Any) -> bool:
+    """Read a gate result from either its direct or outer representation."""
+    if not isinstance(value, Mapping):
+        return False
+    inner = value.get("gate") if isinstance(value.get("gate"), Mapping) else value
+    return isinstance(inner, Mapping) and inner.get("passed") is True
 
 
 def _short(value) -> str:
@@ -252,7 +257,7 @@ def build_briefing_artifact(
         "e_gate": dict(validation_gate),
         "provenance": {
             "framework_contract_sha256": contract_hash,
-            "a_gate_artifact_sha256": catalog_gate.get("gate_artifact_sha256"),
+            "a_gate_artifact_sha256": gate_input_artifact_sha256(catalog_gate),
             "b_artifact_sha256": screen_gate.get("artifact_sha256"),
             "e_artifact_sha256": validation_gate.get("artifact_sha256"),
         },
@@ -302,27 +307,23 @@ def verify_briefing_artifact(payload: Mapping[str, Any]) -> tuple[bool, list[str
                 problems.append(f"briefing artifact provenance {key} is invalid")
 
     a_gate = payload.get("a_gate")
+    a_inner: Optional[Mapping[str, Any]] = None
     if isinstance(a_gate, Mapping):
-        a_ok, a_errors = verify_gate_artifact(
+        a_ok, a_inner, _, a_errors = verify_gate_input(
             a_gate, expected_gate_id=C.GateId.A_CATALOG.value)
         if not a_ok:
             problems.extend("A_CATALOG: " + error for error in a_errors)
-        if a_gate.get("passed") is not True:
+        if not isinstance(a_inner, Mapping) or a_inner.get("passed") is not True:
             problems.append("A_CATALOG: verified gate is not passed")
     b_gate = payload.get("b_gate")
     if isinstance(b_gate, Mapping):
-        b_ok, b_errors = verify_artifact_envelope(b_gate)
+        b_ok, b_inner, _, b_errors = verify_gate_input(
+            b_gate, expected_gate_id=C.GateId.B_TO_C.value,
+            require_outer_envelope=True)
         if not b_ok:
             problems.extend("B_SCREEN: " + error for error in b_errors)
-        else:
-            inner = b_gate.get("gate")
-            inner_ok, inner_errors = verify_gate_artifact(
-                inner if isinstance(inner, Mapping) else {},
-                expected_gate_id=C.GateId.B_TO_C.value)
-            if not inner_ok:
-                problems.extend("B_TO_C: " + error for error in inner_errors)
-            if not isinstance(inner, Mapping) or inner.get("passed") is not True:
-                problems.append("B_TO_C: verified gate is not passed")
+        if not isinstance(b_inner, Mapping) or b_inner.get("passed") is not True:
+            problems.append("B_TO_C: verified gate is not passed")
     e_gate = payload.get("e_gate")
     if isinstance(e_gate, Mapping):
         from .validation import verify_validation_artifact
@@ -334,7 +335,7 @@ def verify_briefing_artifact(payload: Mapping[str, Any]) -> tuple[bool, list[str
             problems.append("E_VALIDATION: verified gate is not passed")
     if isinstance(provenance, Mapping):
         if isinstance(a_gate, Mapping) and provenance.get(
-                "a_gate_artifact_sha256") != a_gate.get("gate_artifact_sha256"):
+                "a_gate_artifact_sha256") != gate_input_artifact_sha256(a_gate):
             problems.append("briefing artifact A gate provenance does not match gate")
         if isinstance(b_gate, Mapping) and provenance.get(
                 "b_artifact_sha256") != b_gate.get("artifact_sha256"):

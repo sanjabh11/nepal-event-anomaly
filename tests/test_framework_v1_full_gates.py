@@ -15,6 +15,7 @@ from nepal.framework_v1.input_manifest import (
 from nepal.framework_v1.provenance import (
     bind_artifact_envelope,
     bind_gate_artifact,
+    verify_gate_input,
     verify_artifact_envelope,
 )
 from nepal.framework_v1.orchestrator import (
@@ -210,6 +211,51 @@ def test_briefing_artifact_binds_text_and_upstream_evidence(tmp_path):
     rebound["provenance"]["b_artifact_sha256"] = forged_b["artifact_sha256"]
     rebound = bind_artifact_envelope(rebound)
     assert verify_briefing_artifact(rebound)[0] is False
+
+
+def test_outer_a_envelope_is_verified_by_strict_f_boundary(tmp_path):
+    summary = {"status": "INDETERMINATE", "input_hashes": {}}
+    inner_a = bind_gate_artifact({
+        "gate_id": C.GateId.A_CATALOG.value,
+        "passed": True,
+        "checks": {},
+    })
+    outer_a = bind_artifact_envelope({
+        "profile_id": "FRAMEWORK_V1_FULL",
+        "artifact_kind": "A_CATALOG",
+        "gate": inner_a,
+        "provenance": {"source": "test"},
+    })
+    valid, _, _, errors = verify_gate_input(
+        outer_a, expected_gate_id=C.GateId.A_CATALOG.value)
+    assert valid is True, errors
+
+    b_gate = bind_artifact_envelope({
+        "gate": bind_gate_artifact({
+            "gate_id": C.GateId.B_TO_C.value,
+            "passed": True,
+            "checks": {},
+        }),
+        "provenance": {},
+    })
+    e_gate = write_validation_artifact(
+        tmp_path / "e.json",
+        summary,
+        bind_gate_artifact({
+            "gate_id": C.GateId.E_VALIDATION.value,
+            "passed": True,
+            "checks": {},
+        }),
+    )
+    artifact = build_briefing_artifact(
+        "research-only briefing\n",
+        summary=summary,
+        catalog_gate=outer_a,
+        screen_gate=b_gate,
+        validation_gate=e_gate,
+        contract_hash=C.contract_hash(),
+    )
+    assert verify_briefing_artifact(artifact) == (True, [])
 
 
 def test_validation_artifact_keeps_explicit_provenance_inside_outer_hash(tmp_path):

@@ -33,7 +33,7 @@ from .input_manifest import (InputManifestVerification, SHA256_RE,
                               canonical_input_manifest_hash)
 from .provenance import (bind_artifact_envelope, bind_gate_artifact,
                          sha256_canonical, verify_artifact_envelope,
-                         verify_gate_artifact)
+                         verify_gate_artifact, verify_gate_input)
 
 Z95 = 1.959963984540054  # two-sided 95% normal quantile
 
@@ -271,29 +271,26 @@ def run_validation(events: Sequence, controls: Sequence, *,
                 if verification_checks.get("raw_slc_scan") != "PASS":
                     validation_errors.append("input manifest raw SLC scan did not pass")
         if a_gate_artifact is not None:
-            a_ok, a_errors = verify_gate_artifact(
+            a_ok, a_inner, _, a_errors = verify_gate_input(
                 a_gate_artifact, expected_gate_id=C.GateId.A_CATALOG.value)
-            verified_a_passed = bool(a_ok and a_gate_artifact.get("passed") is True)
+            verified_a_passed = bool(
+                a_ok and isinstance(a_inner, Mapping) and
+                a_inner.get("passed") is True)
             if not a_ok:
                 validation_errors.extend("A_CATALOG: " + error for error in a_errors)
         if verified_a_passed is not True:
             validation_errors.append("A_CATALOG gate must pass before strict E")
 
         if b_gate_artifact is not None:
-            b_outer_ok, b_outer_errors = verify_artifact_envelope(b_gate_artifact)
-            b_inner = b_gate_artifact.get("gate")
-            b_inner_ok, b_inner_errors = verify_gate_artifact(
-                b_inner if isinstance(b_inner, Mapping) else {},
-                expected_gate_id=C.GateId.B_TO_C.value)
+            b_ok, b_inner, _, b_errors = verify_gate_input(
+                b_gate_artifact, expected_gate_id=C.GateId.B_TO_C.value,
+                require_outer_envelope=True)
             verified_b_passed = bool(
-                b_outer_ok and b_inner_ok and isinstance(b_inner, Mapping) and
+                b_ok and isinstance(b_inner, Mapping) and
                 b_inner.get("passed") is True)
-            if not b_outer_ok:
-                validation_errors.extend("B_SCREEN: " + error
-                                         for error in b_outer_errors)
-            if not b_inner_ok:
-                validation_errors.extend("B_TO_C: " + error
-                                         for error in b_inner_errors)
+            if not b_ok:
+                validation_errors.extend("B_SCREEN/B_TO_C: " + error
+                                         for error in b_errors)
         if verified_b_passed is not True:
             validation_errors.append("B_SCREEN/B_TO_C gate must pass before strict E")
         if len({str(e.get("event_id")) for e in events}) != len(events):
@@ -545,11 +542,13 @@ def _blocked_summary(events, controls, catalog_hash, controls_hash,
 def _gate_envelope(value: Any, *, expected_gate_id: str) -> tuple[
         Optional[Mapping[str, Any]], Optional[Mapping[str, Any]], list[str]]:
     """Extract a gate and its optional envelope without trusting booleans."""
-    if not isinstance(value, Mapping):
-        return None, None, ["hash-bound gate artifact must be a mapping"]
-    if expected_gate_id == C.GateId.B_TO_C.value and isinstance(value.get("gate"), Mapping):
-        return value.get("gate"), value, []
-    return value, value, []
+    ok, inner, outer, errors = verify_gate_input(
+        value, expected_gate_id=expected_gate_id,
+        require_outer_envelope=(expected_gate_id == C.GateId.B_TO_C.value))
+    # ``ok`` is intentionally not returned: callers separately verify the
+    # nested gate so that their checks can expose distinct A/B evidence.
+    del ok
+    return inner, outer, errors
 
 
 def evaluate_e_gate(summary: Mapping[str, Any], *,
@@ -589,7 +588,7 @@ def evaluate_e_gate(summary: Mapping[str, Any], *,
         bool(SHA256_RE.fullmatch(hashes.get(key, "")))
         for key in required_hashes)
 
-    a_gate, _, a_extract_errors = _gate_envelope(
+    a_gate, a_envelope, a_extract_errors = _gate_envelope(
         a_gate_artifact, expected_gate_id=C.GateId.A_CATALOG.value)
     b_gate, b_envelope, b_extract_errors = _gate_envelope(
         b_gate_artifact, expected_gate_id=C.GateId.B_TO_C.value)
@@ -599,12 +598,18 @@ def evaluate_e_gate(summary: Mapping[str, Any], *,
         b_gate or {}, expected_gate_id=C.GateId.B_TO_C.value)
     a_errors = a_extract_errors + a_hash_errors
     b_errors = b_extract_errors + b_hash_errors
+    a_envelope_hash_ok = a_envelope is None
+    if isinstance(a_envelope, Mapping):
+        a_envelope_hash_ok, a_envelope_errors = verify_artifact_envelope(
+            a_envelope)
+        a_errors.extend(a_envelope_errors)
     b_envelope_hash_ok = False
     if isinstance(b_envelope, Mapping):
         b_envelope_hash_ok, b_envelope_errors = verify_artifact_envelope(
             b_envelope)
         b_errors.extend(b_envelope_errors)
-    a_passed = a_hash_ok and a_gate is not None and a_gate.get("passed") is True
+    a_passed = (a_hash_ok and a_envelope_hash_ok and a_gate is not None and
+                a_gate.get("passed") is True)
     b_passed = (b_hash_ok and b_envelope_hash_ok and b_gate is not None and
                 b_gate.get("passed") is True)
 
@@ -668,6 +673,10 @@ def evaluate_e_gate(summary: Mapping[str, Any], *,
     checks = {
         "hash_bound_A_gate_artifact": {
             "passed": a_passed, "errors": a_errors},
+        "hash_bound_A_outer_envelope": {
+            "passed": a_envelope_hash_ok,
+            "required": isinstance(a_envelope, Mapping),
+        },
         "A_catalog_hash_matches_summary": {"passed": a_catalog_match},
         "A_holdout_plan_hash_matches_summary": {"passed": a_plan_match},
         "hash_bound_B_gate_artifact": {
