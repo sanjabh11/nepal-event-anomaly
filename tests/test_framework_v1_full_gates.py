@@ -27,6 +27,7 @@ from nepal.framework_v1.orchestrator import (
     write_pipeline_checkpoint,
 )
 from nepal.framework_v1.briefing import (
+    _strict_gate_problems,
     build_briefing_artifact,
     verify_briefing_artifact,
 )
@@ -194,10 +195,15 @@ def test_pipeline_wraps_direct_a_gate_with_catalog_artifact_provenance(tmp_path)
 
 def test_briefing_artifact_binds_text_and_upstream_evidence(tmp_path):
     summary = {"status": "INDETERMINATE", "input_hashes": {}}
-    a_gate = bind_gate_artifact({
-        "gate_id": C.GateId.A_CATALOG.value,
-        "passed": True,
-        "checks": {},
+    a_gate = bind_artifact_envelope({
+        "profile_id": "FRAMEWORK_V1_FULL",
+        "artifact_kind": "A_CATALOG",
+        "gate": bind_gate_artifact({
+            "gate_id": C.GateId.A_CATALOG.value,
+            "passed": True,
+            "checks": {},
+        }),
+        "provenance": {"framework_contract_sha256": C.contract_hash()},
     })
     b_gate = bind_artifact_envelope({
         "gate": bind_gate_artifact({
@@ -238,6 +244,17 @@ def test_briefing_artifact_binds_text_and_upstream_evidence(tmp_path):
     rebound["provenance"]["b_artifact_sha256"] = forged_b["artifact_sha256"]
     rebound = bind_artifact_envelope(rebound)
     assert verify_briefing_artifact(rebound)[0] is False
+
+
+def test_strict_f_requires_outer_authenticated_a_envelope():
+    direct_a = bind_gate_artifact({
+        "gate_id": C.GateId.A_CATALOG.value,
+        "passed": True,
+        "checks": {},
+    })
+    problems = _strict_gate_problems({}, direct_a, None, None)
+    assert any("outer" in problem.lower() and "a_catalog" in problem.lower()
+               for problem in problems)
 
 
 def test_outer_a_envelope_is_verified_by_strict_f_boundary(tmp_path):
@@ -321,10 +338,15 @@ def test_preflight_records_worktree_process_and_input_inventory_keys():
 
 def test_f_rejects_rebound_contract_drift_in_its_provenance(tmp_path):
     summary = {"status": "INDETERMINATE", "input_hashes": {}}
-    a_gate = bind_gate_artifact({
-        "gate_id": C.GateId.A_CATALOG.value,
-        "passed": True,
-        "checks": {},
+    a_gate = bind_artifact_envelope({
+        "profile_id": "FRAMEWORK_V1_FULL",
+        "artifact_kind": "A_CATALOG",
+        "gate": bind_gate_artifact({
+            "gate_id": C.GateId.A_CATALOG.value,
+            "passed": True,
+            "checks": {},
+        }),
+        "provenance": {"framework_contract_sha256": C.contract_hash()},
     })
     b_gate = bind_artifact_envelope({
         "gate": bind_gate_artifact({

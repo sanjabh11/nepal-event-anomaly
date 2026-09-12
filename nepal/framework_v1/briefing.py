@@ -180,6 +180,8 @@ def _strict_gate_problems(summary: Mapping[str, Any],
         problems.extend("A_CATALOG: " + error for error in a_errors)
     elif not isinstance(a_inner, Mapping) or a_inner.get("passed") is not True:
         problems.append("A_CATALOG: verified gate is not passed")
+    if a_ok and not isinstance(a_outer, Mapping):
+        problems.append("A_CATALOG: outer artifact envelope is required")
     if isinstance(a_outer, Mapping):
         a_provenance = a_outer.get("provenance")
         if (not isinstance(a_provenance, Mapping) or
@@ -338,6 +340,8 @@ def verify_briefing_artifact(payload: Mapping[str, Any]) -> tuple[bool, list[str
             a_gate, expected_gate_id=C.GateId.A_CATALOG.value)
         if not a_ok:
             problems.extend("A_CATALOG: " + error for error in a_errors)
+        if a_ok and not isinstance(a_outer, Mapping):
+            problems.append("A_CATALOG: outer artifact envelope is required")
         if not isinstance(a_inner, Mapping) or a_inner.get("passed") is not True:
             problems.append("A_CATALOG: verified gate is not passed")
         if isinstance(a_outer, Mapping):
