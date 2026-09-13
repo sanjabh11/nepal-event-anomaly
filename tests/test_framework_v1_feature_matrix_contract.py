@@ -206,6 +206,22 @@ class TestReadyGate:
                 matrix_relpath="matrix.bin",
                 token_relpath="freeze_token.json")
 
+    def test_symlinked_parent_dir_rejected(self, tmp_path):
+        """A symlinked intermediate directory must not smuggle the matrix
+        out of the artifact root."""
+        root, meta, token = _staged(tmp_path)
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        real = outside / "matrix.bin"
+        real.write_bytes(b"matrix-bytes")
+        (root / "matrix.bin").unlink()
+        (root / "linkdir").symlink_to(outside, target_is_directory=True)
+        with pytest.raises(ValueError):
+            fmx.build_fmx_envelope(
+                meta, freeze_token=token, artifact_root=root,
+                matrix_relpath="linkdir/matrix.bin",
+                token_relpath="freeze_token.json")
+
     def test_traversal_relpath_rejected(self, tmp_path):
         root, meta, token = _staged(tmp_path)
         with pytest.raises(ValueError):

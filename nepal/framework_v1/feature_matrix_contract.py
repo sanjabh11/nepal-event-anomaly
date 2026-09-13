@@ -223,6 +223,14 @@ def _resolve_bound_file(artifact_root: Path, relpath: Any, label: str,
         problems.append(f"{label} {relpath!r} is a symlink — bound files "
                         "must be regular files")
         return None
+    root_resolved = artifact_root.resolve()
+    resolved = target.resolve()
+    if resolved != root_resolved and root_resolved not in \
+            resolved.parents:
+        problems.append(f"{label} {relpath!r} resolves outside the "
+                        "artifact root (e.g. via a symlinked parent "
+                        "directory)")
+        return None
     if not target.is_file():
         problems.append(f"{label} {relpath!r} is not a file under the "
                         "artifact root")
