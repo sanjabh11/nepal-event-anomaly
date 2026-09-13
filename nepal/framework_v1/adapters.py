@@ -29,6 +29,7 @@ from .input_manifest import (B_TARGET_GRID_ARTIFACT_IDS,
 from .provenance import (bind_artifact_envelope, bind_gate_artifact,
                          gate_input_artifact_sha256, verify_gate_input,
                          write_deterministic_json)
+from .ranked_digest import stamp_ranked_digests
 from .screen import (leave_one_layer_out_top5, rank_box, separate_hyp3_signals,
                      terrain_components_from_dem, validate_acquisition_record,
                      evaluate_b_to_c_gate)
@@ -1396,6 +1397,7 @@ def build_b_screen(
     result["phase_status"] = (
         C.PHASE_STATUS_B_TO_C_READY
         if result["gate_passed"] else C.PHASE_STATUS_B_TO_C_BLOCKED)
+    stamp_ranked_digests(result)
     bound = bind_artifact_envelope(result)
     bound["runtime"] = {
         "elapsed_seconds": time.perf_counter() - perf_started,
