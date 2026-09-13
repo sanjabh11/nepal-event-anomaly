@@ -75,6 +75,20 @@ def _lineage_sidecar(manifest_root: str | Path,
     return str(candidate) if candidate.is_file() else None
 
 
+def _require_explicit_sidecar(explicit: "str | None", flag: str) -> "str | None":
+    """R03: strict runs must bind the active audit packet explicitly.
+
+    There is no conventional-name fallback for the audit packet: silently
+    resolving ``provenance/d1_remediation_audit.json`` would let a stale or
+    ambiguous packet authorize a run.  The caller must pass the flag; the
+    lineage verifier then checks the packet's generation and manifest
+    binding itself.
+    """
+    if explicit:
+        return explicit
+    return None
+
+
 def _strict_b_diagnostic(errors: list[str], *, reason: str,
                          details: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Build an authenticated, fail-closed strict-B diagnostic envelope."""
@@ -481,9 +495,8 @@ def cmd_screen(args) -> int:
             trusted_manifest_file_sha256=args.trusted_manifest_sha256,
             waiver_path=_lineage_sidecar(args.manifest_root, args.waiver,
                                          "waivers.json"),
-            audit_packet_path=_lineage_sidecar(
-                args.manifest_root, args.audit_packet,
-                "d1_remediation_audit.json"),
+            audit_packet_path=_require_explicit_sidecar(
+                args.audit_packet, "--audit-packet"),
             requirements_path=_lineage_sidecar(
                 args.manifest_root, args.requirements,
                 "d1_remediation_requirements.json"),
@@ -1077,9 +1090,8 @@ def cmd_pipeline(args) -> int:
             trusted_manifest_file_sha256=args.trusted_manifest_sha256,
             waiver_path=_lineage_sidecar(args.manifest_root, args.waiver,
                                          "waivers.json"),
-            audit_packet_path=_lineage_sidecar(
-                args.manifest_root, args.audit_packet,
-                "d1_remediation_audit.json"),
+            audit_packet_path=_require_explicit_sidecar(
+                args.audit_packet, "--audit-packet"),
             requirements_path=_lineage_sidecar(
                 args.manifest_root, args.requirements,
                 "d1_remediation_requirements.json"),
@@ -1413,9 +1425,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="lineage waiver file; defaults to "
                         "<manifest-root>/provenance/waivers.json when present")
     b.add_argument("--audit-packet", default=None,
-                   help="lineage audit packet; defaults to "
-                        "<manifest-root>/provenance/d1_remediation_audit.json "
-                        "when present")
+                   help="explicit active lineage audit packet (REQUIRED for "
+                        "strict runs; no conventional-path fallback)")
     b.add_argument("--requirements", default=None,
                    help="lineage requirements file; defaults to "
                         "<manifest-root>/provenance/"
@@ -1577,9 +1588,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="lineage waiver file; defaults to "
                          "<manifest-root>/provenance/waivers.json when present")
     p0.add_argument("--audit-packet", default=None,
-                    help="lineage audit packet; defaults to "
-                         "<manifest-root>/provenance/d1_remediation_audit.json "
-                         "when present")
+                    help="explicit active lineage audit packet (REQUIRED for "
+                         "strict runs; no conventional-path fallback)")
     p0.add_argument("--requirements", default=None,
                     help="lineage requirements file; defaults to "
                          "<manifest-root>/provenance/"
@@ -1633,10 +1643,23 @@ def build_parser() -> argparse.ArgumentParser:
         "find-reports",
         help="generation-aware current pipeline report discovery")
     f0.add_argument("--runs-root", required=True)
-    f0.add_argument("--candidate-generation-id", required=True)
+    f0.add_argument("--candidate-generation-id", default=None)
     f0.add_argument("--manifest-sha256", default=None)
+    f0.add_argument("--run-index", default=None,
+                    help="verified RUN_INDEX_V1 document; discovery is then "
+                         "restricted to the indexed active generation")
     f0.add_argument("--out", default=None)
     f0.set_defaults(func=cmd_find_reports)
+
+    ri = sub.add_parser(
+        "run-index",
+        help="verify a RUN_INDEX_V1 active-generation index")
+    ri.add_argument("--index", required=True,
+                    help="path to the run index document")
+    ri.add_argument("--runs-root", default=None,
+                    help="run root for on-disk re-verification of indexed "
+                         "artifacts")
+    ri.set_defaults(func=cmd_run_index)
     return p
 
 
@@ -1670,15 +1693,79 @@ def cmd_lineage(args) -> int:
 
 
 def cmd_find_reports(args) -> int:
-    """Generation-aware discovery of current pipeline reports (G27)."""
+    """Generation-aware discovery of current pipeline reports (G27/R05)."""
     from .lineage import discover_current_run_reports
+    generation = args.candidate_generation_id
+    manifest_sha = args.manifest_sha256
+    if generation is None and not args.run_index:
+        _print(json.dumps({"ok": False, "errors": [
+            "either --candidate-generation-id or --run-index is required"]},
+            sort_keys=True, indent=2))
+        return 2
+    if args.run_index:
+        from .run_index import load_run_index
+        try:
+            index = load_run_index(args.run_index, run_root=args.runs_root)
+        except (OSError, ValueError) as exc:
+            _print(json.dumps({"ok": False,
+                               "errors": [f"run index rejected: {exc}"]},
+                              sort_keys=True, indent=2))
+            return 2
+        indexed_generation = index.get("active_generation_id")
+        indexed_manifest = index.get("manifest_sha256")
+        if generation is not None and generation != indexed_generation:
+            _print(json.dumps({"ok": False, "errors": [
+                "requested generation is not the indexed active generation "
+                f"({generation!r} != {indexed_generation!r})"]},
+                sort_keys=True, indent=2))
+            return 2
+        if manifest_sha is not None and manifest_sha != indexed_manifest:
+            _print(json.dumps({"ok": False, "errors": [
+                "requested manifest hash is not the indexed manifest"]},
+                sort_keys=True, indent=2))
+            return 2
+        generation = indexed_generation
+        manifest_sha = indexed_manifest
+    if not isinstance(generation, str) or not generation:
+        _print(json.dumps({"ok": False, "errors": [
+            "no active generation could be resolved for discovery"]},
+            sort_keys=True, indent=2))
+        return 2
     result = discover_current_run_reports(
-        args.runs_root, candidate_generation_id=args.candidate_generation_id,
-        manifest_sha256=args.manifest_sha256)
+        args.runs_root, candidate_generation_id=generation,
+        manifest_sha256=manifest_sha)
+    if args.run_index:
+        result["run_index"] = {
+            "index": str(args.run_index),
+            "active_generation_id": generation,
+            "policy": "only the indexed active generation may authorize "
+                      "current evidence",
+        }
     if args.out:
         write_deterministic_json(args.out, result)
     _print(json.dumps(result, sort_keys=True, indent=2))
     return 0 if result.get("ok") else 2
+
+
+def cmd_run_index(args) -> int:
+    """Verify a RUN_INDEX_V1 document (optionally against the run root)."""
+    from .run_index import load_run_index
+    try:
+        index = load_run_index(args.index, run_root=args.runs_root)
+    except (OSError, ValueError) as exc:
+        _print(json.dumps({"ok": False, "errors": [str(exc)]},
+                          sort_keys=True, indent=2))
+        return 2
+    _print(json.dumps({
+        "ok": True,
+        "index_type": index.get("index_type"),
+        "active_generation_id": index.get("active_generation_id"),
+        "candidate_root": index.get("candidate_root"),
+        "pipeline_run_id": index.get("pipeline_run_id"),
+        "manifest_sha256": index.get("manifest_sha256"),
+        "superseded_generations": index.get("superseded_generations"),
+    }, sort_keys=True, indent=2))
+    return 0
 
 
 def main(argv=None) -> int:

@@ -726,3 +726,163 @@ def load_verified_pipeline_checkpoint(
             "pipeline checkpoint run_state is not resumable: "
             f"{run_state!r}")
     return (dict(payload) if ok and not problems else None), problems
+
+
+# ---------------------------------------------------------------------------
+# Remediation handoff v3 (R06/R09/R10) — honest closure envelope
+# ---------------------------------------------------------------------------
+
+HANDOFF_V3_TYPE = "REMEDIATION_HANDOFF_V3"
+HANDOFF_V3_STATUS = "REMEDIATION_COMPLETE_WITH_RESIDUALS"
+
+#: Tokens that may never appear as standalone claim/status values in a
+#: handoff.  Stage constants such as ``A_READY`` are phase names, not
+#: readiness claims, and are unaffected.
+_FORBIDDEN_HANDOFF_TOKENS = (
+    "SCIENTIFICALLY_VALIDATED",
+    "WARNING_READY",
+    "PRODUCTION_READY",
+    "AUTHORITY_APPROVED",
+    "ALL_GAPS_CLOSED",
+)
+
+HANDOFF_V3_REQUIRED_SECTIONS = (
+    "open_residuals",
+    "controlled_residuals",
+    "active_generation",
+    "candidate_counts",
+    "inventory_hash",
+    "stage_statuses",
+    "verification_evidence",
+    "no_claims",
+)
+
+
+def _forbidden_handoff_claims(payload: Any, prefix: str = "") -> list[str]:
+    found: list[str] = []
+    if isinstance(payload, str):
+        for token in _FORBIDDEN_HANDOFF_TOKENS:
+            if token in payload:
+                found.append(f"{prefix} contains forbidden claim token "
+                             f"{token!r}")
+        if payload.strip() == "READY":
+            found.append(f"{prefix} asserts bare READY")
+    elif isinstance(payload, Mapping):
+        for key, value in payload.items():
+            found.extend(_forbidden_handoff_claims(value, f"{prefix}{key}."))
+    elif isinstance(payload, list):
+        for index, value in enumerate(payload):
+            found.extend(_forbidden_handoff_claims(value,
+                                                   f"{prefix}[{index}]."))
+    return found
+
+
+def build_remediation_handoff(*, active_generation: Mapping[str, Any],
+                              code_revision: str,
+                              stage_statuses: Mapping[str, Any],
+                              candidate_counts: Mapping[str, Any],
+                              inventory_hash: str,
+                              open_residuals: Iterable[Mapping[str, Any]],
+                              controlled_residuals: Iterable[Mapping[str, Any]],
+                              verification_evidence: Mapping[str, Any],
+                              no_claims: Iterable[str] = NO_CLAIMS,
+                              run_index_sha256: Optional[str] = None,
+                              diagnostics: Optional[Mapping[str, Any]] = None,
+                              ) -> dict[str, Any]:
+    """Build the honest remediation handoff (v3).
+
+    The handoff is deliberately residual-positive: it always declares what
+    remains open and what is deliberately deferred.  ``open_residuals`` and
+    ``controlled_residuals`` must both be non-empty — a handoff without
+    residuals reads as "all gaps closed", which is forbidden.  Canonical
+    path fields are run-root-relative; absolute paths belong only under
+    ``diagnostics``.
+    """
+    open_list = [dict(r) for r in open_residuals]
+    controlled_list = [dict(r) for r in controlled_residuals]
+    if not open_list:
+        raise ValueError("handoff requires at least one open residual")
+    if not controlled_list:
+        raise ValueError("handoff requires the controlled residual register")
+    handoff: dict[str, Any] = {
+        "envelope_type": HANDOFF_V3_TYPE,
+        "engineering_status": HANDOFF_V3_STATUS,
+        "framework_version": C.FRAMEWORK_VERSION,
+        "code_revision": code_revision,
+        "active_generation": dict(active_generation),
+        "candidate_counts": dict(candidate_counts),
+        "inventory_hash": inventory_hash,
+        "stage_statuses": dict(stage_statuses),
+        "open_residuals": open_list,
+        "controlled_residuals": controlled_list,
+        "verification_evidence": dict(verification_evidence),
+        "run_index_sha256": run_index_sha256,
+        "no_claims": list(no_claims),
+        "promotion_eligible": False,
+        "production_authorized": False,
+        "diagnostics": dict(diagnostics or {}),
+    }
+    claims = _forbidden_handoff_claims(
+        {k: v for k, v in handoff.items() if k != "diagnostics"})
+    if claims:
+        raise ValueError("handoff contains forbidden claims: "
+                         + "; ".join(claims))
+    absolute = [f"{dotted}={value!r}" for dotted, value in _iter_strings(
+        {k: v for k, v in handoff.items() if k != "diagnostics"})
+        if value.startswith("/")]
+    if absolute:
+        raise ValueError("handoff contains absolute path in canonical "
+                         "fields: " + "; ".join(absolute[:5]))
+    return bind_artifact_envelope(handoff)
+
+
+def verify_remediation_handoff(payload: Any) -> tuple[bool, list[str]]:
+    """Verify a remediation handoff v3 envelope before it is used."""
+    problems: list[str] = []
+    ok, envelope_problems = verify_artifact_envelope(payload)
+    problems.extend(envelope_problems)
+    if not isinstance(payload, Mapping):
+        problems.append("handoff must be a mapping")
+        return False, problems
+    if payload.get("envelope_type") != HANDOFF_V3_TYPE:
+        problems.append(f"handoff envelope_type must be {HANDOFF_V3_TYPE!r}")
+    if payload.get("engineering_status") != HANDOFF_V3_STATUS:
+        problems.append(
+            f"handoff engineering_status must be {HANDOFF_V3_STATUS!r}")
+    for section in HANDOFF_V3_REQUIRED_SECTIONS:
+        if section not in payload:
+            problems.append(f"handoff is missing required section "
+                            f"{section!r}")
+    for section in ("open_residuals", "controlled_residuals"):
+        value = payload.get(section)
+        if not isinstance(value, list) or not value:
+            problems.append(f"handoff {section} must be a non-empty list")
+    if payload.get("promotion_eligible") is not False:
+        problems.append("handoff must not be promotion eligible")
+    if payload.get("production_authorized") is not False:
+        problems.append("handoff must not authorize production")
+    if not _is_sha256(payload.get("inventory_hash")):
+        problems.append("handoff inventory_hash must be a lowercase SHA-256")
+    if payload.get("run_index_sha256") is not None and not _is_sha256(
+            payload.get("run_index_sha256")):
+        problems.append("handoff run_index_sha256 must be a lowercase SHA-256")
+    canonical_view = {k: v for k, v in payload.items()
+                      if k not in ("diagnostics", "artifact_sha256")}
+    problems.extend(_forbidden_handoff_claims(canonical_view))
+    for dotted, value in _iter_strings(canonical_view):
+        if value.startswith("/"):
+            problems.append(
+                f"absolute path in canonical handoff field {dotted!r}; "
+                "canonical bindings must be relative to a named root")
+    return (not problems), problems
+
+
+def _iter_strings(obj: Any, prefix: str = ""):
+    if isinstance(obj, str):
+        yield prefix, obj
+    elif isinstance(obj, Mapping):
+        for key, value in obj.items():
+            yield from _iter_strings(value, f"{prefix}{key}.")
+    elif isinstance(obj, list):
+        for index, value in enumerate(obj):
+            yield from _iter_strings(value, f"{prefix}[{index}].")
