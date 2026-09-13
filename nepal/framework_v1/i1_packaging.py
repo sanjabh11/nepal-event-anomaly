@@ -111,9 +111,9 @@ def build_successor_manifest(*, parent_manifest: Mapping[str, Any],
     ``active_audit_packet`` is the *current* audit binding — the v2 packet —
     expressed as ``{relative_path, sha256}`` relative to the unchanged v2
     artifact root so the field stays resolvable.  ``i1_audit_binding`` locates
-    the corrected I1 binding envelope as ``{run_root_relative_path, sha256}``;
-    the field name documents that it is run-root-relative, not
-    artifact-root-relative.
+    the corrected I1 binding envelope by ``run_root_relative_path`` only —
+    the run index binds its file digest, which breaks the otherwise circular
+    manifest -> binding -> index hash dependency.
 
     Only identity fields change; every data-bearing field is copied verbatim
     so ``verify_input_manifest`` succeeds against the v2 artifact root.
@@ -127,10 +127,18 @@ def build_successor_manifest(*, parent_manifest: Mapping[str, Any],
     if not _is_sha256(parent_manifest_file_sha256):
         raise ValueError(
             "parent_manifest_file_sha256 must be a lowercase SHA-256")
-    for label, ref in (("active_audit_packet", active_audit_packet),
-                       ("i1_audit_binding", i1_audit_binding)):
-        if not isinstance(ref, Mapping) or not _is_sha256(ref.get("sha256")):
-            raise ValueError(f"{label} requires a sha256 digest")
+    if not isinstance(active_audit_packet, Mapping) or not _is_sha256(
+            active_audit_packet.get("sha256")):
+        raise ValueError("active_audit_packet requires a sha256 digest")
+    if not isinstance(i1_audit_binding, Mapping) or not isinstance(
+            i1_audit_binding.get("run_root_relative_path"), str) or not \
+            i1_audit_binding.get("run_root_relative_path"):
+        raise ValueError(
+            "i1_audit_binding requires a run_root_relative_path")
+    if i1_audit_binding.get("sha256") is not None and not _is_sha256(
+            i1_audit_binding.get("sha256")):
+        raise ValueError("i1_audit_binding.sha256 must be a lowercase "
+                         "SHA-256 when present")
 
     successor = dict(parent_manifest)
     successor["candidate_generation_id"] = generation_id
@@ -218,9 +226,10 @@ def verify_successor_manifest(
         _check_relative_path(
             binding_ref.get("run_root_relative_path"),
             "i1_audit_binding.run_root_relative_path", problems)
-        if not _is_sha256(binding_ref.get("sha256")):
+        if binding_ref.get("sha256") is not None and not _is_sha256(
+                binding_ref.get("sha256")):
             problems.append("i1_audit_binding.sha256 must be a lowercase "
-                            "SHA-256")
+                            "SHA-256 when present")
 
     if not isinstance(payload.get("artifacts"), list) or not payload.get(
             "artifacts"):
