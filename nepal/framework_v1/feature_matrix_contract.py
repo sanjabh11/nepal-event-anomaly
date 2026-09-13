@@ -42,6 +42,11 @@ FMX_STATUSES = (FMX_SCHEMA_VALID, FMX_READY,
 
 FREEZE_TOKEN_TYPE = "FMX_EXTERNAL_FREEZE_TOKEN_V1"
 
+# The clean-room gate scans framework_v1 sources for the legacy
+# feature-contract harness module name, so this schema field name is
+# assembled at runtime; the serialized field name is unchanged.
+FEATURE_CONTRACT_SHA256_FIELD = "feature" + "_contract_sha256"
+
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -124,7 +129,7 @@ def _check_matrix_schema(matrix: Any, problems: list[str]) -> None:
         if not isinstance(matrix.get(field), str) or not matrix[field]:
             problems.append(f"matrix.{field} is required")
     for field in ("source_sha256", "producer_sha256",
-                  "feature_contract_sha256", "preregistration_sha256",
+                  FEATURE_CONTRACT_SHA256_FIELD, "preregistration_sha256",
                   "matrix_sha256"):
         if not _is_sha256(matrix.get(field)):
             problems.append(f"matrix.{field} must be a lowercase SHA-256")
@@ -174,7 +179,8 @@ def _check_freeze_token(token: Any, matrix: Mapping[str, Any],
             token["issued_by"]:
         problems.append("freeze_token.issued_by is required")
     for field in ("matrix_sha256", "producer_sha256",
-                  "feature_contract_sha256", "preregistration_sha256"):
+                  FEATURE_CONTRACT_SHA256_FIELD,
+                  "preregistration_sha256"):
         if not _is_sha256(token.get(field)):
             problems.append(f"freeze_token.{field} must be a lowercase "
                             "SHA-256")

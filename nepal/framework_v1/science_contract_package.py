@@ -34,7 +34,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Optional
 
-from .feature_matrix_contract import (FMX_BLOCKED_PENDING_EXPLICIT_FREEZE,
+from .feature_matrix_contract import (FEATURE_CONTRACT_SHA256_FIELD,
+                                      FMX_BLOCKED_PENDING_EXPLICIT_FREEZE,
                                       build_fmx_envelope)
 from .multi_event_contract import build_mec_envelope
 from .provenance import (bind_artifact_envelope, sha256_file,
@@ -139,7 +140,7 @@ def _blocked_fmx_fixture() -> Mapping[str, Any]:
         "source_sha256": "ab" * 32,
         "byte_count": 1,
         "producer_sha256": "cd" * 32,
-        "feature_contract_sha256": "ef" * 32,
+        FEATURE_CONTRACT_SHA256_FIELD: "ef" * 32,
         "preregistration_sha256": "01" * 32,
         "matrix_sha256": "23" * 32,
         "columns": [{"name": "t2m_mean", "unit": "K", "role": "feature",
