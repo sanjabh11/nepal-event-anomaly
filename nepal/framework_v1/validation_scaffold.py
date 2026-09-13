@@ -25,10 +25,15 @@ Guarantees:
 from __future__ import annotations
 
 import re
-from typing import Any, Mapping
+from typing import Any, Mapping, Optional
 
-from .provenance import bind_artifact_envelope, verify_artifact_envelope
-from .research_boundaries import QUARANTINED_MODULES
+import json
+from pathlib import Path
+
+from .provenance import (bind_artifact_envelope,
+                         verify_artifact_envelope)
+from .research_boundaries import (QUARANTINED_MODULES,
+                                  lint_research_claims)
 
 SCAFFOLD_ENVELOPE_TYPE = "VALIDATION_SCAFFOLD_V1"
 MODE_SCAFFOLD_ONLY = "VALIDATION_SCAFFOLD_ONLY"
@@ -46,6 +51,19 @@ _FORBIDDEN_CALLER_KEYS = ("gate_override", "verdict", "passed",
                           "gate_passed", "force_ready")
 _METRIC_CLASSES = ("calibration", "discrimination", "lead_time",
                    "false_alarm", "skill")
+_METRIC_KEYS = ("metric_id", "class", "operational_threshold",
+                "description", "unit")
+
+# Exact allowlists — a reference may only carry its typed digest fields
+# plus an optional file binding.  No payload keys (ranked, top_five,
+# priority) can be smuggled through a reference.
+_REFERENCE_KEYS = {
+    "mec_reference": {"envelope_sha256", "envelope_type", "relative_path"},
+    "fmx_reference": {"envelope_sha256", "fmx_status", "relative_path"},
+    "b_reference": {"status", "ranked_array_canonical_sha256"},
+}
+_REFERENCE_DIGEST_FIELD = {"mec_reference": "envelope_sha256",
+                           "fmx_reference": "envelope_sha256"}
 
 
 def _is_sha256(value: Any) -> bool:
@@ -63,7 +81,44 @@ def _iter_strings(obj: Any, prefix: str = ""):
             yield from _iter_strings(value, f"{prefix}[{index}].")
 
 
-def _check(payload: Mapping[str, Any], problems: list[str]) -> None:
+def _resolve_reference_file(root: Path, relpath: Any, label: str,
+                            problems: list[str]) -> Optional[Path]:
+    """Resolve a reference file binding: safe relative path, regular
+    file, no symlink, must stay under ``root``."""
+    if not isinstance(relpath, str) or not relpath:
+        problems.append(f"{label}.relative_path must be a non-empty "
+                        "relative path")
+        return None
+    rel = Path(relpath)
+    if rel.is_absolute() or ".." in rel.parts:
+        problems.append(f"{label}.relative_path {relpath!r} must be "
+                        "relative without traversal")
+        return None
+    target = root / rel
+    if target.is_symlink():
+        problems.append(f"{label}.relative_path {relpath!r} is a symlink")
+        return None
+    root_r = root.resolve()
+    resolved = target.resolve()
+    if resolved != root_r and root_r not in resolved.parents:
+        problems.append(f"{label}.relative_path {relpath!r} resolves "
+                        "outside the reference root")
+        return None
+    if not target.is_file():
+        problems.append(f"{label}.relative_path {relpath!r} is not a "
+                        "file under the reference root")
+        return None
+    return target
+
+
+def _check(payload: Mapping[str, Any], problems: list[str],
+           reference_root: "Optional[str | Path]" = None) -> None:
+    # Recursive claim lint — nested forged READY/WARNING/operational
+    # fields are rejected wherever they hide in the payload.
+    ok_lint, lint_problems = lint_research_claims(payload)
+    if not ok_lint:
+        problems.extend(lint_problems)
+
     if payload.get("mode") != MODE_SCAFFOLD_ONLY:
         problems.append(f"mode must be {MODE_SCAFFOLD_ONLY!r}")
     if payload.get("research_diagnostic_only") is not True:
@@ -78,6 +133,20 @@ def _check(payload: Mapping[str, Any], problems: list[str]) -> None:
     if not isinstance(refs, Mapping):
         problems.append("references must be a mapping")
         refs = {}
+    else:
+        for rname in refs:
+            if rname not in _REFERENCE_KEYS:
+                problems.append(f"references.{rname} is not an allowed "
+                                "reference type")
+        for rname, allowed in _REFERENCE_KEYS.items():
+            rval = refs.get(rname)
+            if isinstance(rval, Mapping):
+                extra = set(rval) - allowed
+                if extra:
+                    problems.append(
+                        f"references.{rname} has disallowed fields "
+                        f"{sorted(extra)} — references carry typed "
+                        "digests only")
     mec_ref = refs.get("mec_reference")
     if not isinstance(mec_ref, Mapping) or not _is_sha256(
             mec_ref.get("envelope_sha256")) or mec_ref.get(
@@ -117,6 +186,38 @@ def _check(payload: Mapping[str, Any], problems: list[str]) -> None:
                 problems.append(
                     f"references.{rname}.{rkey} carries a data payload; "
                     "only scalar digest references are permitted")
+
+    # File-bound references: when a reference_root is supplied, MEC and
+    # FMX references must resolve to real envelope files on disk whose
+    # verified self-hash equals the declared digest — a plausible-looking
+    # 64-hex string that names no valid envelope is rejected.
+    if reference_root is not None:
+        root = Path(reference_root)
+        for rname, digest_field in _REFERENCE_DIGEST_FIELD.items():
+            rval = refs.get(rname)
+            if not isinstance(rval, Mapping):
+                continue
+            target = _resolve_reference_file(
+                root, rval.get("relative_path"),
+                f"references.{rname}", problems)
+            if target is None or not _is_sha256(rval.get(digest_field)):
+                continue
+            try:
+                doc = json.loads(target.read_text("utf-8"))
+            except (OSError, ValueError) as exc:
+                problems.append(f"references.{rname} file unreadable: "
+                                f"{exc}")
+                continue
+            ok_env, envp = verify_artifact_envelope(doc)
+            if not ok_env:
+                problems.append(
+                    f"references.{rname} file is not a valid artifact "
+                    f"envelope: {envp[0] if envp else 'invalid'}")
+                continue
+            if doc.get("artifact_sha256") != rval[digest_field]:
+                problems.append(
+                    f"references.{rname}.{digest_field} does not match "
+                    "the referenced envelope's verified self-hash")
 
     inherited = payload.get("inherited_state")
     if not isinstance(inherited, Mapping):
@@ -160,13 +261,25 @@ def _check(payload: Mapping[str, Any], problems: list[str]) -> None:
     if not isinstance(registry, list) or not registry:
         problems.append("metric_registry must be a non-empty list")
         registry = []
+    seen_metrics: set[str] = set()
     for i, m in enumerate(registry):
         label = f"metric_registry[{i}]"
         if not isinstance(m, Mapping):
             problems.append(f"{label} must be a mapping")
             continue
-        if not isinstance(m.get("metric_id"), str) or not m["metric_id"]:
+        extra = set(m) - set(_METRIC_KEYS)
+        if extra:
+            problems.append(f"{label} has disallowed fields "
+                            f"{sorted(extra)} — no operational threshold "
+                            "or payload fields")
+        mid = m.get("metric_id")
+        if not isinstance(mid, str) or not mid:
             problems.append(f"{label}.metric_id is required")
+        elif mid in seen_metrics:
+            problems.append(f"{label}.metric_id {mid!r} is a duplicate — "
+                            "registry ids must be unique")
+        else:
+            seen_metrics.add(mid)
         if m.get("class") not in _METRIC_CLASSES:
             problems.append(f"{label}.class must be one of "
                             f"{_METRIC_CLASSES}")
@@ -176,13 +289,19 @@ def _check(payload: Mapping[str, Any], problems: list[str]) -> None:
                             "thresholds")
 
 
-def build_scaffold_envelope(payload: Mapping[str, Any]) -> dict[str, Any]:
+def build_scaffold_envelope(payload: Mapping[str, Any], *,
+                            reference_root: "Optional[str | Path]" = None
+                            ) -> dict[str, Any]:
     """Validate and bind a T2S scaffold envelope.  Status is always
-    ``BLOCKED_PENDING_FMX`` — no execution, no promotion."""
+    ``BLOCKED_PENDING_FMX`` — no execution, no promotion.
+
+    With ``reference_root``, MEC/FMX references must carry
+    ``relative_path`` bindings to real files under the root whose
+    recomputed digests match the declared envelope digests."""
     if not isinstance(payload, Mapping):
         raise TypeError("scaffold payload must be a mapping")
     problems: list[str] = []
-    _check(payload, problems)
+    _check(payload, problems, reference_root)
     if problems:
         raise ValueError("T2S scaffold payload is not valid: "
                          + "; ".join(problems[:6]))
@@ -198,9 +317,12 @@ def build_scaffold_envelope(payload: Mapping[str, Any]) -> dict[str, Any]:
     return bind_artifact_envelope(envelope)
 
 
-def verify_scaffold_envelope(payload: Any) -> tuple[bool, list[str]]:
-    """Fail-closed verification: self-hash, structural contract, and the
-    invariant that the scaffold status is the blocked state."""
+def verify_scaffold_envelope(payload: Any, *,
+                             reference_root: "Optional[str | Path]" = None
+                             ) -> tuple[bool, list[str]]:
+    """Fail-closed verification: self-hash, structural contract, the
+    blocked-status invariant, and (with ``reference_root``) file-bound
+    reference digests."""
     problems: list[str] = []
     ok, env_problems = verify_artifact_envelope(payload)
     if not ok:
@@ -216,5 +338,5 @@ def verify_scaffold_envelope(payload: Any) -> tuple[bool, list[str]]:
         problems.append("promotion_eligible must be false")
     if payload.get("production_authorized") is not False:
         problems.append("production_authorized must be false")
-    _check(payload, problems)
+    _check(payload, problems, reference_root)
     return (not problems), problems

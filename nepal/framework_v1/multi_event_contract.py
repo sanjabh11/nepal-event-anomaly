@@ -30,9 +30,13 @@ Contract invariants enforced by :func:`verify_mec_envelope`:
 from __future__ import annotations
 
 import re
+from datetime import date as _date
 from typing import Any, Mapping, Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from .provenance import bind_artifact_envelope, verify_artifact_envelope
+from .provenance import (bind_artifact_envelope, sha256_canonical,
+                         verify_artifact_envelope)
+from .research_boundaries import lint_research_claims
 
 MEC_ENVELOPE_TYPE = "MULTI_EVENT_CONTRACT_V1"
 MEC_PROFILE_ID = "SCIENCE_CONTRACT_T2_RESEARCH"
@@ -40,6 +44,11 @@ MEC_PROFILE_ID = "SCIENCE_CONTRACT_T2_RESEARCH"
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _SYNTH_ID_PREFIX = "SYNTH-"
+_MODE_SYNTHETIC = "SYNTHETIC_FIXTURE"
+_MODE_REAL = "REAL_SOURCE_DESIGN"
+_MODES = (_MODE_SYNTHETIC, _MODE_REAL)
+_SOURCE_PACKET_FIELDS = ("packet_id", "packet_sha256", "approved_by",
+                         "human_approved", "approved_at")
 _FORBIDDEN_SCOPE_TOKENS = ("langtang", "30km")
 _FORBIDDEN_DATE_SOURCES = ("fallback", "default", "imputed", "synthesized")
 _FORBIDDEN_CATALOG_IDS = ("hma_events_all", "hma", "real", "production")
@@ -65,15 +74,30 @@ def _iter_strings(obj: Any, prefix: str = ""):
 
 
 def _parse_date(value: Any) -> Optional[tuple[int, int, int]]:
+    """Strict calendar parsing — only real Gregorian dates (``2015-02-31``
+    is invalid, not merely out-of-range)."""
     if not isinstance(value, str) or not _DATE_RE.fullmatch(value):
         return None
     try:
         y, m, d = (int(p) for p in value.split("-"))
-        if not (1 <= m <= 12 and 1 <= d <= 31):
-            return None
+        _date(y, m, d)
         return (y, m, d)
     except ValueError:
         return None
+
+
+def _check_timezone(tz: Any, label: str, problems: list[str]) -> None:
+    """An optional timezone field must be a real IANA timezone name."""
+    if tz is None:
+        return
+    if not isinstance(tz, str):
+        problems.append(f"{label}.timezone must be an IANA timezone name")
+        return
+    try:
+        ZoneInfo(tz)
+    except (ZoneInfoNotFoundError, ValueError):
+        problems.append(f"{label}.timezone {tz!r} is not a valid IANA "
+                        "timezone")
 
 
 def _window_endpoints(value: Any, label: str, problems: list[str]
@@ -87,6 +111,10 @@ def _window_endpoints(value: Any, label: str, problems: list[str]
             return None, None
         return d, d
     if isinstance(value, Mapping):
+        _check_timezone(value.get("timezone"), label, problems)
+        extra = set(value) - {"start", "end", "timezone"}
+        if extra:
+            problems.append(f"{label} has unknown keys {sorted(extra)}")
         start = _parse_date(value.get("start"))
         end = _parse_date(value.get("end"))
         if start is None or end is None:
@@ -114,6 +142,7 @@ def _check_date_spec(spec: Any, label: str, problems: list[str]
         problems.append(f"{label}.date_spec.source {source!r} is a "
                         "fallback/imputed source; source-supported dates "
                         "are required")
+    _check_timezone(spec.get("timezone"), f"{label}.date_spec", problems)
     precision = spec.get("precision")
     event_ref: Optional[tuple] = None
     if precision == "day":
@@ -172,6 +201,11 @@ def verify_mec_envelope(payload: Any, *,
         ok, env_problems = verify_artifact_envelope(payload)
         if not ok:
             problems.extend(env_problems)
+    # Recursive claim lint — nested forged READY/WARNING/operational
+    # fields are rejected wherever they hide.
+    ok_lint, lint_problems = lint_research_claims(payload)
+    if not ok_lint:
+        problems.extend(lint_problems)
 
     if payload.get("envelope_type") != MEC_ENVELOPE_TYPE:
         problems.append(f"envelope_type must be {MEC_ENVELOPE_TYPE!r}")
@@ -181,9 +215,49 @@ def verify_mec_envelope(payload: Any, *,
         problems.append("research_only must be true")
     if payload.get("research_diagnostic_only") is not True:
         problems.append("research_diagnostic_only must be true")
-    if payload.get("synthetic_fixture") is not True:
-        problems.append("synthetic_fixture must be true; live event data "
-                        "is not permitted in this tranche")
+    mode = payload.get("mode", _MODE_SYNTHETIC)
+    if mode not in _MODES:
+        problems.append(f"mode must be one of {_MODES}")
+        mode = _MODE_SYNTHETIC
+
+    if mode == _MODE_SYNTHETIC:
+        if payload.get("synthetic_fixture") is not True:
+            problems.append("synthetic_fixture must be true; live event "
+                            "data is not permitted in this tranche")
+    else:
+        # REAL_SOURCE_DESIGN: schema exists so a future approved intake can
+        # bind real catalogs, but it fails closed without a complete
+        # human-approved source packet.  No file or network access happens
+        # here — the packet is validated as a claim structure only.
+        if payload.get("synthetic_fixture") is not False:
+            problems.append("real mode requires synthetic_fixture=false")
+        packet = payload.get("source_packet")
+        if not isinstance(packet, Mapping):
+            problems.append("real mode requires a human-approved "
+                            "source_packet — none supplied; failing "
+                            "closed")
+            packet = {}
+        else:
+            for field in _SOURCE_PACKET_FIELDS:
+                if field not in packet:
+                    problems.append(f"source_packet.{field} is required "
+                                    "for real mode")
+            if not isinstance(packet.get("packet_id"), str) or not                     packet.get("packet_id"):
+                problems.append("source_packet.packet_id must be a "
+                                "non-empty string")
+            if not _is_sha256(packet.get("packet_sha256")):
+                problems.append("source_packet.packet_sha256 must be a "
+                                "lowercase SHA-256")
+            if not isinstance(packet.get("approved_by"), str) or not                     packet.get("approved_by"):
+                problems.append("source_packet.approved_by must be a "
+                                "non-empty string")
+            if packet.get("human_approved") is not True:
+                problems.append("source_packet.human_approved must be "
+                                "true — real-mode design without human "
+                                "approval fails closed")
+            if _parse_date(packet.get("approved_at")) is None:
+                problems.append("source_packet.approved_at must be a "
+                                "valid ISO calendar date")
 
     catalog = payload.get("source_catalog")
     if not isinstance(catalog, Mapping):
@@ -193,7 +267,8 @@ def verify_mec_envelope(payload: Any, *,
         cid = catalog.get("catalog_id")
         if not isinstance(cid, str) or not cid:
             problems.append("source_catalog.catalog_id is required")
-        elif any(tok in cid.lower() for tok in _FORBIDDEN_CATALOG_IDS):
+        elif mode == _MODE_SYNTHETIC and any(
+                tok in cid.lower() for tok in _FORBIDDEN_CATALOG_IDS):
             problems.append(f"source_catalog.catalog_id {cid!r} names a "
                             "live/production catalog; synthetic fixtures "
                             "only")
@@ -208,11 +283,24 @@ def verify_mec_envelope(payload: Any, *,
             problems.append("source_catalog.asset_ids must be a "
                             "non-empty list")
 
+    # Declared collections for referential integrity — events may only
+    # reference declared groups/holdouts.
+    declared_groups = payload.get("event_groups")
+    if not isinstance(declared_groups, list) or not declared_groups or \
+            not all(isinstance(g, str) and g for g in declared_groups):
+        problems.append("event_groups must be a non-empty list of "
+                        "declared group ids")
+        declared_groups = []
+    group_set = set(g for g in declared_groups if isinstance(g, str))
+
     events = payload.get("events")
     if not isinstance(events, list) or not events:
         problems.append("events must be a non-empty list")
         events = []
     seen_ids: set[str] = set()
+    seen_groups: set[str] = set()
+    seen_holdouts: set[str] = set()
+    seen_regions: set[str] = set()
     for i, ev in enumerate(events):
         label = f"events[{i}]"
         if not isinstance(ev, Mapping):
@@ -225,18 +313,53 @@ def verify_mec_envelope(payload: Any, *,
             if eid in seen_ids:
                 problems.append(f"{label}.event_id {eid!r} is a duplicate")
             seen_ids.add(eid)
-            if not eid.startswith(_SYNTH_ID_PREFIX) or \
-                    ev.get("synthetic") is not True:
-                problems.append(
-                    f"{label}.event_id {eid!r} is not a synthetic fixture "
-                    "ID; live/production event identity is forbidden")
-        if not isinstance(ev.get("event_group_id"), str) or not \
-                ev["event_group_id"]:
+            if mode == _MODE_SYNTHETIC:
+                if not eid.startswith(_SYNTH_ID_PREFIX) or \
+                        ev.get("synthetic") is not True:
+                    problems.append(
+                        f"{label}.event_id {eid!r} is not a synthetic "
+                        "fixture ID; live/production event identity is "
+                        "forbidden")
+            else:
+                if eid.startswith(_SYNTH_ID_PREFIX) or \
+                        ev.get("synthetic") is True:
+                    problems.append(
+                        f"{label}.event_id {eid!r} looks synthetic in a "
+                        "real-mode envelope")
+        rid = ev.get("region_id")
+        if not isinstance(rid, str) or not rid:
+            problems.append(f"{label}.region_id is required — event/"
+                            "region counts are derived from records")
+        else:
+            seen_regions.add(rid)
+        gid = ev.get("event_group_id")
+        if not isinstance(gid, str) or not gid:
             problems.append(f"{label}.event_group_id is required")
-        if not isinstance(ev.get("holdout_group"), str) or not \
-                ev["holdout_group"]:
+        else:
+            seen_groups.add(gid)
+            if group_set and gid not in group_set:
+                problems.append(f"{label}.event_group_id {gid!r} is not "
+                                "a declared event group (orphan "
+                                "reference)")
+        hg = ev.get("holdout_group")
+        if not isinstance(hg, str) or not hg:
             problems.append(f"{label}.holdout_group is required")
-        if not _is_sha256(ev.get("row_sha256")):
+        else:
+            seen_holdouts.add(hg)
+        # Row bytes trump caller-supplied hashes: when the canonical
+        # source row is present, row_sha256 must recompute to it exactly.
+        row_source = ev.get("row_source")
+        if row_source is not None:
+            if not isinstance(row_source, (Mapping, list, str)):
+                problems.append(f"{label}.row_source must be canonical "
+                                "row bytes/fields (mapping, list, or "
+                                "string)")
+            elif not _is_sha256(ev.get("row_sha256")) or \
+                    sha256_canonical(row_source) != ev.get("row_sha256"):
+                problems.append(f"{label}.row_sha256 does not equal "
+                                "sha256 of the supplied canonical row "
+                                "source bytes")
+        elif not _is_sha256(ev.get("row_sha256")):
             problems.append(f"{label}.row_sha256 must be a lowercase "
                             "SHA-256")
         event_ref = _check_date_spec(ev.get("date_spec"), label, problems)
@@ -283,6 +406,19 @@ def verify_mec_envelope(payload: Any, *,
                 is not True:
             problems.append("holdout.event_separation.group_disjoint "
                             "must be true")
+        declared_holdouts = holdout.get("holdout_groups")
+        if not isinstance(declared_holdouts, list) or not \
+                declared_holdouts or not all(
+                    isinstance(h, str) and h for h in declared_holdouts):
+            problems.append("holdout.holdout_groups must be a non-empty "
+                            "list of declared holdout ids")
+        else:
+            holdout_set = set(declared_holdouts)
+            for hg in seen_holdouts:
+                if hg not in holdout_set:
+                    problems.append(f"holdout_group {hg!r} is not a "
+                                    "declared holdout group (orphan "
+                                    "reference)")
 
     scope = payload.get("validation_scope")
     if not isinstance(scope, Mapping):
@@ -296,14 +432,57 @@ def verify_mec_envelope(payload: Any, *,
             problems.append(f"validation_scope.scope_id {sid!r} is a "
                             "single-box/Langtang-only design and is "
                             "rejected")
-        if not isinstance(scope.get("n_geographic_regions"), int) or \
-                scope["n_geographic_regions"] < 2:
+        declared_regions = scope.get("n_geographic_regions")
+        if not isinstance(declared_regions, int) or declared_regions < 2:
             problems.append("validation_scope must span at least 2 "
                             "geographic regions")
-        if not isinstance(scope.get("min_events"), int) or \
-                scope["min_events"] < 2:
+        elif declared_regions != len(seen_regions):
+            problems.append(
+                f"validation_scope.n_geographic_regions "
+                f"{declared_regions} does not equal the "
+                f"{len(seen_regions)} regions present in the event "
+                "records — counts are derived, not asserted")
+        declared_min = scope.get("min_events")
+        if not isinstance(declared_min, int) or declared_min < 2:
             problems.append("validation_scope must cover at least 2 "
                             "events")
+        elif declared_min != len(events):
+            problems.append(
+                f"validation_scope.min_events {declared_min} does not "
+                f"equal the {len(events)} event records — counts are "
+                "derived, not asserted")
+
+    label_spec = payload.get("label_spec")
+    if not isinstance(label_spec, Mapping):
+        problems.append("label_spec must be a mapping (Gate Spec v0 "
+                        "machine-readable claim scope)")
+    else:
+        if not isinstance(label_spec.get("label_source"), str) or not \
+                label_spec["label_source"]:
+            problems.append("label_spec.label_source is required")
+        adj = label_spec.get("adjudication")
+        if not isinstance(adj, Mapping):
+            problems.append("label_spec.adjudication must be a mapping")
+        else:
+            if adj.get("required") is not True:
+                problems.append("label_spec.adjudication.required must "
+                                "be true")
+            if not isinstance(adj.get("independent_reviewers"), int) or \
+                    adj["independent_reviewers"] < 1:
+                problems.append("label_spec.adjudication."
+                                "independent_reviewers must be >= 1")
+        nc = label_spec.get("negative_controls")
+        if not isinstance(nc, Mapping):
+            problems.append("label_spec.negative_controls must be a "
+                            "mapping")
+        else:
+            if nc.get("required") is not True:
+                problems.append("label_spec.negative_controls.required "
+                                "must be true")
+            if not isinstance(nc.get("n_controls"), int) or \
+                    nc["n_controls"] < 1:
+                problems.append("label_spec.negative_controls.n_controls "
+                                "must be >= 1")
 
     if not isinstance(payload.get("claim_scope"), str) or not \
             payload["claim_scope"]:

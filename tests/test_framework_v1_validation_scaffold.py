@@ -135,3 +135,114 @@ def test_scaffold_result_blocked_pending_fmx():
     assert env["scaffold_status"] == "BLOCKED_PENDING_FMX"
     assert env["inherited_state"]["b_status"] == "B_TO_C_BLOCKED"
     assert env["inherited_state"]["ranking_rerun"] is False
+
+
+# ---------- N2 scaffold hardening ----------
+
+
+def _bound_refs(tmp_path):
+    """Write real bound-envelope files and return refs bound to them."""
+    import json
+    from nepal.framework_v1.provenance import bind_artifact_envelope
+    refs = _refs()
+    for rname, fname in (("mec_reference", "mec.json"),
+                         ("fmx_reference", "fmx.json")):
+        doc = bind_artifact_envelope({"doc": rname,
+                                      "research_diagnostic_only": True})
+        (tmp_path / fname).write_text(json.dumps(doc))
+        refs[rname]["relative_path"] = fname
+        refs[rname]["envelope_sha256"] = doc["artifact_sha256"]
+    return refs
+
+
+def test_file_bound_refs_verify(tmp_path):
+    p = _payload()
+    p["references"] = _bound_refs(tmp_path)
+    env = t2s.build_scaffold_envelope(p, reference_root=tmp_path)
+    ok, problems = t2s.verify_scaffold_envelope(env,
+                                              reference_root=tmp_path)
+    assert ok, problems
+
+
+def test_fake_unresolved_digest_rejected(tmp_path):
+    """A plausible 64-hex digest that names nothing real on disk."""
+    p = _payload()
+    p["references"] = _bound_refs(tmp_path)
+    p["references"]["mec_reference"]["envelope_sha256"] = "00" * 32
+    with pytest.raises(ValueError):
+        t2s.build_scaffold_envelope(p, reference_root=tmp_path)
+
+
+def test_missing_relative_path_with_root_rejected(tmp_path):
+    p = _payload()
+    p["references"] = _bound_refs(tmp_path)
+    del p["references"]["mec_reference"]["relative_path"]
+    with pytest.raises(ValueError):
+        t2s.build_scaffold_envelope(p, reference_root=tmp_path)
+
+
+def test_symlink_reference_rejected(tmp_path):
+    import json
+    from nepal.framework_v1.provenance import bind_artifact_envelope
+    p = _payload()
+    p["references"] = _bound_refs(tmp_path)
+    real = tmp_path / "real.json"
+    real.write_text(json.dumps(bind_artifact_envelope(
+        {"x": 1, "research_diagnostic_only": True})))
+    (tmp_path / "mec.json").unlink()
+    (tmp_path / "mec.json").symlink_to(real)
+    with pytest.raises(ValueError):
+        t2s.build_scaffold_envelope(p, reference_root=tmp_path)
+
+
+def test_traversal_reference_rejected(tmp_path):
+    p = _payload()
+    p["references"] = _bound_refs(tmp_path)
+    p["references"]["mec_reference"]["relative_path"] = "../escape.json"
+    with pytest.raises(ValueError):
+        t2s.build_scaffold_envelope(p, reference_root=tmp_path)
+
+
+def test_nested_forged_ready_rejected():
+    p = _payload()
+    p["split_spec"]["notes"] = {"verdict_detail": "READY"}
+    with pytest.raises(ValueError):
+        t2s.build_scaffold_envelope(p)
+
+
+def test_nested_operational_flag_rejected():
+    p = _payload()
+    p["metric_registry"][0]["description"] = "ok"
+    p["split_spec"]["nested"] = {"warning_path_authorized": True}
+    with pytest.raises(ValueError):
+        t2s.build_scaffold_envelope(p)
+
+
+def test_unknown_reference_type_rejected():
+    p = _payload()
+    p["references"]["extra_ref"] = {"envelope_sha256": "ab" * 32}
+    with pytest.raises(ValueError):
+        t2s.build_scaffold_envelope(p)
+
+
+def test_reference_extra_field_rejected():
+    p = _payload()
+    p["references"]["b_reference"]["top_five"] = "1,2,3"
+    with pytest.raises(ValueError):
+        t2s.build_scaffold_envelope(p)
+
+
+def test_duplicate_metric_id_rejected():
+    p = _payload()
+    p["metric_registry"].append(
+        {"metric_id": "calibration_slope", "class": "skill",
+         "operational_threshold": None})
+    with pytest.raises(ValueError):
+        t2s.build_scaffold_envelope(p)
+
+
+def test_operational_metric_field_rejected():
+    p = _payload()
+    p["metric_registry"][0]["alert_threshold"] = 0.9
+    with pytest.raises(ValueError):
+        t2s.build_scaffold_envelope(p)

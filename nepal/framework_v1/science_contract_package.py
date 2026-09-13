@@ -40,11 +40,12 @@ from .feature_matrix_contract import (FEATURE_CONTRACT_SHA256_FIELD,
                                       build_fmx_envelope,
                                       verify_fmx_envelope)
 from .multi_event_contract import build_mec_envelope
-from .provenance import (bind_artifact_envelope, sha256_file,
-                         verify_artifact_envelope)
+from .provenance import (bind_artifact_envelope, sha256_canonical,
+                         sha256_file, verify_artifact_envelope)
 from .research_boundaries import lint_research_claims
 from .validation_scaffold import (BLOCKED_PENDING_FMX,
-                                  build_scaffold_envelope)
+                                  build_scaffold_envelope,
+                                  verify_scaffold_envelope)
 
 PACKAGE_STATUS = "SCIENCE_CONTRACT_SCAFFOLD_READY_WITH_FMX_BLOCKED"
 PACKAGE_INDEX_TYPE = "SCIENCE_CONTRACT_PACKAGE_INDEX_V1"
@@ -91,13 +92,17 @@ def _atomic_write_json(path: Path, obj: Mapping[str, Any]) -> None:
 def _synthetic_mec_fixture() -> Mapping[str, Any]:
     """A synthetic MEC fixture — proves the schema, carries no real data."""
     def ev(i: int, group: str, day: int) -> dict[str, Any]:
+        row_source = {"fixture_row": i, "group": group,
+                      "day": day}
         return {
             "event_id": f"SYNTH-EVT-{i:03d}",
             "event_group_id": group,
+            "region_id": f"R{(i - 1) % 3 + 1}",
             "synthetic": True,
             "date_spec": {"precision": "day",
                           "date": f"2015-04-{day:02d}",
-                          "source": "synthetic_fixture_date"},
+                          "source": "synthetic_fixture_date",
+                          "timezone": "UTC"},
             "holdout_group": f"H{i % 2}",
             "windows": {
                 "acquisition_window": {"start": "2015-04-01",
@@ -107,10 +112,12 @@ def _synthetic_mec_fixture() -> Mapping[str, Any]:
                                               "end": "2015-04-02"},
                 "target_window": {"start": f"2015-04-{day:02d}",
                                   "end": f"2015-04-{day:02d}"}},
-            "row_sha256": f"{i:064x}"[-64:]}
+            "row_source": row_source,
+            "row_sha256": sha256_canonical(row_source)}
     return {
         "envelope_type": "MULTI_EVENT_CONTRACT_V1",
         "profile_id": "SCIENCE_CONTRACT_T2_RESEARCH",
+        "mode": "SYNTHETIC_FIXTURE",
         "research_only": True,
         "research_diagnostic_only": True,
         "synthetic_fixture": True,
@@ -119,12 +126,19 @@ def _synthetic_mec_fixture() -> Mapping[str, Any]:
             "source_sha256": "ab" * 32,
             "asset_ids": ["SYNTH-ASSET-1"],
             "processing_script_sha256": "cd" * 32},
+        "event_groups": ["G1", "G2", "G3", "G4"],
         "events": [ev(1, "G1", 3), ev(2, "G2", 10), ev(3, "G3", 21),
                    ev(4, "G4", 5)],
         "holdout": {"assigned_before_filtering": True,
                     "temporal_embargo_days": 30,
                     "geographic_holdout": {"min_separation_km": 50.0},
-                    "event_separation": {"group_disjoint": True}},
+                    "event_separation": {"group_disjoint": True},
+                    "holdout_groups": ["H0", "H1"]},
+        "label_spec": {
+            "label_source": "synthetic_fixture_labels",
+            "adjudication": {"required": True,
+                             "independent_reviewers": 1},
+            "negative_controls": {"required": True, "n_controls": 1}},
         "validation_scope": {"scope_id": "synthetic-regional-split",
                              "n_geographic_regions": 3,
                              "min_events": 4},
@@ -249,6 +263,10 @@ def build_science_contract_package(
         fmx_env = build_fmx_envelope(_blocked_fmx_fixture())
         assert fmx_env["fmx_status"] == FMX_BLOCKED_PENDING_EXPLICIT_FREEZE
         assert fmx_env["matrix"]["status"] == "ABSENT"
+        # The scaffold's MEC/FMX references are file-bound to the package's
+        # own envelope files, so they are written first and hashed on disk.
+        _atomic_write_json(pkg_dir / "mec_schema.json", mec_env)
+        _atomic_write_json(pkg_dir / "fmx_blocked.json", fmx_env)
         scaffold = build_scaffold_envelope({
             "mode": "VALIDATION_SCAFFOLD_ONLY",
             "research_diagnostic_only": True,
@@ -256,10 +274,12 @@ def build_science_contract_package(
             "references": {
                 "mec_reference": {
                     "envelope_sha256": mec_env["artifact_sha256"],
-                    "envelope_type": "MULTI_EVENT_CONTRACT_V1"},
+                    "envelope_type": "MULTI_EVENT_CONTRACT_V1",
+                    "relative_path": "mec_schema.json"},
                 "fmx_reference": {
                     "envelope_sha256": fmx_env["artifact_sha256"],
-                    "fmx_status": FMX_BLOCKED_PENDING_EXPLICIT_FREEZE},
+                    "fmx_status": FMX_BLOCKED_PENDING_EXPLICIT_FREEZE,
+                    "relative_path": "fmx_blocked.json"},
                 "b_reference": {
                     "status": b_status,
                     "ranked_array_canonical_sha256":
@@ -506,6 +526,10 @@ def verify_science_contract_package(
     scaffold_path = pkg_dir / "validation_scaffold.json"
     if scaffold_path.is_file():
         sc_doc = json.loads(scaffold_path.read_text("utf-8"))
+        ok, scp = verify_scaffold_envelope(sc_doc, reference_root=pkg_dir)
+        if not ok:
+            problems.extend(f"validation_scaffold.json: {p}"
+                            for p in scp)
         if sc_doc.get("scaffold_status") != BLOCKED_PENDING_FMX:
             problems.append("validation_scaffold.json must carry "
                             "BLOCKED_PENDING_FMX")

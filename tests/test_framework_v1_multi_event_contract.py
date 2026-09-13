@@ -8,10 +8,11 @@ import pytest
 from nepal.framework_v1 import multi_event_contract as mec
 
 
-def _event(i, group="G1", day=3):
+def _event(i, group="G1", day=3, region=None):
     return {
         "event_id": f"SYNTH-EVT-{i:03d}",
         "event_group_id": group,
+        "region_id": region or f"R{(i - 1) % 3 + 1}",
         "synthetic": True,
         "date_spec": {"precision": "day", "date": f"2015-04-{day:02d}",
                       "source": "synthetic_fixture_date"},
@@ -41,6 +42,8 @@ def _envelope():
             "asset_ids": ["SYNTH-ASSET-1"],
             "processing_script_sha256": "cd" * 32,
         },
+        "mode": "SYNTHETIC_FIXTURE",
+        "event_groups": ["G1", "G2", "G3", "G4"],
         "events": [_event(1, "G1", 3), _event(2, "G2", 10),
                    _event(3, "G3", 21), _event(4, "G4", 5)],
         "holdout": {
@@ -48,6 +51,13 @@ def _envelope():
             "temporal_embargo_days": 30,
             "geographic_holdout": {"min_separation_km": 50.0},
             "event_separation": {"group_disjoint": True},
+            "holdout_groups": ["H0", "H1"],
+        },
+        "label_spec": {
+            "label_source": "synthetic_fixture_labels",
+            "adjudication": {"required": True,
+                             "independent_reviewers": 1},
+            "negative_controls": {"required": True, "n_controls": 1},
         },
         "validation_scope": {
             "scope_id": "synthetic-regional-split",
@@ -234,3 +244,156 @@ def test_missing_row_hash_rejected():
     del e["events"][0]["row_sha256"]
     ok, _ = mec.verify_mec_envelope(e)
     assert not ok
+
+
+# ---------- N2 validator hardening ----------
+
+
+def test_feb31_rejected():
+    e = _envelope()
+    e["events"][0]["date_spec"]["date"] = "2015-02-31"
+    ok, problems = mec.verify_mec_envelope(e)
+    assert not ok and any("date" in p for p in problems)
+
+
+def test_apr31_window_rejected():
+    e = _envelope()
+    e["events"][0]["windows"]["acquisition_window"] = {
+        "start": "2015-04-01", "end": "2015-04-31"}
+    ok, _ = mec.verify_mec_envelope(e)
+    assert not ok
+
+
+def test_invalid_timezone_rejected():
+    e = _envelope()
+    e["events"][0]["date_spec"]["timezone"] = "Not/AZone"
+    ok, problems = mec.verify_mec_envelope(e)
+    assert not ok and any("timezone" in p for p in problems)
+
+
+def test_valid_timezone_accepted():
+    e = _envelope()
+    e["events"][0]["date_spec"]["timezone"] = "UTC"
+    ok, problems = mec.verify_mec_envelope(mec.build_mec_envelope(e))
+    assert ok, problems
+
+
+def test_caller_min_events_mismatch_rejected():
+    e = _envelope()
+    e["validation_scope"]["min_events"] = 7
+    ok, problems = mec.verify_mec_envelope(e)
+    assert not ok and any("min_events" in p for p in problems)
+
+
+def test_caller_region_count_mismatch_rejected():
+    e = _envelope()
+    e["validation_scope"]["n_geographic_regions"] = 5
+    ok, problems = mec.verify_mec_envelope(e)
+    assert not ok and any("n_geographic_regions" in p for p in problems)
+
+
+def test_missing_region_id_rejected():
+    e = _envelope()
+    del e["events"][0]["region_id"]
+    ok, _ = mec.verify_mec_envelope(e)
+    assert not ok
+
+
+def test_orphan_event_group_rejected():
+    e = _envelope()
+    e["events"][0]["event_group_id"] = "G-UNDECLARED"
+    ok, problems = mec.verify_mec_envelope(e)
+    assert not ok and any("orphan" in p for p in problems)
+
+
+def test_orphan_holdout_group_rejected():
+    e = _envelope()
+    e["events"][0]["holdout_group"] = "H-UNDECLARED"
+    ok, problems = mec.verify_mec_envelope(e)
+    assert not ok and any("orphan" in p for p in problems)
+
+
+def test_row_source_hash_mismatch_rejected():
+    e = _envelope()
+    e["events"][0]["row_source"] = {"raw": "row-bytes"}
+    # caller hash does not match canonical row bytes
+    ok, problems = mec.verify_mec_envelope(e)
+    assert not ok and any("row_sha256" in p for p in problems)
+
+
+def test_row_source_hash_match_accepted():
+    from nepal.framework_v1.provenance import sha256_canonical
+    e = _envelope()
+    row = {"raw": "row-bytes", "v": 1}
+    e["events"][0]["row_source"] = row
+    e["events"][0]["row_sha256"] = sha256_canonical(row)
+    ok, problems = mec.verify_mec_envelope(mec.build_mec_envelope(e))
+    assert ok, problems
+
+
+def test_missing_label_spec_rejected():
+    e = _envelope()
+    del e["label_spec"]
+    ok, _ = mec.verify_mec_envelope(e)
+    assert not ok
+
+
+def test_label_spec_no_adjudication_rejected():
+    e = _envelope()
+    e["label_spec"]["adjudication"] = {"required": False,
+                                       "independent_reviewers": 0}
+    ok, _ = mec.verify_mec_envelope(e)
+    assert not ok
+
+
+def _real_envelope(packet=None):
+    e = _envelope()
+    e["mode"] = "REAL_SOURCE_DESIGN"
+    e["synthetic_fixture"] = False
+    for i, ev in enumerate(e["events"], start=1):
+        ev["event_id"] = f"EVT-REAL-{i:03d}"
+        ev["synthetic"] = False
+    if packet is not None:
+        e["source_packet"] = packet
+    return e
+
+
+def test_real_mode_without_packet_fails_closed():
+    ok, problems = mec.verify_mec_envelope(_real_envelope())
+    assert not ok and any("source_packet" in p for p in problems)
+
+
+def test_real_mode_partial_packet_fails_closed():
+    ok, problems = mec.verify_mec_envelope(
+        _real_envelope({"packet_id": "p1",
+                        "packet_sha256": "ab" * 32}))
+    assert not ok
+
+
+def test_real_mode_unapproved_packet_fails_closed():
+    ok, problems = mec.verify_mec_envelope(_real_envelope({
+        "packet_id": "p1", "packet_sha256": "ab" * 32,
+        "approved_by": "operator", "human_approved": False,
+        "approved_at": "2026-09-13"}))
+    assert not ok and any("human_approved" in p for p in problems)
+
+
+def test_real_mode_synthetic_ids_rejected():
+    e = _real_envelope({"packet_id": "p1", "packet_sha256": "ab" * 32,
+                        "approved_by": "operator", "human_approved": True,
+                        "approved_at": "2026-09-13"})
+    e["events"][0]["event_id"] = "SYNTH-EVT-001"
+    e["events"][0]["synthetic"] = True
+    ok, _ = mec.verify_mec_envelope(e)
+    assert not ok
+
+
+def test_real_mode_full_packet_schema_verifies():
+    """Schema-only real-mode design verifies with a complete approved
+    packet — no data access occurs; this proves the schema exists."""
+    env = mec.build_mec_envelope(_real_envelope({
+        "packet_id": "p1", "packet_sha256": "ab" * 32,
+        "approved_by": "operator", "human_approved": True,
+        "approved_at": "2026-09-13"}))
+    ok, problems = mec.verify_mec_envelope(env)
+    assert ok, problems
