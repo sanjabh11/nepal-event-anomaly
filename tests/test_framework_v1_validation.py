@@ -385,6 +385,7 @@ class TestStrictValidationContract:
             "event_ids": ["E1"],
             "control_unit_ids": ["C1"],
             "claim_scope": "research_only_no_operational_authorization",
+            "candidate_generation_id": "GEN-DELTA-FIXTURE",
         }
         artifact = write_validation_artifact(
             tmp_path / "strict.json", summary, gate,

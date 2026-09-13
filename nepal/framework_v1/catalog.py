@@ -972,6 +972,7 @@ def hashlib_sha256(text: str) -> str:
 # independently and requires canonical equality with the materialized state.
 
 A_ENVELOPE_FILENAME = "a_envelope.json"
+SOURCE_ROW_HASHES_FILENAME = "source_row_hashes.json"
 A_ENVELOPE_TYPE = "PHASE_A_CATALOG_ENVELOPE"
 A_PRIMARY_ARTIFACTS = A_ARTIFACTS + (A_ENVELOPE_FILENAME,)
 
@@ -1063,12 +1064,30 @@ def materialize_phase_a(
         raise ValueError(
             "candidate_generation_id must be a non-empty string")
     named_sources = dict(source_artifacts or {})
+    source_catalog_name = Path(source_catalog_path).name
     for name in named_sources:
-        if not isinstance(name, str) or not name or name in A_PRIMARY_ARTIFACTS:
+        if (not isinstance(name, str) or not name
+                or name in A_PRIMARY_ARTIFACTS
+                or name in (source_catalog_name, SOURCE_ROW_HASHES_FILENAME)):
             raise ValueError(f"invalid source artifact name: {name!r}")
 
+    # R01: the source hash inventory is recomputed from the exact source
+    # bytes at materialization time — never copied from a prior envelope.
+    raw_records = load_source_catalog_records(source_catalog_path)
+    source_row_hashes = {
+        f"source_row:{index:04d}": raw_record_hash(record)
+        for index, record in enumerate(raw_records)
+    }
     out = Path(out_dir)
     paths = write_phase_a_artifacts(result, out)
+    row_hashes_path = out / SOURCE_ROW_HASHES_FILENAME
+    write_deterministic_json(row_hashes_path, {
+        "artifact_kind": "a_source_row_hashes",
+        "source_catalog_name": source_catalog_name,
+        "source_catalog_sha256": sha256_file(source_catalog_path),
+        "row_count": len(raw_records),
+        "row_hashes": dict(source_row_hashes),
+    })
     gate = json.loads(paths["gate"].read_text(encoding="utf-8"))
     holdout_plan = json.loads(paths["holdout_plan"].read_text(encoding="utf-8"))
     lock_document = json.loads(paths["controls_lock"].read_text(encoding="utf-8"))
@@ -1078,6 +1097,7 @@ def materialize_phase_a(
         "envelope_type": A_ENVELOPE_TYPE,
         "algorithm": C.HASH_ALGORITHM,
         "framework_version": C.FRAMEWORK_VERSION,
+        "candidate_generation_id": candidate_generation_id,
         "gate": gate,
         "holdout_plan": holdout_plan,
         "controls_lock": lock_document,
@@ -1103,11 +1123,15 @@ def materialize_phase_a(
             "input_manifest_sha256": manifest_sha256,
             "input_manifest_file_sha256": manifest_file_sha256,
             "source_catalog_sha256": sha256_file(source_catalog_path),
-            "source_catalog_name": Path(source_catalog_path).name,
-            "source_artifact_hashes": {
-                name: sha256_file(path)
-                for name, path in sorted(named_sources.items())
-            },
+            "source_catalog_name": source_catalog_name,
+            "source_artifact_hashes": dict(
+                sorted({
+                    source_catalog_name: sha256_file(source_catalog_path),
+                    SOURCE_ROW_HASHES_FILENAME: sha256_file(row_hashes_path),
+                    **{name: sha256_file(path)
+                       for name, path in named_sources.items()},
+                }.items())),
+            "source_row_hashes": dict(source_row_hashes),
         },
         "output_artifact_hashes": {
             name: sha256_file(out / name) for name in A_ARTIFACTS
@@ -1278,13 +1302,28 @@ def verify_phase_a_envelope(
             not isinstance(recorded_data_contract, str)
             or not _SHA256_RE.fullmatch(recorded_data_contract)):
         problems.append("envelope data contract hash is not a sha256 digest")
-    if expected_candidate_generation_id is not None and \
-            provenance.get("candidate_generation_id") != \
-            expected_candidate_generation_id:
+    # R02: ``candidate_generation_id`` is canonical at the top level of the
+    # envelope; the nested provenance copy must equal it exactly.  A missing
+    # or mismatched top-level identity is rejected whenever generation
+    # binding is enforced or present.
+    top_generation = envelope.get("candidate_generation_id")
+    nested_generation = provenance.get("candidate_generation_id")
+    if expected_candidate_generation_id is not None:
+        if top_generation != expected_candidate_generation_id:
+            problems.append(
+                "envelope top-level candidate_generation_id does not match "
+                f"the enforced generation ({top_generation!r} != "
+                f"{expected_candidate_generation_id!r})")
+        if nested_generation != expected_candidate_generation_id:
+            problems.append(
+                "envelope candidate generation does not match the enforced "
+                f"generation ({nested_generation!r} != "
+                f"{expected_candidate_generation_id!r})")
+    if top_generation != nested_generation:
         problems.append(
-            "envelope candidate generation does not match the enforced "
-            f"generation ({provenance.get('candidate_generation_id')!r} != "
-            f"{expected_candidate_generation_id!r})")
+            "envelope top-level candidate_generation_id does not equal the "
+            "nested provenance copy (consumers would read different "
+            "identity paths)")
     if expected_manifest_sha256 is not None and \
             provenance.get("input_manifest_sha256") != \
             expected_manifest_sha256:
@@ -1451,13 +1490,19 @@ def verify_phase_a_envelope(
                         "event ledger does not match an independent "
                         "recomputation from the exact source catalog bytes")
 
-    # ---- recorded source artifacts ----------------------------------------
+    # ---- recorded source artifacts + per-row hashes (R01) ------------------
     recorded_sources = provenance.get("source_artifact_hashes")
-    if not isinstance(recorded_sources, Mapping):
-        problems.append("envelope source artifact inventory is missing or "
-                        "malformed")
+    if not isinstance(recorded_sources, Mapping) or not recorded_sources:
+        problems.append("envelope source artifact inventory is missing, "
+                        "malformed, or empty")
         recorded_sources = {}
     provided = dict(source_artifacts or {})
+    if source_catalog_path is not None:
+        provided.setdefault(Path(source_catalog_path).name,
+                            source_catalog_path)
+    if out_dir is not None:
+        provided.setdefault(SOURCE_ROW_HASHES_FILENAME,
+                            Path(out_dir) / SOURCE_ROW_HASHES_FILENAME)
     for name, path in sorted(provided.items()):
         recorded = recorded_sources.get(name)
         if not isinstance(recorded, str):
@@ -1476,5 +1521,30 @@ def verify_phase_a_envelope(
             if name not in provided:
                 problems.append(f"source artifact {name!r} not provided for "
                                 "verification")
+        recorded_rows = provenance.get("source_row_hashes")
+        if not isinstance(recorded_rows, Mapping) or not recorded_rows:
+            problems.append("envelope per-source-row hash inventory is "
+                            "missing, malformed, or empty")
+            recorded_rows = {}
+        else:
+            for key in recorded_rows:
+                if not isinstance(key, str) or not key.startswith(
+                        "source_row:"):
+                    problems.append(f"invalid source_row hash key: {key!r}")
+        if Path(source_catalog_path).is_file():
+            try:
+                recomputed_rows = {
+                    f"source_row:{index:04d}": raw_record_hash(record)
+                    for index, record in enumerate(
+                        load_source_catalog_records(source_catalog_path))
+                }
+            except (OSError, ValueError) as exc:
+                problems.append(f"source rows could not be rehashed: {exc}")
+            else:
+                if dict(recorded_rows) != recomputed_rows:
+                    problems.append(
+                        "source_row_hashes do not match a recomputation "
+                        "from the exact source catalog bytes (rows were "
+                        "added, removed, reordered, or modified)")
 
     return (not problems, problems)

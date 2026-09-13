@@ -500,11 +500,20 @@ def _verify_audit_packet_identity(audit_packet_path: Optional[str | Path],
                                   candidate_generation_id: str,
                                   manifest_sha256: str,
                                   errors: list[str], warnings: list[str]) -> dict:
-    """Audit packet generation identity binding (G01/G03)."""
-    summary: dict[str, Any] = {"checked": audit_packet_path is not None}
+    """Audit packet generation identity binding (G01/G03, R03).
+
+    Strict lineage requires ONE explicitly bound active audit packet: its
+    ``candidate_generation_id`` and ``manifest_sha256`` must match the
+    manifest under verification.  A packet bound to a superseded generation
+    or manifest is classified ``historical`` and rejected — there is no
+    implicit fallback or silent acceptance.
+    """
+    summary: dict[str, Any] = {"checked": audit_packet_path is not None,
+                               "classification": None}
     if audit_packet_path is None:
-        warnings.append(
-            "audit packet not provided; audit generation identity unchecked")
+        errors.append(
+            "audit packet not provided; strict lineage requires an explicit "
+            "active audit packet bound to the verified generation")
         return summary
     path = Path(audit_packet_path)
     if not path.is_file():
@@ -523,14 +532,17 @@ def _verify_audit_packet_identity(audit_packet_path: Optional[str | Path],
     if packet_generation != candidate_generation_id:
         errors.append(
             f"audit packet candidate_generation_id {packet_generation!r} "
-            f"does not match {candidate_generation_id!r}")
+            f"does not match {candidate_generation_id!r}; the packet is "
+            "historical/stale or bound to a different generation")
     if packet_manifest != manifest_sha256:
         errors.append(
             f"audit packet manifest_sha256 {packet_manifest!r} does not "
-            f"match {manifest_sha256!r}")
-    summary["generation_matches"] = (
-        packet_generation == candidate_generation_id
-        and packet_manifest == manifest_sha256)
+            f"match {manifest_sha256!r}; the packet is historical/stale or "
+            "bound to a different manifest")
+    active = (packet_generation == candidate_generation_id
+              and packet_manifest == manifest_sha256)
+    summary["classification"] = "active" if active else "historical"
+    summary["generation_matches"] = active
     return summary
 
 

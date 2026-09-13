@@ -87,7 +87,8 @@ class TestDeterministicMaterialization:
         raw = passing_raw_rows()
         write_source_catalog(tmp_path / "raw.json", raw)
         paths = materialize(out, raw, source_path=tmp_path / "raw.json")
-        assert sorted(p.name for p in out.iterdir()) == sorted(A_PRIMARY_ARTIFACTS)
+        assert sorted(p.name for p in out.iterdir()) == sorted(
+            A_PRIMARY_ARTIFACTS + ("source_row_hashes.json",))
         assert paths["envelope"].name == A_ENVELOPE_FILENAME
         manifest = json.loads((out / "catalog_manifest.json").read_text())
         ok, problems = verify_manifest(out, manifest)

@@ -567,7 +567,9 @@ def write_f_envelope(path, envelope: Mapping) -> Path:
 
 
 def verify_f_envelope(path, *,
-                      expected_sha256: Optional[str] = None) -> tuple:
+                      expected_sha256: Optional[str] = None,
+                      expected_candidate_generation_id: Optional[str] = None
+                      ) -> tuple:
     """Re-read and verify a persisted strict-F envelope from disk."""
     p = Path(path)
     if not p.is_file():
@@ -594,4 +596,11 @@ def verify_f_envelope(path, *,
             "strict F envelope must carry verified research-only wording")
     if payload.get("artifact_kind") != "f_briefing_envelope":
         problems.append("strict F envelope has the wrong artifact_kind")
+    if expected_candidate_generation_id is not None and \
+            payload.get("candidate_generation_id") != \
+            expected_candidate_generation_id:
+        problems.append(
+            "strict F envelope candidate_generation_id does not match the "
+            f"enforced generation ({payload.get('candidate_generation_id')!r} "
+            f"!= {expected_candidate_generation_id!r})")
     return (not problems), problems

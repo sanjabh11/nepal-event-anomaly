@@ -874,6 +874,8 @@ def write_validation_artifact(path, summary: Mapping[str, Any],
     artifact = {
         "framework_version": C.FRAMEWORK_VERSION,
         "strict_contract": strict_contract,
+        "candidate_generation_id": provenance_payload.get(
+            "candidate_generation_id"),
         "status": (C.PHASE_STATUS_E_READY
                     if gate_payload.get("passed") is True
                     else C.PHASE_STATUS_E_BLOCKED),
@@ -927,7 +929,23 @@ def verify_validation_artifact(payload: Mapping[str, Any]) -> tuple[bool, list[s
     provenance = payload.get("provenance")
     if not isinstance(provenance, Mapping):
         problems.append("validation artifact provenance must be a mapping")
-    elif provenance.get("framework_contract_sha256") != C.contract_hash():
+        provenance = {}
+    # R02: top-level candidate_generation_id is canonical; a provenance copy
+    # must equal it, and a strict-contract artifact must carry a non-empty
+    # top-level identity.
+    top_generation = payload.get("candidate_generation_id")
+    nested_generation = provenance.get("candidate_generation_id")
+    if top_generation != nested_generation:
+        problems.append(
+            "validation artifact top-level candidate_generation_id does not "
+            "equal the nested provenance copy")
+    if payload.get("strict_contract") is True and (
+            not isinstance(top_generation, str) or not top_generation):
+        problems.append(
+            "strict validation artifact requires a non-empty top-level "
+            "candidate_generation_id")
+    if isinstance(provenance, Mapping) and \
+            provenance.get("framework_contract_sha256") != C.contract_hash():
         problems.append(
             "validation artifact framework contract does not match runtime")
     if payload.get("strict_contract") is True:

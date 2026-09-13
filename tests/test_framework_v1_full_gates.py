@@ -350,6 +350,7 @@ def test_pipeline_report_requires_downstream_ready_stage_evidence(tmp_path):
             "event_ids": ["E1"],
             "control_unit_ids": ["C1"],
             "claim_scope": "research_only_no_operational_authorization",
+            "candidate_generation_id": "GEN-DELTA-FIXTURE",
         },
         strict_contract=True,
     )
@@ -847,6 +848,7 @@ def test_strict_f_rejects_e_provenance_detached_from_embedded_upstreams(tmp_path
             "event_ids": ["E1"],
             "control_unit_ids": ["C1"],
             "claim_scope": "research_only_no_operational_authorization",
+            "candidate_generation_id": "GEN-DELTA-FIXTURE",
         },
         strict_contract=True,
     )

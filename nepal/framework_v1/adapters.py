@@ -425,6 +425,11 @@ def build_b_screen_from_bundle(
 ) -> dict[str, Any]:
     """Run the pure B assembler only after the read-only bundle is READY."""
     problems: list[str] = []
+    bundle_generation: Optional[str] = None
+    if bundle.verification is not None:
+        bundle_checks = bundle.verification.to_dict().get("checks", {})
+        if isinstance(bundle_checks, Mapping):
+            bundle_generation = bundle_checks.get("candidate_generation_id")
     if not bundle.ok or bundle.verification is None:
         problems = list(bundle.errors) or ["validated B input bundle is required"]
         return bind_artifact_envelope({
@@ -432,6 +437,7 @@ def build_b_screen_from_bundle(
             "gate_id": C.GateId.B_TO_C.value,
             "gate_passed": False,
             "phase_status": C.PHASE_STATUS_B_TO_C_BLOCKED,
+            "candidate_generation_id": bundle_generation,
             "errors": sorted(set(problems)),
             "blocked_reasons": sorted(set(problems)),
             "gate": bind_gate_artifact({
@@ -447,6 +453,7 @@ def build_b_screen_from_bundle(
             "gate_id": C.GateId.B_TO_C.value,
             "gate_passed": False,
             "phase_status": C.PHASE_STATUS_B_TO_C_BLOCKED,
+            "candidate_generation_id": bundle_generation,
             "errors": [problem],
             "blocked_reasons": [problem],
             "gate": bind_gate_artifact({
@@ -469,6 +476,7 @@ def build_b_screen_from_bundle(
                 "gate_id": C.GateId.B_TO_C.value,
                 "gate_passed": False,
                 "phase_status": C.PHASE_STATUS_B_TO_C_BLOCKED,
+                "candidate_generation_id": bundle_generation,
                 "errors": sorted(set(problems)),
                 "blocked_reasons": sorted(set(problems)),
                 "provenance": {"a_gate_artifact_sha256":
@@ -487,6 +495,7 @@ def build_b_screen_from_bundle(
             "gate_id": C.GateId.B_TO_C.value,
             "gate_passed": False,
             "phase_status": C.PHASE_STATUS_B_TO_C_BLOCKED,
+            "candidate_generation_id": bundle_generation,
             "errors": [problem],
             "gate": bind_gate_artifact({
                 "gate_id": C.GateId.B_TO_C.value, "passed": False,
@@ -1108,6 +1117,8 @@ def build_b_screen(
             "framework_version": C.FRAMEWORK_VERSION,
             "status": status,
             "stage": stage,
+            "candidate_generation_id": input_fingerprint.get(
+                "candidate_generation_id"),
             "component_registry_version": C.COMPONENT_REGISTRY_VERSION,
             "active_terrain_components": list(C.ACTIVE_TERRAIN_COMPONENTS),
             "active_exposure_components": list(C.ACTIVE_EXPOSURE_COMPONENTS),
@@ -1145,11 +1156,15 @@ def build_b_screen(
             "gate_id": C.GateId.B_TO_C.value,
             "gate_passed": False,
             "phase_status": C.PHASE_STATUS_B_TO_C_BLOCKED,
+            "candidate_generation_id": manifest_checks.get(
+                "candidate_generation_id"),
             "errors": [problem],
             "blocked_reasons": [problem],
             "gate": gate,
             "provenance": {
                 "framework_contract_sha256": C.contract_hash(),
+                "candidate_generation_id": manifest_checks.get(
+                    "candidate_generation_id"),
                 "component_registry_version": C.COMPONENT_REGISTRY_VERSION,
                 "timeout_seconds": effective_timeout_seconds,
                 "elapsed_seconds": time.perf_counter() - perf_started,
@@ -1311,6 +1326,8 @@ def build_b_screen(
             "gate": gate,
             "errors": sorted(set(problems)),
             "blocked_reasons": sorted(set(problems)),
+            "candidate_generation_id": provenance.get(
+                "candidate_generation_id"),
             "provenance": provenance,
             "runtime": {
                 "elapsed_seconds": time.perf_counter() - perf_started,
@@ -1372,6 +1389,8 @@ def build_b_screen(
         if name not in exposure_grids
     ]
     result["status"] = C.PHASE_STATUS_SCREEN_RANKED
+    result["candidate_generation_id"] = provenance.get(
+        "candidate_generation_id")
     result["gate_id"] = C.GateId.B_TO_C.value
     result["gate_passed"] = bool(result["gate"].get("passed"))
     result["phase_status"] = (
