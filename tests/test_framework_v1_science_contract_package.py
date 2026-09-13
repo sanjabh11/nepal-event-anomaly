@@ -26,6 +26,7 @@ def _context(tmp_path):
             "HISTORICAL_ORPHAN_UNKNOWN_DOMAIN",
         "b_status": "B_TO_C_BLOCKED",
         "evidence_references": [],
+        "forbidden_roots": [tmp_path / "protected"],
     }
 
 
@@ -59,7 +60,8 @@ def test_required_files_present(tmp_path):
                  "fmx_blocked.json", "validation_scaffold.json",
                  "research_no_claims.json",
                  "science_contract_package_index.json",
-                 "research_contract_handoff.json", "checkpoint.json"):
+                 "research_contract_handoff.json", "checkpoint.json",
+                 "package_seal.json"):
         assert (d / name).is_file(), name
 
 
@@ -253,13 +255,19 @@ class TestN1Hardening:
         assert not ok
 
     def test_typed_evidence_references(self, tmp_path):
+        from nepal.framework_v1.provenance import sha256_file
+        ev_root = tmp_path / "evidence"
+        ev_root.mkdir()
+        (ev_root / "b_screen.json").write_text('{"x": 1}')
         ctx = _context(tmp_path)
+        ctx["evidence_root"] = ev_root
         ctx["evidence_references"] = [{
             "role": "f1_digest_closure_package",
-            "relative_path": "f1-digest-closure-20260913/pipeline/b_screen.json",
-            "sha256": "ab" * 32}]
+            "relative_path": "b_screen.json",
+            "sha256": sha256_file(ev_root / "b_screen.json")}]
         res = pkg.build_science_contract_package(**ctx)
-        ok, _ = pkg.verify_science_contract_package(ctx["package_dir"])
+        ok, _ = pkg.verify_science_contract_package(ctx["package_dir"],
+                                                    evidence_root=ev_root)
         assert ok
 
     def test_absolute_evidence_path_rejected(self, tmp_path):
@@ -276,3 +284,163 @@ class TestN1Hardening:
         ctx["evidence_references"] = [{"note": "no digest"}]
         with pytest.raises(ValueError):
             pkg.build_science_contract_package(**ctx)
+
+
+# ---------- N3 package-integrity hardening ----------
+
+
+def test_missing_index_digest_in_checkpoint_rejected(tmp_path):
+    ctx = _context(tmp_path)
+    pkg.build_science_contract_package(**ctx)
+    ckpt_path = ctx["package_dir"] / "checkpoint.json"
+    ckpt = json.loads(ckpt_path.read_text())
+    del ckpt["index_file_sha256"]
+    ckpt_path.write_text(json.dumps(ckpt))
+    ok, problems = pkg.verify_science_contract_package(
+        ctx["package_dir"])
+    assert not ok and any("index_file_sha256" in p for p in problems)
+
+
+def test_tampered_checkpoint_self_hash_rejected(tmp_path):
+    ctx = _context(tmp_path)
+    pkg.build_science_contract_package(**ctx)
+    ckpt_path = ctx["package_dir"] / "checkpoint.json"
+    ckpt = json.loads(ckpt_path.read_text())
+    ckpt["run_state"] = "BLOCKED"
+    ckpt_path.write_text(json.dumps(ckpt))
+    ok, problems = pkg.verify_science_contract_package(
+        ctx["package_dir"])
+    assert not ok
+
+
+def test_missing_seal_rejected(tmp_path):
+    ctx = _context(tmp_path)
+    pkg.build_science_contract_package(**ctx)
+    (ctx["package_dir"] / "package_seal.json").unlink()
+    ok, problems = pkg.verify_science_contract_package(
+        ctx["package_dir"])
+    assert not ok
+
+
+def test_seal_omits_a_file_rejected(tmp_path):
+    ctx = _context(tmp_path)
+    pkg.build_science_contract_package(**ctx)
+    seal_path = ctx["package_dir"] / "package_seal.json"
+    seal = json.loads(seal_path.read_text())
+    del seal["files"]["run_context.json"]
+    seal_path.write_text(json.dumps(seal))
+    ok, problems = pkg.verify_science_contract_package(
+        ctx["package_dir"])
+    assert not ok
+
+
+def test_tmp_file_rejected(tmp_path):
+    ctx = _context(tmp_path)
+    pkg.build_science_contract_package(**ctx)
+    (ctx["package_dir"] / ".tmp_stale.json").write_text("{}")
+    ok, problems = pkg.verify_science_contract_package(
+        ctx["package_dir"])
+    assert not ok and any("extra" in p for p in problems)
+
+
+def test_duplicate_index_path_rejected(tmp_path):
+    ctx = _context(tmp_path)
+    pkg.build_science_contract_package(**ctx)
+    idx_path = (ctx["package_dir"] /
+                "science_contract_package_index.json")
+    idx = json.loads(idx_path.read_text())
+    idx["files"].append(dict(idx["files"][0]))
+    idx_path.write_text(json.dumps(idx))
+    ok, problems = pkg.verify_science_contract_package(
+        ctx["package_dir"])
+    assert not ok and any("duplicate" in p for p in problems)
+
+
+def test_missing_mandatory_flag_rejected(tmp_path):
+    ctx = _context(tmp_path)
+    pkg.build_science_contract_package(**ctx)
+    target = ctx["package_dir"] / "research_no_claims.json"
+    doc = json.loads(target.read_text())
+    del doc["warning_path_authorized"]
+    target.write_text(json.dumps(doc))
+    ok, problems = pkg.verify_science_contract_package(
+        ctx["package_dir"])
+    assert not ok and any("warning_path_authorized" in p
+                          for p in problems)
+
+
+def test_build_requires_forbidden_roots(tmp_path):
+    ctx = _context(tmp_path)
+    ctx["forbidden_roots"] = None
+    with pytest.raises(ValueError):
+        pkg.build_science_contract_package(**ctx)
+
+
+def test_build_under_forbidden_root_rejected(tmp_path):
+    ctx = _context(tmp_path)
+    ctx["package_dir"] = tmp_path / "protected" / "pkg"
+    with pytest.raises(ValueError):
+        pkg.build_science_contract_package(**ctx)
+
+
+def test_evidence_refs_require_root(tmp_path):
+    ev_root = tmp_path / "evidence"
+    ev_root.mkdir()
+    (ev_root / "ref.json").write_text('{"x": 1}')
+    from nepal.framework_v1.provenance import sha256_file
+    ctx = _context(tmp_path)
+    ctx["evidence_references"] = [
+        {"role": "test", "relative_path": "ref.json",
+         "sha256": sha256_file(ev_root / "ref.json")}]
+    with pytest.raises(ValueError):
+        pkg.build_science_contract_package(**ctx)  # no evidence_root
+
+
+def test_evidence_ref_digest_mismatch_rejected(tmp_path):
+    ev_root = tmp_path / "evidence"
+    ev_root.mkdir()
+    (ev_root / "ref.json").write_text('{"x": 1}')
+    ctx = _context(tmp_path)
+    ctx["evidence_root"] = ev_root
+    ctx["evidence_references"] = [
+        {"role": "test", "relative_path": "ref.json",
+         "sha256": "ab" * 32}]
+    with pytest.raises(ValueError):
+        pkg.build_science_contract_package(**ctx)
+
+
+def test_evidence_refs_verify_from_disk(tmp_path):
+    ev_root = tmp_path / "evidence"
+    ev_root.mkdir()
+    (ev_root / "ref.json").write_text('{"x": 1}')
+    from nepal.framework_v1.provenance import sha256_file
+    ctx = _context(tmp_path)
+    ctx["evidence_root"] = ev_root
+    ctx["evidence_references"] = [
+        {"role": "test", "relative_path": "ref.json",
+         "sha256": sha256_file(ev_root / "ref.json")}]
+    pkg.build_science_contract_package(**ctx)
+    ok, problems = pkg.verify_science_contract_package(
+        ctx["package_dir"], evidence_root=ev_root)
+    assert ok, problems
+    # without the root the declared refs are unverified -> fail closed
+    ok2, problems2 = pkg.verify_science_contract_package(
+        ctx["package_dir"])
+    assert not ok2 and any("evidence" in p for p in problems2)
+
+
+def test_evidence_ref_tampered_file_rejected(tmp_path):
+    ev_root = tmp_path / "evidence"
+    ev_root.mkdir()
+    (ev_root / "ref.json").write_text('{"x": 1}')
+    from nepal.framework_v1.provenance import sha256_file
+    ctx = _context(tmp_path)
+    ctx["evidence_root"] = ev_root
+    ctx["evidence_references"] = [
+        {"role": "test", "relative_path": "ref.json",
+         "sha256": sha256_file(ev_root / "ref.json")}]
+    pkg.build_science_contract_package(**ctx)
+    (ev_root / "ref.json").write_text('{"tampered": true}')
+    ok, problems = pkg.verify_science_contract_package(
+        ctx["package_dir"], evidence_root=ev_root)
+    assert not ok and any("evidence" in p for p in problems)

@@ -60,12 +60,22 @@ _FORBIDDEN_TOKENS = (
     "production_ready",
     "scientifically_validated",
     "authority_approved",
+    "authorized for production",
+    "approved for warning",
+    "authorized for warning",
+    "warning authorized",
+    "cleared for deployment",
 )
 
 # Field names that are allowed to carry truthy operational-looking values
 # only when explicitly descriptive — none today; flags must be false/absent.
+# ``human_approved`` is deliberately absent: MEC source_packet legitimately
+# carries human_approved=true.
 _OPERATIONAL_FLAGS = ("promotion_eligible", "production_authorized",
-                      "warning_path_authorized", "authority_approved")
+                      "warning_path_authorized", "authority_approved",
+                      "production_authorization", "warning_authorized",
+                      "operational_authorized", "deploy_authorized",
+                      "deployment_authorized")
 
 # Methods whose outputs are descriptive-only and must carry an explicit
 # disclaimer before they may appear in research evidence.
@@ -191,6 +201,10 @@ def lint_research_claims(payload: Any) -> tuple[bool, list[str]]:
                     value.strip().upper() in _FORBIDDEN_EXACT_CLAIMS:
                 problems.append(
                     f"{dotted}: forbidden claim {value!r}")
+            if vl.strip() in _OPERATIONAL_FLAGS:
+                problems.append(
+                    f"{dotted}: operational authorization claim "
+                    f"{value!r}")
             for token in _FORBIDDEN_TOKENS:
                 if token in vl or token in kl:
                     problems.append(
@@ -213,7 +227,8 @@ def lint_research_claims(payload: Any) -> tuple[bool, list[str]]:
             problems.append(
                 f"{dotted}: B ranked/priority payload carried as data; "
                 "only digest references are permitted")
-        if kl in ("ranked", "priority_index", "priority_scores") and not any(
+        if kl in ("ranked", "priority_index", "priority_scores",
+                  "top_five", "loo_top5", "top5", "ranked_top5") and not any(
                 h in kl for h in _DIGEST_KEY_HINTS) and not isinstance(
                 value, str):
             problems.append(

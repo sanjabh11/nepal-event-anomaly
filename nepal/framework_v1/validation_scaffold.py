@@ -15,6 +15,15 @@ Guarantees:
   is rejected;
 * references are typed digests — the B ranked array and priority values
   are never accepted as inputs;
+* with ``reference_root``, every reference is file-bound: the file must
+  be a verified artifact envelope whose self-hash equals the declared
+  digest, and the bound B envelope must contain the declared
+  ``ranked_array_canonical_sha256`` and, when it records a ``b_status``,
+  agree with the caller-asserted statuses;
+* the metric registry is frozen by ``metric_registry_sha256`` and the
+  cohort split is frozen by ``split_spec.split_id``;
+* ``verify_scaffold_envelope(strict=True)`` requires a ``reference_root``
+  and file-bound ``relative_path`` on all three references;
 * no caller-supplied gate/verdict booleans;
 * no execution entry points exist: nothing here calls B ranking, LOO,
   GMM, Isolation Forest, change-point, anomaly, or ``run_validation`` —
@@ -31,6 +40,7 @@ import json
 from pathlib import Path
 
 from .provenance import (bind_artifact_envelope,
+                         sha256_canonical,
                          verify_artifact_envelope)
 from .research_boundaries import (QUARANTINED_MODULES,
                                   lint_research_claims)
@@ -60,10 +70,14 @@ _METRIC_KEYS = ("metric_id", "class", "operational_threshold",
 _REFERENCE_KEYS = {
     "mec_reference": {"envelope_sha256", "envelope_type", "relative_path"},
     "fmx_reference": {"envelope_sha256", "fmx_status", "relative_path"},
-    "b_reference": {"status", "ranked_array_canonical_sha256"},
+    "b_reference": {"status", "ranked_array_canonical_sha256",
+                    "envelope_sha256", "relative_path"},
 }
 _REFERENCE_DIGEST_FIELD = {"mec_reference": "envelope_sha256",
-                           "fmx_reference": "envelope_sha256"}
+                           "fmx_reference": "envelope_sha256",
+                           "b_reference": "envelope_sha256"}
+_STRICT_BOUND_REFERENCES = ("mec_reference", "fmx_reference",
+                            "b_reference")
 
 
 def _is_sha256(value: Any) -> bool:
@@ -187,12 +201,19 @@ def _check(payload: Mapping[str, Any], problems: list[str],
                     f"references.{rname}.{rkey} carries a data payload; "
                     "only scalar digest references are permitted")
 
-    # File-bound references: when a reference_root is supplied, MEC and
-    # FMX references must resolve to real envelope files on disk whose
+    # File-bound references: when a reference_root is supplied, MEC, FMX
+    # and B references must resolve to real envelope files on disk whose
     # verified self-hash equals the declared digest — a plausible-looking
     # 64-hex string that names no valid envelope is rejected.
+    bound_docs: dict[str, Mapping[str, Any]] = {}
     if reference_root is not None:
         root = Path(reference_root)
+        if isinstance(b_ref, Mapping) and not _is_sha256(
+                b_ref.get("envelope_sha256")):
+            problems.append(
+                "references.b_reference.envelope_sha256 must be a sha256 "
+                "digest of the bound B envelope when a reference_root "
+                "file-binds the reference")
         for rname, digest_field in _REFERENCE_DIGEST_FIELD.items():
             rval = refs.get(rname)
             if not isinstance(rval, Mapping):
@@ -218,6 +239,39 @@ def _check(payload: Mapping[str, Any], problems: list[str],
                 problems.append(
                     f"references.{rname}.{digest_field} does not match "
                     "the referenced envelope's verified self-hash")
+                continue
+            bound_docs[rname] = doc
+
+        # T2S-02: the B reference is content-bound, not merely
+        # existence-bound — the verified B envelope must itself contain
+        # the declared ranked-array canonical digest, so a caller cannot
+        # point at an unrelated honest envelope.
+        b_doc = bound_docs.get("b_reference")
+        if b_doc is not None and isinstance(b_ref, Mapping):
+            ranked_digest = b_ref.get("ranked_array_canonical_sha256")
+            if isinstance(ranked_digest, str) and _is_sha256(
+                    ranked_digest) and not any(
+                    ranked_digest in value
+                    for _, value in _iter_strings(b_doc)):
+                problems.append(
+                    "references.b_reference.ranked_array_canonical_sha256 "
+                    "is not contained in the bound B envelope — the "
+                    "digest must be carried by the referenced artifact")
+            # T2S-03: a bound B envelope that records its own b_status is
+            # the authoritative derived state; caller-asserted statuses
+            # that disagree with the artifact are rejected.
+            if "b_status" in b_doc:
+                doc_status = b_doc.get("b_status")
+                inh = payload.get("inherited_state")
+                inh_status = (inh.get("b_status")
+                              if isinstance(inh, Mapping) else None)
+                if doc_status != b_ref.get("status") or \
+                        doc_status != inh_status:
+                    problems.append(
+                        f"bound B envelope b_status {doc_status!r} "
+                        "disagrees with the caller-asserted "
+                        "references.b_reference.status or "
+                        "inherited_state.b_status")
 
     inherited = payload.get("inherited_state")
     if not isinstance(inherited, Mapping):
@@ -241,6 +295,10 @@ def _check(payload: Mapping[str, Any], problems: list[str],
         problems.append("split_spec must be a mapping")
         split = {}
     else:
+        if not isinstance(split.get("split_id"), str) or \
+                not split["split_id"]:
+            problems.append("split_spec.split_id must be a non-empty "
+                            "string naming the frozen cohort split")
         if not isinstance(split.get("temporal_embargo_days"), int) or \
                 split["temporal_embargo_days"] < 0:
             problems.append("split_spec.temporal_embargo_days must be a "
@@ -288,6 +346,24 @@ def _check(payload: Mapping[str, Any], problems: list[str],
                             "— research metrics carry no operational "
                             "thresholds")
 
+    # T2S-04: the metric registry is frozen by digest — the declared
+    # metric_registry_sha256 must equal the canonical digest of the
+    # registry actually carried, so a post-hoc registry edit is caught.
+    registry_digest = payload.get("metric_registry_sha256")
+    if not _is_sha256(registry_digest):
+        problems.append("metric_registry_sha256 must be a sha256 digest "
+                        "of the canonical metric_registry")
+    elif isinstance(payload.get("metric_registry"), list):
+        try:
+            actual_registry_digest = sha256_canonical(
+                payload["metric_registry"])
+        except (TypeError, ValueError):
+            actual_registry_digest = None
+        if registry_digest != actual_registry_digest:
+            problems.append("metric_registry_sha256 does not match "
+                            "sha256_canonical(metric_registry) — the "
+                            "registry digest is frozen at build time")
+
 
 def build_scaffold_envelope(payload: Mapping[str, Any], *,
                             reference_root: "Optional[str | Path]" = None
@@ -295,9 +371,11 @@ def build_scaffold_envelope(payload: Mapping[str, Any], *,
     """Validate and bind a T2S scaffold envelope.  Status is always
     ``BLOCKED_PENDING_FMX`` — no execution, no promotion.
 
-    With ``reference_root``, MEC/FMX references must carry
+    With ``reference_root``, MEC/FMX/B references must carry
     ``relative_path`` bindings to real files under the root whose
-    recomputed digests match the declared envelope digests."""
+    recomputed digests match the declared envelope digests; the bound B
+    envelope must additionally contain the declared ranked-array
+    canonical digest and agree with the caller-asserted b_status."""
     if not isinstance(payload, Mapping):
         raise TypeError("scaffold payload must be a mapping")
     problems: list[str] = []
@@ -310,6 +388,7 @@ def build_scaffold_envelope(payload: Mapping[str, Any], *,
     envelope["scaffold_status"] = BLOCKED_PENDING_FMX
     envelope["promotion_eligible"] = False
     envelope["production_authorized"] = False
+    envelope["warning_path_authorized"] = False
     envelope["no_claims"] = [
         "validation scaffold schema only; no validation was executed",
         "no scientific validation, warning, production, or authority "
@@ -318,11 +397,18 @@ def build_scaffold_envelope(payload: Mapping[str, Any], *,
 
 
 def verify_scaffold_envelope(payload: Any, *,
-                             reference_root: "Optional[str | Path]" = None
+                             reference_root: "Optional[str | Path]" = None,
+                             strict: bool = False
                              ) -> tuple[bool, list[str]]:
     """Fail-closed verification: self-hash, structural contract, the
     blocked-status invariant, and (with ``reference_root``) file-bound
-    reference digests."""
+    reference digests.
+
+    With ``strict=True`` every reference — MEC, FMX, and B — must be
+    file-bound: a ``reference_root`` is required and each reference must
+    carry a ``relative_path`` that resolves to a verified envelope under
+    that root.  Non-strict verification remains informational and does
+    not require file bindings."""
     problems: list[str] = []
     ok, env_problems = verify_artifact_envelope(payload)
     if not ok:
@@ -338,5 +424,22 @@ def verify_scaffold_envelope(payload: Any, *,
         problems.append("promotion_eligible must be false")
     if payload.get("production_authorized") is not False:
         problems.append("production_authorized must be false")
+    if payload.get("warning_path_authorized") is not False:
+        problems.append("warning_path_authorized must be false")
+    if strict:
+        if reference_root is None:
+            problems.append("strict verification requires a "
+                            "reference_root — every reference must be "
+                            "file-bound")
+        srefs = payload.get("references")
+        for rname in _STRICT_BOUND_REFERENCES:
+            rval = srefs.get(rname) if isinstance(srefs, Mapping) else None
+            rel = (rval.get("relative_path")
+                   if isinstance(rval, Mapping) else None)
+            if not isinstance(rel, str) or not rel:
+                problems.append(
+                    f"strict verification requires references.{rname}."
+                    "relative_path bound to a verified envelope file "
+                    "under the reference root")
     _check(payload, problems, reference_root)
     return (not problems), problems

@@ -37,8 +37,12 @@ Contract rules:
 """
 from __future__ import annotations
 
+import csv
+import io
 import json
+import math
 import re
+from datetime import date
 from pathlib import Path
 from typing import Any, Mapping, Optional
 
@@ -76,9 +80,47 @@ _DIGEST_FIELDS = ("source_sha256", "producer_sha256",
                   FEATURE_CONTRACT_SHA256_FIELD, "preregistration_sha256",
                   "matrix_sha256")
 
+# FMX-04: lineage digest fields that must be bound to frozen files under
+# the artifact root before READY may be emitted.
+_LINEAGE_DIGEST_FIELDS = ("producer_sha256",
+                          FEATURE_CONTRACT_SHA256_FIELD,
+                          "preregistration_sha256",
+                          "source_sha256")
+
+# FMX-05: B-derived leakage tokens forbidden in the *actual* matrix file
+# column names (case-insensitive substring match).
+_FORBIDDEN_MATRIX_FILE_TOKENS = ("rank", "priority", "top_five", "loo")
+
 
 def _is_sha256(value: Any) -> bool:
     return isinstance(value, str) and bool(_SHA256_RE.fullmatch(value))
+
+
+def _is_strict_iso_date(value: Any) -> bool:
+    """Strict YYYY-MM-DD calendar date — rejects e.g. 2026-02-31."""
+    if not isinstance(value, str) or not _DATE_RE.fullmatch(value):
+        return False
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
+
+
+def _protected_root_list(protected_roots: Any,
+                         dirty_checkout_root: Any) -> list[Path]:
+    roots: list[Path] = []
+    if protected_roots:
+        for value in protected_roots:
+            roots.append(Path(value).resolve())
+    if dirty_checkout_root is not None:
+        roots.append(Path(dirty_checkout_root).resolve())
+    return roots
+
+
+def _resolves_under(path: Path, roots: list[Path]) -> bool:
+    resolved = path.resolve()
+    return any(resolved == r or r in resolved.parents for r in roots)
 
 
 def _iter_strings(obj: Any, prefix: str = ""):
@@ -192,6 +234,22 @@ def _check_freeze_token_fields(token: Any, matrix: Mapping[str, Any],
     if not isinstance(token.get("issued_by"), str) or not \
             token["issued_by"]:
         problems.append("freeze_token.issued_by is required")
+    # FMX-03: write_once + issued_by are necessary but not sufficient —
+    # the freeze authority must also attest approval and immutable
+    # storage evidence.
+    if not isinstance(token.get("approved_by"), str) or not \
+            token["approved_by"]:
+        problems.append("freeze_token.approved_by is required")
+    if not _is_strict_iso_date(token.get("approved_at")):
+        problems.append("freeze_token.approved_at must be a strict ISO "
+                        "YYYY-MM-DD calendar date")
+    if not _is_sha256(token.get("approval_record_sha256")):
+        problems.append("freeze_token.approval_record_sha256 must be a "
+                        "lowercase SHA-256")
+    if not isinstance(token.get("immutable_storage_evidence"), str) or \
+            not token["immutable_storage_evidence"]:
+        problems.append("freeze_token.immutable_storage_evidence is "
+                        "required")
     for field in ("matrix_sha256", "producer_sha256",
                   FEATURE_CONTRACT_SHA256_FIELD,
                   "preregistration_sha256"):
@@ -249,12 +307,116 @@ def _null_digest_fields(meta: Mapping[str, Any]) -> dict[str, Any]:
     return declared
 
 
+def _validate_matrix_file(mpath: Path, matrix_meta: Mapping[str, Any],
+                          problems: list[str]) -> None:
+    """FMX-05: semantic scan of the bound matrix bytes (READY path).
+
+    A ``.csv`` matrix must carry every declared column in its header,
+    contain at least one data row, hold finite-float cells in every
+    declared feature/target column, hold strict in-range ISO dates in
+    declared time/date columns, and must not contain any actual column
+    name with a B-derived leakage token.  Under missingness policy
+    ``"complete"`` no cell may be empty.  Any other extension fails
+    closed."""
+    if mpath.suffix.lower() != ".csv":
+        problems.append("unsupported matrix format for semantic scan")
+        return
+    try:
+        text = mpath.read_bytes().decode("utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        problems.append(f"matrix file unreadable for semantic scan: {exc}")
+        return
+    try:
+        rows = list(csv.reader(io.StringIO(text), strict=True))
+    except csv.Error as exc:
+        problems.append(f"matrix CSV is not parseable: {exc}")
+        return
+    if not rows:
+        problems.append("matrix CSV has no header row")
+        return
+    header = [str(h) for h in rows[0]]
+    for name in header:
+        lowered = name.lower()
+        if any(tok in lowered for tok in _FORBIDDEN_MATRIX_FILE_TOKENS):
+            problems.append(
+                f"matrix CSV column {name!r} contains a B-derived "
+                "leakage token and is rejected")
+    declared_cols: list[Mapping[str, Any]] = []
+    raw_cols = matrix_meta.get("columns") if isinstance(
+        matrix_meta, Mapping) else None
+    if isinstance(raw_cols, list):
+        declared_cols = [c for c in raw_cols if isinstance(c, Mapping)]
+    index: dict[str, int] = {}
+    for i, name in enumerate(header):
+        index.setdefault(name, i)
+    for col in declared_cols:
+        if col.get("name") not in index:
+            problems.append(f"matrix CSV is missing declared column "
+                            f"{col.get('name')!r}")
+    data_rows = rows[1:]
+    if not data_rows:
+        problems.append("matrix CSV must contain at least one data row")
+        return
+    policy = ""
+    missingness = matrix_meta.get("missingness")
+    if isinstance(missingness, Mapping):
+        policy = str(missingness.get("policy", "")).lower()
+    if policy == "complete":
+        for r, row in enumerate(data_rows):
+            if len(row) < len(header) or any(
+                    not str(cell).strip() for cell in row):
+                problems.append(
+                    f"matrix CSV row {r + 2} has missing cells under "
+                    "missingness policy 'complete'")
+    dr = matrix_meta.get("date_range")
+    dr_start: Optional[date] = None
+    dr_end: Optional[date] = None
+    if isinstance(dr, Mapping) and _is_strict_iso_date(dr.get("start")) \
+            and _is_strict_iso_date(dr.get("end")):
+        dr_start = date.fromisoformat(dr["start"])
+        dr_end = date.fromisoformat(dr["end"])
+    for col in declared_cols:
+        name = col.get("name")
+        if not isinstance(name, str) or name not in index:
+            continue
+        i = index[name]
+        role = str(col.get("role", "")).lower()
+        for r, row in enumerate(data_rows):
+            cell = str(row[i]).strip() if i < len(row) else ""
+            if not cell:
+                continue  # missingness pass already handled empties
+            if role in ("feature", "target"):
+                try:
+                    value = float(cell)
+                except ValueError:
+                    problems.append(
+                        f"matrix CSV row {r + 2} column {name!r} is not "
+                        "numeric for a feature/target role")
+                    continue
+                if not math.isfinite(value):
+                    problems.append(
+                        f"matrix CSV row {r + 2} column {name!r} is not "
+                        "a finite float (NaN/inf rejected)")
+            elif role in ("time", "date"):
+                if not _is_strict_iso_date(cell):
+                    problems.append(
+                        f"matrix CSV row {r + 2} column {name!r} is not "
+                        "a strict ISO YYYY-MM-DD calendar date")
+                elif dr_start is not None and dr_end is not None and \
+                        not dr_start <= date.fromisoformat(cell) <= dr_end:
+                    problems.append(
+                        f"matrix CSV row {r + 2} column {name!r} is "
+                        "outside the declared date_range")
+
+
 def build_fmx_envelope(matrix: Optional[Mapping[str, Any]] = None, *,
                        freeze_token: Optional[Mapping[str, Any]] = None,
                        artifact_root: Optional[str | Path] = None,
                        matrix_relpath: Optional[str] = None,
                        token_relpath: Optional[str] = None,
-                       dirty_checkout_root: Optional[str | Path] = None
+                       dirty_checkout_root: Optional[str | Path] = None,
+                       protected_roots: Optional[list] = None,
+                       lineage_paths: Optional[Mapping[str, str]] = None
                        ) -> dict[str, Any]:
     """Build a self-hashed FMX envelope.
 
@@ -264,9 +426,14 @@ def build_fmx_envelope(matrix: Optional[Mapping[str, Any]] = None, *,
 
     ``FMX_READY`` additionally requires ``artifact_root`` +
     ``matrix_relpath`` + ``token_relpath``: the matrix and token files are
-    re-hashed from disk, the token file must equal ``freeze_token``
-    exactly, and the token must bind the matrix's real digests.  Any path
-    resolving under ``dirty_checkout_root`` (when supplied) is refused.
+    re-hashed from disk, the matrix bytes pass a semantic scan, the token
+    file must equal ``freeze_token`` exactly, and the token must bind the
+    matrix's real digests plus freeze-authority fields.  READY also
+    requires at least one protected root (``protected_roots`` and/or
+    ``dirty_checkout_root``); the artifact root and every bound file must
+    not resolve under any of them.  ``lineage_paths`` must bind every
+    lineage digest field to a frozen file whose SHA-256 equals the
+    declared matrix digest.
     """
     problems: list[str] = []
     if matrix is not None:
@@ -288,23 +455,56 @@ def build_fmx_envelope(matrix: Optional[Mapping[str, Any]] = None, *,
                 "never produce READY")
         else:
             root = Path(artifact_root)
-            dirty = (Path(dirty_checkout_root).resolve()
-                     if dirty_checkout_root is not None else None)
-            if dirty is not None and (root.resolve() == dirty or
-                                      dirty in root.resolve().parents):
-                problems.append("artifact_root resolves under the dirty "
-                                "checkout — refused")
+            protected = _protected_root_list(protected_roots,
+                                             dirty_checkout_root)
+            if not protected:
+                problems.append(
+                    "FMX_READY requires at least one protected root — "
+                    "pass protected_roots and/or dirty_checkout_root so "
+                    "bound evidence is provably outside controlled "
+                    "territory")
+            if _resolves_under(root, protected):
+                problems.append("artifact_root resolves under a "
+                                "protected root — refused")
             mpath = _resolve_bound_file(root, matrix_relpath,
                                         "matrix_relpath", problems)
             tpath = _resolve_bound_file(root, token_relpath,
                                         "token_relpath", problems)
-            if dirty is not None:
-                for p in (mpath, tpath):
-                    if p is not None and (p.resolve() == dirty or
-                                          dirty in p.resolve().parents):
+            for p, label in ((mpath, "matrix"), (tpath, "token")):
+                if p is not None and _resolves_under(p, protected):
+                    problems.append(f"bound {label} file resolves under "
+                                    "a protected root — refused")
+            lineage_bindings: dict[str, str] = {}
+            if not isinstance(lineage_paths, Mapping):
+                problems.append(
+                    "FMX_READY requires lineage_paths — a mapping of "
+                    "lineage digest fields to frozen files under "
+                    "artifact_root")
+            else:
+                for field in _LINEAGE_DIGEST_FIELDS:
+                    if field not in lineage_paths:
+                        problems.append(f"lineage_paths must bind "
+                                        f"{field}")
+                for field, rel in lineage_paths.items():
+                    if not isinstance(field, str):
+                        problems.append("lineage_paths keys must be "
+                                        "digest field names")
+                        continue
+                    lp = _resolve_bound_file(
+                        root, rel, f"lineage_paths[{field!r}]", problems)
+                    if lp is None:
+                        continue
+                    if _resolves_under(lp, protected):
                         problems.append(
-                            "a bound file resolves under the dirty "
-                            "checkout — refused")
+                            f"lineage file for {field} resolves under "
+                            "a protected root — refused")
+                    elif not isinstance(matrix, Mapping) or \
+                            sha256_file(lp) != matrix.get(field):
+                        problems.append(
+                            f"lineage file for {field} does not match "
+                            "the declared matrix digest")
+                    else:
+                        lineage_bindings[field] = rel
             if mpath is not None and isinstance(matrix, Mapping):
                 actual_sha = sha256_file(mpath)
                 actual_bytes = mpath.stat().st_size
@@ -314,6 +514,7 @@ def build_fmx_envelope(matrix: Optional[Mapping[str, Any]] = None, *,
                 if actual_bytes != matrix.get("byte_count"):
                     problems.append("matrix file byte count does not "
                                     "match declared byte_count")
+                _validate_matrix_file(mpath, matrix, problems)
             token_doc: Any = None
             if tpath is not None:
                 try:
@@ -332,7 +533,8 @@ def build_fmx_envelope(matrix: Optional[Mapping[str, Any]] = None, *,
                     "token_relative_path": token_relpath,
                     "matrix_file_sha256": sha256_file(mpath),
                     "matrix_file_byte_count": mpath.stat().st_size,
-                    "token_file_sha256": sha256_file(tpath)}
+                    "token_file_sha256": sha256_file(tpath),
+                    "lineage": lineage_bindings}
     if problems:
         raise ValueError("FMX envelope is not valid: "
                          + "; ".join(problems[:8]))
@@ -349,6 +551,7 @@ def build_fmx_envelope(matrix: Optional[Mapping[str, Any]] = None, *,
             "research_diagnostic_only": True,
             "promotion_eligible": False,
             "production_authorized": False,
+            "warning_path_authorized": False,
             "no_claims": [
                 "feature-matrix schema/metadata only; not a scientific or "
                 "operational data product",
@@ -370,6 +573,7 @@ def build_fmx_envelope(matrix: Optional[Mapping[str, Any]] = None, *,
             "research_diagnostic_only": True,
             "promotion_eligible": False,
             "production_authorized": False,
+            "warning_path_authorized": False,
             "no_claims": [
                 "frozen feature-matrix metadata; freeze does not imply "
                 "scientific or operational readiness",
@@ -385,13 +589,16 @@ def bind_fmx_envelope(envelope: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def verify_fmx_envelope(payload: Any, *,
-                        artifact_root: Optional[str | Path] = None
+                        artifact_root: Optional[str | Path] = None,
+                        protected_roots: Optional[list] = None
                         ) -> tuple[bool, list[str]]:
     """Fail-closed FMX verification: envelope self-hash, profile/auth
     fields, schema, path safety, status consistency, freeze-token binding,
-    and — for READY — recomputation of the bound matrix/token files from
-    disk under ``artifact_root``.  A READY envelope without verifiable
-    file evidence always fails."""
+    and — for READY — recomputation of the bound matrix/token/lineage
+    files from disk under ``artifact_root``.  READY verification requires
+    BOTH ``artifact_root`` and ``protected_roots``; every bound file must
+    resolve under the root and outside every protected root.  A READY
+    envelope without verifiable file evidence always fails."""
     problems: list[str] = []
     ok, env_problems = verify_artifact_envelope(payload)
     if not ok:
@@ -407,6 +614,8 @@ def verify_fmx_envelope(payload: Any, *,
         problems.append("research_diagnostic_only must be true")
     if payload.get("promotion_eligible") is not False:
         problems.append("promotion_eligible must be false")
+    if payload.get("warning_path_authorized") is not False:
+        problems.append("warning_path_authorized must be false")
     if payload.get("production_authorized") is not False:
         problems.append("production_authorized must be false")
     status = payload.get("fmx_status")
@@ -468,18 +677,59 @@ def verify_fmx_envelope(payload: Any, *,
                               "matrix_file_byte_count", 0) <= 0:
                 problems.append("file_bindings.matrix_file_byte_count "
                                 "must be a positive integer")
-            if artifact_root is None:
+            if artifact_root is None or not protected_roots:
                 problems.append("FMX_READY verification requires "
-                                "artifact_root — file bindings must be "
-                                "recomputed from disk")
+                                "artifact_root and protected_roots — "
+                                "file bindings must be recomputed from "
+                                "disk and shown to be outside every "
+                                "protected root")
             else:
                 root = Path(artifact_root)
+                protected = _protected_root_list(protected_roots, None)
+                if _resolves_under(root, protected):
+                    problems.append("artifact_root resolves under a "
+                                    "protected root — refused")
                 m = _resolve_bound_file(
                     root, bindings.get("matrix_relative_path"),
                     "file_bindings.matrix_relative_path", problems)
                 t = _resolve_bound_file(
                     root, bindings.get("token_relative_path"),
                     "file_bindings.token_relative_path", problems)
+                for p, label in ((m, "matrix"), (t, "token")):
+                    if p is not None and _resolves_under(p, protected):
+                        problems.append(f"bound {label} file resolves "
+                                        "under a protected root — "
+                                        "refused")
+                lineage = bindings.get("lineage")
+                if not isinstance(lineage, Mapping):
+                    problems.append("file_bindings.lineage must bind the "
+                                    "lineage digest fields to frozen "
+                                    "files")
+                else:
+                    for field in _LINEAGE_DIGEST_FIELDS:
+                        if field not in lineage:
+                            problems.append("file_bindings.lineage must "
+                                            f"bind {field}")
+                    for field, rel in lineage.items():
+                        if not isinstance(field, str):
+                            problems.append("file_bindings.lineage keys "
+                                            "must be digest field names")
+                            continue
+                        lp = _resolve_bound_file(
+                            root, rel,
+                            f"file_bindings.lineage[{field!r}]", problems)
+                        if lp is None:
+                            continue
+                        if _resolves_under(lp, protected):
+                            problems.append(
+                                f"bound lineage file for {field} "
+                                "resolves under a protected root — "
+                                "refused")
+                        elif isinstance(matrix, Mapping) and \
+                                sha256_file(lp) != matrix.get(field):
+                            problems.append(
+                                f"bound lineage file for {field} does "
+                                "not match the declared matrix digest")
                 if m is not None:
                     if sha256_file(m) != bindings.get(
                             "matrix_file_sha256"):

@@ -10,18 +10,41 @@ Contract invariants enforced by :func:`verify_mec_envelope`:
 * ``profile_id`` = ``SCIENCE_CONTRACT_T2_RESEARCH``, ``research_only`` and
   ``research_diagnostic_only`` true;
 * non-empty source catalog identity with catalog ID, source digest, asset
-  IDs, and processing-script digest;
+  IDs, and processing-script digest; ``asset_ids`` entries may be strings
+  or ``{asset_id, asset_sha256, bytes}`` records, and every asset ID must
+  be unique;
 * unique non-empty synthetic event IDs, each with an event group, a row
   hash, and a holdout group;
+* ``row_sha256`` is always ``sha256_canonical(row_source)`` — the SHA-256
+  of the canonical JSON serialization of the row bytes; when any event
+  carries ``row_source`` the envelope declares ``row_schema_version``;
+  in ``REAL_SOURCE_DESIGN`` mode ``row_source`` is mandatory — caller-only
+  hashes cannot be verified;
 * source-supported date specs only — ``day`` precision with provenance, or
   an explicit interval; artificial day-15 dates and any ``fallback``/imputed
-  source are rejected;
-* separate acquisition / publication / feature-availability / target
-  windows with consistent ordering; feature availability may not extend
-  past the event date;
+  source are rejected unless the spec explicitly asserts
+  ``exact_day15_supported`` from a real source;
+* all six timing windows (acquisition, production, issue, publication,
+  feature availability, target) are required on every event with
+  consistent ordering: acquisition ends no later than feature
+  availability, feature availability may not extend past the event date,
+  the event date must fall inside the target window, and
+  production <= issue <= publication;
+* each event binds a WGS84 ``location`` that must fall inside the bbox
+  declared for its region in ``validation_scope.regions``, which must
+  contain at least two *distinct* bboxes — renamed single-box designs
+  fail closed;
 * holdout assignment must happen **before** eligibility filtering, with
   temporal embargo, geographic separation, and group-disjoint event
-  separation metadata;
+  separation metadata; ``holdout.assignment`` materializes the exact
+  ``{event_id: holdout_group}`` map pinned by ``assignment_sha256``;
+* in ``REAL_SOURCE_DESIGN`` mode the human-approved ``source_packet`` must
+  be bound to a real file: ``packet_relpath`` resolves under
+  ``packet_root`` to a regular non-symlink JSON file whose SHA-256 equals
+  ``packet_sha256`` and whose approval fields match the envelope claim;
+* label evidence is bound: ``adjudication`` carries ``ledger_sha256`` and
+  unique ``reviewer_ids``; ``negative_controls`` carries
+  ``artifact_sha256``;
 * validation scope must span at least two geographic regions and two
   events — single-box and Langtang-only designs are rejected;
 * no absolute paths in portable fields;
@@ -29,13 +52,15 @@ Contract invariants enforced by :func:`verify_mec_envelope`:
 """
 from __future__ import annotations
 
+import json
 import re
 from datetime import date as _date
-from typing import Any, Mapping, Optional
+from pathlib import Path, PureWindowsPath
+from typing import Any, Mapping, Optional, TypeGuard
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .provenance import (bind_artifact_envelope, sha256_canonical,
-                         verify_artifact_envelope)
+                         sha256_file, verify_artifact_envelope)
 from .research_boundaries import lint_research_claims
 
 MEC_ENVELOPE_TYPE = "MULTI_EVENT_CONTRACT_V1"
@@ -100,6 +125,68 @@ def _check_timezone(tz: Any, label: str, problems: list[str]) -> None:
                         "timezone")
 
 
+def _is_number(value: Any) -> TypeGuard[float]:
+    """A real JSON number — bools are not coordinates or byte counts."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _check_packet_file(packet: Mapping[str, Any], relpath: str,
+                       packet_root: Any, problems: list[str]) -> None:
+    """Bind ``source_packet`` to a real approved file under packet_root.
+
+    The relative path must stay inside the resolved root, may not traverse
+    symlinks, and must resolve to a regular JSON file.  The file must not
+    contain ``packet_sha256`` (a circular self-reference); every approval
+    field it does carry must equal the envelope claim; and the envelope's
+    ``packet_sha256`` must equal the file's SHA-256.
+    """
+    rel = Path(relpath)
+    if (rel.is_absolute() or PureWindowsPath(relpath).is_absolute()
+            or ".." in rel.parts or "\\" in relpath or "\x00" in relpath):
+        problems.append("source_packet.packet_relpath is not a safe "
+                        "relative path under packet_root")
+        return
+    try:
+        root_resolved = Path(packet_root).resolve()
+        target = (root_resolved / rel).resolve()
+        target.relative_to(root_resolved)
+    except (OSError, ValueError):
+        problems.append("source_packet.packet_relpath escapes "
+                        "packet_root")
+        return
+    # No path component under the root may be a symlink.
+    cursor = root_resolved
+    for part in rel.parts:
+        cursor = cursor / part
+        if cursor.is_symlink():
+            problems.append("source_packet.packet_relpath traverses a "
+                            "symlink — packet files must be regular")
+            return
+    if not target.is_file():
+        problems.append("source_packet.packet_relpath does not resolve "
+                        "to a regular file under packet_root")
+        return
+    try:
+        data = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        problems.append("source_packet file is not readable JSON")
+        return
+    if not isinstance(data, Mapping):
+        problems.append("source_packet file must contain a JSON object")
+        return
+    if "packet_sha256" in data:
+        problems.append("source_packet file must not contain "
+                        "packet_sha256 — a packet cannot hash itself")
+    for field in ("packet_id", "approved_by", "human_approved",
+                  "approved_at"):
+        if field in data and data[field] != packet.get(field):
+            problems.append(f"source_packet file {field} does not match "
+                            "the envelope source_packet claim")
+    if packet.get("packet_sha256") != sha256_file(target):
+        problems.append("source_packet.packet_sha256 does not equal the "
+                        "SHA-256 of the packet file under packet_root")
+
+
 def _window_endpoints(value: Any, label: str, problems: list[str]
                       ) -> tuple[Optional[tuple], Optional[tuple]]:
     """Return (start, end) date tuples for a window spec, or record
@@ -151,10 +238,12 @@ def _check_date_spec(spec: Any, label: str, problems: list[str]
             problems.append(f"{label}.date_spec.date must be an ISO "
                             "YYYY-MM-DD date for day precision")
         else:
-            if d[2] == 15:
+            if d[2] == 15 and spec.get("exact_day15_supported") is not True:
                 problems.append(
                     f"{label}.date_spec uses an artificial day-15 date; "
-                    "source-supported dates are required")
+                    "source-supported dates are required (day-15 is only "
+                    "permitted when exact_day15_supported is asserted "
+                    "from a non-fallback source)")
             event_ref = d
     elif precision == "interval":
         interval = spec.get("interval")
@@ -178,10 +267,14 @@ def _check_date_spec(spec: Any, label: str, problems: list[str]
     return event_ref
 
 
-def build_mec_envelope(payload: Mapping[str, Any]) -> dict[str, Any]:
+def build_mec_envelope(payload: Mapping[str, Any], *,
+                       packet_root: Any = None) -> dict[str, Any]:
     """Bind a MEC envelope with its canonical self-hash.  The payload is
-    validated first — malformed envelopes cannot be bound."""
-    ok, problems = verify_mec_envelope(payload, structural_only=True)
+    validated first — malformed envelopes cannot be bound.  In
+    ``REAL_SOURCE_DESIGN`` mode ``packet_root`` is required so the source
+    packet can be bound to its approved file."""
+    ok, problems = verify_mec_envelope(payload, structural_only=True,
+                                       packet_root=packet_root)
     if not ok:
         raise ValueError("MEC envelope is not valid: "
                          + "; ".join(problems[:5]))
@@ -189,11 +282,15 @@ def build_mec_envelope(payload: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def verify_mec_envelope(payload: Any, *,
-                        structural_only: bool = False
+                        structural_only: bool = False,
+                        packet_root: Any = None
                         ) -> tuple[bool, list[str]]:
     """Fail-closed MEC verification.  ``structural_only`` skips the
     envelope self-hash check so :func:`build_mec_envelope` can validate a
-    payload before binding it."""
+    payload before binding it.  ``packet_root`` is the directory under
+    which a real-mode ``source_packet.packet_relpath`` must resolve to a
+    regular, non-symlink JSON packet file; it is required in
+    ``REAL_SOURCE_DESIGN`` mode and ignored for synthetic fixtures."""
     problems: list[str] = []
     if not isinstance(payload, Mapping):
         return False, ["MEC envelope must be a mapping"]
@@ -231,6 +328,10 @@ def verify_mec_envelope(payload: Any, *,
         # here — the packet is validated as a claim structure only.
         if payload.get("synthetic_fixture") is not False:
             problems.append("real mode requires synthetic_fixture=false")
+        if packet_root is None:
+            problems.append("real mode requires packet_root — the "
+                            "source packet must be bound to an approved "
+                            "file on disk; failing closed")
         packet = payload.get("source_packet")
         if not isinstance(packet, Mapping):
             problems.append("real mode requires a human-approved "
@@ -258,6 +359,15 @@ def verify_mec_envelope(payload: Any, *,
             if _parse_date(packet.get("approved_at")) is None:
                 problems.append("source_packet.approved_at must be a "
                                 "valid ISO calendar date")
+            relpath = packet.get("packet_relpath")
+            if not isinstance(relpath, str) or not relpath:
+                problems.append("source_packet.packet_relpath is "
+                                "required for real mode — a safe "
+                                "relative path to the approved packet "
+                                "file under packet_root")
+            elif packet_root is not None:
+                _check_packet_file(packet, relpath, packet_root,
+                                   problems)
 
     catalog = payload.get("source_catalog")
     if not isinstance(catalog, Mapping):
@@ -278,10 +388,39 @@ def verify_mec_envelope(payload: Any, *,
         if not _is_sha256(catalog.get("processing_script_sha256")):
             problems.append("source_catalog.processing_script_sha256 must "
                             "be a lowercase SHA-256")
-        if not isinstance(catalog.get("asset_ids"), list) or not \
-                catalog["asset_ids"]:
+        assets = catalog.get("asset_ids")
+        if not isinstance(assets, list) or not assets:
             problems.append("source_catalog.asset_ids must be a "
                             "non-empty list")
+        else:
+            seen_assets: set[str] = set()
+            for ai, entry in enumerate(assets):
+                alabel = f"source_catalog.asset_ids[{ai}]"
+                if isinstance(entry, str):
+                    aid = entry
+                elif isinstance(entry, Mapping):
+                    aid = entry.get("asset_id")
+                    if not _is_sha256(entry.get("asset_sha256")):
+                        problems.append(f"{alabel}.asset_sha256 must be "
+                                        "a lowercase SHA-256")
+                    nbytes = entry.get("bytes")
+                    if not isinstance(nbytes, int) or isinstance(
+                            nbytes, bool) or nbytes < 0:
+                        problems.append(f"{alabel}.bytes must be a "
+                                        "non-negative integer")
+                else:
+                    problems.append(
+                        f"{alabel} must be an asset id string or a "
+                        "{asset_id, asset_sha256, bytes} record")
+                    continue
+                if not isinstance(aid, str) or not aid:
+                    problems.append(f"{alabel}.asset_id must be a "
+                                    "non-empty string")
+                elif aid in seen_assets:
+                    problems.append(f"{alabel}.asset_id {aid!r} is a "
+                                    "duplicate")
+                else:
+                    seen_assets.add(aid)
 
     # Declared collections for referential integrity — events may only
     # reference declared groups/holdouts.
@@ -301,6 +440,11 @@ def verify_mec_envelope(payload: Any, *,
     seen_groups: set[str] = set()
     seen_holdouts: set[str] = set()
     seen_regions: set[str] = set()
+    event_ids: list[str] = []
+    any_row_source = False
+    # (label, region_id, lat, lon) for events with valid geometry —
+    # checked against validation_scope.regions bboxes below.
+    event_locations: list[tuple[str, str, float, float]] = []
     for i, ev in enumerate(events):
         label = f"events[{i}]"
         if not isinstance(ev, Mapping):
@@ -313,6 +457,7 @@ def verify_mec_envelope(payload: Any, *,
             if eid in seen_ids:
                 problems.append(f"{label}.event_id {eid!r} is a duplicate")
             seen_ids.add(eid)
+            event_ids.append(eid)
             if mode == _MODE_SYNTHETIC:
                 if not eid.startswith(_SYNTH_ID_PREFIX) or \
                         ev.get("synthetic") is not True:
@@ -332,6 +477,26 @@ def verify_mec_envelope(payload: Any, *,
                             "region counts are derived from records")
         else:
             seen_regions.add(rid)
+        loc = ev.get("location")
+        if not isinstance(loc, Mapping):
+            problems.append(f"{label}.location must be a {{lat, lon}} "
+                            "mapping — event geometry is bound to its "
+                            "region bbox")
+        else:
+            lat = loc.get("lat")
+            lon = loc.get("lon")
+            if not _is_number(lat) or not (-90 <= lat <= 90):
+                problems.append(f"{label}.location.lat must be a number "
+                                "in [-90, 90]")
+                lat = None
+            if not _is_number(lon) or not (-180 <= lon <= 180):
+                problems.append(f"{label}.location.lon must be a number "
+                                "in [-180, 180]")
+                lon = None
+            if lat is not None and lon is not None and isinstance(
+                    rid, str) and rid:
+                event_locations.append(
+                    (label, rid, float(lat), float(lon)))
         gid = ev.get("event_group_id")
         if not isinstance(gid, str) or not gid:
             problems.append(f"{label}.event_group_id is required")
@@ -350,6 +515,7 @@ def verify_mec_envelope(payload: Any, *,
         # source row is present, row_sha256 must recompute to it exactly.
         row_source = ev.get("row_source")
         if row_source is not None:
+            any_row_source = True
             if not isinstance(row_source, (Mapping, list, str)):
                 problems.append(f"{label}.row_source must be canonical "
                                 "row bytes/fields (mapping, list, or "
@@ -359,6 +525,10 @@ def verify_mec_envelope(payload: Any, *,
                 problems.append(f"{label}.row_sha256 does not equal "
                                 "sha256 of the supplied canonical row "
                                 "source bytes")
+        elif mode == _MODE_REAL:
+            problems.append(f"{label}.row_source is required in "
+                            f"{_MODE_REAL} mode — a caller-supplied "
+                            "hash without row bytes cannot be verified")
         elif not _is_sha256(ev.get("row_sha256")):
             problems.append(f"{label}.row_sha256 must be a lowercase "
                             "SHA-256")
@@ -371,16 +541,61 @@ def verify_mec_envelope(payload: Any, *,
             if wkey not in _WINDOW_KEYS:
                 problems.append(f"{label}.windows.{wkey} is not a known "
                                 "window key")
+        endpoints: dict[str, tuple[Optional[tuple], Optional[tuple]]] = {}
         for wkey in _WINDOW_KEYS:
-            if wkey in windows:
-                _ws, we = _window_endpoints(
-                    windows[wkey], f"{label}.windows.{wkey}", problems)
-                if wkey == "feature_availability_time" and we is not None \
-                        and event_ref is not None and we > event_ref:
-                    problems.append(
-                        f"{label}.windows.feature_availability_time ends "
-                        "after the event date — post-event features are "
-                        "forbidden")
+            if wkey not in windows:
+                problems.append(f"{label}.windows.{wkey} is required")
+                continue
+            endpoints[wkey] = _window_endpoints(
+                windows[wkey], f"{label}.windows.{wkey}", problems)
+        # Ordering invariants: acquisition completes before features are
+        # available; features never extend past the event date; the event
+        # date sits inside the target window; and the publication chain
+        # is monotone (production <= issue <= publication).
+        acq_end = endpoints.get("acquisition_window", (None, None))[1]
+        fat_end = endpoints.get(
+            "feature_availability_time", (None, None))[1]
+        if acq_end is not None and fat_end is not None \
+                and acq_end > fat_end:
+            problems.append(
+                f"{label}.windows.acquisition_window ends after "
+                "feature_availability_time — acquisition must complete "
+                "before features become available")
+        if fat_end is not None and event_ref is not None \
+                and fat_end > event_ref:
+            problems.append(
+                f"{label}.windows.feature_availability_time ends "
+                "after the event date — post-event features are "
+                "forbidden")
+        tgt = endpoints.get("target_window")
+        if tgt is not None and event_ref is not None and \
+                tgt[0] is not None and tgt[1] is not None and \
+                not (tgt[0] <= event_ref <= tgt[1]):
+            problems.append(
+                f"{label}.windows.target_window does not contain the "
+                "event date")
+        prod_end = endpoints.get("production_time", (None, None))[1]
+        iss_end = endpoints.get("issue_time", (None, None))[1]
+        pub_end = endpoints.get("publication_time", (None, None))[1]
+        if prod_end is not None and iss_end is not None \
+                and prod_end > iss_end:
+            problems.append(
+                f"{label}.windows.production_time is after issue_time")
+        if iss_end is not None and pub_end is not None \
+                and iss_end > pub_end:
+            problems.append(
+                f"{label}.windows.issue_time is after publication_time")
+
+    # When any event carries canonical row bytes, the envelope must
+    # declare the canonicalization version; row_sha256 is
+    # sha256_canonical(row_source) — SHA-256 over canonical JSON.
+    if any_row_source:
+        rsv = payload.get("row_schema_version")
+        if not isinstance(rsv, str) or not rsv:
+            problems.append("row_schema_version is required when events "
+                            "carry row_source — it declares the "
+                            "canonical JSON serialization version used "
+                            "for row_sha256")
 
     holdout = payload.get("holdout")
     if not isinstance(holdout, Mapping):
@@ -419,6 +634,34 @@ def verify_mec_envelope(payload: Any, *,
                     problems.append(f"holdout_group {hg!r} is not a "
                                     "declared holdout group (orphan "
                                     "reference)")
+        # Materialized assignment: the {event_id: holdout_group} map must
+        # cover exactly the event set and be pinned by its canonical
+        # hash, so the split cannot be silently recomputed.
+        assignment = holdout.get("assignment")
+        if not isinstance(assignment, Mapping):
+            problems.append("holdout.assignment must be an "
+                            "{event_id: holdout_group} mapping")
+        else:
+            if set(assignment.keys()) != set(event_ids):
+                problems.append("holdout.assignment must cover exactly "
+                                "the event set — no omissions, no extras")
+            for ev in events:
+                if not isinstance(ev, Mapping):
+                    continue
+                eid = ev.get("event_id")
+                if isinstance(eid, str) and eid in assignment and \
+                        assignment[eid] != ev.get("holdout_group"):
+                    problems.append(
+                        f"event {eid!r} holdout_group does not match "
+                        "holdout.assignment")
+            try:
+                expected_assign = sha256_canonical(assignment)
+            except (TypeError, ValueError):
+                expected_assign = None
+            if not _is_sha256(holdout.get("assignment_sha256")) or \
+                    expected_assign != holdout.get("assignment_sha256"):
+                problems.append("holdout.assignment_sha256 must equal "
+                                "sha256_canonical(holdout.assignment)")
 
     scope = payload.get("validation_scope")
     if not isinstance(scope, Mapping):
@@ -451,6 +694,43 @@ def verify_mec_envelope(payload: Any, *,
                 f"validation_scope.min_events {declared_min} does not "
                 f"equal the {len(events)} event records — counts are "
                 "derived, not asserted")
+        regions = scope.get("regions")
+        if not isinstance(regions, Mapping) or not regions:
+            problems.append("validation_scope.regions must be a "
+                            "{region_id: {bbox: [west, south, east, "
+                            "north]}} mapping")
+        else:
+            bboxes: dict[str, tuple] = {}
+            for rid, rspec in regions.items():
+                bbox = rspec.get("bbox") if isinstance(
+                    rspec, Mapping) else None
+                if not isinstance(bbox, (list, tuple)) or \
+                        len(bbox) != 4 or \
+                        not all(_is_number(v) for v in bbox) or \
+                        not (-180 <= bbox[0] <= bbox[2] <= 180) or \
+                        not (-90 <= bbox[1] <= bbox[3] <= 90):
+                    problems.append(
+                        f"validation_scope.regions.{rid}.bbox must be "
+                        "[west, south, east, north] with west <= east "
+                        "and south <= north in valid ranges")
+                    continue
+                bboxes[str(rid)] = tuple(float(v) for v in bbox)
+            if len(set(bboxes.values())) < 2:
+                problems.append("validation_scope.regions must declare "
+                                "at least 2 distinct bboxes — a single "
+                                "physical box is a single-box design "
+                                "however it is named")
+            for label, rid, lat, lon in event_locations:
+                if rid not in bboxes:
+                    problems.append(f"{label}.region_id {rid!r} has no "
+                                    "declared bbox in "
+                                    "validation_scope.regions")
+                    continue
+                west, south, east, north = bboxes[rid]
+                if not (west <= lon <= east and south <= lat <= north):
+                    problems.append(
+                        f"{label}.location ({lat}, {lon}) falls outside "
+                        f"the declared bbox of region {rid!r}")
 
     label_spec = payload.get("label_spec")
     if not isinstance(label_spec, Mapping):
@@ -471,6 +751,18 @@ def verify_mec_envelope(payload: Any, *,
                     adj["independent_reviewers"] < 1:
                 problems.append("label_spec.adjudication."
                                 "independent_reviewers must be >= 1")
+            if not _is_sha256(adj.get("ledger_sha256")):
+                problems.append("label_spec.adjudication.ledger_sha256 "
+                                "must be a lowercase SHA-256 binding the "
+                                "adjudication ledger")
+            rev = adj.get("reviewer_ids")
+            if not isinstance(rev, list) or not rev or not all(
+                    isinstance(r, str) and r for r in rev):
+                problems.append("label_spec.adjudication.reviewer_ids "
+                                "must be a non-empty list of strings")
+            elif len(set(rev)) != len(rev):
+                problems.append("label_spec.adjudication.reviewer_ids "
+                                "must be unique")
         nc = label_spec.get("negative_controls")
         if not isinstance(nc, Mapping):
             problems.append("label_spec.negative_controls must be a "
@@ -483,6 +775,10 @@ def verify_mec_envelope(payload: Any, *,
                     nc["n_controls"] < 1:
                 problems.append("label_spec.negative_controls.n_controls "
                                 "must be >= 1")
+            if not _is_sha256(nc.get("artifact_sha256")):
+                problems.append("label_spec.negative_controls."
+                                "artifact_sha256 must be a lowercase "
+                                "SHA-256 binding the controls artifact")
 
     if not isinstance(payload.get("claim_scope"), str) or not \
             payload["claim_scope"]:

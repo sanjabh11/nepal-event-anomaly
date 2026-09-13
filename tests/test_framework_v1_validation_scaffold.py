@@ -4,6 +4,16 @@ from __future__ import annotations
 import pytest
 
 from nepal.framework_v1 import validation_scaffold as t2s
+from nepal.framework_v1.provenance import sha256_canonical
+
+
+def _metric_registry():
+    return [
+        {"metric_id": "calibration_slope", "class": "calibration",
+         "operational_threshold": None},
+        {"metric_id": "lead_time_days", "class": "lead_time",
+         "operational_threshold": None},
+    ]
 
 
 def _refs():
@@ -18,22 +28,20 @@ def _refs():
 
 
 def _payload():
+    metric_registry = _metric_registry()
     return {
         "mode": t2s.MODE_SCAFFOLD_ONLY,
         "research_diagnostic_only": True,
         "promotion_eligible": False,
         "references": _refs(),
         "split_spec": {
+            "split_id": "T2S-SPLIT-NEPAL-V1",
             "temporal_embargo_days": 30,
             "geographic_holdout": {"min_separation_km": 50.0},
             "event_separation": {"group_disjoint": True},
         },
-        "metric_registry": [
-            {"metric_id": "calibration_slope", "class": "calibration",
-             "operational_threshold": None},
-            {"metric_id": "lead_time_days", "class": "lead_time",
-             "operational_threshold": None},
-        ],
+        "metric_registry": metric_registry,
+        "metric_registry_sha256": sha256_canonical(metric_registry),
         "inherited_state": {"b_status": "B_TO_C_BLOCKED",
                             "ranking_rerun": False,
                             "e_status": "E_BLOCKED",
@@ -141,14 +149,29 @@ def test_scaffold_result_blocked_pending_fmx():
 
 
 def _bound_refs(tmp_path):
-    """Write real bound-envelope files and return refs bound to them."""
+    """Write real bound-envelope files and return refs bound to them.
+
+    All three references (MEC, FMX, and the B ranked-array envelope) are
+    file-bound: each ref's ``envelope_sha256`` equals the on-disk
+    envelope's verified ``artifact_sha256`` and ``relative_path`` names
+    the file under ``tmp_path``."""
     import json
     from nepal.framework_v1.provenance import bind_artifact_envelope
     refs = _refs()
-    for rname, fname in (("mec_reference", "mec.json"),
-                         ("fmx_reference", "fmx.json")):
-        doc = bind_artifact_envelope({"doc": rname,
-                                      "research_diagnostic_only": True})
+    bound_docs = {
+        "mec_reference": ("mec.json",
+                          {"doc": "mec_reference",
+                           "research_diagnostic_only": True}),
+        "fmx_reference": ("fmx.json",
+                          {"doc": "fmx_reference",
+                           "research_diagnostic_only": True}),
+        "b_reference": ("b_env.json",
+                        {"b_status": "B_TO_C_BLOCKED",
+                         "ranked_array_canonical_sha256": "ef" * 32,
+                         "research_diagnostic_only": True}),
+    }
+    for rname, (fname, doc_payload) in bound_docs.items():
+        doc = bind_artifact_envelope(doc_payload)
         (tmp_path / fname).write_text(json.dumps(doc))
         refs[rname]["relative_path"] = fname
         refs[rname]["envelope_sha256"] = doc["artifact_sha256"]
@@ -244,5 +267,102 @@ def test_duplicate_metric_id_rejected():
 def test_operational_metric_field_rejected():
     p = _payload()
     p["metric_registry"][0]["alert_threshold"] = 0.9
+    with pytest.raises(ValueError):
+        t2s.build_scaffold_envelope(p)
+
+
+# ---------- T2S audit hardening (T2S-01..04) ----------
+
+
+def test_strict_verify_requires_reference_root(tmp_path):
+    """T2S-01: strict verification fails closed without a root."""
+    p = _payload()
+    p["references"] = _bound_refs(tmp_path)
+    env = t2s.build_scaffold_envelope(p, reference_root=tmp_path)
+    ok, problems = t2s.verify_scaffold_envelope(env, strict=True)
+    assert not ok
+    assert any("reference_root" in pr for pr in problems)
+
+
+def test_strict_verify_with_bound_refs(tmp_path):
+    """T2S-01: strict verification passes when every reference is
+    file-bound under the supplied root."""
+    p = _payload()
+    p["references"] = _bound_refs(tmp_path)
+    env = t2s.build_scaffold_envelope(p, reference_root=tmp_path)
+    ok, problems = t2s.verify_scaffold_envelope(
+        env, reference_root=tmp_path, strict=True)
+    assert ok, problems
+
+
+def test_strict_verify_missing_b_relative_path_rejected(tmp_path):
+    """T2S-01: strict mode requires the B reference to be file-bound."""
+    p = _payload()
+    p["references"] = _bound_refs(tmp_path)
+    del p["references"]["b_reference"]["relative_path"]
+    with pytest.raises(ValueError):
+        t2s.build_scaffold_envelope(p, reference_root=tmp_path)
+
+
+def test_b_reference_fake_envelope_digest_rejected(tmp_path):
+    """T2S-02: a plausible 64-hex B digest that matches no envelope."""
+    p = _payload()
+    p["references"] = _bound_refs(tmp_path)
+    p["references"]["b_reference"]["envelope_sha256"] = "00" * 32
+    with pytest.raises(ValueError):
+        t2s.build_scaffold_envelope(p, reference_root=tmp_path)
+
+
+def test_b_reference_envelope_missing_ranked_digest_rejected(tmp_path):
+    """T2S-02: the bound B envelope must contain the declared ranked
+    array canonical digest among its values."""
+    p = _payload()
+    p["references"] = _bound_refs(tmp_path)
+    p["references"]["b_reference"]["ranked_array_canonical_sha256"] = \
+        "11" * 32
+    with pytest.raises(ValueError):
+        t2s.build_scaffold_envelope(p, reference_root=tmp_path)
+
+
+def test_b_status_disagreement_with_artifact_rejected(tmp_path):
+    """T2S-03: a bound B envelope whose b_status disagrees with the
+    caller-asserted statuses is rejected."""
+    import json
+    from nepal.framework_v1.provenance import bind_artifact_envelope
+    p = _payload()
+    p["references"] = _bound_refs(tmp_path)
+    doc = bind_artifact_envelope(
+        {"b_status": "B_TO_C_DEFERRED",
+         "ranked_array_canonical_sha256": "ef" * 32,
+         "research_diagnostic_only": True})
+    (tmp_path / "b_env.json").write_text(json.dumps(doc))
+    p["references"]["b_reference"]["envelope_sha256"] = \
+        doc["artifact_sha256"]
+    with pytest.raises(ValueError):
+        t2s.build_scaffold_envelope(p, reference_root=tmp_path)
+
+
+def test_missing_metric_registry_sha256_rejected():
+    """T2S-04: the frozen metric-registry digest is required."""
+    p = _payload()
+    del p["metric_registry_sha256"]
+    with pytest.raises(ValueError):
+        t2s.build_scaffold_envelope(p)
+
+
+def test_tampered_metric_registry_invalidates_digest():
+    """T2S-04: editing the registry after freezing the digest fails."""
+    p = _payload()
+    p["metric_registry"].append(
+        {"metric_id": "brier_score", "class": "calibration",
+         "operational_threshold": None})
+    with pytest.raises(ValueError):
+        t2s.build_scaffold_envelope(p)
+
+
+def test_missing_split_id_rejected():
+    """T2S-04: split_spec must name a frozen cohort split id."""
+    p = _payload()
+    del p["split_spec"]["split_id"]
     with pytest.raises(ValueError):
         t2s.build_scaffold_envelope(p)
