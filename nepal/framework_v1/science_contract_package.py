@@ -8,8 +8,11 @@ handoff, and an atomic checkpoint.
 
 Safety properties:
 
-* writes only inside the caller-supplied package directory; never copies
-  candidate data, ranked payloads, or any matrix bytes;
+* writes only inside the caller-supplied package directory — with one
+  documented exception: when ``evidence_root`` is supplied and the
+  package resolves under it, a single ``active_generation.json``
+  pointer is written at that root (PKG-09); never copies candidate
+  data, ranked payloads, or any matrix bytes;
 * every envelope carries ``research_diagnostic_only=true``,
   ``promotion_eligible=false``, ``production_authorized=false``,
   ``warning_path_authorized=false``;
@@ -28,8 +31,10 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import re
 import shutil
+import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -39,7 +44,8 @@ from .feature_matrix_contract import (FEATURE_CONTRACT_SHA256_FIELD,
                                       FMX_BLOCKED_PENDING_EXPLICIT_FREEZE,
                                       build_fmx_envelope,
                                       verify_fmx_envelope)
-from .multi_event_contract import build_mec_envelope
+from .multi_event_contract import (CANONICAL_ROW_SERIALIZATION,
+                                   build_mec_envelope)
 from .provenance import (bind_artifact_envelope, sha256_canonical,
                          sha256_file, verify_artifact_envelope)
 from .research_boundaries import lint_research_claims
@@ -48,6 +54,8 @@ from .validation_scaffold import (BLOCKED_PENDING_FMX,
                                   verify_scaffold_envelope)
 
 SEAL_TYPE = "SCIENCE_CONTRACT_SEAL_V1"
+POINTER_TYPE = "ACTIVE_GENERATION_POINTER_V1"
+POINTER_NAME = "active_generation.json"
 _MANDATORY_FLAG_FIELDS = ("research_diagnostic_only",
                           "promotion_eligible", "production_authorized",
                           "warning_path_authorized")
@@ -78,6 +86,80 @@ def _check_disk_reserve(path: Path) -> None:
             f"{MIN_FREE_GIB} GiB reserve; refusing to write package")
 
 
+_LOCKFILE_CANDIDATES = ("uv.lock", "poetry.lock", "requirements.txt",
+                        "requirements-dev.txt", "pyproject.toml")
+
+
+def _environment_fingerprint() -> dict[str, Any]:
+    """OPS-04: path-independent environment binding — interpreter,
+    platform, dependency-lock digest, and locale/timezone policy."""
+    repo_root = Path(__file__).resolve().parents[2]
+    lock_name: Optional[str] = None
+    lock_sha: Optional[str] = None
+    for cand in _LOCKFILE_CANDIDATES:
+        cand_path = repo_root / cand
+        if cand_path.is_file() and not cand_path.is_symlink():
+            lock_name = cand
+            lock_sha = sha256_file(cand_path)
+            break
+    return {"python_version": platform.python_version(),
+            "python_implementation": platform.python_implementation(),
+            "platform": platform.platform(),
+            "lock_file": lock_name,
+            "lock_sha256": lock_sha,
+            "tz_policy": "UTC",
+            "locale_independent": True}
+
+
+def _iter_strings(value: Any):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, Mapping):
+        for k, v in value.items():
+            if isinstance(k, str):
+                yield k
+            yield from _iter_strings(v)
+    elif isinstance(value, (list, tuple)):
+        for v in value:
+            yield from _iter_strings(v)
+
+
+_ABS_PATH_RE = re.compile(r"^(?:/|[A-Za-z]:[\\/])")
+
+
+def _write_active_pointer(ev_root: Path, pkg_dir: Path, *,
+                          run_root_name: str,
+                          candidate_generation_id: str,
+                          code_revision: str) -> None:
+    """PKG-09: single active-generation pointer written at the evidence
+    root (the ONE sanctioned write outside ``package_dir``).  Only
+    written when the package resolves under the evidence root; the
+    pointer binds run identity, the package's relative path, and the
+    index + seal file digests."""
+    root_r = ev_root.resolve()
+    pkg_r = pkg_dir.resolve()
+    if root_r != pkg_r and root_r not in pkg_r.parents:
+        return  # package lives outside the root — no pointer
+    index_path = pkg_dir / "science_contract_package_index.json"
+    seal_path = pkg_dir / "package_seal.json"
+    if not (index_path.is_file() and seal_path.is_file()):
+        return
+    pointer = bind_artifact_envelope({
+        "pointer_type": POINTER_TYPE,
+        "run_root_name": run_root_name,
+        "candidate_generation_id": candidate_generation_id,
+        "code_revision": code_revision,
+        "package_relpath": pkg_r.relative_to(root_r).as_posix(),
+        "index_file_sha256": sha256_file(index_path),
+        "package_seal_sha256": sha256_file(seal_path),
+        "created_at": _now(),
+        "research_diagnostic_only": True,
+        "promotion_eligible": False,
+        "production_authorized": False,
+        "warning_path_authorized": False})
+    _atomic_write_json(root_r / POINTER_NAME, pointer)
+
+
 def _atomic_write_json(path: Path, obj: Mapping[str, Any]) -> None:
     """Write canonical JSON atomically (temp file in same dir + rename)."""
     text = json.dumps(obj, indent=1, sort_keys=True) + "\n"
@@ -95,7 +177,8 @@ def _atomic_write_json(path: Path, obj: Mapping[str, Any]) -> None:
         raise
 
 
-def _synthetic_mec_fixture() -> Mapping[str, Any]:
+def _synthetic_mec_fixture(candidate_generation_id: str,
+                         code_revision: str) -> Mapping[str, Any]:
     """A synthetic MEC fixture — proves the schema, carries no real data."""
     _LOCS = {"R1": (81.5, 28.0), "R2": (85.5, 28.0), "R3": (89.0, 27.0)}
 
@@ -140,7 +223,10 @@ def _synthetic_mec_fixture() -> Mapping[str, Any]:
             "asset_ids": ["SYNTH-ASSET-1"],
             "processing_script_sha256": "cd" * 32},
         "mode": "SYNTHETIC_FIXTURE",
+        "candidate_generation_id": candidate_generation_id,
+        "code_revision": code_revision,
         "row_schema_version": "synthetic-rows-v1",
+        "row_serialization": CANONICAL_ROW_SERIALIZATION,
         "event_groups": ["G1", "G2", "G3", "G4"],
         "events": [ev(1, "G1", 3), ev(2, "G2", 10), ev(3, "G3", 21),
                    ev(4, "G4", 5)],
@@ -260,13 +346,21 @@ def _check_evidence_references(refs: Any) -> list:
     return checked
 
 
-def _verify_evidence_root(root: Path, refs: list) -> None:
+def _verify_evidence_root(root: Path, refs: list,
+                          expected_root_name: str = "") -> None:
     """PKG-03: every evidence reference must resolve to a real regular
     file under ``root`` whose recomputed digest matches the declared
-    sha256.  Symlinks and escapes are rejected."""
+    sha256.  Symlinks and escapes are rejected.  PKG-07: when
+    ``expected_root_name`` is given the resolved root directory's final
+    component must equal it — a sibling or renamed root carrying the
+    same relative files fails identity binding."""
     if not root.is_dir() or root.is_symlink():
         raise ValueError(f"evidence_root is not a real directory: {root}")
     root_r = root.resolve()
+    if expected_root_name and root_r.name != expected_root_name:
+        raise ValueError(f"evidence_root identity mismatch: expected a "
+                         f"root named {expected_root_name!r}, got "
+                         f"{root_r.name!r}")
     for ref in refs:
         target = root / ref["relative_path"]
         if target.is_symlink():
@@ -317,11 +411,13 @@ def build_science_contract_package(
     pkg_dir.mkdir(parents=True, exist_ok=True)
     _check_disk_reserve(pkg_dir)
     checked_refs = _check_evidence_references(evidence_references)
+    ev_root = Path(evidence_root) if evidence_root is not None else None
     if checked_refs:
-        if evidence_root is None:
+        if ev_root is None:
             raise ValueError("evidence_root is required when "
                              "evidence_references are supplied")
-        _verify_evidence_root(Path(evidence_root), checked_refs)
+        _verify_evidence_root(ev_root, checked_refs,
+                              expected_root_name=run_root_name)
 
     checkpoint = {"run_state": "RUNNING", "created_at": _now(),
                   "states": list(CHECKPOINT_STATES),
@@ -333,7 +429,9 @@ def build_science_contract_package(
     _atomic_write_json(ckpt_path, checkpoint)
 
     try:
-        mec_env = build_mec_envelope(_synthetic_mec_fixture())
+        mec_env = build_mec_envelope(
+            _synthetic_mec_fixture(candidate_generation_id,
+                                   code_revision))
         fmx_env = build_fmx_envelope(_blocked_fmx_fixture())
         assert fmx_env["fmx_status"] == FMX_BLOCKED_PENDING_EXPLICIT_FREEZE
         assert fmx_env["matrix"]["status"] == "ABSENT"
@@ -355,6 +453,7 @@ def build_science_contract_package(
             "ranked_payload_sha256_domain_status":
                 ranked_payload_sha256_domain_status,
             "evidence_references": checked_refs,
+            "environment": _environment_fingerprint(),
             "dirty_matrix_policy": "treated as absent; never inspected",
             "research_diagnostic_only": True,
             "promotion_eligible": False,
@@ -375,6 +474,8 @@ def build_science_contract_package(
             "mode": "VALIDATION_SCAFFOLD_ONLY",
             "research_diagnostic_only": True,
             "promotion_eligible": False,
+            "candidate_generation_id": candidate_generation_id,
+            "code_revision": code_revision,
             "references": {
                 "mec_reference": {
                     "envelope_sha256": mec_env["artifact_sha256"],
@@ -500,6 +601,13 @@ def build_science_contract_package(
             "production_authorized": False,
             "warning_path_authorized": False})
         _atomic_write_json(pkg_dir / "package_seal.json", seal)
+        # PKG-09: publish the single active-generation pointer at the
+        # evidence root (the one write outside package_dir, by design).
+        if ev_root is not None:
+            _write_active_pointer(
+                ev_root, pkg_dir, run_root_name=run_root_name,
+                candidate_generation_id=candidate_generation_id,
+                code_revision=code_revision)
     except BaseException:
         checkpoint["run_state"] = "INCOMPLETE"
         checkpoint["failed_at"] = _now()
@@ -695,9 +803,19 @@ def verify_science_contract_package(
                                     "was supplied — unverified")
                 else:
                     try:
-                        _verify_evidence_root(Path(evidence_root), refs)
+                        _verify_evidence_root(
+                            Path(evidence_root), refs,
+                            expected_root_name=str(
+                                doc.get("run_root_name") or ""))
                     except ValueError as exc:
                         problems.append(f"evidence references: {exc}")
+        # OPS-03: portable provenance — no absolute machine-local paths
+        # may appear anywhere in a package document.
+        for s in _iter_strings(doc):
+            if _ABS_PATH_RE.match(s):
+                problems.append(f"{name}: absolute path string "
+                                f"{s!r} is not portable provenance")
+                break
 
     fmx_path = pkg_dir / "fmx_blocked.json"
     if fmx_path.is_file():
@@ -720,6 +838,40 @@ def verify_science_contract_package(
         if sc_doc.get("scaffold_status") != BLOCKED_PENDING_FMX:
             problems.append("validation_scaffold.json must carry "
                             "BLOCKED_PENDING_FMX")
+
+    # PKG-09: when an evidence root is supplied and it carries an
+    # active-generation pointer, a package living under that root must
+    # be the generation the pointer names — stale siblings reject.
+    if evidence_root is not None:
+        ev_root = Path(evidence_root)
+        ptr_path = ev_root / POINTER_NAME
+        pkg_r = pkg_dir.resolve()
+        root_r = ev_root.resolve() if ev_root.is_dir() else None
+        if ptr_path.is_file() and root_r is not None and \
+                (pkg_r == root_r or root_r in pkg_r.parents):
+            try:
+                ptr = json.loads(ptr_path.read_text("utf-8"))
+            except (OSError, ValueError) as exc:
+                problems.append(f"active-generation pointer unreadable: "
+                                f"{exc}")
+                ptr = {}
+            if ptr:
+                ok_p, ptr_env = verify_artifact_envelope(ptr)
+                if not ok_p:
+                    problems.extend(f"active pointer: {p}"
+                                    for p in ptr_env)
+                if ptr.get("pointer_type") != POINTER_TYPE:
+                    problems.append("active pointer type mismatch")
+                rel = pkg_r.relative_to(root_r).as_posix()
+                if ptr.get("package_relpath") != rel:
+                    problems.append(
+                        "stale generation: active pointer names "
+                        f"{ptr.get('package_relpath')!r}, not {rel!r}")
+                if index_path.is_file() and \
+                        ptr.get("index_file_sha256") != \
+                        sha256_file(index_path):
+                    problems.append("active pointer index digest does "
+                                    "not match this package")
 
     for path in pkg_dir.iterdir():
         if path.is_file() and path.name.startswith(("e_", "f_", "E_",

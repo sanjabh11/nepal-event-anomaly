@@ -6,6 +6,9 @@ import pytest
 from nepal.framework_v1 import validation_scaffold as t2s
 from nepal.framework_v1.provenance import sha256_canonical
 
+_GENERATION_ID = "T2S-CANDIDATE-GEN-2026-09-12"
+_CODE_REVISION = "28b44b9"
+
 
 def _metric_registry():
     return [
@@ -42,6 +45,10 @@ def _payload():
         },
         "metric_registry": metric_registry,
         "metric_registry_sha256": sha256_canonical(metric_registry),
+        # T2S-06: strict-mode fields — declared so strict verification
+        # fixtures work; bound reference docs carry matching values.
+        "candidate_generation_id": _GENERATION_ID,
+        "code_revision": _CODE_REVISION,
         "inherited_state": {"b_status": "B_TO_C_BLOCKED",
                             "ranking_rerun": False,
                             "e_status": "E_BLOCKED",
@@ -161,13 +168,19 @@ def _bound_refs(tmp_path):
     bound_docs = {
         "mec_reference": ("mec.json",
                           {"doc": "mec_reference",
+                           "candidate_generation_id": _GENERATION_ID,
+                           "code_revision": _CODE_REVISION,
                            "research_diagnostic_only": True}),
         "fmx_reference": ("fmx.json",
                           {"doc": "fmx_reference",
+                           "candidate_generation_id": _GENERATION_ID,
+                           "code_revision": _CODE_REVISION,
                            "research_diagnostic_only": True}),
         "b_reference": ("b_env.json",
                         {"b_status": "B_TO_C_BLOCKED",
                          "ranked_array_canonical_sha256": "ef" * 32,
+                         "candidate_generation_id": _GENERATION_ID,
+                         "code_revision": _CODE_REVISION,
                          "research_diagnostic_only": True}),
     }
     for rname, (fname, doc_payload) in bound_docs.items():
@@ -366,3 +379,195 @@ def test_missing_split_id_rejected():
     del p["split_spec"]["split_id"]
     with pytest.raises(ValueError):
         t2s.build_scaffold_envelope(p)
+
+
+# ---------- T2S-05/06/08 transition-semantics hardening ----------
+
+
+def test_caller_forged_binding_status_overwritten():
+    """T2S-05: binding_status is asserted by the builder — a
+    caller-supplied value is ignored, never trusted."""
+    p = _payload()
+    p["binding_status"] = "FILE_BOUND"
+    env = t2s.build_scaffold_envelope(p)
+    assert env["binding_status"] == "UNBOUND_INFORMATIONAL"
+    ok, problems = t2s.verify_scaffold_envelope(env)
+    assert ok, problems
+
+
+def test_binding_status_file_bound(tmp_path):
+    """T2S-05: building with a reference_root asserts FILE_BOUND even
+    when the caller forged a lower status."""
+    p = _payload()
+    p["binding_status"] = "UNBOUND_INFORMATIONAL"  # forged low
+    p["references"] = _bound_refs(tmp_path)
+    env = t2s.build_scaffold_envelope(p, reference_root=tmp_path)
+    assert env["binding_status"] == "FILE_BOUND"
+
+
+def test_unbound_informational_never_strict_verifies():
+    """T2S-05: an unbound informational scaffold is legal non-strict
+    but can never satisfy strict transition semantics."""
+    env = t2s.build_scaffold_envelope(_payload())
+    assert env["binding_status"] == "UNBOUND_INFORMATIONAL"
+    ok, problems = t2s.verify_scaffold_envelope(env)
+    assert ok, problems
+    ok, problems = t2s.verify_scaffold_envelope(env, strict=True)
+    assert not ok
+    assert any("binding_status" in pr for pr in problems)
+
+
+def test_file_bound_claim_unverified_without_root(tmp_path):
+    """T2S-05: an envelope claiming FILE_BOUND cannot be honored
+    unless the caller supplies the reference_root it was bound under."""
+    p = _payload()
+    p["references"] = _bound_refs(tmp_path)
+    env = t2s.build_scaffold_envelope(p, reference_root=tmp_path)
+    assert env["binding_status"] == "FILE_BOUND"
+    ok, problems = t2s.verify_scaffold_envelope(env)
+    assert not ok
+    assert any("reference_root" in pr for pr in problems)
+
+
+def test_file_bound_non_strict_verify_still_runs_file_checks(tmp_path):
+    """T2S-05: supplying the root on a non-strict verify of a
+    FILE_BOUND envelope still exercises the file bindings."""
+    p = _payload()
+    p["references"] = _bound_refs(tmp_path)
+    env = t2s.build_scaffold_envelope(p, reference_root=tmp_path)
+    (tmp_path / "mec.json").write_text("{}")
+    ok, problems = t2s.verify_scaffold_envelope(
+        env, reference_root=tmp_path)
+    assert not ok
+
+
+def test_strict_requires_generation_and_revision(tmp_path):
+    """T2S-06: strict mode requires non-empty candidate_generation_id
+    and code_revision on the payload."""
+    p = _payload()
+    del p["candidate_generation_id"]
+    del p["code_revision"]
+    p["references"] = _bound_refs(tmp_path)
+    env = t2s.build_scaffold_envelope(p, reference_root=tmp_path)
+    ok, problems = t2s.verify_scaffold_envelope(
+        env, reference_root=tmp_path, strict=True)
+    assert not ok
+    assert any("candidate_generation_id" in pr for pr in problems)
+    assert any("code_revision" in pr for pr in problems)
+
+
+def test_mixed_generation_build_rejected(tmp_path):
+    """T2S-06: a bound envelope generated from a different candidate
+    generation than declared is rejected at build."""
+    import json
+    from nepal.framework_v1.provenance import bind_artifact_envelope
+    p = _payload()
+    p["references"] = _bound_refs(tmp_path)
+    doc = bind_artifact_envelope({
+        "doc": "mec_reference",
+        "research_diagnostic_only": True,
+        "candidate_generation_id": "T2S-OTHER-GENERATION",
+        "code_revision": _CODE_REVISION})
+    (tmp_path / "mec.json").write_text(json.dumps(doc))
+    p["references"]["mec_reference"]["envelope_sha256"] = \
+        doc["artifact_sha256"]
+    with pytest.raises(ValueError):
+        t2s.build_scaffold_envelope(p, reference_root=tmp_path)
+
+
+def test_mixed_generation_rejected_on_non_strict_verify(tmp_path):
+    """T2S-06: generation equality is enforced whenever bound docs are
+    checked — an envelope built unbound is re-checked against the real
+    files when a root is supplied to a non-strict verify."""
+    import json
+    from nepal.framework_v1.provenance import bind_artifact_envelope
+    p = _payload()
+    refs = _bound_refs(tmp_path)
+    # Rebind mec.json to a different-generation envelope and point the
+    # declared digest at it — the digest is honest, the generation is
+    # mixed.  Build unbound so only verify sees the files.
+    doc = bind_artifact_envelope({
+        "doc": "mec_reference",
+        "research_diagnostic_only": True,
+        "candidate_generation_id": "T2S-OTHER-GENERATION",
+        "code_revision": _CODE_REVISION})
+    (tmp_path / "mec.json").write_text(json.dumps(doc))
+    refs["mec_reference"]["envelope_sha256"] = doc["artifact_sha256"]
+    p["references"] = refs
+    env = t2s.build_scaffold_envelope(p)
+    ok, problems = t2s.verify_scaffold_envelope(
+        env, reference_root=tmp_path)
+    assert not ok
+    assert any("generation" in pr for pr in problems)
+
+
+def test_real_v1_profile_blocked_fmx_ok():
+    """T2S-08: the successor profile still accepts the blocked FMX
+    status — READY is optional, not required."""
+    p = _payload()
+    p["scaffold_profile"] = "T2_REAL_V1"
+    env = t2s.build_scaffold_envelope(p)
+    assert env["scaffold_status"] == "BLOCKED_PENDING_FMX"
+    ok, problems = t2s.verify_scaffold_envelope(env)
+    assert ok, problems
+
+
+def test_unknown_scaffold_profile_rejected():
+    """T2S-08: an unrecognized scaffold_profile fails closed."""
+    p = _payload()
+    p["scaffold_profile"] = "T2_EXECUTE_NOW"
+    with pytest.raises(ValueError):
+        t2s.build_scaffold_envelope(p)
+
+
+def test_real_v1_fmx_ready_unbound_rejected():
+    """T2S-08: an FMX_READY claim without a reference_root fails at
+    build — the claim must be file-bound."""
+    p = _payload()
+    p["scaffold_profile"] = "T2_REAL_V1"
+    p["references"]["fmx_reference"]["fmx_status"] = "FMX_READY"
+    with pytest.raises(ValueError):
+        t2s.build_scaffold_envelope(p)
+
+
+def test_real_v1_fmx_ready_bound_doc_without_file_bindings_rejected(
+        tmp_path):
+    """T2S-08: a file-bound FMX_READY claim whose bound envelope lacks
+    file_bindings (real freeze evidence) is rejected."""
+    p = _payload()
+    p["scaffold_profile"] = "T2_REAL_V1"
+    p["references"] = _bound_refs(tmp_path)
+    p["references"]["fmx_reference"]["fmx_status"] = "FMX_READY"
+    with pytest.raises(ValueError):
+        t2s.build_scaffold_envelope(p, reference_root=tmp_path)
+
+
+def test_real_v1_fmx_ready_bound_with_file_bindings_ok(tmp_path):
+    """T2S-08: the successor profile accepts a file-bound FMX_READY
+    claim backed by real freeze evidence carried on the bound FMX
+    envelope — scaffold_status stays BLOCKED_PENDING_FMX."""
+    import json
+    from nepal.framework_v1.provenance import bind_artifact_envelope
+    p = _payload()
+    p["scaffold_profile"] = "T2_REAL_V1"
+    p["references"] = _bound_refs(tmp_path)
+    doc = bind_artifact_envelope({
+        "doc": "fmx_reference",
+        "fmx_status": "FMX_READY",
+        "file_bindings": {"matrix_freeze_envelope_sha256": "ab" * 32},
+        "candidate_generation_id": _GENERATION_ID,
+        "code_revision": _CODE_REVISION,
+        "research_diagnostic_only": True})
+    (tmp_path / "fmx.json").write_text(json.dumps(doc))
+    fmx_ref = p["references"]["fmx_reference"]
+    fmx_ref["fmx_status"] = "FMX_READY"
+    fmx_ref["envelope_sha256"] = doc["artifact_sha256"]
+    env = t2s.build_scaffold_envelope(p, reference_root=tmp_path)
+    assert env["binding_status"] == "FILE_BOUND"
+    assert env["scaffold_status"] == "BLOCKED_PENDING_FMX"
+    ok, problems = t2s.verify_scaffold_envelope(
+        env, reference_root=tmp_path)
+    assert ok, problems
+    ok, problems = t2s.verify_scaffold_envelope(
+        env, reference_root=tmp_path, strict=True)
+    assert ok, problems

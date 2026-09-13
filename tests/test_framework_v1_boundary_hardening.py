@@ -214,3 +214,113 @@ class TestRuntimeImportGuard:
         assert json.loads("1") == 1
         assert importlib.import_module(
             "nepal.framework_v1.catalog") is not None
+
+
+class TestNormalizedProsePhrases:
+    """BOUND-03: space-separated operational prose is rejected after
+    ``[_-]``/whitespace normalization of values and dotted keys."""
+
+    @pytest.mark.parametrize("note", [
+        "warning authorization established",
+        "production ready",
+        "this model is operationally ready",
+        "cleared for deployment",
+        "the pipeline is warning ready",
+        "cleared for warning release",
+        "approved for deployment",
+        "ready for production",
+        "ready for warning",
+        "ready for deployment",
+        "fit for production",
+        "fit for warning",
+        "scientifically validated against held-out events",
+        "authority approved for release",
+        "deploy to production",
+        "the pipeline may now issue warnings",
+        "warning issuance is enabled",
+        "authorised for operational use",
+        "approved for warning dissemination",
+    ])
+    def test_forbidden_prose_value_rejected(self, note):
+        ok, problems = rb.lint_research_claims(_doc(note=note))
+        assert not ok and problems
+
+    def test_hyphenated_prose_value_rejected(self):
+        """Hyphens normalize to spaces: 'production-ready' is a claim."""
+        ok, _ = rb.lint_research_claims(_doc(note="production-ready build"))
+        assert not ok
+
+    def test_underscored_prose_value_rejected(self):
+        ok, _ = rb.lint_research_claims(
+            _doc(note="warning_authorization granted"))
+        assert not ok
+
+    def test_mixed_separator_value_rejected(self):
+        ok, _ = rb.lint_research_claims(
+            _doc(note="warning-authorized_for deployment"))
+        assert not ok
+
+    def test_uppercase_prose_value_rejected(self):
+        ok, _ = rb.lint_research_claims(_doc(note="PRODUCTION READY"))
+        assert not ok
+
+    def test_deeply_nested_prose_value_rejected(self):
+        ok, _ = rb.lint_research_claims(
+            _doc(a={"b": [{"note": "operationally ready"}]}))
+        assert not ok
+
+    @pytest.mark.parametrize("key", [
+        "warning_ready",
+        "warning ready",
+        "warning-ready",
+        "production ready status",
+        "warning_ready: true",
+        "cleared for deployment",
+        "operationally ready flag",
+    ])
+    def test_forbidden_phrase_in_key_rejected(self, key):
+        ok, problems = rb.lint_research_claims(_doc(**{key: False}))
+        assert not ok and problems
+
+    def test_nested_key_phrase_rejected(self):
+        ok, _ = rb.lint_research_claims(
+            _doc(meta={"warning ready status": "off"}))
+        assert not ok
+
+    def test_second_unnegated_occurrence_still_rejected(self):
+        """A negated mention does not launder a later bare claim."""
+        ok, _ = rb.lint_research_claims(_doc(
+            note="not production ready; production ready"))
+        assert not ok
+
+    @pytest.mark.parametrize("note", [
+        "no warning readiness is established",
+        "not production ready",
+        "warning_path_authorized is false",
+        "no authority approval",
+        "research diagnostic only",
+        "without warning authorization",
+        "no warning authorization",
+        "never production ready",
+        "non-production ready",
+        "does not issue warnings",
+        "no scientific validation, warning, production, or authority "
+        "readiness is established",
+        "no warning, production, or authority approval is established",
+        "no operational warning or production authorization",
+    ])
+    def test_negated_or_limitation_language_passes(self, note):
+        ok, problems = rb.lint_research_claims(_doc(note=note))
+        assert ok, problems
+
+    def test_clean_doc_with_legit_no_claims_passes(self):
+        """Regression: limitation strings already shipped in envelopes
+        must still lint clean."""
+        ok, problems = rb.lint_research_claims(_doc(no_claims=[
+            "no warning, production, or authority readiness",
+            "framework implementation evidence is not scientific "
+            "validation",
+            "frozen feature-matrix metadata; freeze does not imply "
+            "scientific or operational readiness",
+        ]))
+        assert ok, problems

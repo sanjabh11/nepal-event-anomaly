@@ -13,6 +13,11 @@ Two fail-closed guards:
   (``B_TO_C_READY``, ``WARNING_READY``, ``PRODUCTION_READY``,
   ``SCIENTIFICALLY_VALIDATED``, ``AUTHORITY_APPROVED``, warning thresholds,
   alert/evacuation language, production/promotion authorization flags).
+  Space-separated operational prose (e.g. ``production ready``,
+  ``warning authorization established``) is rejected after
+  ``[_-]``/whitespace normalization of values and key paths, unless the
+  match is immediately preceded by a limitation negator such as "no",
+  "not", "never", "without", or "non".
   ``B_TO_C_BLOCKED`` is permitted only as an inherited factual status.
   B evidence may be referenced by digest only — ranked arrays and priority
   values are rejected as feature payloads.  GMM / Isolation Forest /
@@ -66,6 +71,70 @@ _FORBIDDEN_TOKENS = (
     "warning authorized",
     "cleared for deployment",
 )
+
+# Space-separated claim phrases matched against a normalized form of each
+# string value and each dotted key path (see ``_normalize_claim_text``:
+# lowercase, ``[_-]+`` collapsed to a single space, whitespace collapsed).
+# These catch prose the underscore/hyphen tokens miss — e.g.
+# "warning authorization established" or "production ready" — and
+# normalized keys such as "warning_ready" or "production ready status".
+# A match is skipped when immediately preceded by a limitation negator
+# (see ``_NEGATION_RE``) so that text like "without warning
+# authorization" or "not production ready" remains admissible.
+_FORBIDDEN_PHRASES = (
+    "warning authorization",
+    "warning authorised",
+    "authorization established",
+    "authorised for",
+    "authorized for",
+    "approved for warning",
+    "approved for deployment",
+    "production ready",
+    "warning ready",
+    "operationally ready",
+    "ready for production",
+    "ready for warning",
+    "ready for deployment",
+    "cleared for deployment",
+    "cleared for warning",
+    "fit for production",
+    "fit for warning",
+    "scientifically validated",
+    "authority approved",
+    "deploy to production",
+    "issue warnings",
+    "warning issuance",
+)
+
+_NORMALIZE_SEP_RE = re.compile(r"[_-]+")
+_WHITESPACE_RE = re.compile(r"\s+")
+
+# Negators that mark a forbidden-phrase match as limitation language when
+# one immediately precedes the match in normalized text.
+_NEGATION_RE = re.compile(r"(?:^|\s)(?:no|not|never|without|non)\s*$")
+_NEGATION_WINDOW = 12
+
+
+def _normalize_claim_text(text: str) -> str:
+    """Canonical prose form: lowercase, ``[_-]+`` -> single space,
+    whitespace collapsed."""
+    return _WHITESPACE_RE.sub(
+        " ", _NORMALIZE_SEP_RE.sub(" ", text.lower())).strip()
+
+
+def _has_forbidden_phrase(normalized: str, phrase: str) -> bool:
+    """True when *phrase* occurs in *normalized* at least once without an
+    immediately preceding negation word."""
+    start = 0
+    while True:
+        idx = normalized.find(phrase, start)
+        if idx < 0:
+            return False
+        window = normalized[max(0, idx - _NEGATION_WINDOW):idx]
+        if not _NEGATION_RE.search(window):
+            return True
+        start = idx + 1
+
 
 # Field names that are allowed to carry truthy operational-looking values
 # only when explicitly descriptive — none today; flags must be false/absent.
@@ -195,6 +264,7 @@ def lint_research_claims(payload: Any) -> tuple[bool, list[str]]:
 
     for dotted, _key2, value in _iter_items(payload):
         kl = str(dotted).lower()
+        key_norm = _normalize_claim_text(str(dotted))
         if isinstance(value, str):
             vl = value.lower()
             if value.strip() in _FORBIDDEN_EXACT_CLAIMS or \
@@ -210,12 +280,26 @@ def lint_research_claims(payload: Any) -> tuple[bool, list[str]]:
                     problems.append(
                         f"{dotted}: forbidden operational token {token!r}")
                     break
+            value_norm = _normalize_claim_text(value)
+            for phrase in _FORBIDDEN_PHRASES:
+                if _has_forbidden_phrase(value_norm, phrase) or \
+                        _has_forbidden_phrase(key_norm, phrase):
+                    problems.append(
+                        f"{dotted}: forbidden operational phrase "
+                        f"{phrase!r}")
+                    break
         else:
             for token in _FORBIDDEN_TOKENS:
                 if token in kl:
                     problems.append(
                         f"{dotted}: forbidden operational key token "
                         f"{token!r}")
+                    break
+            for phrase in _FORBIDDEN_PHRASES:
+                if _has_forbidden_phrase(key_norm, phrase):
+                    problems.append(
+                        f"{dotted}: forbidden operational key phrase "
+                        f"{phrase!r}")
                     break
 
     # B leakage: ranked arrays / priority vectors may only be referenced by

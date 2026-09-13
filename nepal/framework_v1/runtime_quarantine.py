@@ -11,6 +11,9 @@ substring of the requested module name.
 
 The finder is inserted ahead of the path-based finder so that
 quarantined modules which exist on disk are still blocked.
+
+This is an import guard only — not a sandbox — and cannot prevent
+subprocess or indirect execution paths that bypass ``sys.meta_path``.
 """
 from __future__ import annotations
 

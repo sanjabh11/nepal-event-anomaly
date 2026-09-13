@@ -22,8 +22,24 @@ Guarantees:
   agree with the caller-asserted statuses;
 * the metric registry is frozen by ``metric_registry_sha256`` and the
   cohort split is frozen by ``split_spec.split_id``;
-* ``verify_scaffold_envelope(strict=True)`` requires a ``reference_root``
-  and file-bound ``relative_path`` on all three references;
+* the builder asserts ``binding_status`` — ``FILE_BOUND`` when a
+  ``reference_root`` bound the references, ``UNBOUND_INFORMATIONAL``
+  otherwise; a caller-supplied value is ignored, a ``FILE_BOUND`` claim
+  is unverifiable without the root, and strict verification requires it
+  (T2S-05);
+* ``candidate_generation_id`` and ``code_revision`` are required
+  non-empty strings under strict verification, and every file-bound
+  referenced envelope that carries them must agree with the declared
+  values — mixed-generation assemblies are never legal (T2S-06);
+* ``scaffold_profile`` defaults to ``T2_RESEARCH_BLOCKED``; the
+  successor profile ``T2_REAL_V1`` may carry
+  ``fmx_status=FMX_READY`` only file-bound — a ``reference_root`` is
+  required and the bound FMX envelope must itself carry
+  ``file_bindings`` freeze evidence (T2S-08);
+* ``verify_scaffold_envelope(strict=True)`` requires a
+  ``reference_root``, ``binding_status=FILE_BOUND``, declared
+  ``candidate_generation_id``/``code_revision``, and file-bound
+  ``relative_path`` on all three references;
 * no caller-supplied gate/verdict booleans;
 * no execution entry points exist: nothing here calls B ranking, LOO,
   GMM, Isolation Forest, change-point, anomaly, or ``run_validation`` —
@@ -55,6 +71,30 @@ _REQUIRED_B_STATUS = "B_TO_C_BLOCKED"
 _REQUIRED_E_STATUS = "E_BLOCKED"
 _REQUIRED_F_STATUS = "F_BLOCKED"
 _ALLOWED_FMX_STATUSES = ("FMX_BLOCKED_PENDING_EXPLICIT_FREEZE",)
+_FMX_READY_STATUS = "FMX_READY"
+
+# T2S-05 — binding status is asserted by the builder, never trusted
+# from the caller.  FILE_BOUND means every reference digest is pinned
+# to a verified on-disk envelope under a reference root;
+# UNBOUND_INFORMATIONAL is digest-only and can never satisfy strict
+# transition semantics.
+BINDING_FILE_BOUND = "FILE_BOUND"
+BINDING_UNBOUND = "UNBOUND_INFORMATIONAL"
+_BINDING_STATUSES = (BINDING_FILE_BOUND, BINDING_UNBOUND)
+
+# T2S-08 — successor profiles.  The default profile keeps the FMX
+# reference blocked; T2_REAL_V1 admits a file-bound FMX_READY claim
+# backed by real freeze evidence (file_bindings on the bound FMX
+# envelope).  The scaffold status stays BLOCKED_PENDING_FMX under both.
+PROFILE_T2_RESEARCH_BLOCKED = "T2_RESEARCH_BLOCKED"
+PROFILE_T2_REAL_V1 = "T2_REAL_V1"
+_SCAFFOLD_PROFILES = (PROFILE_T2_RESEARCH_BLOCKED, PROFILE_T2_REAL_V1)
+
+# T2S-06 — strict transition semantics bind the assembly to a single
+# candidate generation and code revision; file-bound referenced
+# envelopes that carry the same fields must agree with the declared
+# values — mixed-generation assemblies are never legal.
+_CROSS_GENERATION_FIELDS = ("candidate_generation_id", "code_revision")
 
 _FORBIDDEN_REFERENCE_TOKENS = QUARANTINED_MODULES
 _FORBIDDEN_CALLER_KEYS = ("gate_override", "verdict", "passed",
@@ -128,8 +168,15 @@ def _resolve_reference_file(root: Path, relpath: Any, label: str,
 def _check(payload: Mapping[str, Any], problems: list[str],
            reference_root: "Optional[str | Path]" = None) -> None:
     # Recursive claim lint — nested forged READY/WARNING/operational
-    # fields are rejected wherever they hide in the payload.
-    ok_lint, lint_problems = lint_research_claims(payload)
+    # fields are rejected wherever they hide in the payload.  The
+    # references subtree is deliberately excluded: reference digests and
+    # statuses are separately validated against exact key allowlists and
+    # file bindings below, and the T2_REAL_V1 successor profile
+    # legitimately carries a file-bound FMX_READY status on its
+    # fmx_reference which the generic claim lint would reject.
+    ok_lint, lint_problems = lint_research_claims(
+        {key: value for key, value in payload.items()
+         if key != "references"})
     if not ok_lint:
         problems.extend(lint_problems)
 
@@ -142,6 +189,15 @@ def _check(payload: Mapping[str, Any], problems: list[str],
             problems.append(f"caller-supplied verdict key {key!r} is "
                             "forbidden — the scaffold cannot be promoted "
                             "by argument")
+
+    # T2S-08 — scaffold profile.  Absent means the default research-
+    # blocked profile; an unknown profile is rejected and checked as if
+    # it were the tighter default.
+    profile = payload.get("scaffold_profile", PROFILE_T2_RESEARCH_BLOCKED)
+    if profile not in _SCAFFOLD_PROFILES:
+        problems.append("scaffold_profile must be one of "
+                        f"{_SCAFFOLD_PROFILES}")
+        profile = PROFILE_T2_RESEARCH_BLOCKED
 
     refs = payload.get("references")
     if not isinstance(refs, Mapping):
@@ -168,15 +224,31 @@ def _check(payload: Mapping[str, Any], problems: list[str],
         problems.append("references.mec_reference must be a typed MEC "
                         "envelope digest reference")
     fmx_ref = refs.get("fmx_reference")
+    # T2S-08 — under the successor profile an FMX_READY claim is legal
+    # only as a file-bound claim: the reference_root is required even on
+    # a non-strict verify and the bound FMX envelope must itself carry
+    # file_bindings freeze evidence (checked with the bound docs below).
+    fmx_ready_claim = isinstance(fmx_ref, Mapping) and fmx_ref.get(
+        "fmx_status") == _FMX_READY_STATUS
+    allowed_fmx = _ALLOWED_FMX_STATUSES + (
+        (_FMX_READY_STATUS,) if profile == PROFILE_T2_REAL_V1 else ())
     if not isinstance(fmx_ref, Mapping) or not _is_sha256(
             fmx_ref.get("envelope_sha256")):
         problems.append("references.fmx_reference must be a typed FMX "
                         "envelope digest reference")
-    elif fmx_ref.get("fmx_status") not in _ALLOWED_FMX_STATUSES:
+    elif fmx_ref.get("fmx_status") not in allowed_fmx:
         problems.append(
             "references.fmx_reference.fmx_status must be "
-            "FMX_BLOCKED_PENDING_EXPLICIT_FREEZE — the scaffold cannot "
-            "advance on an unverified matrix")
+            "FMX_BLOCKED_PENDING_EXPLICIT_FREEZE"
+            + (" or a file-bound FMX_READY under the "
+               f"{PROFILE_T2_REAL_V1} profile"
+               if profile == PROFILE_T2_REAL_V1 else "")
+            + " — the scaffold cannot advance on an unverified matrix")
+    if fmx_ready_claim and reference_root is None:
+        problems.append(
+            "references.fmx_reference.fmx_status FMX_READY requires a "
+            "reference_root — a READY claim must bind to a verified "
+            "FMX envelope carrying file_bindings")
     b_ref = refs.get("b_reference")
     if not isinstance(b_ref, Mapping) or not _is_sha256(
             b_ref.get("ranked_array_canonical_sha256")):
@@ -272,6 +344,40 @@ def _check(payload: Mapping[str, Any], problems: list[str],
                         "disagrees with the caller-asserted "
                         "references.b_reference.status or "
                         "inherited_state.b_status")
+
+        # T2S-08: an FMX_READY claim under T2_REAL_V1 is valid only
+        # when backed by real freeze evidence — the verified bound FMX
+        # envelope must itself carry file_bindings.  Strict file-binding
+        # semantics apply to this reference even on a non-strict verify.
+        if fmx_ready_claim:
+            fmx_doc = bound_docs.get("fmx_reference")
+            if fmx_doc is None:
+                problems.append(
+                    "references.fmx_reference FMX_READY claim is not "
+                    "backed by a verified file-bound FMX envelope")
+            elif not isinstance(fmx_doc.get("file_bindings"), Mapping) \
+                    or not fmx_doc["file_bindings"]:
+                problems.append(
+                    "bound FMX envelope lacks file_bindings — an "
+                    "FMX_READY claim requires real freeze evidence "
+                    "carried by the referenced artifact")
+
+        # T2S-06: cross-generation equality — when the payload declares
+        # candidate_generation_id / code_revision, every file-bound
+        # referenced envelope that carries the same field must agree
+        # with the declared value; a mixed-generation assembly is never
+        # legal, on strict and non-strict verifies alike.
+        for field in _CROSS_GENERATION_FIELDS:
+            declared = payload.get(field)
+            if not (isinstance(declared, str) and declared):
+                continue
+            for rname, doc in bound_docs.items():
+                if field in doc and doc.get(field) != declared:
+                    problems.append(
+                        f"references.{rname} bound envelope carries "
+                        f"{field}={doc.get(field)!r} but the payload "
+                        f"declares {declared!r} — mixed-generation "
+                        "assemblies are rejected")
 
     inherited = payload.get("inherited_state")
     if not isinstance(inherited, Mapping):
@@ -375,7 +481,10 @@ def build_scaffold_envelope(payload: Mapping[str, Any], *,
     ``relative_path`` bindings to real files under the root whose
     recomputed digests match the declared envelope digests; the bound B
     envelope must additionally contain the declared ranked-array
-    canonical digest and agree with the caller-asserted b_status."""
+    canonical digest and agree with the caller-asserted b_status.
+    ``binding_status`` is asserted here — FILE_BOUND when a root bound
+    the references, UNBOUND_INFORMATIONAL otherwise — and any
+    caller-supplied value is overwritten, never trusted."""
     if not isinstance(payload, Mapping):
         raise TypeError("scaffold payload must be a mapping")
     problems: list[str] = []
@@ -389,6 +498,9 @@ def build_scaffold_envelope(payload: Mapping[str, Any], *,
     envelope["promotion_eligible"] = False
     envelope["production_authorized"] = False
     envelope["warning_path_authorized"] = False
+    envelope["binding_status"] = (BINDING_FILE_BOUND
+                                  if reference_root is not None
+                                  else BINDING_UNBOUND)
     envelope["no_claims"] = [
         "validation scaffold schema only; no validation was executed",
         "no scientific validation, warning, production, or authority "
@@ -407,8 +519,13 @@ def verify_scaffold_envelope(payload: Any, *,
     With ``strict=True`` every reference — MEC, FMX, and B — must be
     file-bound: a ``reference_root`` is required and each reference must
     carry a ``relative_path`` that resolves to a verified envelope under
-    that root.  Non-strict verification remains informational and does
-    not require file bindings."""
+    that root.  Strict verification additionally requires
+    ``binding_status=FILE_BOUND`` and non-empty declared
+    ``candidate_generation_id``/``code_revision`` — an
+    UNBOUND_INFORMATIONAL envelope is legal only non-strict, and a
+    FILE_BOUND claim without a supplied ``reference_root`` is flagged
+    as unverified.  When ``reference_root`` is supplied, the file-bound
+    checks run on strict and non-strict verifies alike."""
     problems: list[str] = []
     ok, env_problems = verify_artifact_envelope(payload)
     if not ok:
@@ -426,11 +543,39 @@ def verify_scaffold_envelope(payload: Any, *,
         problems.append("production_authorized must be false")
     if payload.get("warning_path_authorized") is not False:
         problems.append("warning_path_authorized must be false")
+    # T2S-05: binding_status is part of the signed envelope.  A
+    # FILE_BOUND claim can only be honored when the caller supplies the
+    # reference_root the references were bound under — without it the
+    # claim is unverified.  UNBOUND_INFORMATIONAL is legal on a
+    # non-strict verify but never satisfies strict transition semantics.
+    binding_status = payload.get("binding_status")
+    if binding_status not in _BINDING_STATUSES:
+        problems.append("binding_status must be FILE_BOUND or "
+                        "UNBOUND_INFORMATIONAL")
+    elif binding_status == BINDING_FILE_BOUND and reference_root is None:
+        problems.append("binding claim unverified — supply "
+                        "reference_root")
     if strict:
+        if binding_status != BINDING_FILE_BOUND:
+            problems.append(
+                "strict verification requires binding_status "
+                "FILE_BOUND — an unbound informational scaffold never "
+                "satisfies strict transition semantics")
         if reference_root is None:
             problems.append("strict verification requires a "
                             "reference_root — every reference must be "
                             "file-bound")
+        # T2S-06: strict mode requires the assembly to name its
+        # candidate generation and code revision; bound referenced
+        # envelopes carrying the same fields must agree (checked in
+        # _check once the files resolve).
+        for field in _CROSS_GENERATION_FIELDS:
+            if not isinstance(payload.get(field), str) or \
+                    not payload.get(field):
+                problems.append(
+                    f"strict verification requires {field} to be a "
+                    "non-empty string naming the candidate generation "
+                    "and code revision")
         srefs = payload.get("references")
         for rname in _STRICT_BOUND_REFERENCES:
             rval = srefs.get(rname) if isinstance(srefs, Mapping) else None

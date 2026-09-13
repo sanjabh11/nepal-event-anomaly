@@ -256,7 +256,7 @@ class TestN1Hardening:
 
     def test_typed_evidence_references(self, tmp_path):
         from nepal.framework_v1.provenance import sha256_file
-        ev_root = tmp_path / "evidence"
+        ev_root = tmp_path / "test-run-root"
         ev_root.mkdir()
         (ev_root / "b_screen.json").write_text('{"x": 1}')
         ctx = _context(tmp_path)
@@ -384,7 +384,7 @@ def test_build_under_forbidden_root_rejected(tmp_path):
 
 
 def test_evidence_refs_require_root(tmp_path):
-    ev_root = tmp_path / "evidence"
+    ev_root = tmp_path / "test-run-root"
     ev_root.mkdir()
     (ev_root / "ref.json").write_text('{"x": 1}')
     from nepal.framework_v1.provenance import sha256_file
@@ -397,7 +397,7 @@ def test_evidence_refs_require_root(tmp_path):
 
 
 def test_evidence_ref_digest_mismatch_rejected(tmp_path):
-    ev_root = tmp_path / "evidence"
+    ev_root = tmp_path / "test-run-root"
     ev_root.mkdir()
     (ev_root / "ref.json").write_text('{"x": 1}')
     ctx = _context(tmp_path)
@@ -410,7 +410,7 @@ def test_evidence_ref_digest_mismatch_rejected(tmp_path):
 
 
 def test_evidence_refs_verify_from_disk(tmp_path):
-    ev_root = tmp_path / "evidence"
+    ev_root = tmp_path / "test-run-root"
     ev_root.mkdir()
     (ev_root / "ref.json").write_text('{"x": 1}')
     from nepal.framework_v1.provenance import sha256_file
@@ -430,7 +430,7 @@ def test_evidence_refs_verify_from_disk(tmp_path):
 
 
 def test_evidence_ref_tampered_file_rejected(tmp_path):
-    ev_root = tmp_path / "evidence"
+    ev_root = tmp_path / "test-run-root"
     ev_root.mkdir()
     (ev_root / "ref.json").write_text('{"x": 1}')
     from nepal.framework_v1.provenance import sha256_file
@@ -444,3 +444,145 @@ def test_evidence_ref_tampered_file_rejected(tmp_path):
     ok, problems = pkg.verify_science_contract_package(
         ctx["package_dir"], evidence_root=ev_root)
     assert not ok and any("evidence" in p for p in problems)
+
+
+# ---------- N4 portability / identity hardening ----------
+
+
+def _evidence_ctx(tmp_path, n_refs=1):
+    """Context whose evidence root carries the bound run-root name."""
+    from nepal.framework_v1.provenance import sha256_file
+    ev_root = tmp_path / "test-run-root"
+    ev_root.mkdir()
+    refs = []
+    for i in range(n_refs):
+        f = ev_root / f"ref{i}.json"
+        f.write_text('{"i": %d}' % i)
+        refs.append({"role": f"ref{i}", "relative_path": f.name,
+                     "sha256": sha256_file(f)})
+    ctx = _context(tmp_path)
+    ctx["evidence_root"] = ev_root
+    ctx["evidence_references"] = refs
+    return ctx, ev_root
+
+
+def test_wrong_named_evidence_root_rejected(tmp_path):
+    """PKG-07: a sibling root with identical files but a different
+    directory name fails identity binding at build and verify."""
+    ctx, ev_root = _evidence_ctx(tmp_path)
+    pkg.build_science_contract_package(**ctx)
+    ok, problems = pkg.verify_science_contract_package(
+        ctx["package_dir"], evidence_root=ev_root)
+    assert ok, problems
+    # clone the evidence into a wrongly-named sibling root
+    import shutil as _sh
+    wrong = tmp_path / "evidence"
+    _sh.copytree(ev_root, wrong)
+    ok2, problems2 = pkg.verify_science_contract_package(
+        ctx["package_dir"], evidence_root=wrong)
+    assert not ok2 and any("identity" in p for p in problems2)
+    ctx2 = _context(tmp_path / "b")
+    ctx2["package_dir"] = tmp_path / "b" / "pkg"
+    ctx2["evidence_root"] = wrong
+    ctx2["evidence_references"] = ctx["evidence_references"]
+    ctx2["forbidden_roots"] = [tmp_path / "protected"]
+    with pytest.raises(ValueError):
+        pkg.build_science_contract_package(**ctx2)
+
+
+def test_environment_fingerprint_bound(tmp_path):
+    """OPS-04: run_context carries a reproducible environment record."""
+    ctx = _context(tmp_path)
+    pkg.build_science_contract_package(**ctx)
+    doc = json.loads(
+        (ctx["package_dir"] / "run_context.json").read_text())
+    env = doc["environment"]
+    import platform as _pf
+    assert env["python_version"] == _pf.python_version()
+    assert env["tz_policy"] == "UTC"
+    assert env["lock_file"] == "requirements.txt"
+    assert isinstance(env["lock_sha256"], str) and \
+        len(env["lock_sha256"]) == 64
+
+
+def test_absolute_path_string_in_doc_rejected(tmp_path):
+    """OPS-03: no absolute machine-local path may appear in a doc."""
+    ctx = _context(tmp_path)
+    pkg.build_science_contract_package(**ctx)
+    target = ctx["package_dir"] / "research_no_claims.json"
+    doc = json.loads(target.read_text())
+    doc["note"] = "/Users/sanjayb/some/host/path"
+    target.write_text(json.dumps(doc))
+    ok, problems = pkg.verify_science_contract_package(
+        ctx["package_dir"])
+    assert not ok and any("absolute path" in p for p in problems)
+
+
+def test_active_pointer_stale_sibling_rejected(tmp_path):
+    """PKG-09: with an active-generation pointer at the root, a package
+    under that root that is not the named generation fails."""
+    ctx, ev_root = _evidence_ctx(tmp_path)
+    # package must live under the root for the pointer to apply
+    ctx["package_dir"] = ev_root / "gen-a" / "package"
+    pkg.build_science_contract_package(**ctx)
+    ok, problems = pkg.verify_science_contract_package(
+        ctx["package_dir"], evidence_root=ev_root)
+    assert ok, problems
+    assert (ev_root / "active_generation.json").is_file()
+    # build a successor under the same root -> pointer moves to gen-b
+    ctx2 = _context(tmp_path)
+    ctx2["package_dir"] = ev_root / "gen-b" / "package"
+    ctx2["evidence_root"] = ev_root
+    ctx2["evidence_references"] = ctx["evidence_references"]
+    ctx2["forbidden_roots"] = ctx["forbidden_roots"]
+    pkg.build_science_contract_package(**ctx2)
+    ok_b, _ = pkg.verify_science_contract_package(
+        ctx2["package_dir"], evidence_root=ev_root)
+    assert ok_b
+    # the gen-a package is now a stale sibling
+    ok_a, problems_a = pkg.verify_science_contract_package(
+        ctx["package_dir"], evidence_root=ev_root)
+    assert not ok_a and any("stale" in p for p in problems_a)
+
+
+def test_pointer_not_written_outside_root(tmp_path):
+    """Packages outside the evidence root get no pointer write."""
+    ctx, ev_root = _evidence_ctx(tmp_path)
+    pkg.build_science_contract_package(**ctx)  # pkg at tmp_path/pkg
+    assert not (ev_root / "active_generation.json").exists()
+
+
+def test_scaffold_binds_generation_and_code(tmp_path):
+    """T2S-06: the packaged scaffold carries generation/code identity
+    and strict-verifies file-bound inside the package."""
+    ctx = _context(tmp_path)
+    pkg.build_science_contract_package(**ctx)
+    sc = json.loads(
+        (ctx["package_dir"] / "validation_scaffold.json").read_text())
+    assert sc["candidate_generation_id"] == \
+        ctx["candidate_generation_id"]
+    assert sc["code_revision"] == ctx["code_revision"]
+    assert sc["binding_status"] == "FILE_BOUND"
+
+
+def test_mec_carries_row_serialization_and_identity(tmp_path):
+    ctx = _context(tmp_path)
+    pkg.build_science_contract_package(**ctx)
+    mec = json.loads(
+        (ctx["package_dir"] / "mec_schema.json").read_text())
+    assert mec["row_serialization"] == "canonical-json-v1"
+    assert mec["candidate_generation_id"] == \
+        ctx["candidate_generation_id"]
+    assert mec["code_revision"] == ctx["code_revision"]
+
+
+def test_fmx_blocked_anti_confusion_fields(tmp_path):
+    """PKG-08: the blocked FMX doc is visibly a schema fixture."""
+    ctx = _context(tmp_path)
+    pkg.build_science_contract_package(**ctx)
+    fmx = json.loads(
+        (ctx["package_dir"] / "fmx_blocked.json").read_text())
+    assert fmx["schema_fixture"] is True
+    assert fmx["external_freeze"] is False
+    assert fmx["artifact_present"] is False
+    assert fmx["not_a_real_matrix"] is True

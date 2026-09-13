@@ -40,21 +40,29 @@ def _column(name="t2m_mean", unit="K", role="feature"):
 
 
 def _columns():
+    t2m = _column("t2m_mean", "K", "feature")
+    t2m["min_value"] = 200.0
+    t2m["max_value"] = 330.0
     return [
         {"name": "obs_date", "unit": "ISO8601", "role": "time",
          "aggregation": "none", "temporal_resolution": "daily",
          "availability_time": "2015-04-01"},
-        _column("t2m_mean", "K", "feature"),
+        t2m,
         _column("tp_total", "mm", "feature"),
         _column("synthetic_target", "count", "target"),
     ]
 
 
+_CSV_HEADER = ("row_id,obs_date,lat,lon,t2m_mean,tp_total,"
+               "synthetic_target,avail_date\n")
+_CSV_ROW1 = ("row-001,2015-06-01,27.7,85.3,288.5,12.3,0,"
+             "2015-06-05\n")
+_CSV_TAIL = ("row-002,2015-06-02,27.8,85.4,289.1,0.0,1,2015-06-06\n"
+             "row-003,2015-06-03,27.9,85.5,287.9,4.25,0,2015-06-07\n")
+
+
 def _matrix_csv_text():
-    return ("obs_date,t2m_mean,tp_total,synthetic_target\n"
-            "2015-06-01,288.5,12.3,0\n"
-            "2015-06-02,289.1,0.0,1\n"
-            "2015-06-03,287.9,4.25,0\n")
+    return _CSV_HEADER + _CSV_ROW1 + _CSV_TAIL
 
 
 def _matrix_meta(matrix_sha="23" * 32, byte_count=12345, digests=None):
@@ -78,6 +86,11 @@ def _matrix_meta(matrix_sha="23" * 32, byte_count=12345, digests=None):
         "target_spec": {"name": "synthetic_target",
                         "definition": "fixture"},
         "data_source_status": "SYNTHETIC_FIXTURE",
+        "row_id_column": "row_id",
+        "n_rows": 3,
+        "coordinate_columns": {"lat": "lat", "lon": "lon"},
+        "feature_cutoff": "2015-08-31",
+        "availability_column": "avail_date",
     }
 
 
@@ -175,6 +188,38 @@ class TestBlockedBoundary:
         text = json.dumps(env)
         assert not re.search(r'"(matrix_sha256|source_sha256|'
                              r'producer_sha256)":\s*"[0-9a-f]{64}"', text)
+
+    def test_blocked_anti_confusion_fields(self):
+        """PKG-08: a blocked envelope must explicitly mark itself as a
+        schema fixture — never a frozen artifact."""
+        env = fmx.build_fmx_envelope(_matrix_meta())
+        assert env["schema_fixture"] is True
+        assert env["external_freeze"] is False
+        assert env["artifact_present"] is False
+        assert env["not_a_real_matrix"] is True
+        ok, problems = fmx.verify_fmx_envelope(env)
+        assert ok, problems
+
+    @pytest.mark.parametrize("field", (
+        "schema_fixture", "external_freeze", "artifact_present",
+        "not_a_real_matrix"))
+    def test_blocked_missing_anti_confusion_field_rejected(self, field):
+        env = fmx.build_fmx_envelope()
+        del env[field]
+        env = fmx.bind_fmx_envelope(env)
+        ok, problems = fmx.verify_fmx_envelope(env)
+        assert not ok
+
+    @pytest.mark.parametrize("field,value", (
+        ("schema_fixture", False), ("external_freeze", True),
+        ("artifact_present", True), ("not_a_real_matrix", False)))
+    def test_blocked_wrong_anti_confusion_value_rejected(
+            self, field, value):
+        env = fmx.build_fmx_envelope()
+        env[field] = value
+        env = fmx.bind_fmx_envelope(env)
+        ok, problems = fmx.verify_fmx_envelope(env)
+        assert not ok
 
     def test_no_token_generation_path(self):
         for name in ("mint_freeze_token", "generate_freeze_token",
@@ -424,24 +469,27 @@ class TestMatrixSemanticScan:
     def test_csv_non_finite_feature_rejected(self, tmp_path):
         root, meta, token = self._stage(
             tmp_path,
-            "obs_date,t2m_mean,tp_total,synthetic_target\n"
-            "2015-06-01,NaN,1.0,0\n")
+            _CSV_HEADER +
+            "row-001,2015-06-01,27.7,85.3,NaN,1.0,0,2015-06-05\n" +
+            _CSV_TAIL)
         with pytest.raises(ValueError):
             _build_ready(meta, token, root, tmp_path)
 
     def test_csv_infinite_feature_rejected(self, tmp_path):
         root, meta, token = self._stage(
             tmp_path,
-            "obs_date,t2m_mean,tp_total,synthetic_target\n"
-            "2015-06-01,288.5,inf,0\n")
+            _CSV_HEADER +
+            "row-001,2015-06-01,27.7,85.3,288.5,inf,0,2015-06-05\n" +
+            _CSV_TAIL)
         with pytest.raises(ValueError):
             _build_ready(meta, token, root, tmp_path)
 
     def test_csv_non_numeric_feature_rejected(self, tmp_path):
         root, meta, token = self._stage(
             tmp_path,
-            "obs_date,t2m_mean,tp_total,synthetic_target\n"
-            "2015-06-01,not-a-number,1.0,0\n")
+            _CSV_HEADER +
+            "row-001,2015-06-01,27.7,85.3,not-a-number,1.0,0,"
+            "2015-06-05\n" + _CSV_TAIL)
         with pytest.raises(ValueError):
             _build_ready(meta, token, root, tmp_path)
 
@@ -451,38 +499,43 @@ class TestMatrixSemanticScan:
     def test_csv_b_derived_column_rejected(self, tmp_path, bad_col):
         root, meta, token = self._stage(
             tmp_path,
-            "obs_date,t2m_mean,tp_total,synthetic_target," + bad_col + "\n"
-            "2015-06-01,288.5,1.0,0,9\n")
+            "row_id,obs_date,lat,lon,t2m_mean,tp_total,synthetic_target,"
+            "avail_date," + bad_col + "\n"
+            "row-001,2015-06-01,27.7,85.3,288.5,1.0,0,2015-06-05,9\n"
+            "row-002,2015-06-02,27.8,85.4,289.1,0.0,1,2015-06-06,9\n"
+            "row-003,2015-06-03,27.9,85.5,287.9,4.25,0,2015-06-07,9\n")
         with pytest.raises(ValueError):
             _build_ready(meta, token, root, tmp_path)
 
     def test_csv_date_out_of_range_rejected(self, tmp_path):
         root, meta, token = self._stage(
             tmp_path,
-            "obs_date,t2m_mean,tp_total,synthetic_target\n"
-            "2020-01-01,288.5,1.0,0\n")
+            _CSV_HEADER +
+            "row-001,2020-01-01,27.7,85.3,288.5,1.0,0,2015-06-05\n" +
+            _CSV_TAIL)
         with pytest.raises(ValueError):
             _build_ready(meta, token, root, tmp_path)
 
     def test_csv_invalid_calendar_date_rejected(self, tmp_path):
         root, meta, token = self._stage(
             tmp_path,
-            "obs_date,t2m_mean,tp_total,synthetic_target\n"
-            "2015-02-31,288.5,1.0,0\n")
+            _CSV_HEADER +
+            "row-001,2015-02-31,27.7,85.3,288.5,1.0,0,2015-06-05\n" +
+            _CSV_TAIL)
         with pytest.raises(ValueError):
             _build_ready(meta, token, root, tmp_path)
 
     def test_csv_no_data_rows_rejected(self, tmp_path):
-        root, meta, token = self._stage(
-            tmp_path, "obs_date,t2m_mean,tp_total,synthetic_target\n")
+        root, meta, token = self._stage(tmp_path, _CSV_HEADER)
         with pytest.raises(ValueError):
             _build_ready(meta, token, root, tmp_path)
 
     def test_csv_missing_cell_complete_policy_rejected(self, tmp_path):
         root, meta, token = self._stage(
             tmp_path,
-            "obs_date,t2m_mean,tp_total,synthetic_target\n"
-            "2015-06-01,288.5,,0\n")
+            _CSV_HEADER +
+            "row-001,2015-06-01,27.7,85.3,288.5,,0,2015-06-05\n" +
+            _CSV_TAIL)
         with pytest.raises(ValueError):
             _build_ready(meta, token, root, tmp_path)
 
@@ -492,6 +545,149 @@ class TestMatrixSemanticScan:
         with pytest.raises(ValueError):
             _build_ready(meta, token, root, tmp_path,
                          matrix_relpath="matrix.bin")
+
+
+class TestMatrixRowSemantics:
+    """FMX-04: deeper CSV row semantics on the READY path."""
+
+    def _stage(self, tmp_path, text):
+        return _staged(tmp_path, matrix_bytes=text.encode("utf-8"))
+
+    def test_duplicate_row_id_rejected(self, tmp_path):
+        root, meta, token = self._stage(
+            tmp_path,
+            _CSV_HEADER +
+            "row-001,2015-06-01,27.7,85.3,288.5,1.0,0,2015-06-05\n"
+            "row-001,2015-06-02,27.8,85.4,289.1,0.0,1,2015-06-06\n"
+            "row-003,2015-06-03,27.9,85.5,287.9,4.25,0,2015-06-07\n")
+        with pytest.raises(ValueError):
+            _build_ready(meta, token, root, tmp_path)
+
+    def test_empty_row_id_rejected(self, tmp_path):
+        root, meta, token = self._stage(
+            tmp_path,
+            _CSV_HEADER +
+            ",2015-06-01,27.7,85.3,288.5,1.0,0,2015-06-05\n" +
+            _CSV_TAIL)
+        with pytest.raises(ValueError):
+            _build_ready(meta, token, root, tmp_path)
+
+    def test_row_id_column_missing_from_csv_rejected(self, tmp_path):
+        root, meta, token = self._stage(
+            tmp_path,
+            "obs_date,lat,lon,t2m_mean,tp_total,synthetic_target,"
+            "avail_date\n"
+            "2015-06-01,27.7,85.3,288.5,1.0,0,2015-06-05\n"
+            "2015-06-02,27.8,85.4,289.1,0.0,1,2015-06-06\n"
+            "2015-06-03,27.9,85.5,287.9,4.25,0,2015-06-07\n")
+        with pytest.raises(ValueError):
+            _build_ready(meta, token, root, tmp_path)
+
+    def test_n_rows_mismatch_rejected(self, tmp_path):
+        root, meta, token = self._stage(
+            tmp_path,
+            _CSV_HEADER +
+            "row-001,2015-06-01,27.7,85.3,288.5,1.0,0,2015-06-05\n"
+            "row-002,2015-06-02,27.8,85.4,289.1,0.0,1,2015-06-06\n")
+        with pytest.raises(ValueError):
+            _build_ready(meta, token, root, tmp_path)
+
+    def test_n_rows_declared_wrong_rejected(self, tmp_path):
+        root, meta, token = _staged(tmp_path)
+        meta["n_rows"] = 4
+        with pytest.raises(ValueError):
+            _build_ready(meta, token, root, tmp_path)
+
+    @pytest.mark.parametrize("col_i,value", (
+        (2, "95.0"), (2, "-91.0"), (3, "200.5"), (3, "-180.1"),
+        (2, "not-a-coordinate")))
+    def test_coordinate_out_of_range_rejected(self, tmp_path, col_i,
+                                              value):
+        cells = ["row-001", "2015-06-01", "27.7", "85.3", "288.5",
+                 "1.0", "0", "2015-06-05"]
+        cells[col_i] = value
+        root, meta, token = self._stage(
+            tmp_path, _CSV_HEADER + ",".join(cells) + "\n" + _CSV_TAIL)
+        with pytest.raises(ValueError):
+            _build_ready(meta, token, root, tmp_path)
+
+    def test_coordinate_column_missing_from_csv_rejected(self, tmp_path):
+        root, meta, token = self._stage(
+            tmp_path,
+            "row_id,obs_date,t2m_mean,tp_total,synthetic_target,"
+            "avail_date\n"
+            "row-001,2015-06-01,288.5,1.0,0,2015-06-05\n"
+            "row-002,2015-06-02,289.1,0.0,1,2015-06-06\n"
+            "row-003,2015-06-03,287.9,4.25,0,2015-06-07\n")
+        with pytest.raises(ValueError):
+            _build_ready(meta, token, root, tmp_path)
+
+    def test_declared_max_bound_violation_rejected(self, tmp_path):
+        """t2m_mean declares min_value=200 / max_value=330 in meta."""
+        root, meta, token = self._stage(
+            tmp_path,
+            _CSV_HEADER +
+            "row-001,2015-06-01,27.7,85.3,450.0,1.0,0,2015-06-05\n" +
+            _CSV_TAIL)
+        with pytest.raises(ValueError):
+            _build_ready(meta, token, root, tmp_path)
+
+    def test_declared_min_bound_violation_rejected(self, tmp_path):
+        root, meta, token = self._stage(
+            tmp_path,
+            _CSV_HEADER +
+            "row-001,2015-06-01,27.7,85.3,150.0,1.0,0,2015-06-05\n" +
+            _CSV_TAIL)
+        with pytest.raises(ValueError):
+            _build_ready(meta, token, root, tmp_path)
+
+
+class TestTemporalCutoff:
+    """FMX-05: feature_cutoff binds availability declarations."""
+
+    def _stage(self, tmp_path, text):
+        return _staged(tmp_path, matrix_bytes=text.encode("utf-8"))
+
+    def test_availability_after_cutoff_rejected(self, tmp_path):
+        root, meta, token = self._stage(
+            tmp_path,
+            _CSV_HEADER +
+            "row-001,2015-06-01,27.7,85.3,288.5,1.0,0,2015-09-01\n" +
+            _CSV_TAIL)
+        with pytest.raises(ValueError):
+            _build_ready(meta, token, root, tmp_path)
+
+    def test_availability_not_a_date_rejected(self, tmp_path):
+        root, meta, token = self._stage(
+            tmp_path,
+            _CSV_HEADER +
+            "row-001,2015-06-01,27.7,85.3,288.5,1.0,0,soon\n" +
+            _CSV_TAIL)
+        with pytest.raises(ValueError):
+            _build_ready(meta, token, root, tmp_path)
+
+    def test_availability_column_missing_from_csv_rejected(self, tmp_path):
+        root, meta, token = self._stage(
+            tmp_path,
+            "row_id,obs_date,lat,lon,t2m_mean,tp_total,synthetic_target\n"
+            "row-001,2015-06-01,27.7,85.3,288.5,1.0,0\n"
+            "row-002,2015-06-02,27.8,85.4,289.1,0.0,1\n"
+            "row-003,2015-06-03,27.9,85.5,287.9,4.25,0\n")
+        with pytest.raises(ValueError):
+            _build_ready(meta, token, root, tmp_path)
+
+    def test_column_availability_time_after_cutoff_rejected(
+            self, tmp_path):
+        root, meta, token = _staged(tmp_path)
+        meta["columns"][1]["availability_time"] = "2016-01-01"
+        with pytest.raises(ValueError):
+            _build_ready(meta, token, root, tmp_path)
+
+    def test_invalid_feature_cutoff_rejected(self, tmp_path):
+        root, meta, token = _staged(tmp_path)
+        meta["feature_cutoff"] = "2015-13-40"
+        with pytest.raises(ValueError):
+            _build_ready(meta, token, root, tmp_path)
 
 
 class TestSchema:

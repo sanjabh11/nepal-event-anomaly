@@ -17,9 +17,9 @@ Contract invariants enforced by :func:`verify_mec_envelope`:
   hash, and a holdout group;
 * ``row_sha256`` is always ``sha256_canonical(row_source)`` — the SHA-256
   of the canonical JSON serialization of the row bytes; when any event
-  carries ``row_source`` the envelope declares ``row_schema_version``;
-  in ``REAL_SOURCE_DESIGN`` mode ``row_source`` is mandatory — caller-only
-  hashes cannot be verified;
+  carries ``row_source`` the envelope declares ``row_schema_version``
+  and ``row_serialization``; in ``REAL_SOURCE_DESIGN`` mode
+  ``row_source`` is mandatory — caller-only hashes cannot be verified;
 * source-supported date specs only — ``day`` precision with provenance, or
   an explicit interval; artificial day-15 dates and any ``fallback``/imputed
   source are rejected unless the spec explicitly asserts
@@ -49,6 +49,19 @@ Contract invariants enforced by :func:`verify_mec_envelope`:
   events — single-box and Langtang-only designs are rejected;
 * no absolute paths in portable fields;
 * canonical ``artifact_sha256`` self-hash verified on read.
+
+``row_serialization`` (MEC-REAL-02) pins the byte-level semantics that
+``row_sha256`` hashes.  The only permitted value is
+:data:`CANONICAL_ROW_SERIALIZATION` (``"canonical-json-v1"``), which is
+exactly :func:`provenance.canonical_json`: object keys sorted, UTF-8
+text (non-ASCII code points ``\\uXXXX``-escaped), JSON ``null`` for
+missing values, true JSON number semantics (never floats-as-strings),
+no insignificant whitespace, LF newlines.  Any other value — or a
+missing declaration while events carry ``row_source`` — is rejected,
+and per-event ``row_source`` mappings must be non-empty with string
+keys only.  Declaring ``row_serialization`` in an envelope whose events
+carry no ``row_source`` is likewise rejected: an envelope may not claim
+a row serialization it does not use.
 """
 from __future__ import annotations
 
@@ -65,6 +78,11 @@ from .research_boundaries import lint_research_claims
 
 MEC_ENVELOPE_TYPE = "MULTI_EVENT_CONTRACT_V1"
 MEC_PROFILE_ID = "SCIENCE_CONTRACT_T2_RESEARCH"
+
+#: The only permitted ``row_serialization`` value — the canonical JSON
+#: serialization described in the module docstring, identical to what
+#: :func:`provenance.sha256_canonical` hashes.
+CANONICAL_ROW_SERIALIZATION = "canonical-json-v1"
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -520,11 +538,22 @@ def verify_mec_envelope(payload: Any, *,
                 problems.append(f"{label}.row_source must be canonical "
                                 "row bytes/fields (mapping, list, or "
                                 "string)")
-            elif not _is_sha256(ev.get("row_sha256")) or \
-                    sha256_canonical(row_source) != ev.get("row_sha256"):
-                problems.append(f"{label}.row_sha256 does not equal "
-                                "sha256 of the supplied canonical row "
-                                "source bytes")
+            else:
+                bad_mapping = isinstance(row_source, Mapping) and (
+                    not row_source or not all(
+                        isinstance(k, str) for k in row_source))
+                if bad_mapping:
+                    problems.append(
+                        f"{label}.row_source must be a non-empty "
+                        "mapping with string keys — an empty mapping "
+                        "carries no row content and non-string keys "
+                        "are not canonical JSON object keys")
+                elif not _is_sha256(ev.get("row_sha256")) or \
+                        sha256_canonical(row_source) != \
+                        ev.get("row_sha256"):
+                    problems.append(f"{label}.row_sha256 does not equal "
+                                    "sha256 of the supplied canonical "
+                                    "row source bytes")
         elif mode == _MODE_REAL:
             problems.append(f"{label}.row_source is required in "
                             f"{_MODE_REAL} mode — a caller-supplied "
@@ -587,8 +616,8 @@ def verify_mec_envelope(payload: Any, *,
                 f"{label}.windows.issue_time is after publication_time")
 
     # When any event carries canonical row bytes, the envelope must
-    # declare the canonicalization version; row_sha256 is
-    # sha256_canonical(row_source) — SHA-256 over canonical JSON.
+    # declare the canonicalization version and serialization; row_sha256
+    # is sha256_canonical(row_source) — SHA-256 over canonical JSON.
     if any_row_source:
         rsv = payload.get("row_schema_version")
         if not isinstance(rsv, str) or not rsv:
@@ -596,6 +625,17 @@ def verify_mec_envelope(payload: Any, *,
                             "carry row_source — it declares the "
                             "canonical JSON serialization version used "
                             "for row_sha256")
+        if payload.get("row_serialization") != \
+                CANONICAL_ROW_SERIALIZATION:
+            problems.append(
+                f"row_serialization must be "
+                f"{CANONICAL_ROW_SERIALIZATION!r} when events carry "
+                "row_source — it pins the exact canonical JSON "
+                "serialization that row_sha256 hashes")
+    elif "row_serialization" in payload:
+        problems.append("row_serialization is declared but no event "
+                        "carries row_source — an envelope may not "
+                        "claim a row serialization it does not use")
 
     holdout = payload.get("holdout")
     if not isinstance(holdout, Mapping):

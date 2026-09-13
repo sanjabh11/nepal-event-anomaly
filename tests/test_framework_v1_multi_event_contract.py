@@ -71,6 +71,7 @@ def _envelope():
         },
         "mode": "SYNTHETIC_FIXTURE",
         "row_schema_version": "synthetic-rows-v1",
+        "row_serialization": mec.CANONICAL_ROW_SERIALIZATION,
         "event_groups": ["G1", "G2", "G3", "G4"],
         "events": events,
         "holdout": {
@@ -562,6 +563,61 @@ def test_empty_row_schema_version_rejected():
     e["row_schema_version"] = ""
     ok, _ = mec.verify_mec_envelope(e)
     assert not ok
+
+
+# MEC-REAL-02: row_serialization pins canonical-json-v1
+
+
+def test_canonical_row_serialization_constant():
+    assert mec.CANONICAL_ROW_SERIALIZATION == "canonical-json-v1"
+
+
+def test_row_source_without_serialization_rejected():
+    e = _envelope()
+    del e["row_serialization"]
+    ok, problems = mec.verify_mec_envelope(e)
+    assert not ok and any("row_serialization" in p for p in problems)
+
+
+def test_wrong_row_serialization_rejected():
+    e = _envelope()
+    e["row_serialization"] = "pretty-json-v2"
+    ok, problems = mec.verify_mec_envelope(e)
+    assert not ok and any("row_serialization" in p for p in problems)
+
+
+def test_non_string_row_serialization_rejected():
+    e = _envelope()
+    e["row_serialization"] = 1
+    ok, problems = mec.verify_mec_envelope(e)
+    assert not ok and any("row_serialization" in p for p in problems)
+
+
+def test_row_serialization_without_row_source_rejected():
+    """Declaring a serialization no event uses is misleading — reject."""
+    e = _envelope()
+    for ev in e["events"]:
+        del ev["row_source"]
+        # caller-pinned row_sha256 remains a valid lowercase SHA-256
+    ok, problems = mec.verify_mec_envelope(e)
+    assert not ok and any("row_serialization" in p for p in problems)
+
+
+def test_empty_row_source_mapping_rejected():
+    e = _envelope()
+    e["events"][0]["row_source"] = {}
+    e["events"][0]["row_sha256"] = sha256_canonical({})
+    ok, problems = mec.verify_mec_envelope(e)
+    assert not ok and any("row_source" in p for p in problems)
+
+
+def test_row_source_non_string_key_rejected():
+    e = _envelope()
+    row = {1: "x"}  # non-string key — not a canonical JSON object key
+    e["events"][0]["row_source"] = row
+    e["events"][0]["row_sha256"] = sha256_canonical(row)
+    ok, problems = mec.verify_mec_envelope(e)
+    assert not ok and any("row_source" in p for p in problems)
 
 
 # MEC-04: all six windows, consistently ordered
