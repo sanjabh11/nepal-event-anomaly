@@ -794,6 +794,10 @@ def verify_input_manifest(
     expected_contract_sha256: Optional[str] = None,
     expected_framework_contract_sha256: Optional[str] = None,
     trusted_manifest_sha256: Optional[str] = None,
+    trusted_manifest_file_sha256: Optional[str] = None,
+    manifest_file_path: Optional[str | Path] = None,
+    require_manifest_file_anchor: bool = False,
+    expected_candidate_generation_id: Optional[str] = None,
     required_artifact_ids: Optional[Iterable[str]] = None,
     required_role: Optional[str] = None,
     primary_roles: Iterable[str] = PRIMARY_ROLES,
@@ -808,6 +812,9 @@ def verify_input_manifest(
     ``expected_framework_contract_sha256`` binds the framework semantic
     contract separately.  The two domains must not be silently substituted for
     one another before a primary run.
+
+    ``expected_candidate_generation_id`` binds the manifest's declared
+    candidate generation to the strict execution context.
     """
     errors: list[str] = []
     warnings: list[str] = []
@@ -842,6 +849,21 @@ def verify_input_manifest(
     checks["root_exists"] = root_exists
     if not root_exists:
         errors.append(f"manifest root is not an existing directory: {root_path}")
+
+    declared_generation_id = manifest.get("candidate_generation_id")
+    if isinstance(declared_generation_id, str) and declared_generation_id:
+        checks["candidate_generation_id"] = declared_generation_id
+    if expected_candidate_generation_id is not None:
+        if not isinstance(expected_candidate_generation_id, str) or \
+                not expected_candidate_generation_id:
+            errors.append(
+                "expected_candidate_generation_id must be a non-empty "
+                "string when supplied")
+        elif declared_generation_id != expected_candidate_generation_id:
+            errors.append(
+                "candidate generation mismatch: manifest declares "
+                f"{declared_generation_id!r}; strict execution requires "
+                f"{expected_candidate_generation_id!r}")
 
     stored_hash = manifest.get("manifest_sha256")
     canonical_hash_value: Optional[str] = None
@@ -892,6 +914,64 @@ def verify_input_manifest(
             "canonical manifest hash does not match the trusted manifest anchor")
     checks["trusted_manifest_anchor_bound"] = trusted_anchor_bound
     checks["trusted_manifest_sha256_supplied"] = trusted_manifest_sha256 is not None
+
+    # Distinct from the canonical-payload anchor above: the file anchor binds
+    # the on-disk manifest bytes, so a caller cannot satisfy strict mode by
+    # self-hashing a detached mapping.
+    file_anchor_valid = (
+        isinstance(trusted_manifest_file_sha256, str) and
+        bool(SHA256_RE.fullmatch(trusted_manifest_file_sha256)))
+    if trusted_manifest_file_sha256 is not None and not file_anchor_valid:
+        errors.append(
+            "trusted_manifest_file_sha256 must be a lowercase 64-character SHA-256")
+    manifest_file_bound = False
+    actual_file_sha256: Optional[str] = None
+    if trusted_manifest_file_sha256 is not None:
+        if manifest_file_path is None:
+            errors.append(
+                "trusted_manifest_file_sha256 requires manifest_file_path so the "
+                "verifier can re-hash the manifest bytes from disk")
+        else:
+            manifest_file = Path(manifest_file_path)
+            try:
+                if not manifest_file.is_file():
+                    errors.append(
+                        f"trusted manifest file is missing: {manifest_file}")
+                else:
+                    resolved = manifest_file.resolve(strict=False)
+                    actual_file_sha256 = _digest_file(resolved)
+                    manifest_file_bound = (
+                        actual_file_sha256 == trusted_manifest_file_sha256)
+                    if not manifest_file_bound:
+                        errors.append(
+                            "manifest file bytes do not match the trusted "
+                            "manifest file anchor")
+                    else:
+                        # Guard against the anchored file and the verified
+                        # mapping diverging (e.g. a caller-supplied mapping).
+                        try:
+                            file_manifest = json.loads(
+                                resolved.read_text(encoding="utf-8"))
+                        except (OSError, ValueError) as exc:
+                            errors.append(
+                                "trusted manifest file could not be parsed "
+                                f"for mapping comparison: {exc}")
+                        else:
+                            if file_manifest != dict(manifest):
+                                errors.append(
+                                    "verified manifest mapping does not equal "
+                                    "the trusted manifest file contents")
+            except OSError as exc:
+                errors.append(
+                    f"trusted manifest file could not be read: {exc}")
+    checks["manifest_file_sha256"] = actual_file_sha256
+    checks["manifest_file_anchor_bound"] = manifest_file_bound
+    checks["manifest_file_anchor_supplied"] = (
+        trusted_manifest_file_sha256 is not None)
+    if require_manifest_file_anchor and trusted_manifest_file_sha256 is None:
+        errors.append(
+            "strict primary verification requires a trusted manifest file "
+            "anchor (SHA-256 of the on-disk manifest bytes)")
 
     data_contract = manifest.get("contract_sha256")
     if not isinstance(data_contract, str) or not SHA256_RE.fullmatch(data_contract):
@@ -1140,6 +1220,8 @@ def verify_input_manifest(
         not missing_required and not blocking_required and
         (trusted_manifest_sha256 is None or
          checks.get("trusted_manifest_anchor_bound") is True) and
+        (not require_manifest_file_anchor or
+         checks.get("manifest_file_anchor_bound") is True) and
         (phase_name is None or checks.get("phase_contract_valid") is True))
     checks["required_declaration"] = bool(required_ids)
     checks["artifact_count"] = len(artifacts)
@@ -1173,6 +1255,10 @@ def verify_phase_manifest(
     expected_contract_sha256: Optional[str] = None,
     expected_framework_contract_sha256: Optional[str] = None,
     trusted_manifest_sha256: Optional[str] = None,
+    trusted_manifest_file_sha256: Optional[str] = None,
+    manifest_file_path: Optional[str | Path] = None,
+    require_manifest_file_anchor: bool = False,
+    expected_candidate_generation_id: Optional[str] = None,
     repo_root: Optional[str | Path] = None,
     scan_root_for_raw_slc: bool = True,
 ) -> InputManifestVerification:
@@ -1186,6 +1272,10 @@ def verify_phase_manifest(
         expected_contract_sha256=expected_contract_sha256,
         expected_framework_contract_sha256=expected_framework_contract_sha256,
         trusted_manifest_sha256=trusted_manifest_sha256,
+        trusted_manifest_file_sha256=trusted_manifest_file_sha256,
+        manifest_file_path=manifest_file_path,
+        require_manifest_file_anchor=require_manifest_file_anchor,
+        expected_candidate_generation_id=expected_candidate_generation_id,
         repo_root=repo_root,
         required_artifact_ids=required,
         required_role=str(phase).upper(),
@@ -1207,6 +1297,8 @@ def verify_canonical_input_manifest(
     phase: Optional[str] = None,
     repo_root: Optional[str | Path] = None,
     scan_root_for_raw_slc: bool = True,
+    trusted_manifest_file_sha256: Optional[str] = None,
+    manifest_file_path: Optional[str | Path] = None,
 ) -> InputManifestVerification:
     """Run the non-compatibility manifest authorization boundary.
 
@@ -1214,13 +1306,20 @@ def verify_canonical_input_manifest(
     JSON result as a diagnostic for historical manifests.  This helper is the
     strict production-facing boundary: both contract domains and an external
     trusted canonical manifest digest are required, so a generated or
-    compatibility-only self-hash cannot authorize a primary run.
+    compatibility-only self-hash cannot authorize a primary run.  When
+    ``trusted_manifest_file_sha256`` is supplied, the on-disk manifest bytes
+    at ``manifest_file_path`` are independently re-hashed and required to
+    match — the canonical payload anchor and the file-byte anchor are
+    deliberately distinct checks.
     """
-    required_values = (
+    required_values = [
         ("expected_contract_sha256", expected_contract_sha256),
         ("expected_framework_contract_sha256", expected_framework_contract_sha256),
         ("trusted_manifest_sha256", trusted_manifest_sha256),
-    )
+    ]
+    if trusted_manifest_file_sha256 is not None:
+        required_values.append(
+            ("trusted_manifest_file_sha256", trusted_manifest_file_sha256))
     invalid = [
         f"{name} must be an explicit lowercase SHA-256"
         for name, value in required_values
@@ -1239,6 +1338,10 @@ def verify_canonical_input_manifest(
         expected_contract_sha256=expected_contract_sha256,
         expected_framework_contract_sha256=expected_framework_contract_sha256,
         trusted_manifest_sha256=trusted_manifest_sha256,
+        trusted_manifest_file_sha256=trusted_manifest_file_sha256,
+        manifest_file_path=manifest_file_path,
+        require_manifest_file_anchor=(
+            trusted_manifest_file_sha256 is not None),
         required_artifact_ids=required_artifact_ids,
         required_role=required_role,
         primary_roles=primary_roles,

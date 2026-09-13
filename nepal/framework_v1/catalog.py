@@ -845,7 +845,10 @@ def build_catalog(raw_records: Sequence, *,
                   language: str = "en",
                   access_date: Optional[str] = None,
                   rgi60_crosswalk: Optional[Mapping] = None,
-                  overrides: Optional[Mapping] = None) -> dict:
+                  overrides: Optional[Mapping] = None,
+                  candidate_generation_id: Optional[str] = None,
+                  manifest_sha256: Optional[str] = None,
+                  manifest_file_sha256: Optional[str] = None) -> dict:
     """Full Phase A pipeline over preserved raw records.
 
     Steps (order is part of the contract):
@@ -883,13 +886,21 @@ def build_catalog(raw_records: Sequence, *,
     adjudicate_eligibility(rows)
     gate = evaluate_gate_a(rows, holdout_plan)
     lock = create_controls_lock(controls)
-    return {
+    result = {
         "rows": rows,
         "holdout_plan": holdout_plan,
         "gate": gate,
         "controls_lock": lock,
         "controls": controls,
     }
+    if (candidate_generation_id is not None or manifest_sha256 is not None or
+            manifest_file_sha256 is not None):
+        result["candidate_binding"] = {
+            "candidate_generation_id": candidate_generation_id,
+            "manifest_sha256": manifest_sha256,
+            "manifest_file_sha256": manifest_file_sha256,
+        }
+    return result
 
 
 def write_phase_a_artifacts(result: Mapping, out_dir) -> dict:
@@ -1017,6 +1028,9 @@ def materialize_phase_a(
     data_contract_sha256: Optional[str] = None,
     language: str = "en",
     access_date: Optional[str] = None,
+    candidate_generation_id: Optional[str] = None,
+    manifest_sha256: Optional[str] = None,
+    manifest_file_sha256: Optional[str] = None,
 ) -> dict[str, Path]:
     """Write the primary, authenticated Phase A artifact set.
 
@@ -1030,6 +1044,24 @@ def materialize_phase_a(
             str(data_contract_sha256)):
         raise ValueError(
             "data_contract_sha256 must be a lowercase sha256 hex digest")
+    carried = result.get("candidate_binding")
+    carried = dict(carried) if isinstance(carried, Mapping) else {}
+    if candidate_generation_id is None:
+        candidate_generation_id = carried.get("candidate_generation_id")
+    if manifest_sha256 is None:
+        manifest_sha256 = carried.get("manifest_sha256")
+    if manifest_file_sha256 is None:
+        manifest_file_sha256 = carried.get("manifest_file_sha256")
+    for _name, _value in (("manifest_sha256", manifest_sha256),
+                          ("manifest_file_sha256", manifest_file_sha256)):
+        if _value is not None and not _SHA256_RE.fullmatch(str(_value)):
+            raise ValueError(
+                f"{_name} must be a lowercase sha256 hex digest")
+    if candidate_generation_id is not None and (
+            not isinstance(candidate_generation_id, str)
+            or not candidate_generation_id):
+        raise ValueError(
+            "candidate_generation_id must be a non-empty string")
     named_sources = dict(source_artifacts or {})
     for name in named_sources:
         if not isinstance(name, str) or not name or name in A_PRIMARY_ARTIFACTS:
@@ -1067,6 +1099,9 @@ def materialize_phase_a(
             "preregistration_data_source_status":
                 C.PREREGISTRATION_DATA_SOURCE_STATUS,
             "data_contract_sha256": data_contract_sha256,
+            "candidate_generation_id": candidate_generation_id,
+            "input_manifest_sha256": manifest_sha256,
+            "input_manifest_file_sha256": manifest_file_sha256,
             "source_catalog_sha256": sha256_file(source_catalog_path),
             "source_catalog_name": Path(source_catalog_path).name,
             "source_artifact_hashes": {
@@ -1189,6 +1224,9 @@ def verify_phase_a_envelope(
     source_artifacts: Optional[Mapping[str, "str | Path"]] = None,
     data_contract_sha256: Optional[str] = None,
     expected_framework_contract_sha256: Optional[str] = None,
+    expected_candidate_generation_id: Optional[str] = None,
+    expected_manifest_sha256: Optional[str] = None,
+    expected_manifest_file_sha256: Optional[str] = None,
 ) -> tuple[bool, list[str]]:
     """Typed verification of a Phase A authenticated envelope.
 
@@ -1240,6 +1278,25 @@ def verify_phase_a_envelope(
             not isinstance(recorded_data_contract, str)
             or not _SHA256_RE.fullmatch(recorded_data_contract)):
         problems.append("envelope data contract hash is not a sha256 digest")
+    if expected_candidate_generation_id is not None and \
+            provenance.get("candidate_generation_id") != \
+            expected_candidate_generation_id:
+        problems.append(
+            "envelope candidate generation does not match the enforced "
+            f"generation ({provenance.get('candidate_generation_id')!r} != "
+            f"{expected_candidate_generation_id!r})")
+    if expected_manifest_sha256 is not None and \
+            provenance.get("input_manifest_sha256") != \
+            expected_manifest_sha256:
+        problems.append(
+            "envelope input manifest hash does not match the enforced "
+            "canonical manifest anchor")
+    if expected_manifest_file_sha256 is not None and \
+            provenance.get("input_manifest_file_sha256") != \
+            expected_manifest_file_sha256:
+        problems.append(
+            "envelope input manifest file hash does not match the "
+            "trusted manifest file anchor")
     if data_contract_sha256 is not None:
         if recorded_data_contract is None:
             problems.append("envelope carries no data-contract binding but an "

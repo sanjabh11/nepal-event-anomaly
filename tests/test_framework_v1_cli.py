@@ -44,9 +44,12 @@ def test_manifest_cli_passes_and_writes_deterministic_result(tmp_path, capsys):
     manifest_path = tmp_path / "manifest.json"
     manifest_path.write_text(json.dumps(_manifest(root)), encoding="utf-8")
     out = tmp_path / "verification.json"
+    manifest_file_sha = hashlib.sha256(
+        manifest_path.read_bytes()).hexdigest()
     code = main(["manifest", "--manifest", str(manifest_path), "--root",
                  str(root), "--expected-contract-sha256", C.contract_hash(),
                  "--expected-framework-contract-sha256", C.contract_hash(),
+                 "--trusted-manifest-sha256", manifest_file_sha,
                  "--require-primary", "--require-artifact", "cli_payload",
                  "--out", str(out)])
     assert code == 0
@@ -192,6 +195,9 @@ def test_pipeline_cli_is_wired_and_blocks_wrong_authoritative_root(tmp_path):
         "--manifest-root", str(tmp_path), "--out", str(out),
         "--expected-contract-sha256", C.contract_hash(),
         "--expected-framework-contract-sha256", C.contract_hash(),
+        "--trusted-manifest-sha256", "0" * 64,
+        "--expected-manifest-sha256", "0" * 64,
+        "--candidate-generation-id", "GEN-TEST",
     ])
     assert code == 2
     report = json.loads((out / "pipeline_report.json").read_text())
@@ -220,6 +226,9 @@ def test_pipeline_rejects_output_under_repo_before_failed_preflight_writes(
         "--manifest", str(manifest), "--manifest-root", str(manifest_root),
         "--out", str(output), "--expected-contract-sha256", C.contract_hash(),
         "--expected-framework-contract-sha256", C.contract_hash(),
+        "--trusted-manifest-sha256", "0" * 64,
+        "--expected-manifest-sha256", "0" * 64,
+        "--candidate-generation-id", "GEN-TEST",
         "--minimum-free-gib", "0",
     ])
 
@@ -243,6 +252,9 @@ def test_pipeline_converts_preflight_exception_to_blocked_report(tmp_path):
         "--manifest-root", str(manifest_root), "--out", str(output),
         "--expected-contract-sha256", C.contract_hash(),
         "--expected-framework-contract-sha256", C.contract_hash(),
+        "--trusted-manifest-sha256", "0" * 64,
+        "--expected-manifest-sha256", "0" * 64,
+        "--candidate-generation-id", "GEN-TEST",
         "--minimum-free-gib", "0",
     ])
 
@@ -278,6 +290,9 @@ def test_pipeline_rejects_nonempty_output_without_resume(tmp_path):
         "--manifest", str(manifest), "--manifest-root", str(manifest_root),
         "--out", str(output), "--expected-contract-sha256", C.contract_hash(),
         "--expected-framework-contract-sha256", C.contract_hash(),
+        "--trusted-manifest-sha256", "0" * 64,
+        "--expected-manifest-sha256", "0" * 64,
+        "--candidate-generation-id", "GEN-TEST",
         "--minimum-free-gib", "0",
     ])
 
@@ -286,12 +301,32 @@ def test_pipeline_rejects_nonempty_output_without_resume(tmp_path):
     assert not (output / "pipeline_report.json").exists()
 
 
+def _stub_lineage_ok(monkeypatch):
+    """Bypass the deep lineage gate for pipeline tests that isolate a
+    different boundary; lineage itself is covered hermetically by
+    tests/test_framework_v1_lineage.py."""
+    from nepal.framework_v1 import lineage as lineage_module
+
+    class _FakeLineage:
+        ok = True
+        errors: tuple = ()
+
+        @staticmethod
+        def to_dict():
+            return {"ok": True, "checks": {}}
+
+    monkeypatch.setattr(lineage_module, "verify_candidate_lineage",
+                        lambda *args, **kwargs: _FakeLineage())
+
+
 def test_pipeline_maps_b_timeout_to_incomplete_exit_and_status(
         tmp_path, monkeypatch):
     from nepal.framework_v1 import adapters as adapters_module
     from nepal.framework_v1 import catalog as catalog_module
     from nepal.framework_v1 import preflight as preflight_module
     from nepal.framework_v1.adapters import BInputBundle
+    from nepal.framework_v1.input_manifest import (
+        canonical_input_manifest_hash)
 
     repo_root = tmp_path / "repo"
     expected_root = tmp_path / "authoritative"
@@ -303,6 +338,8 @@ def test_pipeline_maps_b_timeout_to_incomplete_exit_and_status(
     manifest = tmp_path / "manifest.json"
     raw.write_text("[]", encoding="utf-8")
     manifest.write_text("{}", encoding="utf-8")
+    manifest_canonical_sha = canonical_input_manifest_hash({})
+    _stub_lineage_ok(monkeypatch)
     output = tmp_path / "pipeline-output"
     output.mkdir()
     controls_lock = create_controls_lock(ControlsConfig())
@@ -350,7 +387,9 @@ def test_pipeline_maps_b_timeout_to_incomplete_exit_and_status(
         adapters_module, "load_verified_b_input_bundle",
         lambda *args, **kwargs: BInputBundle(
             status=C.PHASE_STATUS_LOAD_READY, verification=None))
-    monkeypatch.setattr(adapters_module, "build_b_screen_from_bundle",
+    # The bounded worker entry point is what the pipeline invokes; patching it
+    # keeps the timeout path testable without spawning a real child process.
+    monkeypatch.setattr(adapters_module, "run_b_screen_in_worker",
                         lambda *args, **kwargs: b_timeout)
 
     code = main([
@@ -359,6 +398,9 @@ def test_pipeline_maps_b_timeout_to_incomplete_exit_and_status(
         "--manifest", str(manifest), "--manifest-root", str(manifest_root),
         "--out", str(output), "--expected-contract-sha256", C.contract_hash(),
         "--expected-framework-contract-sha256", C.contract_hash(),
+        "--trusted-manifest-sha256", "0" * 64,
+        "--expected-manifest-sha256", manifest_canonical_sha,
+        "--candidate-generation-id", "GEN-TEST",
         "--minimum-free-gib", "0",
     ])
 
@@ -376,6 +418,8 @@ def test_pipeline_does_not_call_b_screen_when_verified_bundle_is_blocked(
     from nepal.framework_v1 import preflight as preflight_module
     from nepal.framework_v1.controls import create_controls_lock
     from nepal.framework_v1.adapters import BInputBundle
+    from nepal.framework_v1.input_manifest import (
+        canonical_input_manifest_hash)
 
     repo_root = tmp_path / "repo"
     expected_root = tmp_path / "authoritative"
@@ -387,6 +431,8 @@ def test_pipeline_does_not_call_b_screen_when_verified_bundle_is_blocked(
     raw_path.write_text("[]", encoding="utf-8")
     manifest_path = tmp_path / "manifest.json"
     manifest_path.write_text("{}", encoding="utf-8")
+    manifest_canonical_sha = canonical_input_manifest_hash({})
+    _stub_lineage_ok(monkeypatch)
     output = tmp_path / "pipeline-output"
     output.mkdir()
     controls_lock = create_controls_lock(ControlsConfig())
@@ -428,7 +474,7 @@ def test_pipeline_does_not_call_b_screen_when_verified_bundle_is_blocked(
         lambda *args, **kwargs: BInputBundle(
             status="BLOCKED", verification=None,
             errors=("required B artifact is incomplete",)))
-    monkeypatch.setattr(adapters_module, "build_b_screen_from_bundle",
+    monkeypatch.setattr(adapters_module, "run_b_screen_in_worker",
                         fake_build_b_screen)
 
     code = main([
@@ -437,6 +483,9 @@ def test_pipeline_does_not_call_b_screen_when_verified_bundle_is_blocked(
         "--manifest", str(manifest_path), "--manifest-root", str(manifest_root),
         "--out", str(output), "--expected-contract-sha256", C.contract_hash(),
         "--expected-framework-contract-sha256", C.contract_hash(),
+        "--trusted-manifest-sha256", "0" * 64,
+        "--expected-manifest-sha256", manifest_canonical_sha,
+        "--candidate-generation-id", "GEN-TEST",
         "--minimum-free-gib", "0",
     ])
 
@@ -469,6 +518,9 @@ def test_pipeline_rejects_symlink_output_before_writing(tmp_path):
         "--manifest", str(manifest), "--manifest-root", str(manifest_root),
         "--out", str(output), "--expected-contract-sha256", C.contract_hash(),
         "--expected-framework-contract-sha256", C.contract_hash(),
+        "--trusted-manifest-sha256", "0" * 64,
+        "--expected-manifest-sha256", "0" * 64,
+        "--candidate-generation-id", "GEN-TEST",
     ])
 
     assert code == 2
@@ -545,6 +597,9 @@ def test_pipeline_rejects_descendant_symlink_on_resume_before_materializing(
         "--manifest", str(manifest), "--manifest-root", str(manifest_root),
         "--out", str(output), "--expected-contract-sha256", C.contract_hash(),
         "--expected-framework-contract-sha256", C.contract_hash(),
+        "--trusted-manifest-sha256", "0" * 64,
+        "--expected-manifest-sha256", "0" * 64,
+        "--candidate-generation-id", "GEN-TEST",
         "--minimum-free-gib", "0",
     ])
 

@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
+import sys
 import time
 from dataclasses import dataclass, field
 from datetime import date
@@ -183,6 +185,9 @@ def load_b_input_bundle(
     controls_lock: Optional[ControlsLock] = None,
     repo_root: Optional[str | Path] = None,
     target: TargetGrid = TargetGrid(),
+    manifest_path: Optional[str | Path] = None,
+    trusted_manifest_file_sha256: Optional[str] = None,
+    expected_candidate_generation_id: Optional[str] = None,
 ) -> BInputBundle:
     """Read and validate the reconciled B handoff without writing to it.
 
@@ -197,17 +202,30 @@ def load_b_input_bundle(
     artifact_paths: dict[str, str] = {}
     terrain: dict[str, Any] = {}
     exposure: dict[str, Any] = {}
+    resolved_manifest_path: Optional[Path] = None
     observability: dict[str, Optional[float]] = {}
     diagnostics: dict[str, Any] = {}
 
     if manifest is None:
-        manifest_path = root_path / "manifest.json"
+        resolved_manifest_path = (Path(manifest_path) if manifest_path
+                                  is not None else root_path / "manifest.json")
         try:
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest = json.loads(
+                resolved_manifest_path.read_text(encoding="utf-8"))
         except FileNotFoundError:
-            errors.append(f"B input manifest is missing: {manifest_path}")
+            errors.append(
+                f"B input manifest is missing: {resolved_manifest_path}")
         except (OSError, ValueError) as exc:
             errors.append(f"B input manifest is unreadable: {exc}")
+    elif manifest_path is not None:
+        # A caller-supplied mapping can never satisfy a file anchor: the
+        # manifest must be read from disk so the verifier re-hashes real bytes.
+        resolved_manifest_path = Path(manifest_path)
+        if trusted_manifest_file_sha256 is not None:
+            errors.append(
+                "trusted manifest file anchor requires the manifest to be "
+                "loaded from disk, not supplied as a mapping")
+            return BInputBundle("BLOCKED", None, tuple(errors), tuple(warnings))
     if not isinstance(manifest, Mapping):
         errors.append("B input manifest must be a mapping")
         return BInputBundle("BLOCKED", None, tuple(errors), tuple(warnings))
@@ -218,6 +236,11 @@ def load_b_input_bundle(
         expected_framework_contract_sha256=(
             C.contract_hash() if expected_framework_contract_sha256 is None
             else expected_framework_contract_sha256),
+        trusted_manifest_file_sha256=trusted_manifest_file_sha256,
+        manifest_file_path=resolved_manifest_path,
+        require_manifest_file_anchor=(
+            trusted_manifest_file_sha256 is not None),
+        expected_candidate_generation_id=expected_candidate_generation_id,
         repo_root=repo_root,
     )
     errors.extend(verification.errors)
@@ -338,18 +361,31 @@ def load_verified_b_input_bundle(
     controls_lock: Optional[ControlsLock] = None,
     repo_root: Optional[str | Path] = None,
     target: TargetGrid = TargetGrid(),
+    manifest_path: Optional[str | Path] = None,
+    trusted_manifest_file_sha256: Optional[str] = None,
+    candidate_generation_id: Optional[str] = None,
 ) -> BInputBundle:
     """Strict one-shot B loader with both contract domains explicitly bound.
 
     The ordinary loader remains useful for diagnostics and deliberately blocks
     when the data contract hash is omitted.  This wrapper is the only loader
-    intended for a primary B screening invocation.
+    intended for a primary B screening invocation.  Strict primary execution
+    additionally requires ``trusted_manifest_file_sha256``: an externally
+    pinned SHA-256 of the on-disk manifest bytes, and
+    ``candidate_generation_id``: the candidate generation the strict run is
+    authorized for.  Loadability alone is not authorization.
     """
     problems: list[str] = []
+    if not isinstance(candidate_generation_id, str) or \
+            not candidate_generation_id:
+        problems.append(
+            "candidate_generation_id must be an explicit non-empty string "
+            "for strict loading")
     for name, value in (
             ("expected_contract_sha256", expected_contract_sha256),
             ("expected_framework_contract_sha256",
-             expected_framework_contract_sha256)):
+             expected_framework_contract_sha256),
+            ("trusted_manifest_file_sha256", trusted_manifest_file_sha256)):
         if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value):
             problems.append(f"{name} must be an explicit lowercase SHA-256")
     if (isinstance(expected_framework_contract_sha256, str) and
@@ -358,6 +394,10 @@ def load_verified_b_input_bundle(
         problems.append(
             "expected framework contract hash does not match the runtime "
             "framework contract")
+    if manifest is not None and manifest_path is not None:
+        problems.append(
+            "strict loading reads the manifest from manifest_path; do not "
+            "also supply a detached mapping")
     if problems:
         return BInputBundle("BLOCKED", None, tuple(problems))
     return load_b_input_bundle(
@@ -367,6 +407,9 @@ def load_verified_b_input_bundle(
         controls_lock=controls_lock,
         repo_root=repo_root,
         target=target,
+        manifest_path=manifest_path,
+        trusted_manifest_file_sha256=trusted_manifest_file_sha256,
+        expected_candidate_generation_id=candidate_generation_id,
     )
 
 
@@ -465,6 +508,140 @@ def build_b_screen_from_bundle(
         timeout_seconds=timeout_seconds,
         checkpoint_path=checkpoint_path,
     )
+
+
+def _b_worker_entry(bundle: BInputBundle,
+                    kwargs: Mapping[str, Any],
+                    result_path: str,
+                    error_path: str) -> None:
+    """Child-process entry point: run B and hand the envelope back by file."""
+    try:
+        result = build_b_screen_from_bundle(bundle, **dict(kwargs))
+        write_deterministic_json(result_path, result)
+    except BaseException as exc:  # noqa: BLE001 - boundary handoff
+        try:
+            write_deterministic_json(error_path, {
+                "error_type": type(exc).__name__,
+                "error": str(exc)[:2000],
+            })
+        except OSError:
+            pass
+
+
+def _b_timeout_envelope(stage: str, elapsed: float) -> dict[str, Any]:
+    problem = (f"B execution exceeded its bounded worker deadline "
+               f"({elapsed:.1f}s) during {stage}; worker was terminated")
+    gate = bind_gate_artifact({
+        "gate_id": C.GateId.B_TO_C.value,
+        "passed": False,
+        "checks": {"bounded_execution": {"passed": False}},
+        "problems": [problem],
+    })
+    return bind_artifact_envelope({
+        "status": C.B_TIMEOUT_STATUS,
+        "gate_id": C.GateId.B_TO_C.value,
+        "gate_passed": False,
+        "phase_status": C.PHASE_STATUS_B_TO_C_BLOCKED,
+        "errors": [problem],
+        "blocked_reasons": [problem],
+        "gate": gate,
+        "provenance": {"framework_contract_sha256": C.contract_hash()},
+    })
+
+
+def run_b_screen_in_worker(
+    bundle: BInputBundle,
+    *,
+    controls_lock: ControlsLock,
+    a_gate_artifact: Optional[Mapping[str, Any]] = None,
+    sidecar_grids: Optional[Mapping[str, Any]] = None,
+    timeout_seconds: Optional[float] = None,
+    checkpoint_path: Optional[str | Path] = None,
+) -> dict[str, Any]:
+    """Run strict B inside a killable worker process.
+
+    In-process deadline checks cannot interrupt a hang inside a native
+    ranking/LOO call; a child process can be terminated.  The worker writes
+    checkpoints itself (same atomic path) and hands the result envelope back
+    through a file.  A deadline breach yields the B timeout envelope — never a
+    passed result.
+    """
+    import multiprocessing
+    import tempfile
+
+    effective_timeout = (
+        C.B_DEFAULT_TIMEOUT_SECONDS if timeout_seconds is None
+        else float(timeout_seconds))
+    if not math.isfinite(effective_timeout) or effective_timeout < 0:
+        raise C.ContractViolation(
+            "B timeout_seconds must be finite and non-negative")
+
+    kwargs: dict[str, Any] = {
+        "controls_lock": controls_lock,
+        "a_gate_artifact": a_gate_artifact,
+        "sidecar_grids": sidecar_grids,
+        "timeout_seconds": effective_timeout,
+        "checkpoint_path": (str(checkpoint_path)
+                            if checkpoint_path is not None else None),
+    }
+    started = time.monotonic()
+    with tempfile.TemporaryDirectory(prefix="nepal-b-worker-") as tmp:
+        result_path = os.path.join(tmp, "b_result.json")
+        error_path = os.path.join(tmp, "b_error.json")
+        ctx = multiprocessing.get_context("spawn")
+        proc = ctx.Process(
+            target=_b_worker_entry,
+            args=(bundle, kwargs, result_path, error_path),
+            name="nepal-b-screen-worker",
+        )
+        proc.start()
+        # Parent-side grace beyond the worker's own deadline lets an orderly
+        # BExecutionTimeout envelope reach disk before a hard kill.
+        proc.join(effective_timeout + C.B_WORKER_KILL_GRACE_SECONDS)
+        if proc.is_alive():
+            proc.terminate()
+            proc.join(C.B_WORKER_TERMINATE_WAIT_SECONDS)
+            if proc.is_alive():
+                proc.kill()
+                proc.join(5)
+            if checkpoint_path is not None:
+                try:
+                    write_deterministic_json(
+                        checkpoint_path,
+                        bind_artifact_envelope({
+                            "framework_version": C.FRAMEWORK_VERSION,
+                            "status": "TIMEOUT",
+                            "stage": "worker_terminated",
+                            "worker_pid": proc.pid,
+                        }))
+                except OSError:
+                    pass
+            return _b_timeout_envelope("worker", time.monotonic() - started)
+        if os.path.isfile(result_path):
+            return dict(json.loads(
+                Path(result_path).read_text(encoding="utf-8")))
+        if os.path.isfile(error_path):
+            detail = dict(json.loads(
+                Path(error_path).read_text(encoding="utf-8")))
+            problem = (f"B worker failed: {detail.get('error_type', 'Error')}: "
+                       f"{detail.get('error', '')}")
+        else:
+            problem = (f"B worker exited without a result "
+                       f"(exitcode={proc.exitcode})")
+    return bind_artifact_envelope({
+        "status": C.OutputStatus.BLOCKED.value,
+        "gate_id": C.GateId.B_TO_C.value,
+        "gate_passed": False,
+        "phase_status": C.PHASE_STATUS_B_TO_C_BLOCKED,
+        "errors": [problem],
+        "blocked_reasons": [problem],
+        "gate": bind_gate_artifact({
+            "gate_id": C.GateId.B_TO_C.value, "passed": False,
+            "checks": {"worker_completed": {"passed": False}},
+            "problems": [problem],
+        }),
+        "provenance": {"framework_contract_sha256": C.contract_hash()},
+    })
 
 
 def validate_target_array(name: str, array: Any,
@@ -900,6 +1077,30 @@ def build_b_screen(
     perf_started = time.perf_counter()
     deadline = started + effective_timeout_seconds
 
+    def _peak_rss_bytes() -> Optional[int]:
+        try:
+            import resource
+        except ImportError:
+            return None
+        # ru_maxrss is KiB on Linux, bytes on macOS/BSD.
+        value = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+        return value * 1024 if sys.platform == "linux" else value
+
+    verification_checks = (
+        manifest_verification.checks
+        if isinstance(manifest_verification, InputManifestVerification)
+        else {})
+    input_fingerprint = {
+        "input_manifest_sha256": verification_checks.get("manifest_sha256"),
+        "manifest_file_sha256": verification_checks.get("manifest_file_sha256"),
+        "candidate_generation_id": verification_checks.get(
+            "candidate_generation_id"),
+        "a_gate_artifact_sha256": (
+            gate_input_artifact_sha256(a_gate_artifact)
+            if isinstance(a_gate_artifact, Mapping) else None),
+        "controls_lock_sha256": controls_lock.sha256,
+    }
+
     def _checkpoint(stage: str, status: str = "RUNNING", **extra: Any) -> None:
         if checkpoint_path is None:
             return
@@ -910,6 +1111,9 @@ def build_b_screen(
             "component_registry_version": C.COMPONENT_REGISTRY_VERSION,
             "active_terrain_components": list(C.ACTIVE_TERRAIN_COMPONENTS),
             "active_exposure_components": list(C.ACTIVE_EXPOSURE_COMPONENTS),
+            "input_fingerprint": input_fingerprint,
+            "elapsed_seconds": round(time.monotonic() - started, 6),
+            "peak_rss_bytes": _peak_rss_bytes(),
         }
         payload.update(extra)
         # A checkpoint is a resumability/security boundary, so authenticate
@@ -1011,6 +1215,11 @@ def build_b_screen(
                                   else None),
         "input_manifest_canonical_authorized": bool(
             manifest_checks.get("canonical_manifest_authorized", False)),
+        "candidate_generation_id": manifest_checks.get(
+            "candidate_generation_id"),
+        "input_manifest_file_sha256": manifest_checks.get(
+            "manifest_file_sha256"),
+        "input_fingerprint": dict(input_fingerprint),
         "component_registry_version": C.COMPONENT_REGISTRY_VERSION,
         "active_terrain_components": list(C.ACTIVE_TERRAIN_COMPONENTS),
         "active_exposure_components": list(C.ACTIVE_EXPOSURE_COMPONENTS),
@@ -1173,6 +1382,13 @@ def build_b_screen(
         "elapsed_seconds": time.perf_counter() - perf_started,
         "timeout_seconds": effective_timeout_seconds,
         "timeout": False,
+    }
+    bound["resource_evidence"] = {
+        "elapsed_seconds": round(time.monotonic() - started, 6),
+        "peak_rss_bytes": _peak_rss_bytes(),
+        "platform": sys.platform,
+        "rss_units": "bytes",
+        "timeout_seconds": effective_timeout_seconds,
     }
     bound = bind_artifact_envelope(bound)
     try:

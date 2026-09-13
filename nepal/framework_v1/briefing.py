@@ -512,3 +512,86 @@ def write_briefing_artifact(
     artifact = bind_artifact_envelope(artifact)
     write_deterministic_json(path, artifact)
     return artifact
+
+
+# ---------------------------------------------------------------------------
+# Strict machine-readable F envelope (G26)
+# ---------------------------------------------------------------------------
+
+def build_f_envelope(validation_summary: Mapping, *,
+                     catalog_gate: Optional[Mapping] = None,
+                     screen_gate: Optional[Mapping] = None,
+                     validation_gate: Optional[Mapping] = None,
+                     contract_hash: Optional[str] = None,
+                     candidate_generation_id: Optional[str] = None,
+                     manifest_sha256: Optional[str] = None,
+                     briefing_text: Optional[str] = None) -> dict:
+    """Deterministic strict-F JSON envelope binding all upstream evidence."""
+    envelope: dict[str, Any] = {
+        "artifact_kind": "f_briefing_envelope",
+        "gate_id": "F_BRIEFING",
+        "contract_hash": contract_hash,
+        "candidate_generation_id": candidate_generation_id,
+        "manifest_sha256": manifest_sha256,
+        "research_only_wording_present": False,
+        "input_hashes": dict(validation_summary.get("input_hashes", {})
+                             or {}),
+    }
+    if briefing_text is not None:
+        envelope["research_only_wording_present"] = (
+            NOT_EVACUATION.splitlines()[0] in briefing_text
+            and LIABILITY.splitlines()[0] in briefing_text)
+    if isinstance(catalog_gate, Mapping):
+        envelope["catalog_gate_sha256"] = catalog_gate.get(
+            "gate_artifact_sha256")
+    if isinstance(screen_gate, Mapping):
+        envelope["screen_gate_sha256"] = screen_gate.get("artifact_sha256")
+        inner = screen_gate.get("gate")
+        if isinstance(inner, Mapping):
+            envelope["b_to_c_gate_sha256"] = inner.get("gate_artifact_sha256")
+    if isinstance(validation_gate, Mapping):
+        envelope["validation_gate_sha256"] = validation_gate.get(
+            "artifact_sha256")
+    return bind_artifact_envelope(envelope)
+
+
+def write_f_envelope(path, envelope: Mapping) -> Path:
+    """Atomically persist a strict-F envelope and verify it on re-read."""
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    write_deterministic_json(p, envelope)
+    ok, _ = verify_artifact_envelope(dict(envelope))
+    if not ok:
+        raise ValueError("strict F envelope failed self-verification after write")
+    return p
+
+
+def verify_f_envelope(path, *,
+                      expected_sha256: Optional[str] = None) -> tuple:
+    """Re-read and verify a persisted strict-F envelope from disk."""
+    p = Path(path)
+    if not p.is_file():
+        return False, [f"strict F envelope missing: {p}"]
+    try:
+        import json as _json
+        payload = _json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return False, [f"strict F envelope unreadable: {exc}"]
+    ok, errors = verify_artifact_envelope(
+        payload if isinstance(payload, dict) else {})
+    problems = list(errors)
+    if not isinstance(payload, dict):
+        problems.append("strict F envelope must be a mapping")
+        return False, problems
+    if expected_sha256 is not None and payload.get(
+            "artifact_sha256") != expected_sha256:
+        problems.append(
+            f"strict F envelope sha256 mismatch: "
+            f"{payload.get('artifact_sha256')} != {expected_sha256}")
+    if not isinstance(payload.get("research_only_wording_present"), bool) \
+            or not payload.get("research_only_wording_present"):
+        problems.append(
+            "strict F envelope must carry verified research-only wording")
+    if payload.get("artifact_kind") != "f_briefing_envelope":
+        problems.append("strict F envelope has the wrong artifact_kind")
+    return (not problems), problems

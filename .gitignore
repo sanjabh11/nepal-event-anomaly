@@ -21,3 +21,6 @@ data/temp/
 data/download_ledger.json
 data/era5_land_nepal_jja_2001_2026.nc
 data/features_nepal_hourly_jja_2001_2026.csv
+
+# Worktree-local test fixture link (environment-bound reconciled handoff)
+data/framework_inputs_v1_reconciled

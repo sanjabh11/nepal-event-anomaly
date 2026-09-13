@@ -25,7 +25,7 @@ PIPELINE_STATUS_BLOCKED = "PIPELINE_BLOCKED"
 PIPELINE_STATUS_INCOMPLETE = "PIPELINE_INCOMPLETE"
 PIPELINE_STATUS_FAILED = "PIPELINE_FAILED"
 PIPELINE_EXIT_CODES = frozenset({0, 2, 3, 4, 5})
-RESUMABLE_PIPELINE_STATES = frozenset({"RUNNING", "INCOMPLETE", "COMPLETED"})
+RESUMABLE_PIPELINE_STATES = frozenset({"RUNNING", "INCOMPLETE"})
 
 NO_CLAIMS = (
     "Framework implementation evidence is not scientific validation",
@@ -387,12 +387,17 @@ def bind_pipeline_report(
     *,
     exit_code: int,
     input_fingerprint: Optional[str] = None,
+    fingerprint_inputs: Optional[Mapping[str, Any]] = None,
+    candidate_generation_id: Optional[str] = None,
+    manifest_sha256: Optional[str] = None,
+    run_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Bind the complete pipeline report, including status and provenance."""
     if not isinstance(report, Mapping):
         raise TypeError("pipeline report must be a mapping")
     bound = dict(report)
     bound.setdefault("profile_id", PIPELINE_PROFILE_ID)
+    bound.setdefault("framework_version", C.FRAMEWORK_VERSION)
     bound["pipeline_status"] = _pipeline_status(exit_code, bound)
     bound["exit_code"] = int(exit_code)
     bound["promotion_eligible"] = False
@@ -410,6 +415,17 @@ def bind_pipeline_report(
     }
     if input_fingerprint is not None:
         bound["input_fingerprint"] = input_fingerprint
+    if fingerprint_inputs is not None:
+        # Persist the exact material (paths + values) the fingerprint was
+        # computed from so verifiers recompute against current on-disk bytes
+        # instead of trusting a copied digest (G08).
+        bound["input_fingerprint_inputs"] = dict(fingerprint_inputs)
+    if candidate_generation_id is not None:
+        bound["candidate_generation_id"] = candidate_generation_id
+    if manifest_sha256 is not None:
+        bound["manifest_sha256"] = manifest_sha256
+    if run_id is not None:
+        bound["run_id"] = run_id
     return bind_artifact_envelope(bound)
 
 
@@ -428,6 +444,43 @@ def verify_pipeline_report(
     ok, problems = verify_artifact_envelope(payload)
     if not isinstance(payload, Mapping):
         return False, problems
+    if payload.get("framework_version") != C.FRAMEWORK_VERSION:
+        problems.append(
+            "pipeline report framework_version does not match runtime")
+    if not _is_sha256(payload.get("input_fingerprint")):
+        problems.append(
+            "pipeline report input_fingerprint must be a lowercase SHA-256")
+    if not isinstance(payload.get("candidate_generation_id"), str) or \
+            not payload.get("candidate_generation_id"):
+        problems.append(
+            "pipeline report candidate_generation_id is required")
+    if not _is_sha256(payload.get("manifest_sha256")):
+        problems.append(
+            "pipeline report manifest_sha256 must be a lowercase SHA-256")
+    fingerprint_inputs = payload.get("input_fingerprint_inputs")
+    if fingerprint_inputs is not None:
+        # G08: recompute the declared fingerprint against the files and
+        # values recorded in the report.  A stale or copied digest must not
+        # verify.
+        if not isinstance(fingerprint_inputs, Mapping):
+            problems.append(
+                "pipeline report input_fingerprint_inputs must be a mapping")
+        else:
+            try:
+                recomputed = pipeline_input_fingerprint(
+                    fingerprint_inputs.get("paths") or (),
+                    values=fingerprint_inputs.get("values")
+                    if isinstance(fingerprint_inputs.get("values"), Mapping)
+                    else None)
+            except (OSError, TypeError, ValueError) as exc:
+                problems.append(
+                    f"pipeline report input fingerprint could not be "
+                    f"recomputed: {exc}")
+            else:
+                if recomputed != payload.get("input_fingerprint"):
+                    problems.append(
+                        "pipeline report input_fingerprint does not match "
+                        "a recomputation from the recorded inputs")
     if payload.get("profile_id") != PIPELINE_PROFILE_ID:
         problems.append("pipeline report profile_id is not FRAMEWORK_V1_FULL")
     if payload.get("promotion_eligible") is not False:

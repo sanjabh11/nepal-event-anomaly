@@ -59,6 +59,22 @@ def _load_json(path: str | Path):
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
+def _lineage_sidecar(manifest_root: str | Path,
+                     explicit: "str | None",
+                     conventional_name: str) -> "str | None":
+    """Resolve an optional lineage evidence sidecar.
+
+    An explicit flag always wins; otherwise the conventional path under
+    ``<manifest_root>/provenance/`` is used only when the file exists.  A
+    missing conventional file means "not supplied" — the lineage verifier
+    decides whether that is fatal.
+    """
+    if explicit:
+        return explicit
+    candidate = Path(manifest_root) / "provenance" / conventional_name
+    return str(candidate) if candidate.is_file() else None
+
+
 def _strict_b_diagnostic(errors: list[str], *, reason: str,
                          details: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Build an authenticated, fail-closed strict-B diagnostic envelope."""
@@ -168,6 +184,10 @@ def cmd_manifest(args) -> int:
         manifest, args.root,
         expected_contract_sha256=args.expected_contract_sha256,
         expected_framework_contract_sha256=args.expected_framework_contract_sha256,
+        trusted_manifest_file_sha256=args.trusted_manifest_sha256,
+        manifest_file_path=args.manifest,
+        require_manifest_file_anchor=args.require_primary,
+        expected_candidate_generation_id=args.candidate_generation_id,
         repo_root=args.repo_root,
         required_artifact_ids=args.require_artifact,
     )
@@ -322,7 +342,8 @@ def _strict_screen_config_errors(config, manifest, manifest_root):
 def cmd_screen(args) -> int:
     if args.strict:
         from .adapters import (build_b_screen_from_bundle,
-                               load_verified_b_input_bundle)
+                               load_verified_b_input_bundle,
+                               run_b_screen_in_worker)
         from .controls import load_controls_lock
         from .preflight import run_preflight
         from .provenance import verify_artifact_envelope
@@ -396,17 +417,24 @@ def cmd_screen(args) -> int:
             return 2
         if (not args.manifest or not args.manifest_root or
                 not args.controls_lock or not args.a_gate or
-                not args.repo_root or not args.expected_root):
+                not args.repo_root or not args.expected_root or
+                not args.trusted_manifest_sha256 or
+                not args.expected_manifest_sha256 or
+                not args.candidate_generation_id):
             result = _write_strict_b_diagnostic(
                 args.out,
                 ["strict screen requires --manifest, --manifest-root, "
-                 "--controls-lock, --a-gate, --repo-root, and --expected-root"],
+                 "--controls-lock, --a-gate, --repo-root, --expected-root, "
+                 "--trusted-manifest-sha256, --expected-manifest-sha256, "
+                 "and --candidate-generation-id"],
                 reason="strict screen required inputs are missing")
             _print(f"B_SCREEN status: {result['status']}")
             return 2
         try:
-            manifest = _load_json(args.manifest)
-        except (OSError, TypeError, ValueError) as exc:
+            manifest_file = Path(args.manifest)
+            if not manifest_file.is_file():
+                raise OSError(f"manifest file is missing: {manifest_file}")
+        except OSError as exc:
             result = _write_strict_b_diagnostic(
                 args.out, [f"strict screen manifest could not be loaded: {exc}"],
                 reason="strict screen input loading failed")
@@ -439,11 +467,42 @@ def cmd_screen(args) -> int:
                 reason="strict screen contract bindings are missing")
             _print(f"B_SCREEN status: {result['status']}")
             return 2
+        # Deep lineage gate (G1/G9/G25): the candidate generation, receipts,
+        # hash links, and waiver/audit consistency must verify before any
+        # strict B execution is authorized.
+        from .lineage import verify_candidate_lineage
+        lineage = verify_candidate_lineage(
+            manifest_file, args.manifest_root,
+            expected_manifest_sha256=args.expected_manifest_sha256,
+            expected_data_contract_sha256=args.expected_contract_sha256,
+            expected_framework_contract_sha256=(
+                args.expected_framework_contract_sha256),
+            candidate_generation_id=args.candidate_generation_id,
+            trusted_manifest_file_sha256=args.trusted_manifest_sha256,
+            waiver_path=_lineage_sidecar(args.manifest_root, args.waiver,
+                                         "waivers.json"),
+            audit_packet_path=_lineage_sidecar(
+                args.manifest_root, args.audit_packet,
+                "d1_remediation_audit.json"),
+            requirements_path=_lineage_sidecar(
+                args.manifest_root, args.requirements,
+                "d1_remediation_requirements.json"),
+        )
+        if not lineage.ok:
+            result = _write_strict_b_diagnostic(
+                args.out, list(lineage.errors),
+                reason="deep candidate lineage verification failed",
+                details={"lineage": lineage.to_dict()})
+            _print(f"B_SCREEN status: {result['status']}")
+            return 2
         try:
             lock = load_controls_lock(_load_json(args.controls_lock))
             a_gate = _load_json(args.a_gate)
             bundle = load_verified_b_input_bundle(
-                args.manifest_root, manifest,
+                args.manifest_root,
+                manifest_path=manifest_file,
+                trusted_manifest_file_sha256=args.trusted_manifest_sha256,
+                candidate_generation_id=args.candidate_generation_id,
                 expected_contract_sha256=args.expected_contract_sha256,
                 expected_framework_contract_sha256=args.expected_framework_contract_sha256,
                 controls_lock=lock,
@@ -466,7 +525,7 @@ def cmd_screen(args) -> int:
             _print(f"B_SCREEN status: {result['status']}")
             return 2
         try:
-            result = build_b_screen_from_bundle(
+            result = run_b_screen_in_worker(
                 bundle, controls_lock=lock, a_gate_artifact=a_gate,
                 timeout_seconds=args.timeout_seconds,
                 checkpoint_path=checkpoint_path)
@@ -526,16 +585,23 @@ def cmd_validate(args) -> int:
     input_manifest = (_load_json(args.manifest) if args.manifest else None)
     manifest_check = None
     if args.strict:
-        if input_manifest is not None and args.manifest_root:
+        if (input_manifest is not None and args.manifest_root and
+                args.trusted_manifest_sha256):
             manifest_check = verify_phase_manifest(
                 input_manifest, args.manifest_root, args.manifest_phase,
                 expected_contract_sha256=args.expected_contract_sha256,
                 expected_framework_contract_sha256=args.expected_framework_contract_sha256,
+                trusted_manifest_file_sha256=args.trusted_manifest_sha256,
+                manifest_file_path=args.manifest,
+                require_manifest_file_anchor=True,
+                expected_candidate_generation_id=args.candidate_generation_id,
                 repo_root=args.repo_root)
         else:
             manifest_check = {"ok": False, "can_run_primary": False,
                               "errors": [
-                                  "strict validation requires --manifest and --manifest-root"],
+                                  "strict validation requires --manifest, "
+                                  "--manifest-root, and "
+                                  "--trusted-manifest-sha256"],
                               "warnings": []}
     if isinstance(manifest_check, InputManifestVerification):
         manifest_verification_payload = manifest_check
@@ -566,6 +632,22 @@ def cmd_validate(args) -> int:
                              a_inner.get("passed") is True)
         b_gate_passed = bool(b_gate_ok and isinstance(b_inner, Mapping) and
                              b_inner.get("passed") is True)
+        # G35: strict E must verify its prerequisite evidence BEFORE any
+        # validation compute.  A blocked or unverified upstream gate means
+        # there is nothing to validate.
+        if a_gate_passed is not True or b_gate_passed is not True:
+            diagnostic = _strict_e_diagnostic(
+                {"status": C.PHASE_STATUS_E_BLOCKED},
+                errors=[
+                    "strict E requires a verified, passed A_CATALOG gate "
+                    f"(got passed={a_gate_passed}) and a verified, passed "
+                    f"B_TO_C gate (got passed={b_gate_passed}); refusing "
+                    "to compute validation on unverified prerequisites",
+                ])
+            write_deterministic_json(args.summary, diagnostic)
+            _print(f"E_VALIDATION status: {C.PHASE_STATUS_E_BLOCKED} "
+                   "(upstream gates not passed)")
+            return 4
     summary = run_validation(events, ctrl, controls_lock=lock,
                              holdout_plan=holdout,
                              min_pairwise_n=args.min_pairs,
@@ -637,7 +719,9 @@ def cmd_validate(args) -> int:
 
 
 def cmd_brief(args) -> int:
-    from .briefing import generate_briefing, write_briefing
+    from .briefing import (build_f_envelope, generate_briefing,
+                           verify_f_envelope, write_briefing,
+                           write_f_envelope)
     document = _load_json(args.summary)
     summary = document.get("summary", document)
     default_e_gate = document.get("gate")
@@ -662,6 +746,25 @@ def cmd_brief(args) -> int:
     except ValueError as exc:
         _print(f"F_BRIEF status: {C.OutputStatus.BLOCKED.value} ({exc})")
         return 4
+    if args.strict or args.envelope_out:
+        # G34: the strict machine-readable F envelope is materialized and
+        # verified from disk before the markdown briefing may be written.
+        if args.envelope_out is None:
+            _print("F_BRIEF status: BLOCKED (strict mode requires "
+                   "--envelope-out)")
+            return 4
+        envelope = build_f_envelope(
+            summary, catalog_gate=catalog_gate, screen_gate=screen_gate,
+            validation_gate=validation_gate, contract_hash=C.contract_hash(),
+            candidate_generation_id=args.candidate_generation_id,
+            manifest_sha256=args.manifest_sha256, briefing_text=text)
+        write_f_envelope(args.envelope_out, envelope)
+        ok, problems = verify_f_envelope(args.envelope_out)
+        if not ok:
+            _print("F_BRIEF status: BLOCKED (envelope verification: " +
+                   "; ".join(problems) + ")")
+            return 5
+        _print(f"strict F envelope written: {args.envelope_out}")
     write_briefing(args.out, text)
     _print(f"briefing written: {args.out}")
     return 0
@@ -717,7 +820,8 @@ def cmd_run(args) -> int:
 def cmd_pipeline(args) -> int:
     """Run the verified A-to-B-to-E-to-F path with fail-closed handoffs."""
     from .adapters import (build_b_screen_from_bundle,
-                           load_verified_b_input_bundle)
+                           load_verified_b_input_bundle,
+                           run_b_screen_in_worker)
     from .briefing import (build_briefing_artifact, generate_briefing,
                            verify_briefing_artifact, write_briefing)
     from .catalog import (build_catalog, materialize_phase_a,
@@ -800,6 +904,10 @@ def cmd_pipeline(args) -> int:
             "expected_contract_sha256": args.expected_contract_sha256,
             "expected_framework_contract_sha256": (
                 args.expected_framework_contract_sha256),
+            "expected_manifest_sha256": args.expected_manifest_sha256,
+            "trusted_manifest_sha256": args.trusted_manifest_sha256,
+            "candidate_generation_id": args.candidate_generation_id,
+            "run_id": args.run_id,
             "minimum_free_gib": args.minimum_free_gib,
             "timeout_seconds": args.timeout_seconds,
             "min_pairs": args.min_pairs,
@@ -837,6 +945,9 @@ def cmd_pipeline(args) -> int:
     report: dict[str, object] = {
         "profile_id": "FRAMEWORK_V1_FULL",
         "framework_version": C.FRAMEWORK_VERSION,
+        "candidate_generation_id": args.candidate_generation_id,
+        "manifest_sha256": args.expected_manifest_sha256,
+        "run_id": args.run_id,
         "preflight": preflight,
         "resume_requested": bool(args.resume),
         "input_fingerprint": input_fingerprint,
@@ -850,9 +961,35 @@ def cmd_pipeline(args) -> int:
                         "reason": "requires verified A, B, and E"},
     }
 
+    fingerprint_inputs = {
+        "paths": [str(Path(p).resolve()) for p in fingerprint_paths],
+        "values": {
+            "expected_root": str(Path(args.expected_root).resolve()),
+            "manifest_root": str(Path(args.manifest_root).resolve()),
+            "expected_contract_sha256": args.expected_contract_sha256,
+            "expected_framework_contract_sha256": (
+                args.expected_framework_contract_sha256),
+            "expected_manifest_sha256": args.expected_manifest_sha256,
+            "trusted_manifest_sha256": args.trusted_manifest_sha256,
+            "candidate_generation_id": args.candidate_generation_id,
+            "run_id": args.run_id,
+            "minimum_free_gib": args.minimum_free_gib,
+            "timeout_seconds": args.timeout_seconds,
+            "min_pairs": args.min_pairs,
+            "access_date": args.access_date,
+            "required_features": list(args.required_feature),
+        },
+    }
+
     def _finish(code: int) -> int:
         bound = bind_pipeline_report(
-            report, exit_code=code, input_fingerprint=input_fingerprint)
+            report, exit_code=code, input_fingerprint=input_fingerprint,
+            fingerprint_inputs=fingerprint_inputs,
+            candidate_generation_id=args.candidate_generation_id,
+            manifest_sha256=(str(report["manifest_sha256"])
+                             if isinstance(report.get("manifest_sha256"), str)
+                             else None),
+            run_id=args.run_id)
         report_ok, report_errors = verify_pipeline_report(
             bound, artifact_root=out)
         if not report_ok:
@@ -911,14 +1048,69 @@ def cmd_pipeline(args) -> int:
         raw = _load_json(args.raw)
         controls = (ControlsConfig.from_dict(_load_json(args.controls_config))
                     if args.controls_config else ControlsConfig())
+
+        # Deep lineage gate (G1/G9/G25): candidate generation identity,
+        # receipts, hash links, and waiver/audit consistency must verify
+        # before any stage is materialized.
+        from .lineage import verify_candidate_lineage
+        from .input_manifest import canonical_input_manifest_hash
+        manifest_sha256 = canonical_input_manifest_hash(manifest)
+        if manifest_sha256 != args.expected_manifest_sha256:
+            report["LINEAGE"] = {
+                "status": "BLOCKED",
+                "reason": (
+                    "canonical manifest hash does not match the expected "
+                    f"anchor ({manifest_sha256} != "
+                    f"{args.expected_manifest_sha256})"),
+            }
+            _checkpoint("LINEAGE", "BLOCKED",
+                        reason="canonical manifest anchor mismatch")
+            return _finish(2)
+        report["manifest_sha256"] = manifest_sha256
+        lineage = verify_candidate_lineage(
+            args.manifest, args.manifest_root,
+            expected_manifest_sha256=args.expected_manifest_sha256,
+            expected_data_contract_sha256=args.expected_contract_sha256,
+            expected_framework_contract_sha256=(
+                args.expected_framework_contract_sha256),
+            candidate_generation_id=args.candidate_generation_id,
+            trusted_manifest_file_sha256=args.trusted_manifest_sha256,
+            waiver_path=_lineage_sidecar(args.manifest_root, args.waiver,
+                                         "waivers.json"),
+            audit_packet_path=_lineage_sidecar(
+                args.manifest_root, args.audit_packet,
+                "d1_remediation_audit.json"),
+            requirements_path=_lineage_sidecar(
+                args.manifest_root, args.requirements,
+                "d1_remediation_requirements.json"),
+        )
+        report["LINEAGE"] = {
+            "status": "VERIFIED" if lineage.ok else "BLOCKED",
+            "ok": lineage.ok,
+            "checks": lineage.to_dict().get("checks", {}),
+        }
+        if not lineage.ok:
+            report["LINEAGE"]["errors"] = list(lineage.errors)
+            _checkpoint("LINEAGE", "BLOCKED", errors=list(lineage.errors))
+            return _finish(2)
+        _checkpoint("LINEAGE", "COMPLETED")
+
         catalog = build_catalog(raw, controls=controls,
-                                access_date=args.access_date)
+                                access_date=args.access_date,
+                                candidate_generation_id=(
+                                    args.candidate_generation_id),
+                                manifest_sha256=manifest_sha256,
+                                manifest_file_sha256=(
+                                    args.trusted_manifest_sha256))
         a_paths = materialize_phase_a(
             catalog,
             out / "catalog",
             source_catalog_path=args.raw,
             data_contract_sha256=args.expected_contract_sha256,
             access_date=args.access_date,
+            candidate_generation_id=args.candidate_generation_id,
+            manifest_sha256=manifest_sha256,
+            manifest_file_sha256=args.trusted_manifest_sha256,
         )
         a_envelope_path = a_paths["envelope"]
         a_gate_artifact = _load_json(a_envelope_path)
@@ -931,6 +1123,9 @@ def cmd_pipeline(args) -> int:
             data_contract_sha256=args.expected_contract_sha256,
             expected_framework_contract_sha256=(
                 args.expected_framework_contract_sha256),
+            expected_candidate_generation_id=args.candidate_generation_id,
+            expected_manifest_sha256=manifest_sha256,
+            expected_manifest_file_sha256=args.trusted_manifest_sha256,
         )
         a_gate_passed = bool(
             a_deep_ok and
@@ -966,7 +1161,10 @@ def cmd_pipeline(args) -> int:
                          a_gate_artifact))
 
         bundle = load_verified_b_input_bundle(
-            args.manifest_root, manifest,
+            args.manifest_root,
+            manifest_path=args.manifest,
+            trusted_manifest_file_sha256=args.trusted_manifest_sha256,
+            candidate_generation_id=args.candidate_generation_id,
             expected_contract_sha256=args.expected_contract_sha256,
             expected_framework_contract_sha256=args.expected_framework_contract_sha256,
             repo_root=args.repo_root,
@@ -982,24 +1180,28 @@ def cmd_pipeline(args) -> int:
             _checkpoint("B_INPUT", "BLOCKED", errors=list(bundle.errors))
             return _finish(2)
 
-        b_result = build_b_screen_from_bundle(
+        b_result = run_b_screen_in_worker(
             bundle, controls_lock=catalog["controls_lock"],
             a_gate_artifact=a_gate_artifact,
             timeout_seconds=args.timeout_seconds,
             checkpoint_path=out / "b_checkpoint.json",
         )
         b_path = out / "b_screen.json"
-        write_deterministic_json(b_path, b_result)
+        # Verify the B envelope before persisting it: a failed envelope must
+        # never appear on disk as a result file (write-after-verify ordering).
         b_envelope_ok, b_envelope_errors = verify_artifact_envelope(b_result)
+        if b_envelope_ok:
+            write_deterministic_json(b_path, b_result)
         report["B_SCREEN"] = {
             "status": b_result.get("phase_status", C.PHASE_STATUS_B_TO_C_BLOCKED),
             "screen_status": b_result.get("status"),
             "gate_passed": b_result.get("gate_passed", False),
             "envelope_verified": b_envelope_ok,
             "verification_errors": b_envelope_errors,
-            "artifact": str(b_path),
+            "artifact": str(b_path) if b_envelope_ok else None,
             "artifact_sha256": b_result.get("artifact_sha256"),
-            "artifact_file_sha256": sha256_file(b_path),
+            "artifact_file_sha256": (sha256_file(b_path) if b_envelope_ok
+                                     else None),
         }
         _checkpoint("B_SCREEN", "COMPLETED" if b_envelope_ok else "FAILED",
                      artifact_sha256=b_result.get("artifact_sha256"),
@@ -1090,8 +1292,20 @@ def cmd_pipeline(args) -> int:
             validation_gate=e_artifact, contract_hash=C.contract_hash(),
             strict=True,
         )
-        f_path = out / "briefing.md"
-        write_briefing(f_path, briefing)
+        # G34 ordering: build and verify every machine-readable F envelope
+        # BEFORE the human-readable briefing is persisted.  A markdown file
+        # must never exist on disk claiming completion its own envelopes
+        # cannot prove.
+        from .briefing import (build_f_envelope, verify_f_envelope,
+                               write_f_envelope)
+        f_envelope = build_f_envelope(
+            summary, catalog_gate=a_gate_artifact, screen_gate=b_result,
+            validation_gate=e_artifact, contract_hash=C.contract_hash(),
+            candidate_generation_id=args.candidate_generation_id,
+            manifest_sha256=manifest_sha256, briefing_text=briefing)
+        f_envelope_path = out / "f_envelope.json"
+        write_f_envelope(f_envelope_path, f_envelope)
+        f_env_ok, f_env_errors = verify_f_envelope(f_envelope_path)
         f_artifact = build_briefing_artifact(
             briefing,
             summary=summary,
@@ -1102,25 +1316,36 @@ def cmd_pipeline(args) -> int:
             strict=True,
         )
         f_artifact_path = out / "briefing.json"
-        # The builder includes the complete upstream envelopes.  Persist with
-        # the deterministic writer so the result is atomic, then verify the
-        # exact object that is handed to the report.
-        write_deterministic_json(f_artifact_path, f_artifact)
         f_ok, f_errors = verify_briefing_artifact(f_artifact)
+        all_ok = bool(f_ok and f_env_ok)
+        if all_ok:
+            # The builder includes the complete upstream envelopes.  Persist
+            # the machine artifacts first; the markdown briefing is the last
+            # byte written only after every envelope verified.
+            write_deterministic_json(f_artifact_path, f_artifact)
+            f_path = out / "briefing.md"
+            write_briefing(f_path, briefing)
         report["F_BRIEFING"] = {
-            "status": C.PHASE_STATUS_F_READY if f_ok else C.PHASE_STATUS_F_BLOCKED,
-            "artifact": str(f_path),
-            "envelope": str(f_artifact_path),
+            "status": (C.PHASE_STATUS_F_READY if all_ok
+                       else C.PHASE_STATUS_F_BLOCKED),
+            "artifact": str(out / "briefing.md") if all_ok else None,
+            "envelope": str(f_artifact_path) if all_ok else None,
+            "strict_envelope": str(f_envelope_path),
+            "strict_envelope_sha256": f_envelope.get("artifact_sha256"),
+            "strict_envelope_verified": f_env_ok,
+            "strict_envelope_errors": f_env_errors,
             "envelope_verified": f_ok,
             "verification_errors": f_errors,
             "artifact_sha256": f_artifact.get("artifact_sha256"),
-            "artifact_file_sha256": sha256_file(f_path),
-            "envelope_file_sha256": sha256_file(f_artifact_path),
+            "artifact_file_sha256": (
+                sha256_file(out / "briefing.md") if all_ok else None),
+            "envelope_file_sha256": (
+                sha256_file(f_artifact_path) if all_ok else None),
         }
-        _checkpoint("F_BRIEFING", "COMPLETED" if f_ok else "FAILED",
-                     artifact=str(f_path),
-                     envelope_sha256=f_artifact.get("artifact_sha256"))
-        if not f_ok:
+        _checkpoint("F_BRIEFING", "COMPLETED" if all_ok else "FAILED",
+                     envelope_sha256=f_artifact.get("artifact_sha256"),
+                     strict_envelope_sha256=f_envelope.get("artifact_sha256"))
+        if not all_ok:
             return _finish(5)
     except (OSError, TypeError, ValueError, RuntimeError, C.FrameworkError) as exc:
         report["pipeline_error"] = str(exc)
@@ -1175,6 +1400,26 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--expected-contract-sha256", default=None)
     b.add_argument("--expected-framework-contract-sha256",
                    default=None)
+    b.add_argument("--trusted-manifest-sha256", default=None,
+                   help="externally pinned SHA-256 of the on-disk manifest "
+                        "file bytes; required in strict mode")
+    b.add_argument("--expected-manifest-sha256", default=None,
+                   help="canonical manifest self-hash anchor; required in "
+                        "strict mode")
+    b.add_argument("--candidate-generation-id", default=None,
+                   help="enforced candidate generation id; required in "
+                        "strict mode")
+    b.add_argument("--waiver", default=None,
+                   help="lineage waiver file; defaults to "
+                        "<manifest-root>/provenance/waivers.json when present")
+    b.add_argument("--audit-packet", default=None,
+                   help="lineage audit packet; defaults to "
+                        "<manifest-root>/provenance/d1_remediation_audit.json "
+                        "when present")
+    b.add_argument("--requirements", default=None,
+                   help="lineage requirements file; defaults to "
+                        "<manifest-root>/provenance/"
+                        "d1_remediation_requirements.json when present")
     b.add_argument("--require-artifact", action="append", default=[])
     b.set_defaults(func=cmd_screen)
 
@@ -1198,8 +1443,14 @@ def build_parser() -> argparse.ArgumentParser:
     e.add_argument("--expected-framework-contract-sha256",
                    default=C.contract_hash())
     e.add_argument("--require-artifact", action="append", default=[])
+    e.add_argument("--trusted-manifest-sha256", default=None,
+                   help="externally pinned SHA-256 of the on-disk manifest "
+                        "file bytes; required in strict mode")
     e.add_argument("--a-gate", default=None)
     e.add_argument("--b-gate", default=None)
+    e.add_argument("--candidate-generation-id", default=None,
+                   help="when supplied, the manifest's declared candidate "
+                        "generation must match")
     e.add_argument("--required-feature", action="append", default=[])
     e.set_defaults(func=cmd_validate)
 
@@ -1215,6 +1466,14 @@ def build_parser() -> argparse.ArgumentParser:
     f.add_argument("--strict", action="store_true",
                    help="require verified A/B/E envelopes before generating F")
     f.add_argument("--out", required=True)
+    f.add_argument("--envelope-out", default=None,
+                   help="strict machine-readable F envelope JSON path; "
+                        "verified from disk before the markdown is written")
+    f.add_argument("--candidate-generation-id", default=None,
+                   help="generation id embedded in the strict F envelope")
+    f.add_argument("--manifest-sha256", default=None,
+                   help="canonical manifest self-hash embedded in the strict "
+                        "F envelope")
     f.set_defaults(func=cmd_brief)
 
     m = sub.add_parser("manifest", help="verify a reconciled input manifest")
@@ -1228,6 +1487,12 @@ def build_parser() -> argparse.ArgumentParser:
                    default=C.contract_hash())
     m.add_argument("--require-artifact", action="append", default=[])
     m.add_argument("--require-primary", action="store_true")
+    m.add_argument("--trusted-manifest-sha256", default=None,
+                   help="externally pinned SHA-256 of the on-disk manifest "
+                        "file bytes; required by --require-primary")
+    m.add_argument("--candidate-generation-id", default=None,
+                   help="when supplied, the manifest's declared candidate "
+                        "generation must match")
     m.set_defaults(func=cmd_manifest)
 
     i = sub.add_parser(
@@ -1298,6 +1563,27 @@ def build_parser() -> argparse.ArgumentParser:
                     help="explicit data-contract SHA-256")
     p0.add_argument("--expected-framework-contract-sha256", required=True,
                     help="explicit framework-contract SHA-256")
+    p0.add_argument("--trusted-manifest-sha256", required=True,
+                    help="externally pinned SHA-256 of the on-disk manifest "
+                         "file bytes")
+    p0.add_argument("--expected-manifest-sha256", required=True,
+                    help="canonical manifest self-hash anchor")
+    p0.add_argument("--candidate-generation-id", required=True,
+                    help="enforced candidate generation id bound into every "
+                         "stage artifact and the pipeline report")
+    p0.add_argument("--run-id", default=None,
+                    help="run identity recorded in the pipeline report")
+    p0.add_argument("--waiver", default=None,
+                    help="lineage waiver file; defaults to "
+                         "<manifest-root>/provenance/waivers.json when present")
+    p0.add_argument("--audit-packet", default=None,
+                    help="lineage audit packet; defaults to "
+                         "<manifest-root>/provenance/d1_remediation_audit.json "
+                         "when present")
+    p0.add_argument("--requirements", default=None,
+                    help="lineage requirements file; defaults to "
+                         "<manifest-root>/provenance/"
+                         "d1_remediation_requirements.json when present")
     p0.add_argument("--minimum-free-gib", type=float, default=8.0)
     p0.add_argument("--timeout-seconds", type=float, default=None,
                     help="bounded Phase B deadline")
@@ -1324,7 +1610,75 @@ def build_parser() -> argparse.ArgumentParser:
                    default=C.contract_hash())
     r.add_argument("--require-artifact", action="append", default=[])
     r.set_defaults(func=cmd_run)
+
+    l0 = sub.add_parser(
+        "lineage",
+        help="deep generation/receipt/source lineage verification (G1 gate)")
+    l0.add_argument("--manifest", required=True)
+    l0.add_argument("--root", required=True)
+    l0.add_argument("--expected-manifest-sha256", required=True)
+    l0.add_argument("--expected-data-contract-sha256", required=True)
+    l0.add_argument("--expected-framework-contract-sha256", required=True)
+    l0.add_argument("--candidate-generation-id", required=True)
+    l0.add_argument("--trusted-manifest-file-sha256", default=None)
+    l0.add_argument("--waiver", default=None,
+                    help="waiver file for triple-consistency check")
+    l0.add_argument("--audit-packet", default=None,
+                    help="current audit packet for generation identity")
+    l0.add_argument("--requirements", default=None)
+    l0.add_argument("--out", default=None)
+    l0.set_defaults(func=cmd_lineage)
+
+    f0 = sub.add_parser(
+        "find-reports",
+        help="generation-aware current pipeline report discovery")
+    f0.add_argument("--runs-root", required=True)
+    f0.add_argument("--candidate-generation-id", required=True)
+    f0.add_argument("--manifest-sha256", default=None)
+    f0.add_argument("--out", default=None)
+    f0.set_defaults(func=cmd_find_reports)
     return p
+
+
+def cmd_lineage(args) -> int:
+    """Run the deep generation/receipt/source lineage verification (G1)."""
+    from .lineage import verify_candidate_lineage
+    result = verify_candidate_lineage(
+        args.manifest, args.root,
+        expected_manifest_sha256=args.expected_manifest_sha256,
+        expected_data_contract_sha256=args.expected_data_contract_sha256,
+        expected_framework_contract_sha256=(
+            args.expected_framework_contract_sha256),
+        candidate_generation_id=args.candidate_generation_id,
+        trusted_manifest_file_sha256=args.trusted_manifest_file_sha256,
+        waiver_path=args.waiver,
+        audit_packet_path=args.audit_packet,
+        requirements_path=args.requirements,
+    )
+    payload = result.to_dict()
+    if args.out:
+        from .lineage import disk_guard
+        disk_guard(Path(args.out).parent)
+        write_deterministic_json(args.out, payload)
+    _print(json.dumps(payload, sort_keys=True, indent=2))
+    if result.ok:
+        return 0
+    if any("malformed" in error or "unreadable" in error for error in
+           result.errors):
+        return 5
+    return 2
+
+
+def cmd_find_reports(args) -> int:
+    """Generation-aware discovery of current pipeline reports (G27)."""
+    from .lineage import discover_current_run_reports
+    result = discover_current_run_reports(
+        args.runs_root, candidate_generation_id=args.candidate_generation_id,
+        manifest_sha256=args.manifest_sha256)
+    if args.out:
+        write_deterministic_json(args.out, result)
+    _print(json.dumps(result, sort_keys=True, indent=2))
+    return 0 if result.get("ok") else 2
 
 
 def main(argv=None) -> int:

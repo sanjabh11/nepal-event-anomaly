@@ -424,6 +424,47 @@ def test_verified_b_loader_rejects_stale_runtime_framework_hash(tmp_path):
                for error in bundle.errors)
 
 
+def test_verified_b_loader_requires_trusted_manifest_file_anchor(tmp_path):
+    bundle = load_verified_b_input_bundle(
+        tmp_path,
+        expected_contract_sha256="a" * 64,
+        expected_framework_contract_sha256=C.contract_hash(),
+    )
+    assert bundle.status == "BLOCKED"
+    assert any("trusted_manifest_file_sha256" in error
+               for error in bundle.errors)
+
+
+def test_verified_b_loader_rejects_manifest_file_anchor_mismatch(tmp_path):
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    bundle = load_verified_b_input_bundle(
+        tmp_path,
+        manifest_path=manifest_path,
+        trusted_manifest_file_sha256="f" * 64,
+        candidate_generation_id="GEN-TEST",
+        expected_contract_sha256="a" * 64,
+        expected_framework_contract_sha256=C.contract_hash(),
+    )
+    assert bundle.status == "BLOCKED"
+    assert any("file anchor" in error or "trusted" in error
+               for error in bundle.errors)
+
+
+def test_verified_b_loader_rejects_mapping_with_file_anchor(tmp_path):
+    bundle = load_verified_b_input_bundle(
+        tmp_path, {"schema_version": "x"},
+        manifest_path=tmp_path / "manifest.json",
+        trusted_manifest_file_sha256="e" * 64,
+        candidate_generation_id="GEN-TEST",
+        expected_contract_sha256="a" * 64,
+        expected_framework_contract_sha256=C.contract_hash(),
+    )
+    assert bundle.status == "BLOCKED"
+    assert any("detached mapping" in error or "mapping" in error
+               for error in bundle.errors)
+
+
 def test_current_reconciled_handoff_stays_blocked_until_semantic_b_inputs_exist():
     from pathlib import Path
     root = Path(__file__).resolve().parents[1] / "data" / \

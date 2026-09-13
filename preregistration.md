@@ -212,10 +212,38 @@ This is NOT a failure. It is a bound on observability.
 
 | Source | Resolution | Access | License |
 |--------|-----------|--------|---------|
-| ERA5-Land | ~11.1 × 9.8 km, hourly | CDS API (`~/.cdsapirc`) | Copernicus License |
+| ERA5-Land (primary) | ~11.1 × 9.8 km, **daily** | DestinE Earth Data Hub Zarr v3 (`api.earthdatahub.destine.eu`) | Copernicus License |
+| ERA5-Land (fallback) | ~11.1 × 9.8 km, hourly | CDS API (`~/.cdsapirc`) | Copernicus License |
 | Copernicus DEM GLO-30 | 30 m | Copernicus Data Space | Copernicus License |
 | NISAR GUNW/GOFF (metadata only) | 80 m / 20 m | ASF CMR (no auth for catalog) | NASA Open Data |
 | Hausfather ERA5 0.25° (reference) | ~31 km | GitHub (committed NetCDF) | Open |
+
+**Post-hoc data source substitution (2026-09-10, logged per Section 11):**
+
+The primary data source was changed from CDS API hourly to EDH Zarr v3 daily
+due to CDS API queue latency (~13 hours for 78 monthly requests). The EDH
+daily store provides pre-aggregated daily values from the same ERA5-Land
+reanalysis, accessed via `api.earthdatahub.destine.eu` with a standard
+API key.
+
+**Variables available in EDH daily store (5 of 7 contract variables):**
+- t2m, d2m, u10, v10, tp (daily mean/sum as appropriate)
+
+**Variables NOT available in EDH daily store (2 of 7):**
+- sd (snow_depth), sf (snowfall)
+
+**Justification for missing sd/sf:**
+For the JJA monsoon regime at 28.25°N (Langtang region), snow depth and
+snowfall are near-zero. The event is a monsoon-season glacier slope
+failure, not a winter snow-avalanche. The missing variables do not
+affect the thermal regime anomaly assessment that is the primary
+scientific question.
+
+**Cross-validation:**
+EDH daily t2m was cross-validated against the Hausfath ERA5 0.25°
+reference for Aug 19-22, 2026 (4-day overlap). Mean absolute difference:
+1.64 K, explained by grid cell offset (EDH cell at 28.20°N vs Hausfath
+at 28.25°N, consistent with environmental lapse rate).
 
 ---
 
@@ -238,6 +266,7 @@ This is NOT a failure. It is a bound on observability.
 | Date | Change | Reason |
 |------|--------|--------|
 | 2026-09-10 | Initial freeze | Pre-registration before data inspection |
+| 2026-09-10 | POST-HOC: Data source substitution CDS hourly → EDH daily | CDS queue latency (~13h for 78 requests); EDH Zarr v3 provides same ERA5-Land reanalysis in 66 seconds. Missing sd/sf documented in Section 9. Cross-validated against Hausfath reference (1.64 K mean abs diff, explained by grid offset). |
 
 **No changes after this point. Any post-hoc additions must be logged as
 "post-hoc, not pre-registered" with justification.**

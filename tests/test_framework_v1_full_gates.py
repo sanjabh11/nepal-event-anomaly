@@ -146,7 +146,8 @@ def test_pipeline_style_envelope_binds_status_and_provenance():
         "F_BRIEFING": {"status": "F_BLOCKED"},
         "status": "B_TO_C_BLOCKED",
         "provenance": {"framework_contract_sha256": C.contract_hash()},
-    }, exit_code=3)
+    }, exit_code=3, input_fingerprint="f" * 64,
+        candidate_generation_id="GEN-TEST", manifest_sha256="a" * 64)
     assert verify_pipeline_report(envelope) == (True, [])
     tampered = json.loads(json.dumps(envelope))
     tampered["status"] = "B_TO_C_READY"
@@ -160,7 +161,8 @@ def test_pipeline_report_requires_runtime_framework_contract_provenance():
         "E_VALIDATION": {"status": "E_BLOCKED"},
         "F_BRIEFING": {"status": "F_BLOCKED"},
         "status": "B_TO_C_BLOCKED",
-    }, exit_code=3)
+    }, exit_code=3, input_fingerprint="f" * 64,
+        candidate_generation_id="GEN-TEST", manifest_sha256="a" * 64)
 
     assert envelope["provenance"]["framework_contract_sha256"] == C.contract_hash()
     assert verify_pipeline_report(envelope) == (True, [])
@@ -172,7 +174,8 @@ def test_pipeline_report_requires_runtime_framework_contract_provenance():
         "F_BRIEFING": {"status": "F_BLOCKED"},
         "status": "B_TO_C_BLOCKED",
         "provenance": {"framework_contract_sha256": "0" * 64},
-    }, exit_code=3)
+    }, exit_code=3, input_fingerprint="f" * 64,
+        candidate_generation_id="GEN-TEST", manifest_sha256="a" * 64)
 
     valid, errors = verify_pipeline_report(forged)
 
@@ -190,7 +193,8 @@ def test_pipeline_report_requires_authenticated_a_evidence_when_a_is_ready(tmp_p
     missing = bind_pipeline_report({
         **blocked,
         "A_CATALOG": {"status": "A_READY"},
-    }, exit_code=3)
+    }, exit_code=3, input_fingerprint="f" * 64,
+        candidate_generation_id="GEN-TEST", manifest_sha256="a" * 64)
 
     valid, errors = verify_pipeline_report(missing)
 
@@ -218,7 +222,8 @@ def test_pipeline_report_requires_authenticated_a_evidence_when_a_is_ready(tmp_p
             "artifact_sha256": a_gate["artifact_sha256"],
             "artifact_file_sha256": sha256_file(a_path),
         },
-    }, exit_code=3)
+    }, exit_code=3, input_fingerprint="f" * 64,
+        candidate_generation_id="GEN-TEST", manifest_sha256="a" * 64)
 
     assert verify_pipeline_report(complete, artifact_root=tmp_path) == (True, [])
 
@@ -248,7 +253,8 @@ def test_pipeline_report_requires_downstream_ready_stage_evidence(tmp_path):
         "provenance": {"framework_contract_sha256": C.contract_hash()},
     }
 
-    missing_b = bind_pipeline_report(base, exit_code=3)
+    missing_b = bind_pipeline_report(base, exit_code=3, input_fingerprint="f" * 64,
+        candidate_generation_id="GEN-TEST", manifest_sha256="a" * 64)
     valid, errors = verify_pipeline_report(missing_b)
     assert valid is False
     assert any("b_screen" in error.lower() and "evidence" in error.lower()
@@ -263,7 +269,8 @@ def test_pipeline_report_requires_downstream_ready_stage_evidence(tmp_path):
         "artifact_sha256": "a" * 64,
     }
     base["E_VALIDATION"] = {"status": C.PHASE_STATUS_E_READY}
-    missing_e = bind_pipeline_report(base, exit_code=3)
+    missing_e = bind_pipeline_report(base, exit_code=3, input_fingerprint="f" * 64,
+        candidate_generation_id="GEN-TEST", manifest_sha256="a" * 64)
     valid, errors = verify_pipeline_report(missing_e)
     assert valid is False
     assert any("e_validation" in error.lower() and "evidence" in error.lower()
@@ -277,7 +284,8 @@ def test_pipeline_report_requires_downstream_ready_stage_evidence(tmp_path):
         "artifact_sha256": "b" * 64,
     }
     base["F_BRIEFING"] = {"status": C.PHASE_STATUS_F_READY}
-    missing_f = bind_pipeline_report(base, exit_code=3)
+    missing_f = bind_pipeline_report(base, exit_code=3, input_fingerprint="f" * 64,
+        candidate_generation_id="GEN-TEST", manifest_sha256="a" * 64)
     valid, errors = verify_pipeline_report(missing_f)
     assert valid is False
     assert any("f_briefing" in error.lower() and "evidence" in error.lower()
@@ -396,7 +404,8 @@ def test_pipeline_report_requires_downstream_ready_stage_evidence(tmp_path):
         },
         "status": C.PHASE_STATUS_F_READY,
     })
-    complete = bind_pipeline_report(base, exit_code=0)
+    complete = bind_pipeline_report(base, exit_code=0, input_fingerprint="f" * 64,
+        candidate_generation_id="GEN-TEST", manifest_sha256="a" * 64)
     assert verify_pipeline_report(complete, artifact_root=tmp_path) == (True, [])
 
 
@@ -410,7 +419,8 @@ def test_pipeline_report_ready_stage_requires_bound_file_evidence(tmp_path):
         "status": C.PHASE_STATUS_B_TO_C_BLOCKED,
         "provenance": {"framework_contract_sha256": C.contract_hash()},
     }
-    unbound = bind_pipeline_report(base, exit_code=3)
+    unbound = bind_pipeline_report(base, exit_code=3, input_fingerprint="f" * 64,
+        candidate_generation_id="GEN-TEST", manifest_sha256="a" * 64)
 
     valid, errors = verify_pipeline_report(unbound)
 
@@ -438,7 +448,8 @@ def test_pipeline_report_checks_ready_stage_file_bytes(tmp_path):
         "status": C.PHASE_STATUS_B_TO_C_BLOCKED,
         "provenance": {"framework_contract_sha256": C.contract_hash()},
     }
-    report = bind_pipeline_report(base, exit_code=3)
+    report = bind_pipeline_report(base, exit_code=3, input_fingerprint="f" * 64,
+        candidate_generation_id="GEN-TEST", manifest_sha256="a" * 64)
 
     assert verify_pipeline_report(report, artifact_root=tmp_path) == (True, [])
     a_path.write_text("tampered", encoding="utf-8")
@@ -456,7 +467,8 @@ def test_pipeline_report_rejects_incoherent_downstream_ready_states():
         "F_BRIEFING": {"status": C.PHASE_STATUS_F_READY},
         "status": C.PHASE_STATUS_B_TO_C_BLOCKED,
         "provenance": {"framework_contract_sha256": C.contract_hash()},
-    }, exit_code=3)
+    }, exit_code=3, input_fingerprint="f" * 64,
+        candidate_generation_id="GEN-TEST", manifest_sha256="a" * 64)
 
     valid, errors = verify_pipeline_report(envelope)
 
@@ -474,7 +486,8 @@ def test_pipeline_report_rejects_malformed_preflight_without_raising():
         "F_BRIEFING": {"status": C.PHASE_STATUS_F_BLOCKED},
         "status": C.PHASE_STATUS_B_TO_C_BLOCKED,
         "provenance": {"framework_contract_sha256": C.contract_hash()},
-    }, exit_code=3)
+    }, exit_code=3, input_fingerprint="f" * 64,
+        candidate_generation_id="GEN-TEST", manifest_sha256="a" * 64)
 
     valid, errors = verify_pipeline_report(envelope)
 
@@ -490,7 +503,8 @@ def test_pipeline_report_rejects_non_object_stage_without_raising():
         "F_BRIEFING": {"status": C.PHASE_STATUS_F_BLOCKED},
         "status": C.PHASE_STATUS_B_TO_C_BLOCKED,
         "provenance": {"framework_contract_sha256": C.contract_hash()},
-    }, exit_code=3)
+    }, exit_code=3, input_fingerprint="f" * 64,
+        candidate_generation_id="GEN-TEST", manifest_sha256="a" * 64)
 
     valid, errors = verify_pipeline_report(envelope)
 
@@ -507,7 +521,8 @@ def test_pipeline_report_rejects_unhashable_stage_status_without_raising():
         "F_BRIEFING": {"status": C.PHASE_STATUS_F_BLOCKED},
         "status": C.PHASE_STATUS_B_TO_C_BLOCKED,
         "provenance": {"framework_contract_sha256": C.contract_hash()},
-    }, exit_code=3)
+    }, exit_code=3, input_fingerprint="f" * 64,
+        candidate_generation_id="GEN-TEST", manifest_sha256="a" * 64)
     tampered = copy.deepcopy(envelope)
     tampered["stage_statuses"]["A_CATALOG"] = []
 
@@ -525,7 +540,8 @@ def test_pipeline_report_rejects_unsupported_exit_code():
         "F_BRIEFING": {"status": C.PHASE_STATUS_F_BLOCKED},
         "status": C.PHASE_STATUS_B_TO_C_BLOCKED,
         "provenance": {"framework_contract_sha256": C.contract_hash()},
-    }, exit_code=99)
+    }, exit_code=99, input_fingerprint="f" * 64,
+        candidate_generation_id="GEN-TEST", manifest_sha256="a" * 64)
 
     valid, errors = verify_pipeline_report(envelope)
 
@@ -541,7 +557,8 @@ def test_pipeline_exit_five_is_distinct_from_a_gate_block():
         "F_BRIEFING": {"status": C.PHASE_STATUS_F_BLOCKED},
         "status": C.PHASE_STATUS_A_BLOCKED,
         "provenance": {"framework_contract_sha256": C.contract_hash()},
-    }, exit_code=5)
+    }, exit_code=5, input_fingerprint="f" * 64,
+        candidate_generation_id="GEN-TEST", manifest_sha256="a" * 64)
 
     assert envelope["pipeline_status"] == "PIPELINE_FAILED"
     assert verify_pipeline_report(envelope) == (True, [])
@@ -593,7 +610,27 @@ def test_pipeline_checkpoint_rejects_terminal_state_as_non_resumable(tmp_path):
     assert any("resumable" in error.lower() for error in errors)
 
 
-def test_pipeline_checkpoint_accepts_completed_stage_for_replay(tmp_path):
+def test_pipeline_checkpoint_accepts_resumable_stage_for_replay(tmp_path):
+    source = tmp_path / "raw.json"
+    source.write_text("{}", encoding="utf-8")
+    fingerprint = pipeline_input_fingerprint([source], values={"phase": "B"})
+    checkpoint = tmp_path / "checkpoint.json"
+    write_pipeline_checkpoint(
+        checkpoint,
+        {"run_state": "INCOMPLETE", "stage": "B_SCREEN"},
+        input_fingerprint=fingerprint,
+    )
+
+    loaded, errors = load_verified_pipeline_checkpoint(
+        checkpoint, input_fingerprint=fingerprint)
+
+    assert errors == []
+    assert loaded is not None
+
+
+def test_pipeline_checkpoint_rejects_completed_run_state_for_replay(tmp_path):
+    # G32: a checkpoint that already reached a terminal stage state must not
+    # be treated as resumable; only RUNNING/INCOMPLETE may seed a replay.
     source = tmp_path / "raw.json"
     source.write_text("{}", encoding="utf-8")
     fingerprint = pipeline_input_fingerprint([source], values={"phase": "B"})
@@ -607,8 +644,8 @@ def test_pipeline_checkpoint_accepts_completed_stage_for_replay(tmp_path):
     loaded, errors = load_verified_pipeline_checkpoint(
         checkpoint, input_fingerprint=fingerprint)
 
-    assert errors == []
-    assert loaded is not None
+    assert loaded is None
+    assert any("resumable" in error.lower() for error in errors)
 
 
 def test_pipeline_wraps_direct_a_gate_with_catalog_artifact_provenance(tmp_path):
