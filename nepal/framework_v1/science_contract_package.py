@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import tempfile
 from datetime import datetime, timezone
@@ -36,7 +37,8 @@ from typing import Any, Mapping, Optional
 
 from .feature_matrix_contract import (FEATURE_CONTRACT_SHA256_FIELD,
                                       FMX_BLOCKED_PENDING_EXPLICIT_FREEZE,
-                                      build_fmx_envelope)
+                                      build_fmx_envelope,
+                                      verify_fmx_envelope)
 from .multi_event_contract import build_mec_envelope
 from .provenance import (bind_artifact_envelope, sha256_file,
                          verify_artifact_envelope)
@@ -156,6 +158,64 @@ def _blocked_fmx_fixture() -> Mapping[str, Any]:
         "data_source_status": "SYNTHETIC_FIXTURE"}
 
 
+def _check_package_dir_fresh(pkg_dir: Path,
+                             forbidden_roots: Optional[list]) -> None:
+    """OPS-PKG-01: the package root must be a fresh, empty, non-symlink
+    directory that does not resolve under any forbidden root (repo
+    checkouts, dirty main, prior package roots)."""
+    if pkg_dir.is_symlink():
+        raise ValueError(f"package_dir is a symlink: {pkg_dir}")
+    if pkg_dir.exists():
+        if not pkg_dir.is_dir():
+            raise ValueError(f"package_dir exists and is not a "
+                             f"directory: {pkg_dir}")
+        if any(pkg_dir.iterdir()):
+            raise ValueError(f"package_dir must be a fresh empty "
+                             f"directory: {pkg_dir}")
+    resolved = pkg_dir.resolve()
+    for root in forbidden_roots or []:
+        root_r = Path(root).resolve()
+        if resolved == root_r or root_r in resolved.parents:
+            raise ValueError(f"package_dir resolves under forbidden root "
+                             f"{root_r}")
+
+
+_EVIDENCE_REF_FIELDS = ("role", "relative_path", "sha256")
+
+
+def _check_evidence_references(refs: Any) -> list:
+    """OPS-PKG-04: typed digest-only evidence references — role, safe
+    relative path, and a lowercase SHA-256; nothing else is allowed."""
+    if refs is None:
+        return []
+    if not isinstance(refs, list):
+        raise ValueError("evidence_references must be a list")
+    checked = []
+    for i, ref in enumerate(refs):
+        if not isinstance(ref, Mapping):
+            raise ValueError(f"evidence_references[{i}] must be a mapping")
+        extra = set(ref) - set(_EVIDENCE_REF_FIELDS)
+        if extra:
+            raise ValueError(f"evidence_references[{i}] has disallowed "
+                             f"fields {sorted(extra)}")
+        for field in _EVIDENCE_REF_FIELDS:
+            if field not in ref:
+                raise ValueError(f"evidence_references[{i}].{field} is "
+                                 "required")
+        if not isinstance(ref["role"], str) or not ref["role"]:
+            raise ValueError(f"evidence_references[{i}].role must be a "
+                             "non-empty string")
+        rel = ref["relative_path"]
+        if not isinstance(rel, str) or not rel or rel.startswith("/")                 or ".." in rel.split("/"):
+            raise ValueError(f"evidence_references[{i}].relative_path "
+                             "must be a safe relative path")
+        if not isinstance(ref["sha256"], str) or not                 re.fullmatch(r"[0-9a-f]{64}", ref["sha256"]):
+            raise ValueError(f"evidence_references[{i}].sha256 must be a "
+                             "lowercase SHA-256")
+        checked.append(dict(ref))
+    return checked
+
+
 def build_science_contract_package(
         *, package_dir: str | Path, run_root_name: str,
         code_revision: str, candidate_generation_id: str,
@@ -163,17 +223,21 @@ def build_science_contract_package(
         ranked_payload_sha256: str,
         ranked_payload_sha256_domain_status: str,
         b_status: str = "B_TO_C_BLOCKED",
-        evidence_references: Optional[list] = None
+        evidence_references: Optional[list] = None,
+        forbidden_roots: Optional[list] = None
         ) -> dict[str, Any]:
     """Build the external research package.  Returns the package index.
 
-    Only writes inside ``package_dir``.  Raises ``RuntimeError`` when the
-    disk reserve is violated; the checkpoint is left ``INCOMPLETE`` if the
-    build fails partway.
+    Only writes inside ``package_dir`` — which must be a fresh, empty,
+    non-symlink directory outside every ``forbidden_roots``.  Raises
+    ``RuntimeError`` when the disk reserve is violated; the checkpoint is
+    left ``INCOMPLETE`` if the build fails partway.
     """
     pkg_dir = Path(package_dir)
+    _check_package_dir_fresh(pkg_dir, forbidden_roots)
     pkg_dir.mkdir(parents=True, exist_ok=True)
     _check_disk_reserve(pkg_dir)
+    checked_refs = _check_evidence_references(evidence_references)
 
     checkpoint = {"run_state": "RUNNING", "created_at": _now(),
                   "states": list(CHECKPOINT_STATES)}
@@ -182,9 +246,9 @@ def build_science_contract_package(
 
     try:
         mec_env = build_mec_envelope(_synthetic_mec_fixture())
-        fmx_env = build_fmx_envelope(_blocked_fmx_fixture(),
-                                     freeze_token=None)
+        fmx_env = build_fmx_envelope(_blocked_fmx_fixture())
         assert fmx_env["fmx_status"] == FMX_BLOCKED_PENDING_EXPLICIT_FREEZE
+        assert fmx_env["matrix"]["status"] == "ABSENT"
         scaffold = build_scaffold_envelope({
             "mode": "VALIDATION_SCAFFOLD_ONLY",
             "research_diagnostic_only": True,
@@ -230,7 +294,7 @@ def build_science_contract_package(
             "ranked_payload_sha256": ranked_payload_sha256,
             "ranked_payload_sha256_domain_status":
                 ranked_payload_sha256_domain_status,
-            "evidence_references": list(evidence_references or []),
+            "evidence_references": checked_refs,
             "dirty_matrix_policy": "treated as absent; never inspected",
             "research_diagnostic_only": True,
             "promotion_eligible": False,
@@ -307,10 +371,12 @@ def build_science_contract_package(
         _atomic_write_json(
             pkg_dir / "science_contract_package_index.json", index)
 
+        index_sha = sha256_file(
+            pkg_dir / "science_contract_package_index.json")
         checkpoint["run_state"] = "PASS"
         checkpoint["completed_at"] = _now()
-        checkpoint["index_sha256"] = sha256_file(
-            pkg_dir / "science_contract_package_index.json")
+        checkpoint["index_file_sha256"] = index_sha
+        checkpoint["package_status"] = PACKAGE_STATUS
         _atomic_write_json(ckpt_path, checkpoint)
     except BaseException:
         checkpoint["run_state"] = "INCOMPLETE"
@@ -334,17 +400,32 @@ def verify_science_contract_package(
         if not (pkg_dir / name).is_file():
             problems.append(f"required package file missing: {name}")
 
+    # OPS-PKG-03: every entry must be a regular file; no symlinks, no
+    # directories, no extras beyond the indexed set + index + checkpoint.
+    for entry in sorted(pkg_dir.iterdir()):
+        if entry.is_symlink():
+            problems.append(f"symlink in package directory: "
+                            f"{entry.name}")
+        elif entry.is_dir():
+            problems.append(f"directory in package directory: "
+                            f"{entry.name}")
+        elif not entry.is_file():
+            problems.append(f"non-regular file in package directory: "
+                            f"{entry.name}")
+
     ckpt_path = pkg_dir / "checkpoint.json"
+    ckpt: Mapping[str, Any] = {}
     if ckpt_path.is_file():
         try:
             ckpt = json.loads(ckpt_path.read_text("utf-8"))
         except (OSError, ValueError) as exc:
             problems.append(f"checkpoint unreadable: {exc}")
-            ckpt = {}
         if ckpt.get("run_state") != "PASS":
             problems.append(
                 f"checkpoint run_state {ckpt.get('run_state')!r} is not "
                 "PASS — the package did not complete")
+        if ckpt.get("package_status") not in (None, PACKAGE_STATUS):
+            problems.append("checkpoint package_status mismatch")
 
     index_path = pkg_dir / "science_contract_package_index.json"
     index: Mapping[str, Any] = {}
@@ -362,19 +443,36 @@ def verify_science_contract_package(
             if index.get("package_status") != PACKAGE_STATUS:
                 problems.append(f"package_status must be "
                                 f"{PACKAGE_STATUS!r}")
+            indexed = set()
             for entry in index.get("files", []):
                 rel = entry.get("relative_path")
                 if not isinstance(rel, str) or rel.startswith("/") or \
                         ".." in rel.split("/"):
                     problems.append(f"unsafe index path {rel!r}")
                     continue
+                indexed.add(rel)
                 target = pkg_dir / rel
-                if not target.is_file():
-                    problems.append(f"indexed file missing: {rel}")
+                if not target.is_file() or target.is_symlink():
+                    problems.append(f"indexed file missing or not a "
+                                    f"regular file: {rel}")
                     continue
                 if sha256_file(target) != entry.get("sha256"):
                     problems.append(f"indexed file checksum mismatch: "
                                     f"{rel}")
+            allowed = indexed | {"science_contract_package_index.json",
+                                 "checkpoint.json"}
+            for entry in pkg_dir.iterdir():
+                if entry.is_file() and not entry.is_symlink() and \
+                        entry.name not in allowed and \
+                        not entry.name.startswith(".tmp_"):
+                    problems.append(f"extra file not indexed: "
+                                    f"{entry.name}")
+            # OPS-PKG-02: checkpoint must bind the index file digest
+            expected_index_sha = ckpt.get("index_file_sha256")
+            if expected_index_sha is not None:
+                if sha256_file(index_path) != expected_index_sha:
+                    problems.append("checkpoint index_file_sha256 does "
+                                    "not match the index file")
 
     for name in ("run_context.json", "mec_schema.json",
                  "fmx_blocked.json", "validation_scaffold.json",
@@ -398,6 +496,9 @@ def verify_science_contract_package(
     fmx_path = pkg_dir / "fmx_blocked.json"
     if fmx_path.is_file():
         fmx_doc = json.loads(fmx_path.read_text("utf-8"))
+        ok, fmxp = verify_fmx_envelope(fmx_doc)
+        if not ok:
+            problems.extend(f"fmx_blocked.json: {p}" for p in fmxp)
         if fmx_doc.get("fmx_status") != \
                 FMX_BLOCKED_PENDING_EXPLICIT_FREEZE:
             problems.append("fmx_blocked.json must carry "

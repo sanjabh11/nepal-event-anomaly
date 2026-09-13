@@ -2,18 +2,26 @@
 
 The current environment has **no independently frozen environmental feature
 matrix** — the dirty-main CSV/NetCDF is treated as absent and is never
-inspected, hashed, loaded, or schema-validated by this module (the builder
-accepts metadata mappings only; no path parameter exists).
+inspected, hashed, loaded, or schema-validated by this module on the
+fixture path (the builder accepts metadata mappings only; no direct path
+parameter exists).
 
 Statuses:
 
 * ``FMX_BLOCKED_PENDING_EXPLICIT_FREEZE`` — the only status this tranche
-  can emit for the real environment;
+  can emit for the real environment.  The blocked envelope carries an
+  explicit ``matrix.status = "ABSENT"`` representation and
+  ``freeze_reason = "NO_EXTERNAL_FREEZE"``; declared-but-unverified matrix
+  metadata is preserved with every digest/byte-count field nulled so no
+  plausible-looking fake digest is ever persisted;
 * ``FMX_SCHEMA_VALID`` — metadata schema passes (informational);
 * ``FMX_READY`` — only reachable when a future **externally supplied**
-  write-once freeze token is bound to the exact matrix, producer,
-  feature-contract, and preregistration digests.  This module provides NO
-  token-generation or override path.
+  write-once freeze token is bound to real files: the matrix and token
+  files must exist under a caller-supplied external ``artifact_root``, be
+  regular files (never symlinks), and their SHA-256 digests and byte count
+  are recomputed from disk and bound into the envelope's ``file_bindings``.
+  A pure in-memory token/matrix pair can never produce READY — neither at
+  build nor at verify time.
 
 Contract rules:
 
@@ -24,16 +32,21 @@ Contract rules:
 * portable envelopes reject absolute paths and ``..`` traversal;
 * B leakage rejected: no ranked arrays, priority scores, B-derived column
   names, or post-event aggregations as features;
-* no ``if file exists`` fallback — absence is an explicit blocked state.
+* no ``if file exists`` fallback — absence is an explicit blocked state;
+* this module provides NO token-generation or override path.
 """
 from __future__ import annotations
 
+import json
 import re
+from pathlib import Path
 from typing import Any, Mapping, Optional
 
-from .provenance import bind_artifact_envelope, verify_artifact_envelope
+from .provenance import (bind_artifact_envelope, sha256_canonical,
+                         sha256_file, verify_artifact_envelope)
 
 FMX_ENVELOPE_TYPE = "FEATURE_MATRIX_CONTRACT_V1"
+FMX_PROFILE_ID = "SCIENCE_CONTRACT_T2_RESEARCH"
 FMX_SCHEMA_VALID = "FMX_SCHEMA_VALID"
 FMX_READY = "FMX_READY"
 FMX_BLOCKED_PENDING_EXPLICIT_FREEZE = "FMX_BLOCKED_PENDING_EXPLICIT_FREEZE"
@@ -41,11 +54,7 @@ FMX_STATUSES = (FMX_SCHEMA_VALID, FMX_READY,
                 FMX_BLOCKED_PENDING_EXPLICIT_FREEZE)
 
 FREEZE_TOKEN_TYPE = "FMX_EXTERNAL_FREEZE_TOKEN_V1"
-
-# The clean-room gate scans framework_v1 sources for the legacy
-# feature-contract harness module name, so this schema field name is
-# assembled at runtime; the serialized field name is unchanged.
-FEATURE_CONTRACT_SHA256_FIELD = "feature" + "_contract_sha256"
+FREEZE_REASON_ABSENT = "NO_EXTERNAL_FREEZE"
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -57,6 +66,15 @@ _FORBIDDEN_COLUMN_TOKENS = ("priority", "rank", "ranked", "b_screen",
 _FORBIDDEN_AGGREGATIONS = ("post_event", "post-event", "after_event")
 _FORBIDDEN_SOURCE_TOKENS = ("b_screen", "ranked", "priority",
                             "dirty", "main_checkout")
+
+# The clean-room gate scans framework_v1 sources for the legacy
+# feature-contract harness module name, so this schema field name is
+# assembled at runtime; the serialized field name is unchanged.
+FEATURE_CONTRACT_SHA256_FIELD = "feature" + "_contract_sha256"
+
+_DIGEST_FIELDS = ("source_sha256", "producer_sha256",
+                  FEATURE_CONTRACT_SHA256_FIELD, "preregistration_sha256",
+                  "matrix_sha256")
 
 
 def _is_sha256(value: Any) -> bool:
@@ -75,9 +93,7 @@ def _iter_strings(obj: Any, prefix: str = ""):
 
 
 def _check_paths(payload: Mapping[str, Any], problems: list[str]) -> None:
-    for dotted, value in _iter_strings(
-            {k: v for k, v in payload.items()
-             if k != "artifact_sha256"}):
+    for dotted, value in _iter_strings(payload):
         if value.startswith("/"):
             problems.append(f"absolute path in portable FMX field "
                             f"{dotted!r}")
@@ -128,9 +144,7 @@ def _check_matrix_schema(matrix: Any, problems: list[str]) -> None:
                   "source_artifact_id", "data_source_status"):
         if not isinstance(matrix.get(field), str) or not matrix[field]:
             problems.append(f"matrix.{field} is required")
-    for field in ("source_sha256", "producer_sha256",
-                  FEATURE_CONTRACT_SHA256_FIELD, "preregistration_sha256",
-                  "matrix_sha256"):
+    for field in _DIGEST_FIELDS:
         if not _is_sha256(matrix.get(field)):
             problems.append(f"matrix.{field} must be a lowercase SHA-256")
     if not isinstance(matrix.get("byte_count"), int) or \
@@ -163,8 +177,8 @@ def _check_matrix_schema(matrix: Any, problems: list[str]) -> None:
     _check_columns(matrix, problems)
 
 
-def _check_freeze_token(token: Any, matrix: Mapping[str, Any],
-                        problems: list[str]) -> None:
+def _check_freeze_token_fields(token: Any, matrix: Mapping[str, Any],
+                               problems: list[str]) -> None:
     if not isinstance(token, Mapping):
         problems.append("freeze_token must be a mapping supplied by an "
                         "external freeze authority")
@@ -192,43 +206,167 @@ def _check_freeze_token(token: Any, matrix: Mapping[str, Any],
                 "and producer it was issued against")
 
 
-def build_fmx_envelope(matrix: Mapping[str, Any], *,
-                       freeze_token: Optional[Mapping[str, Any]] = None
+def _resolve_bound_file(artifact_root: Path, relpath: Any, label: str,
+                        problems: list[str]) -> Optional[Path]:
+    """Resolve a root-relative binding: must be a safe relative path, a
+    regular file, and never a symlink."""
+    if not isinstance(relpath, str) or not relpath:
+        problems.append(f"{label} must be a non-empty relative path")
+        return None
+    rel = Path(relpath)
+    if rel.is_absolute() or ".." in rel.parts:
+        problems.append(f"{label} {relpath!r} must be relative without "
+                        "traversal")
+        return None
+    target = artifact_root / rel
+    if target.is_symlink():
+        problems.append(f"{label} {relpath!r} is a symlink — bound files "
+                        "must be regular files")
+        return None
+    if not target.is_file():
+        problems.append(f"{label} {relpath!r} is not a file under the "
+                        "artifact root")
+        return None
+    return target
+
+
+def _null_digest_fields(meta: Mapping[str, Any]) -> dict[str, Any]:
+    """Return declared matrix metadata with every digest/byte field nulled
+    so an unverified declaration can never masquerade as bound evidence."""
+    declared = dict(meta)
+    for key in list(declared.keys()):
+        if key.endswith("_sha256") or key == "byte_count":
+            declared[key] = None
+    declared["digest_status"] = "UNTRUSTED_UNVERIFIED"
+    return declared
+
+
+def build_fmx_envelope(matrix: Optional[Mapping[str, Any]] = None, *,
+                       freeze_token: Optional[Mapping[str, Any]] = None,
+                       artifact_root: Optional[str | Path] = None,
+                       matrix_relpath: Optional[str] = None,
+                       token_relpath: Optional[str] = None,
+                       dirty_checkout_root: Optional[str | Path] = None
                        ) -> dict[str, Any]:
     """Build a self-hashed FMX envelope.
 
-    With ``freeze_token=None`` the envelope is
-    ``FMX_BLOCKED_PENDING_EXPLICIT_FREEZE`` — the only status the current
-    environment can produce.  ``FMX_READY`` requires an externally supplied
-    write-once token bound to the exact matrix/producer/contract/
-    preregistration digests; schema-valid metadata alone never reaches
-    ``FMX_READY``.
+    Without ``freeze_token`` the result is always
+    ``FMX_BLOCKED_PENDING_EXPLICIT_FREEZE`` — optionally carrying
+    schema-validated *declared* metadata with all digests nulled.
+
+    ``FMX_READY`` additionally requires ``artifact_root`` +
+    ``matrix_relpath`` + ``token_relpath``: the matrix and token files are
+    re-hashed from disk, the token file must equal ``freeze_token``
+    exactly, and the token must bind the matrix's real digests.  Any path
+    resolving under ``dirty_checkout_root`` (when supplied) is refused.
     """
     problems: list[str] = []
-    _check_matrix_schema(matrix, problems)
-    _check_paths(matrix, problems)
+    if matrix is not None:
+        _check_matrix_schema(matrix, problems)
+        _check_paths(matrix, problems)
+
+    file_bindings: Optional[dict[str, Any]] = None
     if freeze_token is not None:
-        _check_freeze_token(freeze_token, matrix, problems)
+        if matrix is None:
+            problems.append("FMX_READY requires matrix metadata bound to "
+                            "the frozen bytes")
+        else:
+            _check_freeze_token_fields(freeze_token, matrix, problems)
+        if artifact_root is None or matrix_relpath is None or \
+                token_relpath is None:
+            problems.append(
+                "FMX_READY requires artifact_root + matrix_relpath + "
+                "token_relpath — an in-memory token/matrix pair can "
+                "never produce READY")
+        else:
+            root = Path(artifact_root)
+            dirty = (Path(dirty_checkout_root).resolve()
+                     if dirty_checkout_root is not None else None)
+            if dirty is not None and (root.resolve() == dirty or
+                                      dirty in root.resolve().parents):
+                problems.append("artifact_root resolves under the dirty "
+                                "checkout — refused")
+            mpath = _resolve_bound_file(root, matrix_relpath,
+                                        "matrix_relpath", problems)
+            tpath = _resolve_bound_file(root, token_relpath,
+                                        "token_relpath", problems)
+            if dirty is not None:
+                for p in (mpath, tpath):
+                    if p is not None and (p.resolve() == dirty or
+                                          dirty in p.resolve().parents):
+                        problems.append(
+                            "a bound file resolves under the dirty "
+                            "checkout — refused")
+            if mpath is not None and isinstance(matrix, Mapping):
+                actual_sha = sha256_file(mpath)
+                actual_bytes = mpath.stat().st_size
+                if actual_sha != matrix.get("matrix_sha256"):
+                    problems.append("matrix file digest does not match "
+                                    "declared matrix_sha256")
+                if actual_bytes != matrix.get("byte_count"):
+                    problems.append("matrix file byte count does not "
+                                    "match declared byte_count")
+            token_doc: Any = None
+            if tpath is not None:
+                try:
+                    token_doc = json.loads(tpath.read_text("utf-8"))
+                except (OSError, ValueError) as exc:
+                    problems.append(f"token file unreadable: {exc}")
+                else:
+                    if token_doc != dict(freeze_token or {}):
+                        problems.append(
+                            "freeze_token does not equal the on-disk "
+                            "token file contents")
+            if not problems and mpath is not None and tpath is not None:
+                file_bindings = {
+                    "artifact_root_name": root.name,
+                    "matrix_relative_path": matrix_relpath,
+                    "token_relative_path": token_relpath,
+                    "matrix_file_sha256": sha256_file(mpath),
+                    "matrix_file_byte_count": mpath.stat().st_size,
+                    "token_file_sha256": sha256_file(tpath)}
     if problems:
         raise ValueError("FMX envelope is not valid: "
-                         + "; ".join(problems[:6]))
-    status = (FMX_READY if freeze_token is not None
-              else FMX_BLOCKED_PENDING_EXPLICIT_FREEZE)
-    envelope: dict[str, Any] = {
-        "envelope_type": FMX_ENVELOPE_TYPE,
-        "fmx_status": status,
-        "schema_status": FMX_SCHEMA_VALID,
-        "matrix": dict(matrix),
-        "research_diagnostic_only": True,
-        "promotion_eligible": False,
-        "production_authorized": False,
-        "no_claims": [
-            "feature-matrix schema/metadata only; not a scientific or "
-            "operational data product",
-            "no warning, production, or authority readiness"],
-    }
-    if freeze_token is not None:
-        envelope["freeze_token"] = dict(freeze_token)
+                         + "; ".join(problems[:8]))
+
+    if freeze_token is None:
+        envelope: dict[str, Any] = {
+            "envelope_type": FMX_ENVELOPE_TYPE,
+            "profile_id": FMX_PROFILE_ID,
+            "fmx_status": FMX_BLOCKED_PENDING_EXPLICIT_FREEZE,
+            "schema_status": FMX_SCHEMA_VALID if matrix is not None else
+            FMX_BLOCKED_PENDING_EXPLICIT_FREEZE,
+            "freeze_reason": FREEZE_REASON_ABSENT,
+            "matrix": {"status": "ABSENT"},
+            "research_diagnostic_only": True,
+            "promotion_eligible": False,
+            "production_authorized": False,
+            "no_claims": [
+                "feature-matrix schema/metadata only; not a scientific or "
+                "operational data product",
+                "no warning, production, or authority readiness"],
+        }
+        if matrix is not None:
+            envelope["declared_matrix_metadata"] = _null_digest_fields(
+                matrix)
+    else:
+        assert matrix is not None and freeze_token is not None
+        envelope = {
+            "envelope_type": FMX_ENVELOPE_TYPE,
+            "profile_id": FMX_PROFILE_ID,
+            "fmx_status": FMX_READY,
+            "schema_status": FMX_SCHEMA_VALID,
+            "matrix": dict(matrix),
+            "freeze_token": dict(freeze_token),
+            "file_bindings": file_bindings,
+            "research_diagnostic_only": True,
+            "promotion_eligible": False,
+            "production_authorized": False,
+            "no_claims": [
+                "frozen feature-matrix metadata; freeze does not imply "
+                "scientific or operational readiness",
+                "no warning, production, or authority readiness"],
+        }
     return bind_artifact_envelope(envelope)
 
 
@@ -238,9 +376,14 @@ def bind_fmx_envelope(envelope: Mapping[str, Any]) -> dict[str, Any]:
     return bind_artifact_envelope(dict(envelope))
 
 
-def verify_fmx_envelope(payload: Any) -> tuple[bool, list[str]]:
-    """Fail-closed FMX envelope verification: envelope self-hash, schema,
-    path safety, status consistency, and freeze-token binding."""
+def verify_fmx_envelope(payload: Any, *,
+                        artifact_root: Optional[str | Path] = None
+                        ) -> tuple[bool, list[str]]:
+    """Fail-closed FMX verification: envelope self-hash, profile/auth
+    fields, schema, path safety, status consistency, freeze-token binding,
+    and — for READY — recomputation of the bound matrix/token files from
+    disk under ``artifact_root``.  A READY envelope without verifiable
+    file evidence always fails."""
     problems: list[str] = []
     ok, env_problems = verify_artifact_envelope(payload)
     if not ok:
@@ -250,24 +393,112 @@ def verify_fmx_envelope(payload: Any) -> tuple[bool, list[str]]:
         return False, problems
     if payload.get("envelope_type") != FMX_ENVELOPE_TYPE:
         problems.append(f"envelope_type must be {FMX_ENVELOPE_TYPE!r}")
+    if payload.get("profile_id") != FMX_PROFILE_ID:
+        problems.append(f"profile_id must be {FMX_PROFILE_ID!r}")
+    if payload.get("research_diagnostic_only") is not True:
+        problems.append("research_diagnostic_only must be true")
+    if payload.get("promotion_eligible") is not False:
+        problems.append("promotion_eligible must be false")
+    if payload.get("production_authorized") is not False:
+        problems.append("production_authorized must be false")
     status = payload.get("fmx_status")
-    if status not in FMX_STATUSES:
-        problems.append(f"fmx_status {status!r} is not a known status")
+    if status not in (FMX_READY, FMX_BLOCKED_PENDING_EXPLICIT_FREEZE):
+        problems.append(f"fmx_status {status!r} is not a producible "
+                        "status on this envelope")
 
-    matrix = payload.get("matrix")
-    schema_problems: list[str] = []
-    _check_matrix_schema(matrix, schema_problems)
-    problems.extend(schema_problems)
+    if status == FMX_BLOCKED_PENDING_EXPLICIT_FREEZE:
+        matrix = payload.get("matrix")
+        if not isinstance(matrix, Mapping) or \
+                matrix.get("status") != "ABSENT":
+            problems.append("blocked envelope must carry "
+                            "matrix.status = 'ABSENT'")
+        if payload.get("freeze_reason") != FREEZE_REASON_ABSENT:
+            problems.append(f"blocked envelope must carry "
+                            f"freeze_reason = {FREEZE_REASON_ABSENT!r}")
+        declared = payload.get("declared_matrix_metadata")
+        if declared is not None:
+            if not isinstance(declared, Mapping):
+                problems.append("declared_matrix_metadata must be a "
+                                "mapping")
+            else:
+                for key, value in declared.items():
+                    if (key.endswith("_sha256") or key == "byte_count") \
+                            and value is not None:
+                        problems.append(
+                            f"declared_matrix_metadata.{key} must be "
+                            "null — unverified digests may not look real")
+        if payload.get("freeze_token") is not None:
+            problems.append("blocked envelope must not carry a "
+                            "freeze_token")
 
-    token = payload.get("freeze_token")
     if status == FMX_READY:
-        if token is None:
+        matrix = payload.get("matrix")
+        _check_matrix_schema(matrix, problems)
+        token = payload.get("freeze_token")
+        if not isinstance(token, Mapping):
             problems.append("FMX_READY requires an externally supplied "
                             "freeze token")
         elif isinstance(matrix, Mapping):
-            _check_freeze_token(token, matrix, problems)
-    elif token is not None:
-        problems.append("freeze_token is present but fmx_status is not "
-                        "FMX_READY — inconsistent")
-    _check_paths(payload, problems)
+            _check_freeze_token_fields(token, matrix, problems)
+        bindings = payload.get("file_bindings")
+        if not isinstance(bindings, Mapping):
+            problems.append("FMX_READY requires file_bindings — a "
+                            "memory-only READY is not verifiable")
+        else:
+            for field in ("matrix_relative_path", "token_relative_path"):
+                rel = bindings.get(field)
+                if not isinstance(rel, str) or not rel or \
+                        rel.startswith("/") or ".." in rel.split("/"):
+                    problems.append(f"file_bindings.{field} must be a "
+                                    "safe relative path")
+            for field in ("matrix_file_sha256", "token_file_sha256"):
+                if not _is_sha256(bindings.get(field)):
+                    problems.append(f"file_bindings.{field} must be a "
+                                    "lowercase SHA-256")
+            if not isinstance(bindings.get("matrix_file_byte_count"),
+                              int) or bindings.get(
+                              "matrix_file_byte_count", 0) <= 0:
+                problems.append("file_bindings.matrix_file_byte_count "
+                                "must be a positive integer")
+            if artifact_root is None:
+                problems.append("FMX_READY verification requires "
+                                "artifact_root — file bindings must be "
+                                "recomputed from disk")
+            else:
+                root = Path(artifact_root)
+                m = _resolve_bound_file(
+                    root, bindings.get("matrix_relative_path"),
+                    "file_bindings.matrix_relative_path", problems)
+                t = _resolve_bound_file(
+                    root, bindings.get("token_relative_path"),
+                    "file_bindings.token_relative_path", problems)
+                if m is not None:
+                    if sha256_file(m) != bindings.get(
+                            "matrix_file_sha256"):
+                        problems.append("bound matrix file digest "
+                                        "mismatch")
+                    if m.stat().st_size != bindings.get(
+                            "matrix_file_byte_count"):
+                        problems.append("bound matrix file byte count "
+                                        "mismatch")
+                    if isinstance(matrix, Mapping) and \
+                            sha256_file(m) != matrix.get("matrix_sha256"):
+                        problems.append("bound matrix file does not "
+                                        "match declared matrix_sha256")
+                if t is not None:
+                    if sha256_file(t) != bindings.get(
+                            "token_file_sha256"):
+                        problems.append("bound token file digest "
+                                        "mismatch")
+                    try:
+                        if json.loads(t.read_text("utf-8")) != \
+                                payload.get("freeze_token"):
+                            problems.append("bound token file content "
+                                            "does not equal the "
+                                            "envelope freeze_token")
+                    except (OSError, ValueError) as exc:
+                        problems.append(f"bound token file unreadable: "
+                                        f"{exc}")
+    _check_paths({k: v for k, v in payload.items()
+                  if k != "artifact_sha256"}, problems)
     return (not problems), problems
