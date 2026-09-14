@@ -211,8 +211,11 @@ def compute_thermal_indices(df: pd.DataFrame, model_elev_m: float) -> pd.DataFra
     if "wind_dir" in df.columns:
         # GAP FIX: wind_dir is circular. Encode as sin/cos for clustering.
         # Raw radians are linear; sin/cos preserves circularity.
-        daily_df["wind_dir_sin"] = np.sin(df["wind_dir"].resample("D").mean())
-        daily_df["wind_dir_cos"] = np.cos(df["wind_dir"].resample("D").mean())
+        # Circular mean: average the sin/cos components (the mean
+        # resultant vector), NOT sin/cos of the mean angle — the old
+        # form collapsed bimodal directions incorrectly (CFM-05).
+        daily_df["wind_dir_sin"] = np.sin(df["wind_dir"]).resample("D").mean()
+        daily_df["wind_dir_cos"] = np.cos(df["wind_dir"]).resample("D").mean()
 
     # --- Relative humidity: daily MEAN (%) ---
     if "relative_humidity" in df.columns:
@@ -222,8 +225,11 @@ def compute_thermal_indices(df: pd.DataFrame, model_elev_m: float) -> pd.DataFra
     # Daily PDD: max(0, T_daily)
     if "t2m_daily" in daily_df.columns:
         daily_df["pdd_daily"] = daily_df["t2m_daily"].clip(lower=0)
-        # 7-day rolling PDD
-        daily_df["pdd_7day"] = daily_df["pdd_daily"].rolling(window=7, min_periods=1).sum()
+        # 7-day rolling PDD — full window required; partial sums at the
+        # series edge are censored to NaN, not silently down-weighted
+        # (CFM-05).
+        daily_df["pdd_7day"] = daily_df["pdd_daily"].rolling(
+            window=7, min_periods=7).sum()
 
         # Freezing level height: z_freeze = z_model + T_model / 0.0065
         # lapse_rate = -0.0065 K/m = -0.0065 °C/m

@@ -211,6 +211,24 @@ truth).
 | E23 code can't authenticate humans | Critical | POLICY_DEFINED — `human_approved` remains a human P3 property; code enforces structure only |
 | E24 string-only reviewer state | High | PARTIAL — reviewer IDs + sidecar reviewer_ids required; independence declaration is a human gate |
 
+## Confirmation-run defect register (CFM-series)
+
+| ID | Defect | Disposition |
+|---|---|---|
+| CFM-01 complete input absent | Critical | BLOCKED_EXTERNAL — only `data/temp/era5_land_2001_06.nc` exists; merged file + feature CSV absent; preflight fails closed (exit 1, no artifacts). No synthesis permitted. |
+| CFM-02 single-cell hard-coding | High | RESOLVED — outputs labelled `EXPLORATORY_DESCRIPTIVE_SINGLE_CELL`; scope note limits inference to the cell/period |
+| CFM-03 silent feature reduction | High | RESOLVED — declared `GMM_FEATURES` required; missing columns fail the run; missingness reported |
+| CFM-04 mixed units | High | RESOLVED — baseline-fitted StandardScaler + recorded feature units; scaler never sees target rows |
+| CFM-05 wind direction / rolling window | Medium | RESOLVED — circular mean via mean-resultant components; `pdd_7day` requires full 7-day window |
+| CFM-06 single-seed K selection | High | RESOLVED — three declared seeds (42, 7, 2024); per-seed BIC/AIC/convergence; modal-K frequency reported |
+| CFM-07 no stability measure | High | PARTIAL — seed + temporal block bootstrap implemented; basin/geographic stability is data-gated |
+| CFM-08 JS distance without uncertainty | High | RESOLVED — block-bootstrap 95% CI + within-baseline null p95; `exceeds_null` flag |
+| CFM-09 invisible membership confidence | Medium | RESOLVED — mean/median max-posterior + ambiguous fraction reported |
+| CFM-10 pass-on-error | High | RESOLVED — preflight failure exits 1 with no artifacts; failed runs are quarantined with recorded error |
+| CFM-11 unbound results | High | RESOLVED — run bundle (`research_runs/gmm_confirmation/bundle.json`) records input/feature/output digests, config, env, seeds |
+| CFM-12 overlay mistaken for detection | High | RESOLVED — fit and retrospective overlay separated; explicit note that event dates never touch fitting |
+| CFM-13–CFM-16 multi-basin, association, forecast, P3/licenses | Critical | GATED_ON_DATA/BLOCKED_EXTERNAL — no change |
+
 ## Governance policies (O05)
 
 - Artifact retention: governed artifacts live only under `docs/science`,
