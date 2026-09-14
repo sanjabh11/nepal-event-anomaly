@@ -14,9 +14,10 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
@@ -47,10 +48,15 @@ HOURLY_FILENAME = "features_nepal_hourly_jja_2001_2026.csv"
 UNITS_FILENAME = "feature_units.json"
 
 # P5-01: data/ is a FROZEN contract surface — no output may be written
-# there. Outputs default to a research_runs/ run root (repo-root
-# relative). Reading inputs from data/ remains allowed (fallback below).
-DEFAULT_RUN_ROOT = REPO_ROOT / "research_runs" / "gmm_confirmation" / "features"
-ERA5_FALLBACK_FILE = DATA_DIR / ERA5_FILENAME  # input only, never output
+# there. Outputs default to a single top-level research_runs/ run root
+# (repo-root relative): the downloader writes <run_root>/merged/, the
+# extractor writes <run_root>/features/, and the GMM step reads
+# <run_root>/features/. Reading inputs from data/ remains allowed
+# (deprecated fallback below).
+DEFAULT_RUN_ROOT = REPO_ROOT / "research_runs" / "gmm_confirmation"
+# DEPRECATED input-only fallback for the pre-run-root layout; data/ is
+# never an output target.
+ERA5_FALLBACK_FILE = DATA_DIR / ERA5_FILENAME
 
 # Frozen surfaces that must never receive pipeline outputs.
 FORBIDDEN_RUN_ROOTS = (
@@ -98,10 +104,18 @@ def load_era5_land(filepath: Path) -> xr.Dataset:
     lat_name = "latitude" if "latitude" in ds.coords else "lat"
     lon_name = "longitude" if "longitude" in ds.coords else "lon"
 
-    cell = ds.sel(
-        **{lat_name: EVENT["era5_cell"][0], lon_name: EVENT["era5_cell"][1]},
-        method="nearest",
-    )
+    if ds[lat_name].size == 1 and ds[lon_name].size == 1:
+        # Downstream-produced single-cell file (downloader merge already
+        # selected the cell). Scalar coords cannot be .sel()'d — the
+        # file IS the selected cell; just read its coordinates.
+        cell = ds
+        print("Single-cell merged file — cell already selected.")
+    else:
+        cell = ds.sel(
+            **{lat_name: EVENT["era5_cell"][0],
+               lon_name: EVENT["era5_cell"][1]},
+            method="nearest",
+        )
 
     # Get actual coordinates used
     actual_lat = float(cell[lat_name].values)
@@ -147,21 +161,19 @@ def extract_raw_features(ds: xr.Dataset) -> pd.DataFrame:
     data = {"time": times}
     missing = []
 
+    # P5-04: exact-name acceptance only — no fuzzy substring matching.
+    # A substring search would wrongly accept e.g. 'snow_depth' (or
+    # 'sde') as the contract 'sd' (snow-depth water equivalent). Each
+    # slot accepts its exact short name (t2m, d2m, u10, v10, sd, sf,
+    # tp); the sd slot additionally accepts the exact CDS long name
+    # 'snow_depth_water_equivalent'.
     for cds_name, nc_name in var_map.items():
         if nc_name in ds.data_vars:
             data[nc_name] = ds[nc_name].values
-        elif cds_name in ds.data_vars:
-            data[nc_name] = ds[cds_name].values
+        elif nc_name == "sd" and "snow_depth_water_equivalent" in ds.data_vars:
+            data[nc_name] = ds["snow_depth_water_equivalent"].values
         else:
-            # Try to find by searching all data vars
-            found = False
-            for v in ds.data_vars:
-                if cds_name.replace("2m_", "").replace("10m_", "") in v.lower():
-                    data[nc_name] = ds[v].values
-                    found = True
-                    break
-            if not found:
-                missing.append(f"{cds_name} (expected as {nc_name})")
+            missing.append(f"{cds_name} (expected as {nc_name})")
 
     # P5-06: fail closed — never substitute NaN for a required variable.
     # sde is geometric snow depth, NOT the contract sd (snow-depth water
@@ -298,7 +310,13 @@ def generate_eda_plots(
     model_elev_m: float,
     output_dir: Path,
 ):
-    """Generate EDA plots with elevation disclaimer on every plot."""
+    """Generate EDA plots with elevation disclaimer on every plot.
+
+    P5-11: output_dir is validated against the frozen contract surfaces
+    even when this function is called directly; main() always passes
+    <run_root>/features/eda/.
+    """
+    output_dir = _check_not_frozen(output_dir, what="EDA plot")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Plot 1: JJA 2026 daily temperature with event line
@@ -382,24 +400,82 @@ def generate_eda_plots(
     print(f"EDA plots saved to {output_dir}/")
 
 
+def _sha256(path: Path) -> str:
+    """Return the SHA-256 hex digest of a file (P5-05 provenance)."""
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _check_not_frozen(path: Path, what: str = "Output") -> Path:
+    """P5-11: reject any output path inside a frozen contract surface."""
+    resolved = Path(path).expanduser().resolve()
+    for forbidden in FORBIDDEN_RUN_ROOTS:
+        frozen = forbidden.resolve()
+        if resolved == frozen or frozen in resolved.parents:
+            raise ValueError(
+                f"{what} path {resolved} is inside frozen surface "
+                f"{frozen}; refusing to write outputs there."
+            )
+    return resolved
+
+
 def _resolve_run_root(run_root: str | None) -> Path:
     """Resolve the output run root and reject frozen contract surfaces."""
     root = Path(run_root).expanduser() if run_root else DEFAULT_RUN_ROOT
     if not root.is_absolute():
         root = REPO_ROOT / root
-    root = root.resolve()
-    for forbidden in FORBIDDEN_RUN_ROOTS:
-        frozen = forbidden.resolve()
-        if root == frozen or frozen in root.parents:
-            raise ValueError(
-                f"Run root {root} is inside frozen surface {frozen}; "
-                "refusing to write outputs there."
-            )
-    return root
+    return _check_not_frozen(root, what="Run root")
+
+
+def write_run_metadata(
+    features_dir: Path,
+    run_root: Path,
+    era5_file: Path,
+    actual_lat: float,
+    actual_lon: float,
+    model_elev_m: float,
+) -> Path:
+    """P5-05: write the run_metadata.json provenance sidecar.
+
+    Records the requested vs. selected ERA5-Land cell, model elevation,
+    SHA-256 digests of the merged source file and (if present) the
+    run-root download ledger, and the extraction UTC timestamp.
+
+    P5-11: features_dir is validated against the frozen contract
+    surfaces even when this function is called directly; main() always
+    passes <run_root>/features/.
+    """
+    features_dir = _check_not_frozen(features_dir, what="Run metadata")
+    ledger_file = run_root / "download_ledger.json"
+    metadata = {
+        "requested_cell": list(EVENT["era5_cell"]),
+        "selected_cell": [actual_lat, actual_lon],
+        "model_elevation_m": model_elev_m,
+        "source_file": str(era5_file),
+        "source_file_sha256": _sha256(era5_file),
+        "extraction_utc": datetime.now(timezone.utc).isoformat(),
+    }
+    if ledger_file.exists():
+        metadata["download_ledger_sha256"] = _sha256(ledger_file)
+    metadata_file = features_dir / "run_metadata.json"
+    with open(metadata_file, "w") as f:
+        json.dump(metadata, f, indent=2)
+    return metadata_file
 
 
 def main():
-    """Main Phase 2 execution."""
+    """Main Phase 2 execution.
+
+    P5-11: every output (daily CSV, hourly CSV, feature_units.json,
+    run_metadata.json, EDA plots) is derived from the resolved,
+    frozen-surface-checked run_root — nothing below accepts a
+    caller-supplied output path that escapes it. Functions that do take
+    an output directory (generate_eda_plots, write_run_metadata)
+    re-validate it against the frozen surfaces when called directly.
+    """
     parser = argparse.ArgumentParser(
         description="Phase 2: Feature extraction + PDD + EDA "
                     "(GMM confirmation run)."
@@ -407,31 +483,36 @@ def main():
     parser.add_argument(
         "--run-root",
         default=None,
-        help=("Output run root. Default: research_runs/gmm_confirmation/"
-              "features/ relative to the repo root. Rejected if inside "
-              "data/, pinned/, or nepal/framework_v1/."),
+        help=("Output run root. Default: research_runs/gmm_confirmation/ "
+              "relative to the repo root. Outputs go to "
+              "<run-root>/features/. Rejected if inside data/, pinned/, "
+              "or nepal/framework_v1/."),
     )
     parser.add_argument(
         "--era5-file",
         default=None,
-        help=("Input ERA5-Land NetCDF. Default: <run-root>/era5/merged/"
-              f"{ERA5_FILENAME} with fallback to data/{ERA5_FILENAME}."),
+        help=("Input ERA5-Land NetCDF. Default: <run-root>/merged/"
+              f"{ERA5_FILENAME} with a deprecated fallback to "
+              f"data/{ERA5_FILENAME}."),
     )
     args = parser.parse_args()
 
     run_root = _resolve_run_root(args.run_root)
     run_root.mkdir(parents=True, exist_ok=True)
-    feature_file = run_root / FEATURE_FILENAME
-    hourly_file = run_root / HOURLY_FILENAME
-    units_file = run_root / UNITS_FILENAME
-    eda_plot_dir = run_root / "eda"
+    features_dir = _check_not_frozen(run_root / "features", what="Features")
+    features_dir.mkdir(parents=True, exist_ok=True)
+    feature_file = features_dir / FEATURE_FILENAME
+    hourly_file = features_dir / HOURLY_FILENAME
+    units_file = features_dir / UNITS_FILENAME
+    eda_plot_dir = features_dir / "eda"
 
-    # Input ERA5 file: explicit --era5-file, else the run-root copy,
-    # else the frozen data/ fallback (reading from data/ is allowed).
+    # Input ERA5 file: explicit --era5-file, else the run-root merged
+    # copy written by the downloader, else the DEPRECATED frozen data/
+    # fallback (reading from data/ is allowed; writing never is).
     if args.era5_file:
         era5_file = Path(args.era5_file).expanduser().resolve()
     else:
-        era5_file = run_root / "era5" / "merged" / ERA5_FILENAME
+        era5_file = run_root / "merged" / ERA5_FILENAME
         if not era5_file.exists():
             era5_file = ERA5_FALLBACK_FILE
 
@@ -494,6 +575,14 @@ def main():
     with open(units_file, "w") as f:
         json.dump(UNITS, f, indent=2)
     print(f"Saved units sidecar to {units_file}")
+
+    # P5-05: provenance sidecar — requested/selected cell, model
+    # elevation, source-file and download-ledger SHA-256 digests, and
+    # the extraction UTC timestamp.
+    metadata_file = write_run_metadata(
+        features_dir, run_root, era5_file, actual_lat, actual_lon, model_elev
+    )
+    print(f"Saved run metadata to {metadata_file}")
 
     # GAP FIX: Also save hourly features for auditability
     print(f"Saving hourly feature matrix to {hourly_file}...")

@@ -250,8 +250,28 @@ truth).
 | CFM bootstrap count clobber | Medium | RESOLVED — 200 replicates honored; `n_replicates` reported |
 | CFM modal-K tie | Medium | RESOLVED — `k_instability` reported when frequency < 1.0 |
 | CFM bundle run-root/UTC | Medium | RESOLVED — UTC run_id, run_root, requested/actual cell |
-| TEST-01 fixture tests | — | RESOLVED — `tests/test_p5_io_contract.py`, 15 tests |
-| P5-C/D/E acquisition | Critical | BLOCKED_EXTERNAL — needs explicit network authorization; everything pre-network is conformant |
+| TEST-01 fixture tests | — | RESOLVED — `tests/test_p5_io_contract.py`, 22 tests incl. production-function and end-to-end layout probes |
+
+## P5 integration round (downloader→extractor→GMM chain)
+
+| ID | Defect | Disposition |
+|---|---|---|
+| P5-01 shared run root | Critical | RESOLVED — one top-level `RUN_ROOT` (`research_runs/gmm_confirmation/`); downloader `raw/monthly/merged/`, extractor `features/`, GMM `gmm/`; stages chain without copying |
+| P5-02 GMM `--run-root` | Critical | RESOLVED — GMM reads `RUN_ROOT/features/`, writes `RUN_ROOT/gmm/`; all `data/` input dependence removed |
+| P5-03 sd/SWE contract map | Critical | RESOLVED — additive mapping `snow_depth_water_equivalent → sd` in downloader+extractor; frozen contract file untouched; legacy mismatch documented |
+| P5-04 fuzzy `snow_depth` acceptance | Critical | RESOLVED — exact-name acceptance only; `snow_depth`, `sde`, ambiguous names rejected |
+| P5-05 cell provenance | High | RESOLVED — `run_metadata.json` (requested/selected cell, elevation, digests) written by extractor, bound into GMM results+bundle with mismatch flags |
+| P5-06 unit contradiction | High | RESOLVED — `feature_units.json` sidecar consumed; `units_source` recorded; embedded defaults only as fallback |
+| P5-07 timestamp/month validation | High | RESOLVED — exact UTC hourly set per month verified; wrong-month, duplicate, post-cutoff rejected |
+| P5-08 completeness gate | Critical | RESOLVED — merge only when all months complete; `complete.json` marker after validation; `incomplete` status blocks downstream |
+| P5-09 exact JJA universe | High | RESOLVED — exact 92-date/yr + 86-date 2026 universe; duplicates, non-JJA, non-finite, post-cutoff rejected |
+| P5-10 disk reserve | Critical | RESOLVED — 8 GiB `shutil.disk_usage` guard before/during/after acquisition |
+| P5-11 callable guards | Medium | RESOLVED — `ensure_not_frozen`/`_assert_safe_root` applied in callable functions, not just CLI |
+| P5-13 CI | High | RESOLVED — P5 tests + dry-run + `--smoke` NetCDF gates added to research-v0 workflow |
+| P5-14 register drift | High | RESOLVED — this round's table reflects verified live code |
+| P5-15 `research_runs/` ignore | Medium | RESOLVED — added to `.gitignore` |
+| P5-16 env smoke | Medium | RESOLVED — `--smoke` NetCDF round-trip gate (CI + CLI) |
+| P5-C acquisition | Critical | BLOCKED_EXTERNAL — explicit network authorization required; `cdsapirc` exists but authorization ≠ credentials |
 
 ## Governance policies (O05)
 

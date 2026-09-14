@@ -22,7 +22,7 @@ June, July and August 1-25 contain pre-cutoff dates.
 Usage:
     source .venv/bin/activate
     python nepal/era5_download.py [--dry-run] [--year-range 2001-2026] \
-        [--run-root research_runs/gmm_confirmation/era5] [--force]
+        [--run-root research_runs/gmm_confirmation] [--force] [--smoke]
 
 Output (under --run-root):
     raw/era5_land_{year}_{month}.nc          raw CDS payloads (zip or netcdf)
@@ -36,6 +36,7 @@ import argparse
 import calendar
 import hashlib
 import json
+import shutil
 import sys
 import time
 import zipfile
@@ -76,6 +77,9 @@ EVENT_LON = 85.50
 # For the event year, August is truncated to days 1-25.
 EVENT_YEAR = 2026
 EVENT_CUTOFF_DAY = 25  # last requestable day of 2026-08
+# First instant on/after the event cutoff — a payload carrying any
+# timestamp >= this bound is rejected outright (P5-07).
+EVENT_CUTOFF_ISO = f"{EVENT_YEAR}-08-{EVENT_CUTOFF_DAY + 1:02d}T00:00"
 
 # Download area: small box around the event point
 # CDS area format: [North, West, South, East]
@@ -91,11 +95,18 @@ YEAR_RANGE = list(range(2001, 2027))
 # All 24 hours
 HOURS = [f"{h:02d}:00" for h in range(24)]
 
-# Output layout (under --run-root)
+# Output layout (under --run-root; shared layout contract — the same
+# top-level run root is used by the downloader, feature extractor and
+# GMM stages: raw/, monthly/, merged/, features/, gmm/)
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_RUN_ROOT = REPO_ROOT / "research_runs" / "gmm_confirmation" / "era5"
+DEFAULT_RUN_ROOT = REPO_ROOT / "research_runs" / "gmm_confirmation"
 MERGED_NAME = "era5_land_nepal_jja_2001_2026.nc"
+MERGED_MARKER_NAME = "complete.json"
 LEDGER_NAME = "download_ledger.json"
+
+# Minimum free disk space required before/while acquiring payloads
+# (P5-10). Below this reserve the run stops requesting months.
+DISK_MIN_FREE_GIB = 8.0
 
 # Frozen paths — a run root may never resolve inside these
 FROZEN_DIRS = (
@@ -104,6 +115,51 @@ FROZEN_DIRS = (
     REPO_ROOT / "nepal" / "framework_v1",
 )
 FROZEN_FILES = (REPO_ROOT / "preregistration.md",)
+
+
+def ensure_not_frozen(path: Path | str, what: str = "path") -> Path:
+    """Reject any path that resolves inside the frozen tree.
+
+    The frozen tree is the data/, pinned/ and nepal/framework_v1/
+    directories plus preregistration.md. Returns the resolved path.
+    Called by resolve_run_root and by every write-capable entry point
+    so direct (non-CLI) calls get the same frozen-path rejection as
+    main() (P5-11).
+    """
+    p = Path(path).expanduser().resolve()
+
+    for frozen in FROZEN_DIRS:
+        if p == frozen or frozen in p.parents:
+            raise ValueError(
+                f"{what} {p} resolves inside frozen path {frozen}; "
+                f"choose a location outside data/, pinned/ and "
+                f"nepal/framework_v1/")
+    for frozen in FROZEN_FILES:
+        if p == frozen:
+            raise ValueError(
+                f"{what} {p} resolves onto frozen file {frozen}")
+    return p
+
+
+def check_disk_reserve(path: Path | str,
+                       min_free_gib: float = DISK_MIN_FREE_GIB
+                       ) -> tuple[bool, float]:
+    """P5-10 disk reserve guard.
+
+    Returns ``(ok, free_gib)`` where ``ok`` is True when the filesystem
+    containing ``path`` has at least ``min_free_gib`` GiB free. Probes
+    the nearest existing ancestor so it works for not-yet-created
+    output paths.
+    """
+    probe = Path(path)
+    while not probe.exists() and probe != probe.parent:
+        probe = probe.parent
+    free_gib = shutil.disk_usage(probe).free / (1024 ** 3)
+    ok = free_gib >= min_free_gib
+    if not ok:
+        print(f"  DISK RESERVE LOW: {free_gib:.2f} GiB free at {probe} "
+              f"(< {min_free_gib} GiB required)")
+    return ok, round(free_gib, 2)
 
 
 def resolve_run_root(arg: str | None, force: bool = False) -> Path:
@@ -117,18 +173,8 @@ def resolve_run_root(arg: str | None, force: bool = False) -> Path:
     or a new timestamped sibling directory is created. There is no
     resume support.
     """
-    run_root = Path(arg).expanduser().resolve() if arg else DEFAULT_RUN_ROOT
-
-    for frozen in FROZEN_DIRS:
-        if run_root == frozen or frozen in run_root.parents:
-            raise ValueError(
-                f"run_root {run_root} resolves inside frozen path {frozen}; "
-                f"choose a location outside data/, pinned/ and "
-                f"nepal/framework_v1/")
-    for frozen in FROZEN_FILES:
-        if run_root == frozen:
-            raise ValueError(
-                f"run_root {run_root} resolves onto frozen file {frozen}")
+    run_root = ensure_not_frozen(
+        arg if arg else DEFAULT_RUN_ROOT, "run_root")
 
     merged_out = run_root / "merged" / MERGED_NAME
     if merged_out.exists() and not force:
@@ -237,7 +283,12 @@ def normalize_payload(path: Path | str,
       require dims (latitude, longitude, time), require the 7 contract
       data variables (t2m, d2m, u10, v10, sd, sf, tp), and reject the
       payload outright if 'sde' is present or 'sd' is missing.
-    - Sort the time axis and drop duplicate timestamps.
+    - Sort the time axis and validate the timestamp set is EXACTLY the
+      expected UTC hourly set for the requested year/month (P5-07):
+      first valid day 00:00 through last valid day 23:00, hourly
+      contiguous, count = days*24. Payloads with wrong-month,
+      out-of-range, duplicate or post-cutoff (>= 2026-08-26T00:00Z)
+      timestamps are rejected, not repaired.
     - Write monthly_dir/era5_land_{year}_{month}.nc and return its path.
 
     If ledger_entry is given, payload_format and payload_sha256 (of the
@@ -257,6 +308,7 @@ def normalize_payload(path: Path | str,
                     f"{path}: zip payload must contain exactly one .nc "
                     f"member, found {len(nc_members)}: {nc_members}")
             source = path.parent / f"{path.stem}.norm.nc"
+            ensure_not_frozen(source, "zip extraction target")
             source.write_bytes(zf.read(nc_members[0]))
     else:
         source = path
@@ -272,9 +324,14 @@ def normalize_payload(path: Path | str,
         raise ValueError(
             f"{path}: cannot infer year/month from filename; "
             f"pass them explicitly")
+    year = int(year)
+    month = f"{int(month):02d}"
     if monthly_dir is None:
         monthly_dir = path.parent / "monthly"
     monthly_dir = Path(monthly_dir)
+    # P5-11 callable guard: direct callers get the same frozen-path
+    # rejection as the CLI path.
+    ensure_not_frozen(monthly_dir, "monthly_dir")
 
     ds = xr.open_dataset(source)
     try:
@@ -299,12 +356,39 @@ def normalize_payload(path: Path | str,
                 f"{source}: missing required data_vars "
                 f"{sorted(missing_vars)}")
 
-        # Sorted-unique time axis
+        # P5-07 exact timestamp validation. Sort first, then require the
+        # timestamp set to be EXACTLY the expected UTC hourly set for
+        # the requested year/month — duplicates, wrong-month,
+        # out-of-range and post-cutoff payloads are all rejected.
         ds = ds.sortby("time")
         import numpy as np
-        _, unique_idx = np.unique(ds["time"].values, return_index=True)
-        if len(unique_idx) < ds.sizes["time"]:
-            ds = ds.isel(time=np.sort(unique_idx))
+        times = np.asarray(ds["time"].values)
+        if np.unique(times).size != times.size:
+            raise ValueError(
+                f"{source}: duplicate timestamps in payload; rejecting "
+                f"rather than silently deduplicating")
+
+        days = days_for_month(year, month)
+        expected = np.arange(
+            np.datetime64(f"{year}-{month}-{days[0]}T00:00"),
+            np.datetime64(f"{year}-{month}-{days[-1]}T23:00")
+            + np.timedelta64(1, "h"),
+            np.timedelta64(1, "h"),
+        )
+        cutoff = np.datetime64(EVENT_CUTOFF_ISO)
+        if (times >= cutoff).any():
+            raise ValueError(
+                f"{source}: contains post-cutoff timestamps "
+                f"(>= {EVENT_CUTOFF_ISO}Z)")
+        if times.size != expected.size or not (times == expected).all():
+            first = str(times[0]) if times.size else "<none>"
+            last = str(times[-1]) if times.size else "<none>"
+            raise ValueError(
+                f"{source}: timestamps do not exactly match the "
+                f"expected UTC hourly set for {year}-{month} "
+                f"(expected {expected.size} hours "
+                f"{expected[0]}..{expected[-1]}; "
+                f"got {times.size} hours {first}..{last})")
 
         monthly_dir.mkdir(parents=True, exist_ok=True)
         out_path = monthly_dir / f"era5_land_{year}_{month}.nc"
@@ -354,9 +438,17 @@ def merge_monthly(run_root: Path, completed: list[dict],
     Concatenates along time, sorts, drops duplicated timestamps and
     verifies per-month hourly completeness (expected hours = days*24).
     Incomplete months are reported and recorded in the ledger.
+
+    P5-08 completeness gate: if ANY month is incomplete the merged file
+    is NOT produced (quarantined) — downstream must never consume
+    partial data as complete. When the merged file passes all
+    validation a merged/complete.json marker is written beside it.
     """
     import numpy as np
     import xarray as xr
+
+    # P5-11 callable guard
+    ensure_not_frozen(run_root, "run_root")
 
     monthly_dir = run_root / "monthly"
     merged_dir = run_root / "merged"
@@ -401,6 +493,15 @@ def merge_monthly(run_root: Path, completed: list[dict],
             })
     ledger["incomplete_months"] = incomplete
 
+    if incomplete:
+        # Quarantine: never emit a merged file from incomplete inputs.
+        print(f"\nMERGE QUARANTINED: {len(incomplete)} incomplete "
+              f"month(s); merged file not produced.")
+        ledger["merged_status"] = "quarantined"
+        for _, ds in datasets:
+            ds.close()
+        return None
+
     # Deterministic nearest-cell selection (see select_cell tie rules)
     sel_lat, sel_lon = select_cell(merged)
     ledger["requested_cell"] = {"latitude": EVENT_LAT, "longitude": EVENT_LON}
@@ -412,14 +513,29 @@ def merge_monthly(run_root: Path, completed: list[dict],
     cell = merged.sel(latitude=sel_lat, longitude=sel_lon)
     cell.to_netcdf(out_path)
 
+    # P5-08: the complete.json marker is written ONLY when the merged
+    # file passed all validation above.
+    marker = {
+        "merged_file": str(out_path),
+        "merged_sha256": hashlib.sha256(out_path.read_bytes()).hexdigest(),
+        "months": len(datasets),
+        "total_hours": int(merged.sizes["time"]),
+        "selected_cell": {"latitude": sel_lat, "longitude": sel_lon},
+        "validated_at": datetime.now().isoformat(),
+    }
+    with open(merged_dir / MERGED_MARKER_NAME, "w") as f:
+        json.dump(marker, f, indent=2)
+
     for _, ds in datasets:
         ds.close()
 
+    ledger["merged_status"] = "validated"
     return out_path
 
 
 def write_ledger(run_root: Path, ledger: dict) -> Path:
     """Write the download ledger (checkpoint-safe)."""
+    ensure_not_frozen(run_root, "ledger run_root")  # P5-11
     ledger_path = run_root / LEDGER_NAME
     with open(ledger_path, "w") as f:
         json.dump(ledger, f, indent=2)
@@ -433,7 +549,13 @@ def download_all(years: list[int], run_root: Path,
     Downloads month-by-month to keep individual CDS requests small and
     allow per-month retry on failure. Fresh-run only — no resume of a
     partially populated run root is claimed.
+
+    P5-08: ledger["status"] is "completed" ONLY when every planned
+    month produced a complete normalized file and the merged output
+    passed all validation; otherwise it is "incomplete" and no merged
+    file is emitted.
     """
+    ensure_not_frozen(run_root, "run_root")  # P5-11 callable guard
     ledger = {
         "start_time": datetime.now().isoformat(),
         "dataset": CDS_DATASET,
@@ -447,10 +569,12 @@ def download_all(years: list[int], run_root: Path,
         "completed_months": [],
         "failed_months": [],
         "incomplete_months": [],
+        "disk_checks": [],
         "total_size_mb": 0,
     }
 
     planned = [(y, m) for y in years for m in months_for_year(y)]
+    ledger["planned_months"] = len(planned)
 
     if dry_run:
         print(f"DRY RUN: {len(planned)} monthly requests "
@@ -475,6 +599,19 @@ def download_all(years: list[int], run_root: Path,
     monthly_dir = run_root / "monthly"
     raw_dir.mkdir(exist_ok=True)
     monthly_dir.mkdir(exist_ok=True)
+
+    # P5-10 disk reserve guard — before acquisition starts.
+    ok, free_gib = check_disk_reserve(run_root)
+    ledger["disk_checks"].append({
+        "stage": "pre_acquisition", "free_gib": free_gib, "ok": ok})
+    if not ok:
+        ledger["disk_reserve_failure"] = {
+            "stage": "pre_acquisition", "free_gib": free_gib,
+            "min_free_gib": DISK_MIN_FREE_GIB}
+        ledger["status"] = "incomplete"
+        ledger["end_time"] = datetime.now().isoformat()
+        write_ledger(run_root, ledger)
+        return ledger
 
     # Initialize CDS client (uses ~/.cdsapirc automatically).
     # cdsapi is imported lazily so this module stays importable without
@@ -529,33 +666,104 @@ def download_all(years: list[int], run_root: Path,
         # Save ledger after each month (checkpoint)
         write_ledger(run_root, ledger)
 
+        # P5-10 disk reserve guard — after each monthly write.
+        ok, free_gib = check_disk_reserve(run_root)
+        ledger["disk_checks"].append({
+            "stage": f"post_{year}_{month}",
+            "free_gib": free_gib, "ok": ok})
+        if not ok:
+            print("  Disk reserve below threshold; "
+                  "stopping further month requests.")
+            ledger["disk_reserve_failure"] = {
+                "stage": f"post_{year}_{month}", "free_gib": free_gib,
+                "min_free_gib": DISK_MIN_FREE_GIB}
+            write_ledger(run_root, ledger)
+            break
+
+    # P5-08 completeness gate: every planned month must have a complete
+    # normalized file on disk and no month may have failed — otherwise
+    # the merged file is not produced.
+    all_normalized = all(
+        (monthly_dir / f"era5_land_{y}_{m}.nc").exists()
+        for y, m in planned)
+    ready_to_merge = (
+        len(ledger["completed_months"]) == len(planned)
+        and not ledger["failed_months"]
+        and all_normalized)
+
     # Merge all normalized monthly files into one
-    if ledger["completed_months"]:
-        print("\nMerging monthly files into single NetCDF...")
-        try:
-            out_path = merge_monthly(run_root, ledger["completed_months"],
-                                     ledger)
-            if out_path is not None:
-                final_size_mb = out_path.stat().st_size / (1024 * 1024)
-                print(f"Merged file: {out_path} ({final_size_mb:.1f} MB)")
-                ledger["final_file"] = str(out_path)
-                ledger["final_size_mb"] = round(final_size_mb, 1)
-        except Exception as e:
-            print(f"Merge error: {e}")
-            ledger["merge_error"] = str(e)
+    if ready_to_merge:
+        # P5-10 disk reserve guard — before merge.
+        ok, free_gib = check_disk_reserve(run_root)
+        ledger["disk_checks"].append({
+            "stage": "pre_merge", "free_gib": free_gib, "ok": ok})
+        if not ok:
+            ledger["disk_reserve_failure"] = {
+                "stage": "pre_merge", "free_gib": free_gib,
+                "min_free_gib": DISK_MIN_FREE_GIB}
+        else:
+            print("\nMerging monthly files into single NetCDF...")
+            try:
+                out_path = merge_monthly(run_root,
+                                         ledger["completed_months"],
+                                         ledger)
+                if out_path is not None:
+                    final_size_mb = out_path.stat().st_size / (1024 * 1024)
+                    print(f"Merged file: {out_path} "
+                          f"({final_size_mb:.1f} MB)")
+                    ledger["final_file"] = str(out_path)
+                    ledger["final_size_mb"] = round(final_size_mb, 1)
+            except Exception as e:
+                print(f"Merge error: {e}")
+                ledger["merge_error"] = str(e)
+    elif ledger["completed_months"]:
+        print("\nCompleteness gate: not all planned months completed — "
+              "merged output withheld (run is incomplete).")
 
     ledger["end_time"] = datetime.now().isoformat()
-    ledger["status"] = ("completed" if not ledger["failed_months"]
-                        else "completed_with_failures")
+    merged_ok = (bool(ledger.get("final_file"))
+                 and ledger.get("merged_status") == "validated"
+                 and not ledger["incomplete_months"])
+    ledger["status"] = ("completed"
+                        if ready_to_merge and merged_ok
+                        and not ledger["failed_months"]
+                        else "incomplete")
 
     write_ledger(run_root, ledger)
 
-    print(f"\nDownload complete: {len(ledger['completed_months'])} months, "
+    print(f"\nDownload finished: {len(ledger['completed_months'])} months, "
           f"{len(ledger['failed_months'])} failed, "
           f"{ledger['total_size_mb']:.1f} MB total")
+    print(f"Status: {ledger['status']}")
     print(f"Ledger: {run_root / LEDGER_NAME}")
 
     return ledger
+
+
+def netcdf_smoke() -> bool:
+    """P5-16 NetCDF backend smoke test.
+
+    Trivial xarray round-trip: build a 3-point dataset, write it to an
+    in-memory NetCDF buffer, read it back and compare. Returns True on
+    an exact round-trip; raises (or returns False) if the installed
+    NetCDF backend is broken.
+    """
+    import io
+
+    import numpy as np
+    import xarray as xr
+
+    ds = xr.Dataset(
+        {"v": ("time", np.array([1.0, 2.0, 3.0], dtype=np.float64))},
+        coords={"time": np.arange(3)},
+    )
+    buf = io.BytesIO()
+    ds.to_netcdf(buf)
+    buf.seek(0)
+    with xr.open_dataset(buf) as back:
+        return (back.sizes.get("time") == 3
+                and bool(np.array_equal(back["v"].values,
+                                        ds["v"].values)))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -572,7 +780,23 @@ def main(argv: list[str] | None = None) -> int:
                              "creating a new timestamped run dir")
     parser.add_argument("--year-range", type=str, default="2001-2026",
                         help="Year range (e.g., 2001-2026)")
+    parser.add_argument("--smoke", action="store_true",
+                        help="Run the NetCDF backend smoke test "
+                             "(xarray round-trip) and exit")
     args = parser.parse_args(argv)
+
+    if args.smoke:
+        print("NetCDF backend smoke test...")
+        try:
+            ok = netcdf_smoke()
+        except Exception as e:
+            print(f"SMOKE FAILED: {e}", file=sys.stderr)
+            return 1
+        if not ok:
+            print("SMOKE FAILED: round-trip mismatch", file=sys.stderr)
+            return 1
+        print("NetCDF smoke test passed.")
+        return 0
 
     if "-" in args.year_range:
         start, end = map(int, args.year_range.split("-"))
@@ -597,11 +821,15 @@ def main(argv: list[str] | None = None) -> int:
 
     ledger = download_all(years, run_root, dry_run=args.dry_run)
 
+    if ledger["status"] in ("completed", "dry_run"):
+        return 0
     if ledger["failed_months"]:
         print(f"\nWARNING: {len(ledger['failed_months'])} months failed. "
               f"Re-run with a fresh run root or --force to retry.")
-        return 1
-    return 0
+    elif ledger["status"] == "incomplete":
+        print("\nWARNING: run is incomplete — merged output was not "
+              "validated. Re-run with a fresh run root or --force.")
+    return 1
 
 
 if __name__ == "__main__":

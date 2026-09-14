@@ -24,3 +24,7 @@ data/features_nepal_hourly_jja_2001_2026.csv
 
 # Worktree-local test fixture link (environment-bound reconciled handoff)
 data/framework_inputs_v1_reconciled
+
+# P5-15: research run roots (raw/, monthly/, merged/, features/, gmm/)
+# are run outputs — never committed.
+research_runs/

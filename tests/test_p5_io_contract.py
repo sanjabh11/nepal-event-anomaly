@@ -22,11 +22,14 @@ import feature_extraction as fe
 import gmm_descriptive as gmm
 
 
-def _hourly_ds(vars_present: list[str], n_hours: int = 48) -> xr.Dataset:
-    times = pd.date_range("2001-06-01", periods=n_hours, freq="h")
+def _hourly_ds(vars_present: list[str], n_hours: int = 48,
+               times: pd.DatetimeIndex | None = None) -> xr.Dataset:
+    if times is None:
+        times = pd.date_range("2001-06-01", periods=n_hours, freq="h")
+    n = len(times)
     return xr.Dataset(
         {v: (("valid_time", "latitude", "longitude"),
-             rng_arr(n_hours)) for v in vars_present},
+             rng_arr(n)) for v in vars_present},
         coords={
             "valid_time": times,
             "latitude": [28.2, 28.3],
@@ -41,17 +44,49 @@ def rng_arr(n: int) -> np.ndarray:
 
 GOOD_VARS = ["t2m", "d2m", "u10", "v10", "sd", "sf", "tp"]
 
+MERGED_NAME = "era5_land_nepal_jja_2001_2026.nc"
+
+
+def _month_hours(year: int, month: str) -> pd.DatetimeIndex:
+    """The exact hourly timestamp set a valid {year}-{month} payload
+    must carry under the shared contract (days_for_month already
+    encodes the 2026-08 cutoff at day 25)."""
+    days = dl.days_for_month(year, month)
+    return pd.date_range(f"{year}-{month}-{days[0]}T00:00",
+                         periods=len(days) * 24, freq="h")
+
+
+def _monthly_ds(year: int, month: str) -> xr.Dataset:
+    """A normalized-form monthly dataset (canonical 'time' dim) as it
+    would sit under <run_root>/monthly/."""
+    times = _month_hours(year, month)
+    n = len(times)
+    return xr.Dataset(
+        {v: (("time", "latitude", "longitude"), rng_arr(n))
+         for v in GOOD_VARS},
+        coords={
+            "time": times,
+            "latitude": [28.2, 28.3],
+            "longitude": [85.4, 85.5],
+        })
+
+
+def _zip_payload(ds: xr.Dataset) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        nc = io.BytesIO()
+        ds.to_netcdf(nc)
+        z.writestr("data_0.nc", nc.getvalue())
+    return buf.getvalue()
+
 
 class TestPayloadNormalization:
     def test_zip_unwrap_and_rename_valid_time(self, tmp_path):
-        ds = _hourly_ds(GOOD_VARS)
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w") as z:
-            nc = io.BytesIO()
-            ds.to_netcdf(nc)
-            z.writestr("data_0.nc", nc.getvalue())
+        # P5-07: a valid payload is the EXACT hourly set for the
+        # declared month — 30 days x 24 h for June 2001.
+        ds = _hourly_ds(GOOD_VARS, times=_month_hours(2001, "06"))
         payload = tmp_path / "era5_land_2001_06.nc"
-        payload.write_bytes(buf.getvalue())
+        payload.write_bytes(_zip_payload(ds))
         out = dl.normalize_payload(payload, tmp_path / "m",
                                    year=2001, month="06")
         norm = xr.open_dataset(out)
@@ -71,6 +106,53 @@ class TestPayloadNormalization:
         payload.write_bytes(b"not a netcdf at all")
         with pytest.raises(ValueError):
             dl.normalize_payload(payload, tmp_path / "m")
+
+    def test_wrong_month_payload_rejected(self, tmp_path):
+        # P5-12: internal timestamps are a full, valid July but the
+        # filename/declared month says June — must raise, not normalize.
+        ds = _hourly_ds(GOOD_VARS, times=_month_hours(2001, "07"))
+        payload = tmp_path / "era5_land_2001_06.nc"
+        payload.write_bytes(_zip_payload(ds))
+        with pytest.raises(ValueError):
+            dl.normalize_payload(payload, tmp_path / "m",
+                                 year=2001, month="06")
+
+    def test_post_cutoff_timestamp_rejected(self, tmp_path):
+        # P5-12: hours on/after the held-out event date (2026-08-26)
+        # must be rejected, even in an otherwise plausible August file.
+        times = pd.date_range("2026-08-01", periods=26 * 24, freq="h")
+        ds = _hourly_ds(GOOD_VARS, times=times)
+        payload = tmp_path / "era5_land_2026_08.nc"
+        ds.to_netcdf(payload)
+        with pytest.raises(ValueError):
+            dl.normalize_payload(payload, tmp_path / "m",
+                                 year=2026, month="08")
+
+    def test_duplicate_timestamps_rejected_or_flagged(self, tmp_path):
+        # P5-12: a full June hourly set with one stamp duplicated over
+        # its neighbour — same length, one duplicate, one missing hour.
+        # The contract permits either an outright rejection OR a
+        # recorded flag; silent dedup with no trace is a violation.
+        times = list(_month_hours(2001, "06"))
+        times[10] = times[9]
+        ds = _hourly_ds(GOOD_VARS, times=pd.DatetimeIndex(times))
+        payload = tmp_path / "era5_land_2001_06.nc"
+        ds.to_netcdf(payload)
+        entry: dict = {}
+        try:
+            out = dl.normalize_payload(payload, tmp_path / "m",
+                                       year=2001, month="06",
+                                       ledger_entry=entry)
+        except ValueError:
+            return  # contract option A: duplicates rejected outright
+        # contract option B: dedup may proceed only if a flag is
+        # recorded in the ledger entry.
+        with xr.open_dataset(out) as norm:
+            assert (np.unique(norm["time"].values).size
+                    == norm.sizes["time"])
+        assert any("dup" in k.lower() for k in entry), (
+            "duplicate timestamps dropped silently — no dedup flag in "
+            f"ledger_entry (keys: {sorted(entry)})")
 
     def test_real_legacy_payload_is_zip_with_sde(self):
         # The committed June-2001 payload is a ZIP carrying sde — the
@@ -125,6 +207,46 @@ class TestFeatureExtraction:
         with pytest.raises(ValueError):
             fe.extract_raw_features(cell)
 
+    def test_snow_depth_name_rejected(self):
+        # P5-12: a variable literally named 'snow_depth' is geometric
+        # snow depth under the CDS long name — it must NOT satisfy the
+        # 'sd' (snow-depth water equivalent) slot; the extractor raises.
+        ds = _hourly_ds(["t2m", "d2m", "u10", "v10", "snow_depth",
+                         "sf", "tp"])
+        cell = ds.isel(latitude=0, longitude=0)
+        with pytest.raises(ValueError):
+            fe.extract_raw_features(cell)
+
+    def test_pdd_reset_calls_production(self):
+        # P5-12/CFM-01: the Aug31 -> Jun1 boundary must reset the 7-day
+        # PDD window. Exercises the production compute_thermal_indices,
+        # not a reimplemented formula.
+        cti = getattr(fe, "compute_thermal_indices", None)
+        if cti is None:
+            pytest.skip("feature_extraction.compute_thermal_indices "
+                        "absent")
+        # Two 24h/day runs: end of JJA 2001, start of JJA 2002.
+        idx1 = pd.date_range("2001-08-25", periods=7 * 24, freq="h")
+        idx2 = pd.date_range("2002-06-01", periods=8 * 24, freq="h")
+        df = pd.DataFrame({"t2m": 10.0}, index=idx1.append(idx2))
+        try:
+            daily = cti(df, model_elev_m=4322.0)
+        except TypeError:  # positional-only signature variant
+            daily = cti(df, 4322.0)
+        pdd7 = daily["pdd_7day"]
+        # The first run completes a full 7-day window (7 x 10 degC).
+        assert pdd7.loc[pd.Timestamp("2001-08-31")] \
+            == pytest.approx(70.0)
+        # The second year's run restarts: its first six days are NaN
+        # (the window must not reach back across the Aug31->Jun1 gap).
+        assert np.isnan(pdd7.loc[pd.Timestamp("2002-06-01")])
+        assert np.isnan(pdd7.loc[pd.Timestamp("2002-06-06")])
+        # ...and inside the run the value is a true 7-day sum.
+        assert pdd7.loc[pd.Timestamp("2002-06-07")] \
+            == pytest.approx(70.0)
+        assert pdd7.loc[pd.Timestamp("2002-06-08")] \
+            == pytest.approx(70.0)
+
     def test_pdd7day_resets_at_year_boundary(self):
         # JJA-only index: Aug 31 2001 → Jun 1 2002 is a gap.
         idx = pd.to_datetime(
@@ -168,3 +290,89 @@ class TestGMMResiduals:
         # every selected K must come from a converged fit
         for s, k in seed.items():
             assert res["converged"][str(s)][str(k)] is True
+
+
+class TestGMMPreflight:
+    """P5-12 — gmm.preflight gates on exact daily coverage."""
+
+    def _exact_jja_frame(self) -> pd.DataFrame:
+        # 92 JJA days x 25 baseline years (2001-2025) + 86 pre-event
+        # days in 2026 (Jun 30 + Jul 31 + Aug 1-25).
+        dates: list[pd.Timestamp] = []
+        for y in range(2001, 2026):
+            dates.extend(pd.date_range(f"{y}-06-01", f"{y}-08-31",
+                                       freq="D"))
+        dates.extend(pd.date_range("2026-06-01", "2026-08-25",
+                                   freq="D"))
+        idx = pd.DatetimeIndex(dates)
+        rng = np.random.default_rng(0)
+        return pd.DataFrame(
+            {c: rng.normal(size=len(idx)) for c in gmm.GMM_FEATURES},
+            index=idx)
+
+    def test_exact_daily_coverage_preflight(self, tmp_path):
+        if not hasattr(gmm, "preflight"):
+            pytest.skip("gmm_descriptive.preflight absent")
+        df = self._exact_jja_frame()
+        csv = tmp_path / "features.csv"
+        df.to_csv(csv)
+        assert gmm.preflight(csv) == []
+
+        # One duplicated day must be flagged — a dup can mask a missing
+        # day, so silent acceptance violates exact coverage.
+        dup_csv = tmp_path / "features_dup.csv"
+        pd.concat([df, df.iloc[[0]]]).to_csv(dup_csv)
+        assert gmm.preflight(dup_csv), \
+            "duplicate row not flagged by preflight"
+
+        # A non-JJA (December) row inside the baseline period must be
+        # flagged — the frame is a JJA-only contract surface.
+        dec = df.iloc[[0]].copy()
+        dec.index = pd.DatetimeIndex(["2001-12-01"])
+        dec_csv = tmp_path / "features_dec.csv"
+        pd.concat([df, dec]).to_csv(dec_csv)
+        assert gmm.preflight(dec_csv), \
+            "non-JJA (December) row not flagged by preflight"
+
+
+class TestSharedRunRootLayout:
+    """P5-12 — one top-level RUN_ROOT: downloader writes monthly/ and
+    merged/, the extractor consumes merged/<MERGED_NAME>."""
+
+    def test_end_to_end_layout(self, tmp_path):
+        run_root = tmp_path / "run_root"
+        monthly_dir = run_root / "monthly"
+        monthly_dir.mkdir(parents=True)
+        completed = []
+        for year, month in ((2001, "06"), (2001, "07")):
+            _monthly_ds(year, month).to_netcdf(
+                monthly_dir / f"era5_land_{year}_{month}.nc")
+            completed.append({"year": year, "month": month})
+
+        ledger: dict = {}
+        out = dl.merge_monthly(run_root=run_root, completed=completed,
+                               ledger=ledger)
+        merged_name = getattr(dl, "MERGED_NAME", MERGED_NAME)
+        merged = run_root / "merged" / merged_name
+        assert out == merged and merged.is_file()
+        # P5-08: complete.json is written only for a validated merge.
+        assert (run_root / "merged" / "complete.json").is_file()
+        assert ledger.get("incomplete_months") == []
+        # The extractor's default input is <run_root>/merged/<name>.
+        assert getattr(fe, "ERA5_FILENAME", merged_name) == merged_name
+
+        # Real consumption: the production extractor pieces must read
+        # the merged file. load_era5_land re-selects the event cell;
+        # a merged file already carrying scalar cell coordinates is
+        # also acceptable input to extract_raw_features directly.
+        ds = xr.open_dataset(merged)
+        try:
+            cell, _lat, _lon, _elev = fe.load_era5_land(merged)
+        except ValueError:
+            cell = ds  # merged file is already the selected cell
+        hourly = fe.extract_raw_features(cell)
+        ds.close()
+        assert len(hourly) == (30 + 31) * 24
+        assert set(GOOD_VARS) <= set(hourly.columns)
+        assert hourly.index.min() == pd.Timestamp("2001-06-01")
+        assert hourly.index.max() == pd.Timestamp("2001-07-31 23:00")

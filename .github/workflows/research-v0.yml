@@ -7,13 +7,21 @@ on:
   push:
     paths:
       - "nepal/research_v0/**"
+      - "nepal/era5_download.py"
+      - "nepal/feature_extraction.py"
+      - "nepal/gmm_descriptive.py"
       - "tests/test_research_v0_*.py"
+      - "tests/test_p5_io_contract.py"
       - "docs/science/**"
       - ".github/workflows/research-v0.yml"
   pull_request:
     paths:
       - "nepal/research_v0/**"
+      - "nepal/era5_download.py"
+      - "nepal/feature_extraction.py"
+      - "nepal/gmm_descriptive.py"
       - "tests/test_research_v0_*.py"
+      - "tests/test_p5_io_contract.py"
       - "docs/science/**"
       - ".github/workflows/research-v0.yml"
 
@@ -29,8 +37,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install test runner
-        run: python -m pip install pytest
+      - name: Install test runner and P5 io-contract deps
+        run: >
+          python -m pip install pytest numpy pandas xarray netcdf4
+          scikit-learn scipy matplotlib
 
       - name: Frozen-boundary diff check (pull_request)
         if: github.event_name == 'pull_request'
@@ -76,6 +86,17 @@ jobs:
         run: |
           PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
             python -B -m pytest tests/test_research_v0_*.py -q -rs
+
+      - name: P5 io-contract tests
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
+            python -B -m pytest tests/test_p5_io_contract.py -q
+
+      - name: ERA5 download dry-run gate
+        run: python -B nepal/era5_download.py --dry-run
+
+      - name: ERA5 NetCDF backend smoke gate
+        run: python -B nepal/era5_download.py --smoke
 
       - name: Claim lint over governed artifacts
         run: |
