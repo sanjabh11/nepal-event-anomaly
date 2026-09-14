@@ -24,15 +24,18 @@ The empty Git shell is never the implementation root.
 
 ## Test results (exact, as run)
 
-- `pytest tests/test_research_v0_*.py`: **114 passed** (2026-09-14,
+- `pytest tests/test_research_v0_*.py`: **116 passed** (2026-09-14,
   hardened contracts incl. adversarial A/B/C/D/E-series probes).
-- Full suite under pinned `.venv`: **1246 passed, 5 skipped,
+- Full suite under pinned `.venv`: **1248 passed, 5 skipped,
   0 failed** — both prior environmental failures resolved
   (interpreter ends in `/python`; `ruptures` installed). The 5 skips
   are `rasterio`-dependent frozen-package tests — optional-dependency
-  gates, not waived coverage; they are disclosed, not hidden.
-- Content commit: pending (round-4); manifest binds `content_head`
-  in a separate manifest-only commit (two-commit protocol).
+  gates, not waived coverage; they are disclosed, not hidden:
+  `test_framework_v1_adapters.py:80`, `:92`, `:109`, `:128`,
+  `test_framework_v1_screen.py:123`.
+- Content commit: bound via `content_head` in the manifest
+  (currently `81bf660`; superseded by the commit containing this
+  line and rebound in the manifest-only commit that follows).
 - CLI smoke: `validate-envelope` re-verifies flag/status/digest shape,
   self-hash, real matrix/policy bytes, and record payloads; execution
   statuses refuse no-bundle validation; `claim-scan` clean on all docs;
