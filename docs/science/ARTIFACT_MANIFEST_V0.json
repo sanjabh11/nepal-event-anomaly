@@ -1,6 +1,6 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "62ec152a45627ccd5a1b8a68d09906f8526e6c2c",
+  "content_head": "8a870d8ca571714bd7a420704f618084813daa67",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
@@ -34,8 +34,8 @@
     },
     {
       "relpath": "docs/science/P0_BASELINE_LEDGER.md",
-      "sha256": "0e3dabdcc4589e1d830517a3f8567466e8d849d4f47155f7d8517e6103ee97a5",
-      "size_bytes": 4505
+      "sha256": "7f89cb400baff5162ab751971767c4d6a2d30fa5736ca30a02e32dc5ffbc7bff",
+      "size_bytes": 4702
     },
     {
       "relpath": "docs/science/P3_ATTESTATION_TEMPLATE.md",
@@ -49,18 +49,18 @@
     },
     {
       "relpath": "nepal/era5_download.py",
-      "sha256": "df76567a1283c1a7c61c76ba6fe5f6d70971885b6cfbcf74ca3f1b193160b8de",
-      "size_bytes": 34548
+      "sha256": "d563a66e907adbcfb20528f179047c82e7878f590f31bf411854d651d3280a2f",
+      "size_bytes": 36438
     },
     {
       "relpath": "nepal/feature_extraction.py",
-      "sha256": "b9dcb5d672a93a1135f13392a1a76f18930f3964332bf23d06e3fb6a00e4ce4d",
-      "size_bytes": 30667
+      "sha256": "db469f815e04067dd39a1eb30cafd59f1b19a1a4599082377335af8e087a2c2f",
+      "size_bytes": 35668
     },
     {
       "relpath": "nepal/gmm_descriptive.py",
-      "sha256": "6f22b846f1f7cf954dfdf1c7eab45b0cc9327c564310bb05d4cfd86cc79545aa",
-      "size_bytes": 46008
+      "sha256": "00e91dab03b6286990645f632a1189e244991d0538cc3ada8ca4a1381f995b2c",
+      "size_bytes": 60253
     },
     {
       "relpath": "nepal/research_v0/__init__.py",
@@ -94,8 +94,8 @@
     },
     {
       "relpath": "tests/test_p5_io_contract.py",
-      "sha256": "a4f848ea8b96f25ae405035ef329bbe224abfc9bcbf451eb2270233494167d9a",
-      "size_bytes": 22062
+      "sha256": "6bbc2f4186c5a48711721ad63446ce998b6c4bca9bbe3117e8586599e0f6ad09",
+      "size_bytes": 27405
     },
     {
       "relpath": "tests/test_research_v0_adversarial.py",
@@ -128,8 +128,8 @@
   "scope": "governed science artifacts: docs/science, nepal/research_v0, research tests, CI workflow, README \u2014 non-science sources excluded by design",
   "self_excluded": true,
   "test_results": {
-    "full_suite_venv": "1276 passed, 5 skipped (rasterio), 0 failed",
-    "p5_io_contract": "28 passed",
+    "full_suite_venv": "1282 passed, 5 skipped (rasterio), 0 failed",
+    "p5_io_contract": "34 passed",
     "research_v0": "116 passed"
   }
 }
