@@ -1,6 +1,6 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "fbaaadc40c396f4aa707c294a193a17538e930af",
+  "content_head": "7c792364f2b4daadf099925fba8e15c952f00fe8",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
@@ -29,8 +29,8 @@
     },
     {
       "relpath": "docs/science/P0_BASELINE_LEDGER.md",
-      "sha256": "10ae22e84341b6943e4052e4ec3e966110b3c7a5c683b4936752c6f1c807ae38",
-      "size_bytes": 3421
+      "sha256": "22f9e309c9b3d12b445d11d4a905d919fc7dd379e899a4c616029dfb84d30955",
+      "size_bytes": 3550
     },
     {
       "relpath": "docs/science/SOURCE_FEASIBILITY_RECORDS_V0.md",
@@ -54,8 +54,8 @@
     },
     {
       "relpath": "nepal/research_v0/gates.py",
-      "sha256": "f16842ea0496efdabe1487535c79e8dfef199daa41ffce6b451bdb2772f1fb41",
-      "size_bytes": 49215
+      "sha256": "98ec610f787cadab60f64bfbdcf8da56ee8aead8ed1310f36229d99b78fcab5d",
+      "size_bytes": 50129
     },
     {
       "relpath": "nepal/research_v0/policy.py",
@@ -69,8 +69,8 @@
     },
     {
       "relpath": "tests/test_research_v0_adversarial.py",
-      "sha256": "0fc418f268195d55b43c2c58c26bd79fa934992a6a24fb59770adf8f0b7a1e2b",
-      "size_bytes": 39557
+      "sha256": "f218e3f4d5bd1f2b995ea4077de95f8bc7437fd07a476ec5415e5275f3bcd08b",
+      "size_bytes": 40754
     },
     {
       "relpath": "tests/test_research_v0_gates.py",
@@ -99,6 +99,6 @@
   "self_excluded": true,
   "test_results": {
     "full_suite_venv": "1246 passed, 5 skipped (rasterio-dependent), 0 failed",
-    "research_v0": "114 passed"
+    "research_v0": "116 passed"
   }
 }
