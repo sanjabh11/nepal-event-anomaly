@@ -800,6 +800,34 @@ class TestRound4ESeries:
         assert not gates.scan_claims_text(
             '{"status": "B_TO_C_BLOCKED", "note": "pending"}')
 
+    def test_e04_artifact_role_reuse_rejected(self, tmp_path):
+        approval, root = self._approval(tmp_path)
+        ev = root / "ev"; ev.mkdir()
+        f = ev / "a.bin"; f.write_bytes(b"same")
+        meta = hash_artifact(f, ev)
+        a1 = EvidenceArtifactV0(
+            artifact_id="a1", artifact_type="feature_matrix",
+            path="a.bin", sha256=meta["sha256"], size_bytes=4,
+            as_of_date="2026-09-14")
+        a2 = EvidenceArtifactV0(
+            artifact_id="a2", artifact_type="power_report",
+            path="a.bin", sha256=meta["sha256"], size_bytes=4,
+            as_of_date="2026-09-14")
+        approval["evidence_root"] = str(ev)
+        with pytest.raises(ValueError):
+            gates.build_claim_envelope(
+                "e", "DESIGN_DRAFT_COMPLETE", {"a1": a1, "a2": a2},
+                approval)
+
+    def test_e14_design_status_rejects_execution_records(
+            self, tmp_path):
+        approval, root = self._approval(tmp_path)
+        approval["evidence_root"] = str(root)
+        with pytest.raises(ValueError):
+            gates.build_claim_envelope(
+                "e", "DESIGN_DRAFT_COMPLETE", {"v": _vintage()},
+                approval)
+
     def test_e20_vintage_needs_cutoff(self, tmp_path):
         approval, root = self._approval(tmp_path)
         v = _vintage()

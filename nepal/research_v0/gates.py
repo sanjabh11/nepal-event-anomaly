@@ -293,6 +293,12 @@ def _cross_record_problems(records: Mapping[str, Any],
                 for r in _records_of(records, ForecastVintageV0)}
     artifact_records = _records_of(records, EvidenceArtifactV0)
     artifacts = {r.sha256 for r in artifact_records}
+    # One artifact, one role (E04): the same file bytes may not be
+    # bound under two different artifact types — role reuse rejects.
+    if len(artifacts) != len(artifact_records):
+        problems.append(
+            "duplicate artifact sha256 — one byte sequence may not "
+            "satisfy multiple artifact roles")
     artifacts_by_type: dict[str, set[str]] = {}
     for a in artifact_records:
         artifacts_by_type.setdefault(a.artifact_type, set()).add(
@@ -365,6 +371,18 @@ def _cross_record_problems(records: Mapping[str, Any],
         problems.append(
             f"status {status!r} requires artifact types "
             f"{sorted(missing_types)} — none bound")
+
+    # E14 — design-stage (blocker-tolerant) statuses may not carry
+    # execution-shaped records: a draft envelope cannot smuggle a
+    # forecast experiment or vintage.
+    from .records import CutoffRecordV0
+    if status in BLOCKER_TOLERANT_STATUSES:
+        for name, record in records.items():
+            if type(record) in (ForecastExperimentV0,
+                                ForecastVintageV0):
+                problems.append(
+                    f"record {name!r}: {type(record).__name__} may not "
+                    f"be bound under design-stage status {status!r}")
 
     execution = status in EXECUTION_STATUSES
     for name, record in records.items():
