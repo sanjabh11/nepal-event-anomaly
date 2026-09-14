@@ -1,11 +1,11 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "7c792364f2b4daadf099925fba8e15c952f00fe8",
+  "content_head": "a8fd6ddefe1611ac1ab7f0d901e231d01e361243",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
-      "sha256": "10e5bdc953c011537b74fe38bc4aa88788e84dfd70b27924c65eb93ff627cc72",
-      "size_bytes": 3185
+      "sha256": "b3f4c37eb882e342ed00c874306661c2ca68cd1b1f447ba1784b1ed5fe394976",
+      "size_bytes": 3631
     },
     {
       "relpath": "README.md",
@@ -14,8 +14,8 @@
     },
     {
       "relpath": "docs/science/GAP_REGISTER_V0.md",
-      "sha256": "011659f32e2cb093133bb23b33f5c1fb3cc90edb67eed2233f4ea6373673d34a",
-      "size_bytes": 23284
+      "sha256": "261400744ce4019172d1dea81454c9173ca1c7b67e6084ac971b37f235d52571",
+      "size_bytes": 24150
     },
     {
       "relpath": "docs/science/HAZARD_EVENT_INVENTORY_DECISION_MATRIX_V0.md",
@@ -49,8 +49,8 @@
     },
     {
       "relpath": "nepal/research_v0/cli.py",
-      "sha256": "f10e18b352cf70035e40c94c17b5ee707ee1e6a305a211770f8e7e4d9bcbeb55",
-      "size_bytes": 17126
+      "sha256": "5be2cfc9c329c9ed315df16e38d556cecbe0feb8c3c64155405c67a4a81ea1f7",
+      "size_bytes": 19965
     },
     {
       "relpath": "nepal/research_v0/gates.py",
@@ -64,8 +64,8 @@
     },
     {
       "relpath": "nepal/research_v0/records.py",
-      "sha256": "ecad79d4cf98d4ff0002f02a0b90921f8662239841b1562918c9cecf394cc0c5",
-      "size_bytes": 50223
+      "sha256": "938abd06ff99ebabbf1eb0c2f274b3a66fb13171fd2f51eaa4b05e489ccce3d0",
+      "size_bytes": 52365
     },
     {
       "relpath": "tests/test_research_v0_adversarial.py",
