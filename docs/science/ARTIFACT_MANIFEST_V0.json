@@ -1,11 +1,16 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "8e1e6001ab5e998f5d07716bb51db8482d10287b",
+  "content_head": "baa6b008b39ede49d3838867d76b5801036799f5",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
-      "sha256": "b3f4c37eb882e342ed00c874306661c2ca68cd1b1f447ba1784b1ed5fe394976",
-      "size_bytes": 3631
+      "sha256": "4656f9a0f354fde6aea08cce8ba8320e605c49cc6a0c6bb60bc95cff753cec33",
+      "size_bytes": 4389
+    },
+    {
+      "relpath": ".gitignore",
+      "sha256": "99cc6b18884bfc219996f843ffde10bbb11aea3b00d833f1a581791d29b7f295",
+      "size_bytes": 538
     },
     {
       "relpath": "README.md",
@@ -14,8 +19,8 @@
     },
     {
       "relpath": "docs/science/GAP_REGISTER_V0.md",
-      "sha256": "e655c7c8e171d449ed221340de36b64efee20d6ed623be61df53116b0c5dcc57",
-      "size_bytes": 28550
+      "sha256": "43478ef7bd7e44c2da44d99a26fd2da33bd8c3ffa31b62014e17cdd5b17ad8dc",
+      "size_bytes": 30834
     },
     {
       "relpath": "docs/science/HAZARD_EVENT_INVENTORY_DECISION_MATRIX_V0.md",
@@ -44,18 +49,18 @@
     },
     {
       "relpath": "nepal/era5_download.py",
-      "sha256": "67220f6de4f7b40a5612f93cdc71556bb3d303726399f5f2feba7262ff3b1fed",
-      "size_bytes": 22510
+      "sha256": "d14211b9a684596f94132766484ec8c0b4723f4dca58d9558c3d111b2320c636",
+      "size_bytes": 32086
     },
     {
       "relpath": "nepal/feature_extraction.py",
-      "sha256": "8149981e7f1097f4114cd9fbca79b8e27c668dab9ffab6ef796abfad6d510e8c",
-      "size_bytes": 23132
+      "sha256": "109c6f48b0516b433355097e689d8f0504da49ec8586fc10f1b64b3a7ddfb29d",
+      "size_bytes": 27000
     },
     {
       "relpath": "nepal/gmm_descriptive.py",
-      "sha256": "afb007a2dbe527da2ec3dfbd89d3a77bfe923a5e9fe005d9bd8d5ca744d5e790",
-      "size_bytes": 27982
+      "sha256": "fac74b63512d49d3dc7caf17765a111d1f2fcf4a79c3ce5a00552d45e2566a54",
+      "size_bytes": 40952
     },
     {
       "relpath": "nepal/research_v0/__init__.py",
@@ -89,8 +94,8 @@
     },
     {
       "relpath": "tests/test_p5_io_contract.py",
-      "sha256": "537a0c362796b037f7e8bc9c1ad508e08f8d321196d476d21d7abf43406c7af6",
-      "size_bytes": 6377
+      "sha256": "7ea21581248ea2743c1e18c98ffdebe3683a7916624593d19dec28d673737214",
+      "size_bytes": 15871
     },
     {
       "relpath": "tests/test_research_v0_adversarial.py",
@@ -123,7 +128,7 @@
   "scope": "governed science artifacts: docs/science, nepal/research_v0, research tests, CI workflow, README \u2014 non-science sources excluded by design",
   "self_excluded": true,
   "test_results": {
-    "full_suite_venv": "1263 passed, 5 skipped (rasterio), 0 failed",
+    "full_suite_venv": "1270 passed, 5 skipped (rasterio), 0 failed",
     "research_v0": "116 passed"
   }
 }
