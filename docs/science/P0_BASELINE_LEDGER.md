@@ -51,6 +51,22 @@ The empty Git shell is never the implementation root.
 **Not modified:** `nepal/framework_v1/`, `preregistration.md`, `pinned/`,
 `data/framework_inputs_v1_reconciled/`, all existing tests.
 
+## Owner designations
+
+- **P3 approver (designated):** repository owner (user), 2026-09-14.
+  Designation is recorded here as intent; the attestation itself
+  remains an external, human-verified act — `human_approved=True`
+  fields stay structural only and no code path authenticates identity.
+- **Engineered dam-breach vertical:** deferred
+  (`DEFERRED_NO_OPEN_TIMED_SOURCE`) — no open structured Nepal
+  inventory located; owner-accepted.
+- **Pilot selection:** owner pre-commits to
+  `FIRST_PASSING_ALL_GATES_ELSE_NO_QUALIFYING` — if no vertical clears
+  its gates, `NO_QUALIFYING_PILOT_SOURCE` stands.
+- **License order:** GLOF + snow-avalanche sources first
+  (HiAVAL, HMAGLOFDB), then Sentinel-1, then forecast archives; MARS
+  procurement deferred until a vertical actually needs it.
+
 ## Standing prohibitions (unchanged)
 
 No downloads before P3 design approval + P5 intake gates. No FMX freeze
