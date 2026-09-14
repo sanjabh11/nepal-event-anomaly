@@ -107,6 +107,15 @@ def _contained(path: Path, root: Path) -> bool:
         return False
 
 
+def _resolve_against(path_value: Any, root: Path) -> Path:
+    """Resolve a declared path.  Relative paths resolve against the
+    declared root, never the process CWD (D01)."""
+    p = Path(str(path_value))
+    if not p.is_absolute():
+        p = root / p
+    return p
+
+
 def design_approval_problems(binding: Mapping[str, Any]) -> list[str]:
     """Validate a P3 approval binding (B01/B02 hardened).
 
@@ -131,16 +140,28 @@ def design_approval_problems(binding: Mapping[str, Any]) -> list[str]:
     root: Optional[Path] = None
     if root_raw is not None:
         root = Path(str(root_raw))
-        if not root.is_dir():
+        if root.resolve() == Path(root.anchor).resolve():
+            problems.append("artifact_root may not be the filesystem "
+                            "root")
+        elif not root.is_dir():
             problems.append(f"artifact_root {root} is not a directory")
             root = None
     expected = {"matrix_path": (EXPECTED_MATRIX_NAME, "matrix_sha256"),
                 "policy_path": (EXPECTED_POLICY_NAME, "policy_sha256")}
+    seen_paths: dict[Path, str] = {}
     for field, (expected_name, digest_field) in expected.items():
         raw_path = binding.get(field)
         if raw_path is None:
             continue
-        path = Path(str(raw_path))
+        path = _resolve_against(raw_path, root) if root else \
+            Path(str(raw_path))
+        if path.resolve() in seen_paths:
+            problems.append(
+                f"{field} resolves to the same file as "
+                f"{seen_paths[path.resolve()]} — the two artifacts "
+                "must be distinct")
+        else:
+            seen_paths[path.resolve()] = field
         if path.name != expected_name:
             problems.append(
                 f"{field} must reference {expected_name!r}, got "
@@ -192,9 +213,14 @@ def design_approval_problems(binding: Mapping[str, Any]) -> list[str]:
                         "design-scope statement — free-text "
                         "attestations are not approval")
     blockers = binding.get("unresolved_blockers")
-    if blockers is not None and not isinstance(blockers, (list, tuple)):
-        problems.append("unresolved_blockers must be a list (possibly "
-                        "empty)")
+    if blockers is not None:
+        if not isinstance(blockers, (list, tuple)):
+            problems.append("unresolved_blockers must be a list "
+                            "(possibly empty)")
+        elif any(not isinstance(b, str) or not b.strip()
+                 for b in blockers):
+            problems.append("every unresolved_blocker must be a "
+                            "non-empty string")
     return problems
 
 
@@ -261,6 +287,10 @@ def _cross_record_problems(records: Mapping[str, Any],
                 for r in _records_of(records, ForecastVintageV0)}
     artifacts = {r.sha256 for r in _records_of(records,
                                                EvidenceArtifactV0)}
+    # Pre-collect the event universe so forward lineage references
+    # don't depend on iteration order.
+    all_event_ids = {r.event_id for r in _records_of(records,
+                                                     EventLabelV0)}
     event_ids: set[str] = set()
     execution = status in EXECUTION_STATUSES
     for name, record in records.items():
@@ -284,6 +314,26 @@ def _cross_record_problems(records: Mapping[str, Any],
                     f"record {name!r}: duplicate event_id "
                     f"{record.event_id!r}")
             event_ids.add(record.event_id)
+            # Version binding (D07): the label's declared source
+            # version must match the bound source record.
+            src = sources.get(record.source_id)
+            if src is not None and src.version and \
+                    record.source_version != src.version:
+                problems.append(
+                    f"record {name!r}: source_version "
+                    f"{record.source_version!r} != bound source "
+                    f"version {src.version!r}")
+            # Lineage fields must point at bound events (D08).
+            for ref_name in ("parent_event_id", "duplicate_of"):
+                ref = getattr(record, ref_name)
+                if ref == record.event_id:
+                    problems.append(
+                        f"record {name!r}: {ref_name} self-references "
+                        "its own event_id")
+                elif ref and ref not in all_event_ids:
+                    problems.append(
+                        f"record {name!r}: {ref_name} {ref!r} has no "
+                        "bound event label")
         elif type(record) is ControlWindowV0:
             opp = opportunities.get(record.opportunity_id)
             if opp is None:
@@ -424,16 +474,26 @@ def build_claim_envelope(
             problems.append("execution statuses and byte-bound records "
                             "require approval 'evidence_root'")
         else:
-            for name, record in records.items():
-                problems.extend(
-                    f"record {name!r}: {p}" for p in
-                    source_evidence_problems(record,
-                                             evidence_root=evidence_root))
-                if type(record) is EvidenceArtifactV0:
+            # evidence_root must live inside artifact_root — the
+            # evidence directory is part of the audited artifact set
+            # (D02).
+            ev_root = Path(str(evidence_root)).resolve()
+            art_root = Path(str(approval["artifact_root"])).resolve()
+            if ev_root != art_root and not _contained(ev_root,
+                                                    art_root):
+                problems.append(
+                    "evidence_root must resolve inside artifact_root")
+            else:
+                for name, record in records.items():
                     problems.extend(
                         f"record {name!r}: {p}" for p in
-                        _evidence_artifact_problems(record,
-                                                    evidence_root))
+                        source_evidence_problems(
+                            record, evidence_root=evidence_root))
+                    if type(record) is EvidenceArtifactV0:
+                        problems.extend(
+                            f"record {name!r}: {p}" for p in
+                            _evidence_artifact_problems(
+                                record, evidence_root))
     if problems:
         raise ValueError("; ".join(problems))
     digests: dict[str, str] = {}
@@ -454,6 +514,8 @@ def build_claim_envelope(
     out["approved_at"] = str(approval["approved_at"])
     out["approval_scope"] = str(approval["approval_scope"])
     out["artifact_root"] = str(approval["artifact_root"])
+    if evidence_root:
+        out["evidence_root"] = str(evidence_root)
     out["source_review_date"] = str(approval["source_review_date"])
     out["selected_pilot_rule"] = str(approval["selected_pilot_rule"])
     out["unresolved_blockers"] = blockers
@@ -469,7 +531,7 @@ def _evidence_artifact_problems(record: Any, evidence_root: Any) -> list[str]:
     root = Path(str(evidence_root))
     if not root.is_dir():
         return [f"evidence_root {root} is not a directory"]
-    path = Path(str(record.path))
+    path = _resolve_against(record.path, root)
     try:
         meta = hash_artifact(path, root)
     except ValueError as exc:
@@ -508,7 +570,7 @@ def source_evidence_problems(record: Any, *,
     if not raw:
         return ["evidence_sidecar_path is required for "
                 "EVIDENCE_VERIFIED"]
-    path = Path(str(raw))
+    path = _resolve_against(raw, root)
     if not _contained(path, root):
         problems.append(f"evidence sidecar {path} resolves outside "
                         "evidence_root")
@@ -753,6 +815,10 @@ def cascade_atomicity_problems(
         if not event_ids:
             problems.append(f"cascade group {group_id!r} is empty")
             continue
+        if len(set(event_ids)) != len(event_ids):
+            problems.append(
+                f"cascade group {group_id!r} contains duplicate "
+                "member IDs")
         for event_id in event_ids:
             if event_id in seen and seen[event_id] != group_id:
                 problems.append(

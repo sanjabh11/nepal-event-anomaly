@@ -515,6 +515,113 @@ class TestRound3SemanticBinding:
         assert rc == 1
 
 
+class TestRound4Residual:
+    """D-series probes: relative paths, root confusion, lineage."""
+
+    def _approval(self, tmp_path, **over):
+        root = tmp_path / "r"
+        root.mkdir(exist_ok=True)
+        m = root / gates.EXPECTED_MATRIX_NAME
+        p = root / gates.EXPECTED_POLICY_NAME
+        m.write_text("m"); p.write_text("p")
+        base = {
+            "artifact_root": str(root), "matrix_path": str(m),
+            "policy_path": str(p), "matrix_sha256": sha256_file(m),
+            "policy_sha256": sha256_file(p),
+            "source_review_date": "2026-09-14",
+            "selected_pilot_rule":
+                "FIRST_PASSING_ALL_GATES_ELSE_NO_QUALIFYING",
+            "approval_scope": "design_review_only",
+            "unresolved_blockers": [], "human_approved": True,
+            "approved_by": "pi", "approver_role": "approver",
+            "approver_attestation": gates.EXPECTED_ATTESTATION,
+            "approved_at": "2026-09-14T00:00:00Z"}
+        base.update(over)
+        return base, root
+
+    def test_d01_relative_artifact_path_resolves_against_root(
+            self, tmp_path):
+        approval, root = self._approval(tmp_path)
+        ev = root / "ev"
+        ev.mkdir()
+        artifact = ev / "m.bin"
+        artifact.write_bytes(b"data")
+        # A relative path that only exists under evidence_root must
+        # bind; the same name must not be sought in CWD.
+        rel = "m.bin"
+        art = EvidenceArtifactV0(
+            artifact_id="a1", artifact_type="feature_matrix",
+            path=rel, sha256=hash_artifact(artifact, ev)["sha256"],
+            size_bytes=4, as_of_date="2026-09-14")
+        approval["evidence_root"] = str(ev)
+        env = gates.build_claim_envelope(
+            "e", "DESIGN_DRAFT_COMPLETE", {"a": art}, approval)
+        assert env["evidence_root"] == str(ev)
+
+    def test_d02_evidence_root_outside_artifact_root(self, tmp_path):
+        approval, root = self._approval(tmp_path)
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        approval["evidence_root"] = str(outside)
+        art = EvidenceArtifactV0(
+            artifact_id="a1", artifact_type="feature_matrix",
+            path="x", sha256="a" * 64, size_bytes=0,
+            as_of_date="2026-09-14")
+        with pytest.raises(ValueError):
+            gates.build_claim_envelope(
+                "e", "DESIGN_DRAFT_COMPLETE", {"a": art}, approval)
+
+    def test_d03_same_file_for_matrix_and_policy(self, tmp_path):
+        approval, root = self._approval(tmp_path)
+        approval["matrix_path"] = approval["policy_path"]
+        assert gates.design_approval_problems(approval)
+
+    def test_d04_empty_blocker_strings(self, tmp_path):
+        approval, _ = self._approval(
+            tmp_path, unresolved_blockers=["", 42])
+        assert gates.design_approval_problems(approval)
+
+    def test_d05_filesystem_root_rejected(self, tmp_path):
+        approval, _ = self._approval(tmp_path, artifact_root="/")
+        assert gates.design_approval_problems(approval)
+
+    def test_d06_within_group_cascade_duplicates(self):
+        assert gates.cascade_atomicity_problems(
+            {"e1": "train", "e2": "train"},
+            {"c1": ["e1", "e1", "e2"]})
+
+    def test_d07_label_version_must_match_source(self, tmp_path):
+        approval, root = self._approval(tmp_path)
+        src = SourceRecordV0(source_id="s", provider="p",
+                             doi_or_url="u", posture="CANDIDATE_ONLY",
+                             version="v1")
+        label = _label(source_version="v2")
+        with pytest.raises(ValueError):
+            gates.build_claim_envelope(
+                "e", "DESIGN_DRAFT_COMPLETE",
+                {"src": src, "lbl": label}, approval)
+
+    def test_d08_lineage_refs_must_bind(self, tmp_path):
+        approval, root = self._approval(tmp_path)
+        src = _label_source()
+        orphan = _label(parent_event_id="ghost-parent")
+        selfref = _label(duplicate_of="e1")
+        for bad in (orphan, selfref):
+            with pytest.raises(ValueError):
+                gates.build_claim_envelope(
+                    "e", "DESIGN_DRAFT_COMPLETE",
+                    {"src": src, "lbl": bad}, approval)
+
+    def test_d09_duplicate_frame_ids(self):
+        opp = ObservationOpportunityV0(
+            opportunity_id="o1", unit_id="u", platform="s1",
+            window_start="2020-01-01T00:00:00Z",
+            window_end="2020-01-02T00:00:00Z", coverage_fraction=1.0,
+            state="OBSERVED_FULL", source_id="s",
+            source_as_of="2020-01-03", frame_ids=("f1", "f1"))
+        assert any("unique" in p for p in opp.problems())
+
+
 def _label_source():
     return SourceRecordV0(source_id="s", provider="p", doi_or_url="u",
                           posture="CANDIDATE_ONLY")

@@ -492,6 +492,9 @@ class ObservationOpportunityV0:
         if self.state in ("OBSERVED_FULL", "OBSERVED_PARTIAL"):
             _req(problems, "source_id", self.source_id)
             _date(problems, "source_as_of", self.source_as_of)
+        if self.frame_ids and \
+                len(set(self.frame_ids)) != len(self.frame_ids):
+            problems.append("frame_ids must be unique")
         return problems
 
     def to_dict(self) -> dict[str, Any]:

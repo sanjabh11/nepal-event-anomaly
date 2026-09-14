@@ -161,6 +161,27 @@ gated on P3/P5), `BLOCKED_EXTERNAL` (procurement/registration),
 | C29 atomicity untested | High | POLICY_DEFINED — atomic commit/resume rules documented; exercised at intake |
 | C30 worker provenance | High | POLICY_DEFINED — worker manifest protocol recorded |
 
+## Post-audit defect register, round 4 (D01–D12)
+
+Self-audit after external advisor unreachable (codex CLI config error,
+gemini CLI arg mismatch, OpenRouter key expired — recorded as tool
+truth).
+
+| ID | Defect | Disposition |
+|---|---|---|
+| D01 relative paths resolve to CWD | High | RESOLVED — `_resolve_against` binds relative paths to declared root |
+| D02 evidence_root outside artifact_root | High | RESOLVED — evidence_root must resolve inside artifact_root |
+| D03 same file as matrix+policy | Medium | RESOLVED — distinct-resolved-path check |
+| D04 non-string blockers | Low | RESOLVED — entries must be non-empty strings |
+| D05 artifact_root = `/` | Medium | RESOLVED — filesystem root rejected |
+| D06 within-group cascade duplicates | High | RESOLVED — per-group member-ID uniqueness |
+| D07 label/source version mismatch | High | RESOLVED — bound-source version must equal declared `source_version` |
+| D08 unbound lineage refs | Medium | RESOLVED — `parent_event_id`/`duplicate_of` must reference bound event IDs; self-reference rejected |
+| D09 duplicate frame_ids | Low | RESOLVED — uniqueness enforced |
+| D10 evidence_root not in envelope | Low | RESOLVED — echoed when bound |
+| D11 CI guard `origin/main` fragility | Medium | RESOLVED — push/PR split, `fetch-depth: 0`, `github.event.before` |
+| D12 name-keyed status graph | Info | ACCEPTED — names are display keys; identity enforced by `type(x) is cls` upstream |
+
 ## Honest residual risks
 
 - **P3 human approval is still required** — no code substitutes for it.

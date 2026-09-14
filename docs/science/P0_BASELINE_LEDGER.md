@@ -24,9 +24,9 @@ The empty Git shell is never the implementation root.
 
 ## Test results (exact, as run)
 
-- `pytest tests/test_research_v0_*.py`: **97 passed** (2026-09-14,
-  hardened contracts incl. adversarial A/B/C-series probes).
-- Full suite under pinned `.venv`: **1229 passed, 5 skipped,
+- `pytest tests/test_research_v0_*.py`: **106 passed** (2026-09-14,
+  hardened contracts incl. adversarial A/B/C/D-series probes).
+- Full suite under pinned `.venv`: **1238 passed, 5 skipped,
   0 failed** — fully green; both prior environmental failures
   resolved (interpreter now ends in `/python`; `ruptures` installed).
 - Content commit: `e19d0a7`; manifest V0.3 binds `content_head` in a
