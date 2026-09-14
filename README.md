@@ -17,12 +17,33 @@ See `preregistration.md` (FROZEN — do not modify after data inspection)
 
 ## Quick Start
 
+> **Legacy / non-pilot paths.** The commands below are the frozen
+> single-event hindcast surface. They are not pilot paths for any future
+> forecast experiment: multi-hazard science work is governed by the v0
+> design artifacts in `docs/science/` and the import-isolated
+> `nepal/research_v0` namespace, which performs no downloads and runs no
+> pipeline before the P3 design-approval gate. `era5_download.py` and
+> `run_nepal_test.py` remain quarantined legacy surfaces — do not treat
+> their outputs as forecast or operational evidence.
+
 ```bash
-source .venv/bin/activate
-python nepal/feature_contract.py  # verify contract
-python nepal/era5_download.py     # download ERA5-Land (Phase 1)
-python nepal/run_nepal_test.py    # end-to-end runner (Phase 5)
+# Historical reference only — these legacy commands are intentionally
+# commented out and must not be run as part of any v0 research path:
+#   source .venv/bin/activate
+#   python nepal/feature_contract.py   # contract check (frozen surface)
+#   python nepal/era5_download.py      # ERA5-Land fetch — LEGACY, non-pilot
+#   python nepal/run_nepal_test.py     # Phase-5 runner — LEGACY, non-pilot
 ```
+
+## Science design (v0)
+
+See `docs/science/` for the hazard/event-inventory decision matrix, the
+information-cutoff and target policy, source feasibility records, and
+the gap register. Research-only code lives in `nepal/research_v0/`
+(validation CLI: `python -m nepal.research_v0.cli --help`). No hazard
+vertical is pre-selected; the current pilot outcome is
+`NO_QUALIFYING_PILOT_SOURCE` pending the evidence items in
+`docs/science/SOURCE_FEASIBILITY_RECORDS_V0.md`.
 
 ## Structure
 

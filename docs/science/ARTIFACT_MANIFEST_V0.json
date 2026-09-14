@@ -1,0 +1,27 @@
+{
+  "files": {
+    "docs/science/GAP_REGISTER_V0.md": "cf5239e9951ea6c28892c89d28c70d7319c7bb782e8bfb2a65d5133682db637e",
+    "docs/science/HAZARD_EVENT_INVENTORY_DECISION_MATRIX_V0.md": "bb6b0ee07c24c7764cf8980903c307f8817257bc2c0dc57587504717a78a0fed",
+    "docs/science/INFORMATION_CUTOFF_TARGET_POLICY_V0.md": "84ae2cc097d6a0d297f15f7196b8046d24a3c0340111fbd70ddefa4b82a124d0",
+    "docs/science/P0_BASELINE_LEDGER.md": "bc593a3c9f874021f8a8ee3b0973d56abed744d8170fae475a2dd555b05b94ef",
+    "docs/science/SOURCE_FEASIBILITY_RECORDS_V0.md": "4c0aca67da3526b9e6583dc2334d83093bab0e0315d07e38fbb5f20761f615bd",
+    "nepal/research_v0/__init__.py": "da71365c725c1f5eb87a578f9720cb703866f43611b7baeb6f49842099661fe4",
+    "nepal/research_v0/_hashing.py": "e777a4b3e1d393a8cc43acf66cd907d6a1a72654bdc3c7e5ca8fd6d117beacce",
+    "nepal/research_v0/cli.py": "1e785a3317ddbdf174830744dd099fd04be24508c9991f0568a74ee8230b2be7",
+    "nepal/research_v0/gates.py": "4b5118c79b17af40dad6e84df15ba8cbc033631cacd49de1e2ec60e3b4770f2e",
+    "nepal/research_v0/policy.py": "ef045265d252c4ff48a73f5bf8aa3bc344884dd63d4d23fae52885ef23f56d7b",
+    "nepal/research_v0/records.py": "a4a38378af19342e2db8851e4bb1bdc261cb668ca3fb510bc3737e5eea8193b0",
+    "tests/test_research_v0_gates.py": "05e4f4c93911d7069613ae03bfeafa2fe58ead278926d5d2d4f61e2ad237cd39",
+    "tests/test_research_v0_isolation.py": "ced4517ef66a2c5c6af30239707f9993188cdc0dbef100ddfaa6496b3c04b525",
+    "tests/test_research_v0_policy.py": "14b31189e02641112090940a776ecbfb6ea5803273b0b6261c6db3d7549eee3f"
+  },
+  "generated": "2026-09-14",
+  "head": "5ef43c292ce41a93c9adec55185973caa7045285",
+  "manifest_version": "ARTIFACT_MANIFEST_V0",
+  "research_diagnostic_only": true,
+  "root": "/Users/sanjayb/nepal-event-anomaly-worktrees/full-framework-v1-20260912-144802/integration",
+  "test_results": {
+    "full_suite": "1182 passed, 2 failed (environmental: /python path expectation, missing ruptures)",
+    "research_v0": "77 passed"
+  }
+}
