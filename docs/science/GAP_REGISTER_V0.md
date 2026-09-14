@@ -79,6 +79,53 @@ gated on P3/P5), `BLOCKED_EXTERNAL` (procurement/registration),
 | A23 overclaimed statuses | High | RESOLVED — vocabulary reclassified; "eligible"/"verified" removed from unverified sources |
 | A24 no claim-lint command | Medium | RESOLVED — `claim-scan` CLI + `scan_claims_text` implemented and tested |
 
+## Post-audit defect register, round 2 (B01–B42)
+
+| ID | Severity | Disposition |
+|---|---|---|
+| B01 weak approval dates/approver | Critical | RESOLVED — strict ISO/UTC date+timestamp, `approver_attestation`, `approval_scope="design_review_only"`, pilot-rule allowlist |
+| B02 outside-root approval files | Critical | RESOLVED — `artifact_root` required; paths must resolve inside it with expected D1/D2 filenames |
+| B03 malformed envelope fields | Critical | RESOLVED — `__post_init__` enforces nonempty ID + strict 64-hex digests + digest-map shape |
+| B04 empty execution envelopes | Critical | RESOLVED — `STATUS_REQUIRED_RECORDS` graph; every execution status requires its record types |
+| B05 unrelated record sets | Critical | RESOLVED — `RECORD_TYPES` allowlist + cross-record foreign keys (source, vertical, opportunity, holdout, vintage) |
+| B06 fake sidecar digest | Critical | RESOLVED — `source_evidence_problems` hashes actual sidecar bytes under an evidence root |
+| B07 thin source records | High | RESOLVED — `EVIDENCE_VERIFIED` requires all qualification fields incl. coverage/method/cadence/as-of |
+| B08 fake pilot-gate sources | Critical | RESOLVED — `PILOT_GATE_PASSED` cross-checked against bound EVIDENCE_VERIFIED sources |
+| B09 interval>uncertainty | Critical | RESOLVED — `uncertainty_seconds >= event interval width` enforced |
+| B10 duplicate reviewers | High | RESOLVED — `reviewer_ids` must be unique |
+| B11 unlinked opportunities | High | RESOLVED — `frame_ids`/`source_id`/`source_as_of` required for observed states |
+| B12 caller-asserted controls | High | RESOLVED — `derive_control_state` derives from validated opportunity + intervals |
+| B13 unresolved overlap positive | Critical | RESOLVED — ambiguous/unresolved overlap is dominant; POSITIVE needs clean contained adjudicated only |
+| B14 incomplete cutoff chain | Critical | RESOLVED — archive/retrieval fields required on `CutoffRecordV0`; full ordering enforced |
+| B15 vintage strings only | Critical | RESOLVED — `archive_payload_sha256` + `retrieval_record_sha256` required on admissible vintages |
+| B16 incomplete holdout universe | Critical | RESOLVED — complete event→group coverage both directions; named regions; duplicates rejected |
+| B17 labels/empty FMX as features | Critical | RESOLVED — `catalog_label` banned as predictor; valid window + vintage digest required; empty feature set rejects |
+| B18 claim-scan misses | High | RESOLVED — casefold + separator normalization + structural status-field parsing |
+| B19 exposure targets/bad horizons | Critical | RESOLVED — `EXPERIMENT_TARGETS={"occurrence"}`; horizon restricted to policy allowlist; digest non-emptiness |
+| B20 empty stability digest | Critical | RESOLVED — `stability_report_digest`, `k_selection_digest`, `source_digests` all required 64-hex |
+| B21 cascade dup/invalid split | High | RESOLVED — duplicate event IDs and invalid split names rejected |
+| B22 TOCTOU/root ambiguity | High | RESOLVED — `hash_artifact` resolves once, enforces containment, returns relpath+size+sha256 |
+| B23 ambiguous manifest head | High | RESOLVED — manifest carries `baseline_head`/`artifact_head`/`repository_relative_root`/`self_excluded` + size+sha256 per file |
+| B24 fabricated CLI envelopes | Critical | RESOLVED — `validate-envelope` re-hashes real matrix/policy files and record payloads (`--records-dir`) |
+| B25 static-only isolation | Medium | RESOLVED — monkeypatched socket/write-open/cwd test proves no runtime side effects |
+| B26 red suite | High | RESOLVED — pinned `.venv` built from `requirements.txt`; `ruptures==1.1.9` present; interpreter ends `/python` |
+| B27 unresolved licenses | Critical | BLOCKED_EXTERNAL — unchanged; sources stay CANDIDATE_ONLY |
+| B28 archive completeness | Critical | GATED_ON_DATA — per-provider cycle-completeness check is an intake artifact |
+| B29 discovery bias rules | High | POLICY_DEFINED — dedup/censoring/negative-frame rules in cutoff policy |
+| B30 no qualified pilot | Critical | UNCHANGED — `NO_QUALIFYING_PILOT_SOURCE`; no default vertical |
+| B31 power/uncertainty | Critical | POLICY_DEFINED — `power_report_digest` + `uncertainty_method` required on experiments; prospective computation at intake |
+| B32 dependence-aware controls | High | POLICY_DEFINED — basin/event-season grouping + embargo enforced in holdout record |
+| B33 regime drift untested | High | POLICY_DEFINED — era-boundary/drift rules recorded; execution gated |
+| B34 no rolling replay | Critical | GATED_ON_DATA — correct by design |
+| B35 thin provenance | High | RESOLVED — manifest records baseline/artifact HEAD, root, interpreter, requirements hash |
+| B36 narrative bypass | Critical | RESOLVED — `claim-scan` scans Markdown/JSON/CLI output; normalization catches variants |
+| B37 compound event model | High | RESOLVED (shape) — `parent_event_id`/`duplicate_of`/`cascade_group_id` on labels; dedup at intake |
+| B38 value-level exposure split | Critical | POLICY_DEFINED — field-class registry enforced at shape level; value-level audit is intake-gated |
+| B39 baseline strategy | High | POLICY_DEFINED — climatology/rule/regularized baselines already required; null/ablation added to policy |
+| B40 shadow path | Medium | POLICY_DEFINED — unauthorized until post-P7 |
+| B41 output artifact binding | High | RESOLVED — experiment requires power/uncertainty artifacts; output manifest binding at execution |
+| B42 atomicity/resume | High | POLICY_DEFINED — atomic per-artifact commit + resumable manifest rule recorded |
+
 ## Honest residual risks
 
 - **P3 human approval is still required** — no code substitutes for it.

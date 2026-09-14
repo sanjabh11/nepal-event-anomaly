@@ -52,6 +52,6 @@ The empty Git shell is never the implementation root.
 
 No downloads before P3 design approval + P5 intake gates. No FMX freeze
 without a verified external freeze token. No clustering/regime fitting on
-real data. No operational, warning, production, prediction, or
-scientific-validation claims. Existing green tests are contract-layer
-evidence, not real-data science.
+real data. No claims about operational use, warnings, production,
+prediction, or scientific validation. Existing green tests are
+contract-layer evidence, not real-data science.

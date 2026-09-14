@@ -135,6 +135,30 @@ to a declared coarser descriptive analysis (`embargo_seconds()` returns
 | `ARCHIVED_OPERATIONAL` (TIGGE, NCEI/NCAR GFS archive, MARS) | Eligible when original issue/vintage/availability semantics are documented |
 | `CURRENT_FEED` (ECMWF Open Data, NOMADS rolling) | Outside research authorization; not a historical archive |
 
+## 7b. Additional audit-derived rules (B-series)
+
+- **Discovery/dedup/censoring (B29, B37):** every label declares
+  `event_time_basis`, a unique `event_id`, and `duplicate_of` /
+  `parent_event_id` for compound or cascade identity; unresolved or
+  duplicated reports are censored, never silently dropped or merged;
+  negative frames come only from complete observed opportunities.
+- **Dependence-aware uncertainty (B31, B32):** confidence intervals
+  use basin/event-season block bootstrap; prospective power/effective
+  sample is computed before evaluation and underpowered results are
+  `UNDERPOWERED_DESCRIPTIVE_ONLY`.
+- **Baselines (B39):** preregistered climatology/base-rate,
+  persistence/seasonal (where valid), null/no-signal, and regularized
+  supervised baselines; ablation and missingness sensitivity are
+  mandatory.
+- **Regime drift (B33):** era boundaries and drift diagnostics are
+  preregistered; retrospective regime descriptions are never presented
+  as forecast skill.
+- **Atomicity/resume (B42):** intake/evaluation artifacts commit
+  atomically per artifact with resumable manifests; no partial
+  promotion; fail-closed recovery.
+- **Narrative lint (B36):** all Markdown/JSON/CLI/manifest artifacts
+  pass the normalized claim scan before publication.
+
 ## 8. Leakage prohibitions (forecast feature gate)
 
 Rejected by `gates.forecast_feature_problems`:

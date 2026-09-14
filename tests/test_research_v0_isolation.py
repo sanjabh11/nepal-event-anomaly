@@ -145,3 +145,41 @@ def test_runtime_import_smoke():
     for forbidden in ("download", "intake", "freeze", "cluster",
                       "run-pipeline"):
         assert forbidden not in help_text
+
+
+def test_no_runtime_side_effects(monkeypatch, tmp_path, capsys):
+    # B25: every network/process/write surface is monkeypatched to
+    # explode; package operations must still complete — proving no
+    # runtime dependency on them.
+    import socket
+    import nepal.research_v0.cli as cli
+    import nepal.research_v0.policy as policy
+
+    def _boom(*a, **k):
+        raise AssertionError("runtime side effect attempted")
+
+    monkeypatch.setattr(socket, "socket", _boom)
+    if hasattr(socket, "create_connection"):
+        monkeypatch.setattr(socket, "create_connection", _boom)
+    import builtins
+    real_open = builtins.open
+
+    def _guarded_open(file, mode="r", *a, **k):
+        if any(m in mode for m in "wax+"):
+            raise AssertionError(f"write open attempted: {mode}")
+        return real_open(file, mode, *a, **k)
+
+    monkeypatch.setattr(builtins, "open", _guarded_open)
+    cwd = tmp_path
+    monkeypatch.chdir(cwd)
+    # Exercise the package: horizons, embargo, canonical hashing, CLI.
+    from nepal.research_v0.policy import EventTimeClass, eligible_horizons
+    assert eligible_horizons(
+        EventTimeClass.INTERVAL_8_30D, event_uncertainty_seconds=12*86400,
+        observation_latency_seconds=0, processing_latency_seconds=0)
+    assert policy.embargo_seconds(
+        max_horizon_seconds=86400, max_label_interval_seconds=86400,
+        max_observation_latency_seconds=0, max_cascade_seconds=0)
+    assert cli.main(["horizons", "--event-class", "EXACT_DAY",
+                     "--uncertainty-seconds", "86400"]) == 0
+    assert list(cwd.iterdir()) == [], "CLI wrote files to cwd"

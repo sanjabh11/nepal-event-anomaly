@@ -1,27 +1,34 @@
 """Record types for the additive research-only namespace (P4).
 
-The eleven record types bind the v0 science-design contracts to data.
+The record types bind the v0 science-design contracts to data.
 All records are frozen dataclasses; ``to_dict`` produces the canonical
 JSON-able form hashed into claim envelopes.  Validation surfaces as
 ``problems()`` — a non-empty list means the record is inadmissible.
 
-Semantic hardening (post-audit A02–A13): authority flags are enforced
-false-only at construction; timestamps must be explicit-UTC; intervals
-must be ordered; cascades must be completely mapped; negative controls
-require a linked full-observation opportunity; envelopes validate every
-record before hashing.
+Semantic hardening (audit rounds A02–A24, B01–B42): authority flags are
+enforced false-only at construction; timestamps are explicit-UTC;
+declared precision must agree with measured uncertainty and the
+uncertainty must cover the whole event interval; cascades and event
+universes must be completely and uniquely mapped; negative controls
+require a linked full-observation opportunity; envelopes bind a
+status-to-required-record graph and cross-record foreign keys; nothing
+is "verified" from metadata alone.
 
 Nothing in this module authorizes intake, freeze, clustering, or any
 operational claim.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import asdict, dataclass, field
 from typing import Any, Optional
 
-from .policy import (OPPORTUNITY_STATES, EventTimeClass, ForecastDataClass,
-                     RegimeMode, TargetState, classify_event_time,
-                     parse_strict_utc, require_finite_seconds)
+from .policy import (HORIZON_SECONDS, OPPORTUNITY_STATES, EventTimeClass,
+                     ForecastDataClass, RegimeMode, TargetState,
+                     classify_event_time, parse_strict_utc,
+                     require_finite_seconds)
+
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 SOURCE_POSTURES = ("CANDIDATE_ONLY", "EVIDENCE_VERIFIED", "REJECTED")
 PILOT_GATE_STATUSES = (
@@ -39,8 +46,8 @@ POSITIVE_ADMISSIBLE_ADJUDICATION = frozenset(
 FEATURE_NAMESPACES = ("occurrence", "exposure", "impact", "context")
 EVIDENCE_REVIEW_STATES = ("UNREVIEWED", "REVIEWED", "INDEPENDENTLY_VERIFIED")
 
-# Controlled vertical ontology (G03): a spec may only claim one of these
-# physical units, with its mechanism allowlist.
+# Controlled vertical ontology (G03): a spec may only claim a declared
+# vertical and one of its compatible mechanisms — arbitrary pairs reject.
 VERTICAL_IDS = frozenset({
     "snow_avalanche", "ice_rock_avalanche", "glof", "landslide_rainfall",
     "landslide_coseismic", "ldof", "dam_breach_engineered"})
@@ -49,6 +56,17 @@ MECHANISM_IDS = frozenset({
     "lake_outburst", "slope_initiation_rainfall",
     "slope_initiation_coseismic", "natural_dam_breach",
     "engineered_breach", "embankment_breach"})
+VERTICAL_MECHANISM_COMPAT = {
+    "snow_avalanche": frozenset({"snow_release"}),
+    "ice_rock_avalanche": frozenset({"ice_rock_failure",
+                                     "glacier_detachment"}),
+    "glof": frozenset({"lake_outburst"}),
+    "landslide_rainfall": frozenset({"slope_initiation_rainfall"}),
+    "landslide_coseismic": frozenset({"slope_initiation_coseismic"}),
+    "ldof": frozenset({"natural_dam_breach"}),
+    "dam_breach_engineered": frozenset({"engineered_breach",
+                                        "embankment_breach"}),
+}
 
 GEOMETRY_ROLES = frozenset({
     "source_point", "deposit_polygon", "runout_polygon", "lake_point",
@@ -72,13 +90,16 @@ _PRECISION_TO_CLASS = {
 
 ASSIGNMENT_RULES = frozenset(
     {"basin", "catchment", "macroregion", "fixed_spatial"})
+SPLIT_NAMES = frozenset({"train", "validation", "test"})
+EXPERIMENT_TARGETS = frozenset({"occurrence"})
 
 # Neutral research statuses — the only statuses a claim envelope may
 # carry.  READY-shaped or authority-shaped statuses are absent by
-# construction.
+# construction.  ``METADATA_REVIEW_COMPLETE`` is deliberately named so
+# metadata inventory cannot be confused with source qualification (A23).
 NEUTRAL_RESEARCH_STATUSES = frozenset({
     "BASELINE_RECONCILED",
-    "SOURCE_MATRIX_COMPLETE",
+    "METADATA_REVIEW_COMPLETE",
     "NO_QUALIFYING_PILOT_SOURCE",
     "DESIGN_DRAFT_COMPLETE",
     "RESEARCH_PATH_ISOLATED",
@@ -98,15 +119,43 @@ NEUTRAL_RESEARCH_STATUSES = frozenset({
 # Statuses that may coexist with unresolved blockers (design/blocked
 # stages).  Execution statuses may not carry blockers.
 BLOCKER_TOLERANT_STATUSES = frozenset({
-    "BASELINE_RECONCILED", "SOURCE_MATRIX_COMPLETE",
+    "BASELINE_RECONCILED", "METADATA_REVIEW_COMPLETE",
     "NO_QUALIFYING_PILOT_SOURCE", "DESIGN_DRAFT_COMPLETE",
     "RESEARCH_PATH_ISOLATED", "FMX_BLOCKED_CUTOFF",
     "UNDERPOWERED_DESCRIPTIVE_ONLY", "DEFERRED_NO_OPEN_TIMED_SOURCE"})
+
+# Status → required record classes (B04): an execution-shaped envelope
+# with no records, or missing the record types its status implies,
+# fails closed.
+STATUS_REQUIRED_RECORDS = {
+    "METADATA_REVIEW_COMPLETE": ("SourceRecordV0",),
+    "EVENT_INTAKE_VALIDATED": ("EventLabelV0", "ObservationOpportunityV0",
+                               "ControlWindowV0", "HoldoutPlanV0"),
+    "INTAKE_COMPLETE": ("EventLabelV0", "ObservationOpportunityV0",
+                        "ControlWindowV0", "HoldoutPlanV0"),
+    "RESEARCH_FEATURE_MATRIX_FROZEN": ("CutoffRecordV0", "HoldoutPlanV0",
+                                       "EventLabelV0"),
+    "FMX_BLOCKED_CUTOFF": ("CutoffRecordV0",),
+    "DESCRIPTIVE_REGIME_ONLY": ("RegimeArtifactV0",),
+    "UNSUPERVISED_STRUCTURE_NOT_STABLE": ("RegimeArtifactV0",),
+    "REGIME_ASSOCIATION_SUPPORTED": ("RegimeArtifactV0", "HoldoutPlanV0",
+                                     "EventLabelV0"),
+    "UNSUPERVISED_PATH_NOT_SUPPORTED": ("RegimeArtifactV0",
+                                        "HoldoutPlanV0"),
+    "FORECAST_EXPERIMENT_ONLY": ("ForecastExperimentV0",
+                                 "ForecastVintageV0", "HoldoutPlanV0"),
+    "UNDERPOWERED_DESCRIPTIVE_ONLY": ("ForecastExperimentV0",),
+}
 
 
 def _req(problems: list[str], name: str, value: Any) -> None:
     if value is None or value == "" or value == [] or value == ():
         problems.append(f"{name} is required")
+
+
+def _sha(problems: list[str], name: str, value: Any) -> None:
+    if not isinstance(value, str) or not SHA256_RE.match(value):
+        problems.append(f"{name} must be a 64-hex sha256 digest")
 
 
 def _ts(problems: list[str], name: str, value: Any) -> Optional[float]:
@@ -119,9 +168,17 @@ def _ts(problems: list[str], name: str, value: Any) -> Optional[float]:
     return parsed
 
 
+def _date(problems: list[str], name: str, value: Any) -> None:
+    if not isinstance(value, str) or \
+            not re.match(r"^\d{4}-\d{2}-\d{2}$", value):
+        problems.append(f"{name} must be an ISO YYYY-MM-DD date")
+
+
 @dataclass(frozen=True)
 class HazardVerticalSpecV0:
-    """One hazard vertical's science ontology boundary."""
+    """One hazard vertical's science ontology boundary.  The
+    vertical–mechanism pair must be declared in the compatibility
+    matrix — arbitrary combinations reject."""
 
     vertical_id: str
     physical_event_unit: str
@@ -144,6 +201,13 @@ class HazardVerticalSpecV0:
             problems.append(
                 f"mechanism {self.mechanism!r} not in controlled "
                 f"mechanism allowlist {sorted(MECHANISM_IDS)}")
+        elif (self.vertical_id in VERTICAL_MECHANISM_COMPAT and
+              self.mechanism and
+              self.mechanism not in
+              VERTICAL_MECHANISM_COMPAT[self.vertical_id]):
+            problems.append(
+                f"mechanism {self.mechanism!r} is incompatible with "
+                f"vertical {self.vertical_id!r}")
         if not self.exclusions:
             problems.append("exclusions must be non-empty — every "
                             "vertical declares what it is not")
@@ -166,8 +230,9 @@ class SourceRecordV0:
 
     ``posture`` is CANDIDATE_ONLY until exact version, license,
     geography, fields, and timing semantics are verified at intake.
-    EVIDENCE_VERIFIED additionally requires a versioned evidence
-    sidecar digest and INDEPENDENTLY_VERIFIED review state.
+    EVIDENCE_VERIFIED requires a real evidence sidecar (path + bytes
+    digest + as-of date) and INDEPENDENTLY_VERIFIED review — a bare
+    hex string is not evidence.
     """
 
     source_id: str
@@ -187,7 +252,9 @@ class SourceRecordV0:
     access_status: str = ""
     posture: str = "CANDIDATE_ONLY"
     license_notes: str = ""
+    evidence_sidecar_path: str = ""
     evidence_sidecar_sha256: str = ""
+    evidence_as_of: str = ""
     evidence_review_state: str = "UNREVIEWED"
 
     def problems(self) -> list[str]:
@@ -205,14 +272,21 @@ class SourceRecordV0:
                 f"evidence_review_state {self.evidence_review_state!r} "
                 f"not in {EVIDENCE_REVIEW_STATES}")
         if self.posture == "EVIDENCE_VERIFIED":
-            for name in ("version", "license_id", "redistribution",
-                         "geography", "event_time_class",
-                         "non_event_frame", "access_status"):
+            # Every qualification field is required — metadata-only
+            # records can never reach this posture (B07).
+            for name in ("version", "as_of_date", "license_id",
+                         "redistribution", "geography",
+                         "temporal_coverage", "spatial_semantics",
+                         "observation_method", "non_event_frame",
+                         "update_cadence", "access_status"):
                 _req(problems, f"EVIDENCE_VERIFIED requires {name}",
                      getattr(self, name))
-            if len(self.evidence_sidecar_sha256) != 64:
-                problems.append("EVIDENCE_VERIFIED requires a "
-                                "64-hex evidence_sidecar_sha256")
+            _req(problems, "EVIDENCE_VERIFIED requires "
+                           "evidence_sidecar_path",
+                 self.evidence_sidecar_path)
+            _sha(problems, "evidence_sidecar_sha256",
+                 self.evidence_sidecar_sha256)
+            _date(problems, "evidence_as_of", self.evidence_as_of)
             if self.evidence_review_state != "INDEPENDENTLY_VERIFIED":
                 problems.append("EVIDENCE_VERIFIED requires "
                                 "INDEPENDENTLY_VERIFIED review state")
@@ -226,9 +300,9 @@ class SourceRecordV0:
 class EventLabelV0:
     """One adjudicated (or pending) event label.
 
-    Event intervals are explicit-UTC; ``event_time_precision`` must be a
-    controlled term consistent with the measured ``uncertainty_seconds``.
-    A scene interval is an uncertainty width, never a release timestamp.
+    Event intervals are explicit-UTC and ordered; the declared
+    uncertainty must cover the whole bracket (a 31-day interval cannot
+    claim one-hour precision).  Reviewer identities must be unique.
     """
 
     event_id: str
@@ -246,6 +320,8 @@ class EventLabelV0:
     longitude: Optional[float] = None
     basin_id: str = ""
     cascade_group_id: str = ""
+    parent_event_id: str = ""
+    duplicate_of: str = ""
     adjudication_state: str = "UNADJUDICATED"
     adjudication_notes: str = ""
     reviewer_ids: tuple[str, ...] = ()
@@ -269,9 +345,13 @@ class EventLabelV0:
                             f"{sorted(GEOMETRY_ROLES)}")
         start = _ts(problems, "event_time_start", self.event_time_start)
         end = _ts(problems, "event_time_end", self.event_time_end)
-        if start is not None and end is not None and end < start:
-            problems.append("event_time_end precedes event_time_start — "
-                            "inverted interval")
+        interval_width: Optional[float] = None
+        if start is not None and end is not None:
+            if end < start:
+                problems.append("event_time_end precedes "
+                                "event_time_start — inverted interval")
+            else:
+                interval_width = end - start
         if self.event_time_precision and \
                 self.event_time_precision not in PRECISION_TERMS:
             problems.append(
@@ -282,8 +362,15 @@ class EventLabelV0:
             problems.append("uncertainty_seconds must be finite")
         elif unc is not None and unc < 0:
             problems.append("uncertainty_seconds must be non-negative")
-        # Precision/consistency: declared precision class must agree
-        # with the measured uncertainty width.
+        # Interval convention (B09): declared uncertainty must cover
+        # the entire event interval — an interval is a bound on possible
+        # release times, not a precise timestamp.
+        if unc is not None and interval_width is not None and \
+                unc < interval_width:
+            problems.append(
+                f"uncertainty_seconds ({unc}) is narrower than the "
+                f"event interval ({interval_width}) — uncertainty must "
+                "cover the whole bracket")
         if unc is not None and self.event_time_precision in \
                 _PRECISION_TO_CLASS:
             declared = _PRECISION_TO_CLASS[self.event_time_precision]
@@ -304,10 +391,14 @@ class EventLabelV0:
             problems.append(
                 f"adjudication_state {self.adjudication_state!r} not in "
                 f"{ADJUDICATION_STATES}")
-        if self.adjudication_state in POSITIVE_ADMISSIBLE_ADJUDICATION \
-                and len(self.reviewer_ids) < 2:
-            problems.append(
-                "adjudicated labels require >=2 reviewer_ids")
+        if self.adjudication_state in POSITIVE_ADMISSIBLE_ADJUDICATION:
+            if len(self.reviewer_ids) < 2:
+                problems.append(
+                    "adjudicated labels require >=2 reviewer_ids")
+            elif len(set(self.reviewer_ids)) != len(self.reviewer_ids):
+                problems.append(
+                    "reviewer_ids must be unique — duplicate identities "
+                    "are not independent reviews")
         return problems
 
     def to_dict(self) -> dict[str, Any]:
@@ -316,11 +407,8 @@ class EventLabelV0:
 
 @dataclass(frozen=True)
 class ObservationOpportunityV0:
-    """Whether a forecast unit was actually observable over a window.
-
-    ``coverage_fraction`` must be consistent with ``state``: FULL needs
-    ~1.0, PARTIAL is (0,1), UNOBSERVED is 0.  Windows must be ordered.
-    """
+    """Whether a forecast unit was actually observable over a window,
+    bound to actual source frames — not a caller assertion."""
 
     opportunity_id: str
     unit_id: str
@@ -331,6 +419,9 @@ class ObservationOpportunityV0:
     coverage_quality: str = ""
     detection_threshold: str = ""
     state: str = "UNKNOWN"
+    source_id: str = ""
+    source_as_of: str = ""
+    frame_ids: tuple[str, ...] = ()
 
     def problems(self) -> list[str]:
         problems: list[str] = []
@@ -345,25 +436,34 @@ class ObservationOpportunityV0:
             problems.append(f"state {self.state!r} not in "
                             f"{OPPORTUNITY_STATES}")
         cov = self.coverage_fraction
+        c: Optional[float] = None
         if cov is not None:
             c = require_finite_seconds(cov)
             if c is None or not 0.0 <= c <= 1.0:
                 problems.append("coverage_fraction must be finite in "
                                 "[0,1]")
                 c = None
-        else:
-            c = None
         if self.state == "OBSERVED_FULL":
             if c is None or c < 0.999:
                 problems.append("OBSERVED_FULL requires "
                                 "coverage_fraction ~= 1.0")
+            if not self.frame_ids:
+                problems.append("OBSERVED_FULL requires actual "
+                                "frame_ids — observation is bound to "
+                                "real source frames")
         elif self.state == "OBSERVED_PARTIAL":
             if c is None or not 0.0 < c < 1.0:
                 problems.append("OBSERVED_PARTIAL requires "
                                 "coverage_fraction in (0,1)")
+            if not self.frame_ids:
+                problems.append("OBSERVED_PARTIAL requires the "
+                                "observed frame_ids")
         elif self.state == "UNOBSERVED" and c not in (None, 0.0):
             problems.append("UNOBSERVED requires coverage_fraction 0.0 "
                             "or absent")
+        if self.state in ("OBSERVED_FULL", "OBSERVED_PARTIAL"):
+            _req(problems, "source_id", self.source_id)
+            _date(problems, "source_as_of", self.source_as_of)
         return problems
 
     def to_dict(self) -> dict[str, Any]:
@@ -373,7 +473,9 @@ class ObservationOpportunityV0:
 @dataclass(frozen=True)
 class ControlWindowV0:
     """A non-event control.  ``state`` may be NEGATIVE only when the
-    linked observation opportunity state is OBSERVED_FULL."""
+    linked observation opportunity is OBSERVED_FULL; use
+    ``policy.derive_control_state`` to derive it from the real
+    opportunity record and event intervals — never a caller claim."""
 
     control_id: str
     unit_id: str
@@ -415,12 +517,13 @@ class ControlWindowV0:
 
 @dataclass(frozen=True)
 class CutoffRecordV0:
-    """The full timestamp model bound to one unit of evidence.
+    """The complete timestamp model bound to one unit of evidence.
 
-    All fields are explicit-UTC.  ``local_retrieval_time`` is provenance
-    only and can never make a late product historically available.
-    ``archive_availability`` records when the provider archive became
-    retrievable and must be >= ``forecast_issue``.
+    All fields are explicit-UTC and required — including
+    ``archive_availability`` (when the provider archive became
+    retrievable, must be >= forecast_issue) and ``local_retrieval_time``
+    (provenance; must be >= archive_availability and can never make a
+    late product historically available).
     """
 
     cutoff_id: str
@@ -432,11 +535,11 @@ class CutoffRecordV0:
     forecast_issue: str
     forecast_valid_start: str
     forecast_valid_end: str
-    archive_availability: Optional[str] = None
+    archive_availability: str = ""
+    local_retrieval_time: str = ""
     forecast_vintage_id: str = ""
     event_time_start: Optional[str] = None
     event_time_end: Optional[str] = None
-    local_retrieval_time: Optional[str] = None
 
     def problems(self) -> list[str]:
         from .policy import cutoff_order_problems
@@ -452,8 +555,9 @@ class CutoffRecordV0:
 @dataclass(frozen=True)
 class HoldoutPlanV0:
     """Basin/catchment-grouped holdout assigned before eligibility
-    filtering.  Cascade groups are atomic across splits and every event
-    must be mapped to exactly one group."""
+    filtering.  Every declared group must receive at least one event,
+    every event must map to a declared group, cascade groups are atomic,
+    and evaluation regions are named — a count is not evidence."""
 
     holdout_plan_id: str
     assignment_rule: str              # basin/catchment/macroregion/fixed_spatial
@@ -461,7 +565,7 @@ class HoldoutPlanV0:
     validation_groups: tuple[str, ...] = ()
     test_groups: tuple[str, ...] = ()
     event_assignments: dict[str, str] = field(default_factory=dict)
-    evaluation_region_count: int = 0
+    evaluation_region_names: tuple[str, ...] = ()
     assigned_before_filtering: bool = True
     test_locked: bool = True
     embargo_seconds: Optional[float] = None
@@ -480,6 +584,11 @@ class HoldoutPlanV0:
             problems.append("validation groups must be non-empty")
         if not self.test_groups:
             problems.append("locked test groups must be non-empty")
+        for label, groups in (("train", self.train_groups),
+                              ("validation", self.validation_groups),
+                              ("test", self.test_groups)):
+            if len(set(groups)) != len(groups):
+                problems.append(f"{label} groups contain duplicates")
         if not self.assigned_before_filtering:
             problems.append("group assignment must precede eligibility "
                             "filtering")
@@ -492,9 +601,13 @@ class HoldoutPlanV0:
             if emb is None or emb < 0:
                 problems.append("embargo_seconds must be finite and "
                                 "non-negative")
-        if self.evaluation_region_count < 2:
-            problems.append("at least two independent evaluation regions "
-                            "are required; no single-box validation")
+        named = set(self.evaluation_region_names)
+        if len(named) < 2 or \
+                len(self.evaluation_region_names) != len(named):
+            problems.append("at least two uniquely named independent "
+                            "evaluation regions are required; a bare "
+                            "count and single-box validation are not "
+                            "evidence")
         overlap = (set(self.train_groups) & set(self.validation_groups)
                    | set(self.train_groups) & set(self.test_groups)
                    | set(self.validation_groups) & set(self.test_groups))
@@ -503,8 +616,9 @@ class HoldoutPlanV0:
         declared = (set(self.train_groups) | set(self.validation_groups)
                     | set(self.test_groups))
         if not self.event_assignments:
-            problems.append("event_assignments is empty — every event "
-                            "must map to a group")
+            problems.append("event_assignments is empty — the complete "
+                            "event universe must be mapped before "
+                            "filtering")
         else:
             stray = {g for g in self.event_assignments.values()
                      if g not in declared}
@@ -512,6 +626,11 @@ class HoldoutPlanV0:
                 problems.append(
                     f"event_assignments reference undeclared groups: "
                     f"{sorted(stray)}")
+            uncovered = declared - set(self.event_assignments.values())
+            if uncovered:
+                problems.append(
+                    f"declared groups with no assigned events: "
+                    f"{sorted(uncovered)}")
         return problems
 
     def to_dict(self) -> dict[str, Any]:
@@ -520,12 +639,8 @@ class HoldoutPlanV0:
 
 @dataclass(frozen=True)
 class ForecastVintageV0:
-    """One issue-time forecast source vintage.
-
-    For REFORECAST/ARCHIVED_OPERATIONAL the chain
-    ``initialization <= issue <= valid_start <= valid_end`` must hold
-    and archive provenance is required.
-    """
+    """One issue-time forecast source vintage, bound to actual archived
+    bytes and a retrieval record — identifiers alone are not evidence."""
 
     vintage_id: str
     provider: str
@@ -535,6 +650,8 @@ class ForecastVintageV0:
     valid_start: str = ""
     valid_end: str = ""
     archive_availability: str = ""
+    archive_payload_sha256: str = ""
+    retrieval_record_sha256: str = ""
     model_version: str = ""
     license_id: str = ""
     archive_mechanism: str = ""
@@ -556,6 +673,10 @@ class ForecastVintageV0:
             return problems
         _req(problems, "model_version", self.model_version)
         _req(problems, "archive_mechanism", self.archive_mechanism)
+        _sha(problems, "archive_payload_sha256",
+             self.archive_payload_sha256)
+        _sha(problems, "retrieval_record_sha256",
+             self.retrieval_record_sha256)
         times = {
             "initialization_time": _ts(problems, "initialization_time",
                                        self.initialization_time),
@@ -567,23 +688,18 @@ class ForecastVintageV0:
                      "valid_end"):
             if not getattr(self, name):
                 problems.append(f"{self.data_class} requires {name}")
-        seq = [("initialization_time", "issue_time"),
-               ("issue_time", "valid_start"),
-               ("valid_start", "valid_end")]
-        for prev, nxt in seq:
+        for prev, nxt in (("initialization_time", "issue_time"),
+                          ("issue_time", "valid_start"),
+                          ("valid_start", "valid_end")):
             if times[prev] is not None and times[nxt] is not None and \
                     times[nxt] < times[prev]:
                 problems.append(
                     f"vintage order violated: {nxt} precedes {prev}")
-        if self.archive_availability:
-            aa = _ts(problems, "archive_availability",
-                     self.archive_availability)
-            if aa is not None and times["issue_time"] is not None and \
-                    aa < times["issue_time"]:
-                problems.append("archive_availability precedes issue_time")
-        else:
-            problems.append("archive_availability is required for "
-                            "forecast vintages")
+        aa = _ts(problems, "archive_availability",
+                 self.archive_availability)
+        if aa is not None and times["issue_time"] is not None and \
+                aa < times["issue_time"]:
+            problems.append("archive_availability precedes issue_time")
         return problems
 
     def to_dict(self) -> dict[str, Any]:
@@ -594,16 +710,20 @@ class ForecastVintageV0:
 class RegimeArtifactV0:
     """An unsupervised regime artifact.  Clusters are candidate
     representations, never forecasts.  Requires >=3 independent seeds,
-    a K=1 null, train-only preprocessing, and label blinding."""
+    a K=1 null, train-only preprocessing, label blinding, real stability
+    and K-selection digests, and bound source digests — no inherited
+    K=6 or prior performance may cross the boundary."""
 
     regime_id: str
     mode: str                        # RegimeMode value
     preprocessing_digest: str
+    k_selection_digest: str = ""
+    stability_report_digest: str = ""
+    source_digests: tuple[str, ...] = ()
     fitted_on: str = "TRAIN_ONLY"
     k: int = 1                       # K=1 null is mandatory
     seeds: tuple[int, ...] = ()
     label_blinding: bool = True      # no event labels in fitting/selection
-    stability_report_digest: str = ""
 
     def problems(self) -> list[str]:
         problems: list[str] = []
@@ -620,10 +740,15 @@ class RegimeArtifactV0:
         if not self.label_blinding:
             problems.append("event labels are prohibited in regime "
                             "fitting, K selection, and interpretation")
-        _req(problems, "preprocessing_digest", self.preprocessing_digest)
-        if len(self.preprocessing_digest) != 64:
-            problems.append("preprocessing_digest must be a 64-hex "
-                            "sha256 of the frozen preprocessing spec")
+        _sha(problems, "preprocessing_digest", self.preprocessing_digest)
+        _sha(problems, "k_selection_digest", self.k_selection_digest)
+        _sha(problems, "stability_report_digest",
+             self.stability_report_digest)
+        if not self.source_digests:
+            problems.append("source_digests is required — the regime "
+                            "must bind the data it was fit on")
+        elif any(not SHA256_RE.match(str(d)) for d in self.source_digests):
+            problems.append("every source_digest must be 64-hex sha256")
         return problems
 
     def to_dict(self) -> dict[str, Any]:
@@ -632,7 +757,13 @@ class RegimeArtifactV0:
 
 @dataclass(frozen=True)
 class ForecastExperimentV0:
-    """A predeclared archived-forecast/reforecast experiment."""
+    """A predeclared archived-forecast/reforecast experiment.
+
+    Target is restricted to ``occurrence`` — exposure/impact are
+    separate analyses, never physical-occurrence targets.  Horizon must
+    be a policy-admissible value.  Feature and vintage digest sets must
+    be non-empty; power and uncertainty artifacts are required.
+    """
 
     experiment_id: str
     vertical_id: str
@@ -644,6 +775,8 @@ class ForecastExperimentV0:
     baselines: tuple[str, ...] = ()
     metrics: tuple[str, ...] = ()
     missing_data_policy: str = ""
+    power_report_digest: str = ""
+    uncertainty_method: str = ""
     evaluation_region_count: int = 0
     test_locked: bool = True
     claim_scope: str = "research_only_no_operational_authorization"
@@ -652,14 +785,33 @@ class ForecastExperimentV0:
         problems: list[str] = []
         for name in ("experiment_id", "vertical_id", "target",
                      "horizon", "holdout_plan_id",
-                     "missing_data_policy"):
+                     "missing_data_policy", "uncertainty_method"):
             _req(problems, name, getattr(self, name))
         if self.vertical_id and self.vertical_id not in VERTICAL_IDS:
             problems.append(f"vertical_id {self.vertical_id!r} not in "
                             "controlled ontology")
+        if self.target and self.target not in EXPERIMENT_TARGETS:
+            problems.append(
+                f"target {self.target!r} not in {sorted(EXPERIMENT_TARGETS)}"
+                " — exposure/impact are separate analyses, never "
+                "physical-occurrence targets")
+        if self.horizon and self.horizon not in HORIZON_SECONDS:
+            problems.append(
+                f"horizon {self.horizon!r} is not an admissible policy "
+                f"horizon {sorted(HORIZON_SECONDS)}")
+        if not self.feature_digests:
+            problems.append("feature_digests must be non-empty — an "
+                            "empty feature set cannot be an experiment")
+        elif any(not SHA256_RE.match(str(d))
+                 for d in self.feature_digests):
+            problems.append("every feature_digest must be 64-hex sha256")
         if not self.vintage_digests:
             problems.append("every forecast experiment must bind at "
                             "least one ForecastVintageV0 digest")
+        elif any(not SHA256_RE.match(str(d))
+                 for d in self.vintage_digests):
+            problems.append("every vintage_digest must be 64-hex sha256")
+        _sha(problems, "power_report_digest", self.power_report_digest)
         required_baselines = {"climatology", "rule", "regularized_supervised"}
         if not required_baselines.issubset(set(self.baselines)):
             problems.append(
@@ -689,11 +841,10 @@ class ForecastExperimentV0:
 class ResearchClaimEnvelopeV0:
     """The outer binding for any research claim.
 
-    Authority flags are enforced false-only at construction — no code
-    path can produce an envelope asserting promotion, production, or
-    warning authority.  Construct claim envelopes via
-    ``gates.build_claim_envelope`` so record validation and approval
-    binding are applied.
+    Authority flags are enforced false-only at construction; the
+    envelope ID and both document digests are structurally validated —
+    no code path can produce an empty, malformed, or authority-bearing
+    envelope.
     """
 
     envelope_id: str
@@ -709,6 +860,18 @@ class ResearchClaimEnvelopeV0:
 
     def __post_init__(self) -> None:
         violations = []
+        if not str(self.envelope_id or "").strip():
+            violations.append("envelope_id must be non-empty")
+        if not SHA256_RE.match(str(self.matrix_sha256 or "")):
+            violations.append("matrix_sha256 must be a 64-hex digest")
+        if not SHA256_RE.match(str(self.policy_sha256 or "")):
+            violations.append("policy_sha256 must be a 64-hex digest")
+        if not isinstance(self.record_digests, dict) or not all(
+                isinstance(k, str) and isinstance(v, str) and
+                SHA256_RE.match(v)
+                for k, v in self.record_digests.items()):
+            violations.append("record_digests must map string names to "
+                              "64-hex digests")
         if self.research_diagnostic_only is not True:
             violations.append("research_diagnostic_only must be True")
         if self.claim_scope != "research_only_no_operational_authorization":
@@ -730,3 +893,11 @@ class ResearchClaimEnvelopeV0:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+# Approved record classes that may be bound into an envelope (B05).
+RECORD_TYPES = frozenset({
+    "HazardVerticalSpecV0", "SourceRecordV0", "EventLabelV0",
+    "ObservationOpportunityV0", "ControlWindowV0", "CutoffRecordV0",
+    "HoldoutPlanV0", "ForecastVintageV0", "RegimeArtifactV0",
+    "ForecastExperimentV0"})

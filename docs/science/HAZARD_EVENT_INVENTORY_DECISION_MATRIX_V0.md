@@ -2,8 +2,8 @@
 
 **Status:** `DESIGN_DRAFT_COMPLETE` — pending human approval (P3 gate).
 **Scope:** research only. This document authorizes nothing: no download,
-no FMX freeze, no clustering, no operational, warning, production, or
-scientific-validation claim.
+no FMX freeze, no clustering, and no claims about operational use,
+warnings, production, or scientific validation.
 **Companion:** `INFORMATION_CUTOFF_TARGET_POLICY_V0.md` (timestamp/target
 rules), `SOURCE_FEASIBILITY_RECORDS_V0.md` (full per-source metadata),
 `GAP_REGISTER_V0.md` (gap closure status).

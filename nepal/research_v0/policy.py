@@ -189,9 +189,10 @@ def assign_target_state(
     Truth is *derived*, never caller-asserted: ``opportunity_state`` must
     come from a validated ObservationOpportunityV0 record.  ``NEGATIVE``
     requires ``OBSERVED_FULL`` and no intersecting interval.  ``POSITIVE``
-    requires a fully contained, adjudicated interval.  Malformed windows,
-    malformed or unresolved intervals, partial/unknown observation, and
-    boundary overlap all resolve to ``CENSORED_OR_AMBIGUOUS``.
+    requires a fully contained, adjudicated interval AND no other
+    ambiguous overlap — an unresolved, unadjudicated, malformed, or
+    boundary-clipping interval is dominant and censors the window even
+    when a clean positive also exists (B13).
     """
     ws = require_finite_seconds(window_start)
     we = require_finite_seconds(window_end)
@@ -199,25 +200,46 @@ def assign_target_state(
         return TargetState.CENSORED_OR_AMBIGUOUS
     if opportunity_state != "OBSERVED_FULL":
         return TargetState.CENSORED_OR_AMBIGUOUS
-    any_overlap = False
+    contained_adjudicated = False
+    ambiguous_overlap = False
     for interval in event_intervals:
         if not _interval_wellformed(interval):
             # Any malformed interval is a data-integrity defect: it
-            # cannot be proven not to overlap, so the window is
-            # ambiguous regardless of position.
-            any_overlap = True
+            # cannot be proven not to overlap.
+            ambiguous_overlap = True
             continue
         start = float(interval["start"])
         end = float(interval["end"])
         if end <= ws or start >= we:
             continue
-        any_overlap = True
-        if (interval["adjudicated"] is True and
-                start >= ws and end <= we):
-            return TargetState.POSITIVE
-    if any_overlap:
+        if interval["adjudicated"] is True and \
+                start >= ws and end <= we:
+            contained_adjudicated = True
+        else:
+            ambiguous_overlap = True
+    if ambiguous_overlap:
         return TargetState.CENSORED_OR_AMBIGUOUS
+    if contained_adjudicated:
+        return TargetState.POSITIVE
     return TargetState.NEGATIVE
+
+
+def derive_control_state(
+        window_start: float, window_end: float,
+        event_intervals: Sequence[Mapping[str, Any]], *,
+        opportunity_state: str) -> TargetState:
+    """Derive a control-window state from validated inputs (B12).
+
+    Controls are never POSITIVE: an event overlapping a control window
+    makes it CENSORED_OR_AMBIGUOUS.  NEGATIVE requires a full
+    observation opportunity and zero event overlap.
+    """
+    state = assign_target_state(
+        window_start, window_end, event_intervals,
+        opportunity_state=opportunity_state)
+    if state is TargetState.NEGATIVE:
+        return TargetState.NEGATIVE
+    return TargetState.CENSORED_OR_AMBIGUOUS
 
 
 def embargo_seconds(*, max_horizon_seconds: Optional[float],

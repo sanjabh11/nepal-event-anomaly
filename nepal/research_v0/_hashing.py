@@ -41,6 +41,45 @@ def sha256_file(path: str | Path) -> str:
     return digest.hexdigest()
 
 
+def hash_artifact(path: str | Path,
+                  allowed_root: str | Path) -> dict[str, Any]:
+    """Hash one artifact with root containment (B22).
+
+    The path must resolve to a regular, non-symlink file inside
+    ``allowed_root``.  Returns ``{relpath, size_bytes, sha256}`` — the
+    digest is computed from the same open stream, so the hashed bytes
+    are the consumed bytes.
+    """
+    p = Path(path)
+    root = Path(allowed_root)
+    try:
+        resolved = p.resolve()
+        root_resolved = root.resolve()
+    except OSError as exc:
+        raise ValueError(f"cannot resolve paths: {exc}") from exc
+    try:
+        relpath = resolved.relative_to(root_resolved)
+    except ValueError:
+        raise ValueError(
+            f"{resolved} is outside allowed root {root_resolved}") \
+            from None
+    if resolved.is_symlink():
+        raise ValueError(f"refusing to hash symlink: {resolved}")
+    if not resolved.is_file():
+        raise ValueError(f"not a regular file: {resolved}")
+    digest = hashlib.sha256()
+    size = 0
+    with open(resolved, "rb") as handle:
+        while True:
+            chunk = handle.read(_CHUNK)
+            if not chunk:
+                break
+            digest.update(chunk)
+            size += len(chunk)
+    return {"relpath": str(relpath), "size_bytes": size,
+            "sha256": digest.hexdigest()}
+
+
 def _reject_nonjson(payload: Any, path: str = "$") -> None:
     if isinstance(payload, bool) or payload is None or \
             isinstance(payload, (str, int)):

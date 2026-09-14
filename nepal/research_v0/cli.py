@@ -79,21 +79,69 @@ def _cmd_validate_envelope(args: argparse.Namespace) -> int:
     if envelope.get("human_approved") is not True:
         problems.append("human_approved must be true with named "
                         "approver")
-    for name in ("approved_by", "approved_at"):
+    for name in ("approved_by", "approved_at", "approver_attestation",
+                 "approval_scope"):
         if not str(envelope.get(name) or "").strip():
             problems.append(f"{name} must be present and non-empty")
+    if str(envelope.get("approval_scope", "")) != "design_review_only":
+        problems.append("approval_scope must be 'design_review_only'")
     digests = envelope.get("record_digests")
     if not isinstance(digests, dict) or not all(
             isinstance(v, str) and gates.SHA256_RE.match(v)
             for v in digests.values()):
         problems.append("record_digests must map names to 64-hex "
                         "digests")
+
+    # Bundle verification (B24): when real artifact paths are supplied,
+    # re-hash them and compare — a self-consistent fabricated envelope
+    # fails against actual bytes.
+    for flag, digest_field in (("--matrix-path", "matrix_sha256"),
+                               ("--policy-path", "policy_sha256")):
+        supplied = getattr(args, flag[2:].replace("-", "_"))
+        if supplied:
+            try:
+                actual = gates.sha256_file(supplied)
+            except ValueError as exc:
+                problems.append(f"{flag} {supplied}: {exc}")
+                continue
+            if actual != envelope.get(digest_field):
+                problems.append(
+                    f"{flag} {supplied}: digest {actual[:16]}… does not "
+                    f"match envelope {digest_field}")
+    if args.records_dir:
+        from pathlib import Path as _P
+        records_dir = _P(args.records_dir)
+        if not records_dir.is_dir():
+            problems.append(f"--records-dir {records_dir} is not a "
+                            "directory")
+        else:
+            bound = envelope.get("record_digests") or {}
+            for name, digest in bound.items():
+                rec_file = records_dir / f"{name}.json"
+                if not rec_file.is_file():
+                    problems.append(f"record {name!r}: expected file "
+                                    f"{rec_file} missing")
+                    continue
+                try:
+                    payload = json.loads(
+                        rec_file.read_text(encoding="utf-8"),
+                        parse_constant=_reject_constant)
+                    actual = sha256_canonical(payload)
+                except (OSError, json.JSONDecodeError, ValueError,
+                        TypeError) as exc:
+                    problems.append(f"record {name!r}: cannot load/"
+                                    f"hash: {exc}")
+                    continue
+                if actual != digest:
+                    problems.append(
+                        f"record {name!r}: payload digest does not "
+                        "match bound digest")
     if problems:
         for problem in problems:
             print(f"BLOCKED: {problem}", file=sys.stderr)
         return 1
     print(f"envelope {args.file} satisfies research-only claim checks "
-          "and self-hash verification")
+          "and bundle verification")
     return 0
 
 
@@ -163,8 +211,18 @@ def build_parser() -> argparse.ArgumentParser:
     env = sub.add_parser(
         "validate-envelope",
         help="re-verify an envelope's flags, status, digests, and "
-             "self-hash")
+             "self-hash; optionally re-hash the real matrix/policy "
+             "files and record payloads")
     env.add_argument("file")
+    env.add_argument("--matrix-path", default=None,
+                     help="re-hash this file and compare to "
+                          "matrix_sha256")
+    env.add_argument("--policy-path", default=None,
+                     help="re-hash this file and compare to "
+                          "policy_sha256")
+    env.add_argument("--records-dir", default=None,
+                     help="directory of <name>.json record payloads to "
+                          "re-hash against record_digests")
     env.set_defaults(func=_cmd_validate_envelope)
 
     scan = sub.add_parser(
