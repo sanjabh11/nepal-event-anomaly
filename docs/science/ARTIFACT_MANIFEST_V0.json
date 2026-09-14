@@ -1,6 +1,6 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "b9f12cc30dc429ed748e1a3f4cc242ef58ae0ae5",
+  "content_head": "8e1e6001ab5e998f5d07716bb51db8482d10287b",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
@@ -14,8 +14,8 @@
     },
     {
       "relpath": "docs/science/GAP_REGISTER_V0.md",
-      "sha256": "768698ba8bb85d2da1830abd3fdb66212f220cd2eae1478735353f4c0c17cfe4",
-      "size_bytes": 26182
+      "sha256": "e655c7c8e171d449ed221340de36b64efee20d6ed623be61df53116b0c5dcc57",
+      "size_bytes": 28550
     },
     {
       "relpath": "docs/science/HAZARD_EVENT_INVENTORY_DECISION_MATRIX_V0.md",
@@ -43,14 +43,19 @@
       "size_bytes": 9566
     },
     {
+      "relpath": "nepal/era5_download.py",
+      "sha256": "67220f6de4f7b40a5612f93cdc71556bb3d303726399f5f2feba7262ff3b1fed",
+      "size_bytes": 22510
+    },
+    {
       "relpath": "nepal/feature_extraction.py",
-      "sha256": "c2a6372c2f0ed056247a3f122ec3edd94baa0fd10e1b0f22bea4c5790b44b378",
-      "size_bytes": 18378
+      "sha256": "8149981e7f1097f4114cd9fbca79b8e27c668dab9ffab6ef796abfad6d510e8c",
+      "size_bytes": 23132
     },
     {
       "relpath": "nepal/gmm_descriptive.py",
-      "sha256": "69d9c54ade978f0928d864a05a0bbe82727c1a7af2232da712e92f6cac79163b",
-      "size_bytes": 23657
+      "sha256": "afb007a2dbe527da2ec3dfbd89d3a77bfe923a5e9fe005d9bd8d5ca744d5e790",
+      "size_bytes": 27982
     },
     {
       "relpath": "nepal/research_v0/__init__.py",
@@ -83,6 +88,11 @@
       "size_bytes": 52365
     },
     {
+      "relpath": "tests/test_p5_io_contract.py",
+      "sha256": "537a0c362796b037f7e8bc9c1ad508e08f8d321196d476d21d7abf43406c7af6",
+      "size_bytes": 6377
+    },
+    {
       "relpath": "tests/test_research_v0_adversarial.py",
       "sha256": "f218e3f4d5bd1f2b995ea4077de95f8bc7437fd07a476ec5415e5275f3bcd08b",
       "size_bytes": 40754
@@ -113,7 +123,7 @@
   "scope": "governed science artifacts: docs/science, nepal/research_v0, research tests, CI workflow, README \u2014 non-science sources excluded by design",
   "self_excluded": true,
   "test_results": {
-    "full_suite_venv": "1248 passed, 5 skipped (rasterio), 0 failed",
+    "full_suite_venv": "1263 passed, 5 skipped (rasterio), 0 failed",
     "research_v0": "116 passed"
   }
 }
