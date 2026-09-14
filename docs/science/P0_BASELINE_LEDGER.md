@@ -8,8 +8,8 @@ claim is implied by anything here.
 | Canonical integration root | `/Users/sanjayb/nepal-event-anomaly-worktrees/full-framework-v1-20260912-144802/integration` |
 | HEAD at baseline | `5ef43c292ce41a93c9adec55185973caa7045285` |
 | Working tree at baseline | clean (`git status --porcelain` empty) |
-| Runtime | Python 3.14.7, pytest 9.1.1 (system `python3`; no `.venv` in this worktree) |
-| Test invocation | `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python3 -B -m pytest tests/ -q` |
+| Runtime | pinned `.venv` at worktree root (`.venv/bin/python`, interpreter ends in `/python`); `ruptures==1.1.9` installed from `requirements.txt` |
+| Test invocation | `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. .venv/bin/python -B -m pytest tests/ -q` |
 | Disk | ~8.2 GiB free at baseline; dipped to ~7.1 GiB mid-cycle (guard correctly refused writes); **~15 GiB at re-check 2026-09-14**. Pre/post-write checks required on every future write; serial acquisition aborts below 8 GiB |
 | Frozen preregistration | `preregistration.md` untouched; frozen 2026-09-10; single-event retrospective Langtang hindcast |
 | N5 / gates | B strict path hash-bound fail-closed; C/D intentionally blocked; E needs verified A+B; F strict needs A+B+E; FMX blocked (no verified external freeze token) |
@@ -24,16 +24,17 @@ The empty Git shell is never the implementation root.
 
 ## Test results (exact, as run)
 
-- `pytest tests/test_research_v0_*.py`: **77 passed** (2026-09-14,
-  hardened contracts incl. adversarial A02–A17 cases).
-- Full suite `pytest tests/`: **1212 passed, 2 failed** — both
-  environmental baseline debt: (1) preflight expects an executable
-  ending in `/python` while the active interpreter is `python3.14`;
-  (2) `ruptures` declared but not installed in the active environment.
-  Zero failures reference research_v0 or docs/science.
-- CLI smoke: `validate-envelope` accepts a file-bound envelope and
-  rejects tampered/authority-flagged copies via self-hash recomputation;
-  `claim-scan` clean on all docs; `horizons`/`embargo` fail closed.
+- `pytest tests/test_research_v0_*.py`: **97 passed** (2026-09-14,
+  hardened contracts incl. adversarial A/B/C-series probes).
+- Full suite under pinned `.venv`: **1229 passed, 5 skipped,
+  0 failed** — fully green; both prior environmental failures
+  resolved (interpreter now ends in `/python`; `ruptures` installed).
+- Content commit: `e19d0a7`; manifest V0.3 binds `content_head` in a
+  separate manifest-only commit `c02f784` (two-commit protocol).
+- CLI smoke: `validate-envelope` re-verifies flag/status/digest shape,
+  self-hash, real matrix/policy bytes, and record payloads; execution
+  statuses refuse no-bundle validation; `claim-scan` clean on all docs;
+  `horizons`/`embargo` fail closed on invalid input.
 
 ## What was added this cycle (additive only)
 
