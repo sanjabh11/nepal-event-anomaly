@@ -37,6 +37,17 @@ Contract rules:
 * canonical frozen matrix format: normalized CSV only
   (``CANONICAL_MATRIX_FORMATS``); ``.parquet`` and every other extension
   fail closed in the semantic scan;
+* strict CSV structure (FMX-07): unique header cells that must all be
+  declared columns, exact row widths, a closed column-role vocabulary,
+  ordered ``date_range``, and missingness accounting where the observed
+  empty-cell fraction may not exceed the declaration;
+* resource bounds (FMX-08): the semantic scan streams the matrix —
+  never slurps it — under ``MAX_MATRIX_BYTES`` / ``MAX_MATRIX_ROWS``;
+* verify-time hardening (FMX-VERIFY-01/02): the semantic scan re-runs
+  on the bound matrix bytes at verify, the artifact root's resolved
+  name must match the bound ``artifact_root_name``, and a declared
+  ``approval_record_relpath`` must resolve under the root to bytes
+  matching ``approval_record_sha256``;
 * blocked envelopes carry explicit anti-confusion fields
   (``schema_fixture``, ``external_freeze``, ``artifact_present``,
   ``not_a_real_matrix``) so a schema fixture can never masquerade as a
@@ -101,6 +112,16 @@ _FORBIDDEN_MATRIX_FILE_TOKENS = ("rank", "priority", "top_five", "loo")
 # FMX-06: the canonical frozen matrix format is normalized CSV only —
 # .parquet and every other extension fail closed in the semantic scan.
 CANONICAL_MATRIX_FORMATS = (".csv",)
+
+# FMX-07: closed role vocabulary for declared matrix columns — any
+# other role fails closed at schema check.
+ALLOWED_COLUMN_ROLES = frozenset(
+    ("feature", "target", "identifier", "metadata"))
+
+# FMX-08: resource bounds for the matrix semantic scan — the CSV is
+# streamed (never slurped) and bounded in bytes and data rows.
+MAX_MATRIX_BYTES = 512 * 1024 * 1024  # 512 MiB
+MAX_MATRIX_ROWS = 5_000_000
 
 
 def _is_sha256(value: Any) -> bool:
@@ -167,6 +188,13 @@ def _check_columns(matrix: Mapping[str, Any], problems: list[str]) -> None:
         for field in _COLUMN_FIELDS:
             if field not in col:
                 problems.append(f"{label}.{field} is required")
+        # FMX-07: closed role vocabulary — an unknown role fails closed.
+        role = col.get("role")
+        if not isinstance(role, str) or \
+                role.lower() not in ALLOWED_COLUMN_ROLES:
+            problems.append(
+                f"{label}.role {role!r} is not in the allowed role "
+                f"set {sorted(ALLOWED_COLUMN_ROLES)}")
         name = str(col.get("name", "")).lower()
         if any(tok in name for tok in _FORBIDDEN_COLUMN_TOKENS):
             problems.append(
@@ -234,6 +262,12 @@ def _check_matrix_schema(matrix: Any, problems: list[str]) -> None:
             isinstance(dr.get("end"), str)
             and _DATE_RE.fullmatch(dr["end"])):
         problems.append("matrix.date_range requires ISO start/end")
+    elif _is_strict_iso_date(dr.get("start")) and \
+            _is_strict_iso_date(dr.get("end")) and \
+            date.fromisoformat(dr["start"]) > date.fromisoformat(
+                dr["end"]):
+        problems.append("matrix.date_range.start must be on or before "
+                        "matrix.date_range.end")
     if "feature_cutoff" in matrix and not _is_strict_iso_date(
             matrix.get("feature_cutoff")):
         problems.append("matrix.feature_cutoff must be a strict ISO "
@@ -276,6 +310,16 @@ def _check_freeze_token_fields(token: Any, matrix: Mapping[str, Any],
     if not _is_sha256(token.get("approval_record_sha256")):
         problems.append("freeze_token.approval_record_sha256 must be a "
                         "lowercase SHA-256")
+    # FMX-VERIFY-02: an optional root-relative approval record binding —
+    # when declared it must be a safe portable relative path that
+    # resolves to a regular file under the artifact root at build and
+    # verify time.
+    apr = token.get("approval_record_relpath")
+    if apr is not None and (not isinstance(apr, str) or not apr or
+                            apr.startswith("/") or
+                            ".." in apr.split("/")):
+        problems.append("freeze_token.approval_record_relpath must be "
+                        "a safe relative path when declared")
     if not isinstance(token.get("immutable_storage_evidence"), str) or \
             not token["immutable_storage_evidence"]:
         problems.append("freeze_token.immutable_storage_evidence is "
@@ -352,248 +396,443 @@ def _declared_bound(col: Mapping[str, Any], key: str, name: Any,
     return float(value)
 
 
+def _matrix_allowed_header_names(matrix_meta: Any) -> set[str]:
+    """FMX-07: the set of CSV header names a matrix may legitimately
+    carry — declared column names plus structurally declared columns
+    (``row_id_column``, ``coordinate_columns`` lat/lon,
+    ``availability_column``).  Any other header cell is an undeclared
+    extra column and fails closed."""
+    allowed: set[str] = set()
+    if not isinstance(matrix_meta, Mapping):
+        return allowed
+    raw_cols = matrix_meta.get("columns")
+    if isinstance(raw_cols, list):
+        for col in raw_cols:
+            if isinstance(col, Mapping) and isinstance(
+                    col.get("name"), str):
+                allowed.add(col["name"])
+    rid = matrix_meta.get("row_id_column")
+    if isinstance(rid, str) and rid:
+        allowed.add(rid)
+    coords = matrix_meta.get("coordinate_columns")
+    if isinstance(coords, Mapping):
+        for axis in ("lat", "lon"):
+            cname = coords.get(axis)
+            if isinstance(cname, str) and cname:
+                allowed.add(cname)
+    avail = matrix_meta.get("availability_column")
+    if isinstance(avail, str) and avail:
+        allowed.add(avail)
+    return allowed
+
+
 def _validate_matrix_file(mpath: Path, matrix_meta: Mapping[str, Any],
-                          problems: list[str]) -> None:
-    """FMX-04/FMX-05/FMX-06: semantic scan of the bound matrix bytes
-    (READY path).
+                          problems: list[str],
+                          summary: Optional[dict[str, Any]] = None
+                          ) -> None:
+    """FMX-04/FMX-05/FMX-06/FMX-07/FMX-08: semantic scan of the bound
+    matrix bytes (READY path, and re-run at verify).
 
     The canonical freeze format is normalized CSV only
-    (``CANONICAL_MATRIX_FORMATS``); any other extension fails closed.  A
-    ``.csv`` matrix must carry every declared column in its header,
+    (``CANONICAL_MATRIX_FORMATS``); any other extension fails closed.
+    The file is *streamed* — never slurped — through
+    ``csv.reader`` over a text wrapper, bounded by ``MAX_MATRIX_BYTES``
+    (stat + streamed offset) and ``MAX_MATRIX_ROWS``; an over-limit
+    matrix rejects with a typed problem.
+
+    Strict structure (FMX-07): the header row must hold unique cells,
+    every header cell must be a declared column name (declared
+    ``columns`` + structural declarations), and every data row must
+    match the header width exactly — extra or short rows reject.  A
+    ``.csv`` matrix must also carry every declared column in its header,
     contain at least one data row, hold finite-float cells in every
     declared feature/target column, hold strict in-range ISO dates in
-    declared time/date columns, and must not contain any actual column
-    name with a B-derived leakage token.  Under missingness policy
-    ``"complete"`` no cell may be empty.  When declared, deeper row
-    semantics are enforced fail-closed: ``row_id_column`` values must be
-    non-empty and unique, ``n_rows`` must equal the actual data row
-    count, declared ``min_value``/``max_value`` bounds constrain every
-    parsed cell of that column, ``coordinate_columns`` lat/lon values
-    must lie within [-90, 90]/[-180, 180], and a declared
-    ``feature_cutoff`` + ``availability_column`` bounds every per-row
-    availability date."""
-    if mpath.suffix.lower() not in CANONICAL_MATRIX_FORMATS:
-        problems.append("unsupported matrix format for semantic scan — "
-                        "the canonical freeze format is normalized CSV "
-                        "only")
-        return
+    declared date columns (``role`` in time/date or an ISO-8601
+    ``unit``/``data_type``), and must not contain any actual column name
+    with a B-derived leakage token.
+
+    Missingness (FMX-07): under policy ``"complete"`` or declared
+    ``missingness.fraction == 0.0`` no cell may be empty; when a
+    positive fraction is declared the observed empty-cell fraction is
+    computed and must not exceed the declaration — an under-declared
+    missingness rejects.
+
+    When declared, deeper row semantics are enforced fail-closed:
+    ``row_id_column`` values must be non-empty and unique, ``n_rows``
+    must equal the actual data row count, declared
+    ``min_value``/``max_value`` bounds constrain every parsed cell of
+    that column, ``coordinate_columns`` lat/lon values must lie within
+    [-90, 90]/[-180, 180], and a declared ``feature_cutoff`` +
+    ``availability_column`` bounds every per-row availability date.
+
+    ``summary`` — when a dict is supplied — is populated with
+    ``data_rows``, ``bytes_scanned`` and ``observed_missing_fraction``
+    even when problems are found."""
+    stats: dict[str, Any] = {"data_rows": 0, "bytes_scanned": 0,
+                             "observed_missing_fraction": 0.0}
     try:
-        text = mpath.read_bytes().decode("utf-8")
-    except (OSError, UnicodeDecodeError) as exc:
-        problems.append(f"matrix file unreadable for semantic scan: {exc}")
-        return
-    try:
-        rows = list(csv.reader(io.StringIO(text), strict=True))
-    except csv.Error as exc:
-        problems.append(f"matrix CSV is not parseable: {exc}")
-        return
-    if not rows:
-        problems.append("matrix CSV has no header row")
-        return
-    header = [str(h) for h in rows[0]]
-    for name in header:
-        lowered = name.lower()
-        if any(tok in lowered for tok in _FORBIDDEN_MATRIX_FILE_TOKENS):
+        if mpath.suffix.lower() not in CANONICAL_MATRIX_FORMATS:
+            problems.append("unsupported matrix format for semantic "
+                            "scan — the canonical freeze format is "
+                            "normalized CSV only")
+            return
+        # FMX-08: byte bound — stat first so a huge file is refused
+        # before any bytes are consumed.
+        try:
+            declared_size = mpath.stat().st_size
+        except OSError as exc:
             problems.append(
-                f"matrix CSV column {name!r} contains a B-derived "
-                "leakage token and is rejected")
-    declared_cols: list[Mapping[str, Any]] = []
-    raw_cols = matrix_meta.get("columns") if isinstance(
-        matrix_meta, Mapping) else None
-    if isinstance(raw_cols, list):
-        declared_cols = [c for c in raw_cols if isinstance(c, Mapping)]
-    index: dict[str, int] = {}
-    for i, name in enumerate(header):
-        index.setdefault(name, i)
-    for col in declared_cols:
-        if col.get("name") not in index:
-            problems.append(f"matrix CSV is missing declared column "
-                            f"{col.get('name')!r}")
-    data_rows = rows[1:]
-    if not data_rows:
-        problems.append("matrix CSV must contain at least one data row")
-        return
-    policy = ""
-    missingness = matrix_meta.get("missingness")
-    if isinstance(missingness, Mapping):
-        policy = str(missingness.get("policy", "")).lower()
-    if policy == "complete":
-        for r, row in enumerate(data_rows):
-            if len(row) < len(header) or any(
-                    not str(cell).strip() for cell in row):
-                problems.append(
-                    f"matrix CSV row {r + 2} has missing cells under "
-                    "missingness policy 'complete'")
-    dr = matrix_meta.get("date_range")
-    dr_start: Optional[date] = None
-    dr_end: Optional[date] = None
-    if isinstance(dr, Mapping) and _is_strict_iso_date(dr.get("start")) \
-            and _is_strict_iso_date(dr.get("end")):
-        dr_start = date.fromisoformat(dr["start"])
-        dr_end = date.fromisoformat(dr["end"])
-    for col in declared_cols:
-        name = col.get("name")
-        if not isinstance(name, str) or name not in index:
-            continue
-        i = index[name]
-        role = str(col.get("role", "")).lower()
-        # FMX-04: a column entry may declare numeric bounds — every
-        # parsed cell must lie inside [min_value, max_value].  A
-        # declared "unit" is already recorded metadata and carries no
-        # CSV-level check.
-        lo = _declared_bound(col, "min_value", name, problems)
-        hi = _declared_bound(col, "max_value", name, problems)
-        bounds_active = lo is not None or hi is not None
-        for r, row in enumerate(data_rows):
-            cell = str(row[i]).strip() if i < len(row) else ""
-            if not cell:
-                continue  # missingness pass already handled empties
-            if role in ("feature", "target"):
-                try:
-                    value = float(cell)
-                except ValueError:
-                    problems.append(
-                        f"matrix CSV row {r + 2} column {name!r} is not "
-                        "numeric for a feature/target role")
-                    continue
-                if not math.isfinite(value):
-                    problems.append(
-                        f"matrix CSV row {r + 2} column {name!r} is not "
-                        "a finite float (NaN/inf rejected)")
-            elif role in ("time", "date"):
-                if not _is_strict_iso_date(cell):
-                    problems.append(
-                        f"matrix CSV row {r + 2} column {name!r} is not "
-                        "a strict ISO YYYY-MM-DD calendar date")
-                elif dr_start is not None and dr_end is not None and \
-                        not dr_start <= date.fromisoformat(cell) <= dr_end:
-                    problems.append(
-                        f"matrix CSV row {r + 2} column {name!r} is "
-                        "outside the declared date_range")
-            if bounds_active:
-                try:
-                    bval = float(cell)
-                except ValueError:
-                    problems.append(
-                        f"matrix CSV row {r + 2} column {name!r} is not "
-                        "numeric but the column declares min/max bounds")
-                    continue
-                if not math.isfinite(bval) or \
-                        (lo is not None and bval < lo) or \
-                        (hi is not None and bval > hi):
-                    problems.append(
-                        f"matrix CSV row {r + 2} column {name!r} value "
-                        f"{cell!r} is outside the declared bounds "
-                        f"[{lo}, {hi}]")
+                f"matrix file unreadable for semantic scan: {exc}")
+            return
+        stats["bytes_scanned"] = declared_size
+        if declared_size > MAX_MATRIX_BYTES:
+            problems.append(
+                f"matrix file is {declared_size} bytes — exceeds the "
+                f"resource bound MAX_MATRIX_BYTES={MAX_MATRIX_BYTES}")
+            return
 
-    # FMX-04: a declared row_id_column must hold non-empty, unique
-    # values — duplicate or missing row identities fail closed.
-    rid = matrix_meta.get("row_id_column") if isinstance(
-        matrix_meta, Mapping) else None
-    if rid is not None:
-        if not isinstance(rid, str) or not rid:
-            problems.append("matrix.row_id_column must name a CSV "
-                            "column")
-        elif rid not in index:
-            problems.append(f"declared row_id_column {rid!r} is not a "
-                            "matrix CSV column")
-        else:
-            ri = index[rid]
-            seen: set[str] = set()
-            for r, row in enumerate(data_rows):
-                cell = str(row[ri]).strip() if ri < len(row) else ""
-                if not cell:
-                    problems.append(f"matrix CSV row {r + 2} has an "
-                                    "empty row id")
-                elif cell in seen:
-                    problems.append(f"matrix CSV row {r + 2} duplicates "
-                                    f"row id {cell!r}")
-                else:
-                    seen.add(cell)
+        declared_cols: list[Mapping[str, Any]] = []
+        raw_cols = matrix_meta.get("columns") if isinstance(
+            matrix_meta, Mapping) else None
+        if isinstance(raw_cols, list):
+            declared_cols = [c for c in raw_cols
+                             if isinstance(c, Mapping)]
+        allowed_names = _matrix_allowed_header_names(matrix_meta)
 
-    # FMX-04: a declared n_rows must equal the actual data row count.
-    n_rows = matrix_meta.get("n_rows") if isinstance(
-        matrix_meta, Mapping) else None
-    if n_rows is not None:
-        if not isinstance(n_rows, int) or isinstance(n_rows, bool):
-            problems.append("matrix.n_rows must be an integer")
-        elif len(data_rows) != n_rows:
-            problems.append(f"matrix CSV has {len(data_rows)} data rows "
-                            f"but matrix.n_rows declares {n_rows}")
+        # Missingness mode: "complete" policy or fraction == 0.0 means
+        # strict — any empty cell rejects; a positive declared fraction
+        # bounds the observed empty-cell fraction.
+        policy = ""
+        declared_fraction = 0.0
+        missingness = matrix_meta.get("missingness") if isinstance(
+            matrix_meta, Mapping) else None
+        if isinstance(missingness, Mapping):
+            policy = str(missingness.get("policy", "")).lower()
+            frac = missingness.get("fraction")
+            if isinstance(frac, (int, float)) and not isinstance(
+                    frac, bool) and math.isfinite(float(frac)):
+                declared_fraction = float(frac)
+        strict_missing = policy == "complete" or \
+            declared_fraction <= 0.0
 
-    # FMX-04: declared coordinate columns must be numeric and inside
-    # lat [-90, 90] / lon [-180, 180].
-    coords = matrix_meta.get("coordinate_columns") if isinstance(
-        matrix_meta, Mapping) else None
-    if coords is not None:
-        if not isinstance(coords, Mapping):
+        dr = matrix_meta.get("date_range") if isinstance(
+            matrix_meta, Mapping) else None
+        dr_start: Optional[date] = None
+        dr_end: Optional[date] = None
+        if isinstance(dr, Mapping) and \
+                _is_strict_iso_date(dr.get("start")) and \
+                _is_strict_iso_date(dr.get("end")):
+            dr_start = date.fromisoformat(dr["start"])
+            dr_end = date.fromisoformat(dr["end"])
+
+        # FMX-05: temporal cutoff declaration.
+        cutoff_raw = matrix_meta.get("feature_cutoff") if isinstance(
+            matrix_meta, Mapping) else None
+        cutoff: Optional[date] = None
+        if cutoff_raw is not None:
+            if _is_strict_iso_date(cutoff_raw):
+                cutoff = date.fromisoformat(cutoff_raw)
+            else:
+                problems.append("matrix.feature_cutoff must be a strict "
+                                "ISO YYYY-MM-DD calendar date")
+
+        rid = matrix_meta.get("row_id_column") if isinstance(
+            matrix_meta, Mapping) else None
+        coords = matrix_meta.get("coordinate_columns") if isinstance(
+            matrix_meta, Mapping) else None
+        if coords is not None and not isinstance(coords, Mapping):
             problems.append("matrix.coordinate_columns must map "
                             "'lat'/'lon' to CSV column names")
-        else:
-            for axis, lo_b, hi_b in (("lat", -90.0, 90.0),
-                                     ("lon", -180.0, 180.0)):
-                cname = coords.get(axis)
-                if not isinstance(cname, str) or not cname:
-                    problems.append(
-                        f"matrix.coordinate_columns[{axis!r}] must name "
-                        "a CSV column")
-                    continue
-                if cname not in index:
-                    problems.append(f"declared {axis} coordinate column "
-                                    f"{cname!r} is not a matrix CSV "
-                                    "column")
-                    continue
-                ci = index[cname]
-                for r, row in enumerate(data_rows):
-                    cell = str(row[ci]).strip() if ci < len(row) else ""
-                    try:
-                        cval = float(cell)
-                    except ValueError:
-                        problems.append(
-                            f"matrix CSV row {r + 2} {axis} coordinate "
-                            f"{cell!r} is not numeric")
-                        continue
-                    if not math.isfinite(cval) or \
-                            not lo_b <= cval <= hi_b:
-                        problems.append(
-                            f"matrix CSV row {r + 2} {axis} coordinate "
-                            f"{cell!r} is outside [{lo_b}, {hi_b}]")
+        avail = matrix_meta.get("availability_column") if isinstance(
+            matrix_meta, Mapping) else None
 
-    # FMX-05: temporal cutoff binding — when feature_cutoff and
-    # availability_column are both declared, every per-row availability
-    # value must be a strict ISO date on or before the cutoff.
-    cutoff_raw = matrix_meta.get("feature_cutoff") if isinstance(
-        matrix_meta, Mapping) else None
-    cutoff: Optional[date] = None
-    if cutoff_raw is not None:
-        if _is_strict_iso_date(cutoff_raw):
-            cutoff = date.fromisoformat(cutoff_raw)
-        else:
-            problems.append("matrix.feature_cutoff must be a strict ISO "
-                            "YYYY-MM-DD calendar date")
-    avail = matrix_meta.get("availability_column") if isinstance(
-        matrix_meta, Mapping) else None
-    if cutoff is not None and avail is not None:
-        if not isinstance(avail, str) or not avail:
-            problems.append("matrix.availability_column must name a CSV "
-                            "column")
-        elif avail not in index:
-            problems.append(f"declared availability_column {avail!r} is "
-                            "not a matrix CSV column")
-        else:
-            ai = index[avail]
-            for r, row in enumerate(data_rows):
-                cell = str(row[ai]).strip() if ai < len(row) else ""
-                if not _is_strict_iso_date(cell):
-                    problems.append(
-                        f"matrix CSV row {r + 2} availability value "
-                        f"{cell!r} is not a strict ISO YYYY-MM-DD "
-                        "calendar date")
-                elif date.fromisoformat(cell) > cutoff:
-                    problems.append(
-                        f"matrix CSV row {r + 2} availability value "
-                        f"{cell!r} is after the declared feature_cutoff "
-                        f"{cutoff_raw!r}")
+        # Per-column check specs built once the header is known:
+        # (index, name, role, is_date, lo, hi).
+        col_specs: list[tuple] = []
+        # Structural check specs: (axis, index, lo, hi).
+        coord_specs: list[tuple] = []
+        rid_i = -1
+        avail_i = -1
+        rid_seen: set[str] = set()
+        header: Optional[list[str]] = None
+        empty_cells = 0
+
+        try:
+            with mpath.open("rb") as fh:
+                stream = io.TextIOWrapper(fh, encoding="utf-8",
+                                          newline="")
+                reader = csv.reader(stream, strict=True)
+                for row in reader:
+                    if header is None:
+                        header = [str(h) for h in row]
+                        if len(set(header)) != len(header):
+                            problems.append(
+                                "matrix CSV header contains duplicate "
+                                "column names")
+                        for name in header:
+                            lowered = name.lower()
+                            if any(tok in lowered for tok in
+                                   _FORBIDDEN_MATRIX_FILE_TOKENS):
+                                problems.append(
+                                    f"matrix CSV column {name!r} "
+                                    "contains a B-derived leakage "
+                                    "token and is rejected")
+                            if name not in allowed_names:
+                                problems.append(
+                                    f"matrix CSV header cell {name!r} "
+                                    "is not a declared column — "
+                                    "undeclared columns are rejected")
+                        index: dict[str, int] = {}
+                        for i, name in enumerate(header):
+                            index.setdefault(name, i)
+                        for col in declared_cols:
+                            if col.get("name") not in index:
+                                problems.append(
+                                    "matrix CSV is missing declared "
+                                    f"column {col.get('name')!r}")
+                        for col in declared_cols:
+                            name = col.get("name")
+                            if not isinstance(name, str) or \
+                                    name not in index:
+                                continue
+                            role = str(col.get("role", "")).lower()
+                            unit = str(col.get("unit", "")).lower()
+                            is_date = role in ("time", "date") or \
+                                unit in ("iso8601", "iso-8601",
+                                         "date") or str(
+                                    col.get("data_type", "")).lower() \
+                                == "date"
+                            lo = _declared_bound(col, "min_value", name,
+                                                 problems)
+                            hi = _declared_bound(col, "max_value", name,
+                                                 problems)
+                            col_specs.append(
+                                (index[name], name, role, is_date,
+                                 lo, hi))
+                        # FMX-04: row-id column binding.
+                        if rid is not None:
+                            if not isinstance(rid, str) or not rid:
+                                problems.append(
+                                    "matrix.row_id_column must name a "
+                                    "CSV column")
+                            elif rid not in index:
+                                problems.append(
+                                    f"declared row_id_column {rid!r} "
+                                    "is not a matrix CSV column")
+                            else:
+                                rid_i = index[rid]
+                        # FMX-04: coordinate column bindings.
+                        if isinstance(coords, Mapping):
+                            for axis, lo_b, hi_b in (
+                                    ("lat", -90.0, 90.0),
+                                    ("lon", -180.0, 180.0)):
+                                cname = coords.get(axis)
+                                if not isinstance(cname, str) or \
+                                        not cname:
+                                    problems.append(
+                                        "matrix.coordinate_columns"
+                                        f"[{axis!r}] must name a CSV "
+                                        "column")
+                                elif cname not in index:
+                                    problems.append(
+                                        f"declared {axis} coordinate "
+                                        f"column {cname!r} is not a "
+                                        "matrix CSV column")
+                                else:
+                                    coord_specs.append(
+                                        (axis, index[cname], lo_b,
+                                         hi_b))
+                        # FMX-05: availability column binding.
+                        if cutoff is not None and avail is not None:
+                            if not isinstance(avail, str) or not avail:
+                                problems.append(
+                                    "matrix.availability_column must "
+                                    "name a CSV column")
+                            elif avail not in index:
+                                problems.append(
+                                    "declared availability_column "
+                                    f"{avail!r} is not a matrix CSV "
+                                    "column")
+                            else:
+                                avail_i = index[avail]
+                        continue
+                    stats["data_rows"] += 1
+                    r = stats["data_rows"]  # 1-based data row index
+                    if stats["data_rows"] > MAX_MATRIX_ROWS:
+                        problems.append(
+                            f"matrix CSV exceeds the resource bound "
+                            f"MAX_MATRIX_ROWS={MAX_MATRIX_ROWS}")
+                        return
+                    if stats["data_rows"] % 4096 == 0 and \
+                            fh.tell() > MAX_MATRIX_BYTES:
+                        problems.append(
+                            f"matrix CSV exceeds the resource bound "
+                            f"MAX_MATRIX_BYTES={MAX_MATRIX_BYTES}")
+                        return
+                    # FMX-07: strict row width — a row with more or
+                    # fewer cells than the header rejects.
+                    if len(row) != len(header):
+                        problems.append(
+                            f"matrix CSV row {r + 1} has {len(row)} "
+                            f"cells but the header declares "
+                            f"{len(header)}")
+                    row_has_empty = False
+                    for j in range(len(header)):
+                        cell = str(row[j]).strip() \
+                            if j < len(row) else ""
+                        if not cell:
+                            empty_cells += 1
+                            row_has_empty = True
+                    if strict_missing and row_has_empty:
+                        problems.append(
+                            f"matrix CSV row {r + 1} has missing cells "
+                            "under missingness policy 'complete'")
+                    for (i, name, role, is_date, lo, hi) in col_specs:
+                        cell = str(row[i]).strip() \
+                            if i < len(row) else ""
+                        if not cell:
+                            continue  # missingness accounting already
+                            # handled the empty cell
+                        if role in ("feature", "target"):
+                            try:
+                                value = float(cell)
+                            except ValueError:
+                                problems.append(
+                                    f"matrix CSV row {r + 1} column "
+                                    f"{name!r} is not numeric for a "
+                                    "feature/target role")
+                                continue
+                            if not math.isfinite(value):
+                                problems.append(
+                                    f"matrix CSV row {r + 1} column "
+                                    f"{name!r} is not a finite float "
+                                    "(NaN/inf rejected)")
+                        elif is_date:
+                            if not _is_strict_iso_date(cell):
+                                problems.append(
+                                    f"matrix CSV row {r + 1} column "
+                                    f"{name!r} is not a strict ISO "
+                                    "YYYY-MM-DD calendar date")
+                            elif dr_start is not None and \
+                                    dr_end is not None and not \
+                                    dr_start <= \
+                                    date.fromisoformat(cell) <= dr_end:
+                                problems.append(
+                                    f"matrix CSV row {r + 1} column "
+                                    f"{name!r} is outside the declared "
+                                    "date_range")
+                        if lo is not None or hi is not None:
+                            try:
+                                bval = float(cell)
+                            except ValueError:
+                                problems.append(
+                                    f"matrix CSV row {r + 1} column "
+                                    f"{name!r} is not numeric but the "
+                                    "column declares min/max bounds")
+                                continue
+                            if not math.isfinite(bval) or \
+                                    (lo is not None and bval < lo) or \
+                                    (hi is not None and bval > hi):
+                                problems.append(
+                                    f"matrix CSV row {r + 1} column "
+                                    f"{name!r} value {cell!r} is "
+                                    "outside the declared bounds "
+                                    f"[{lo}, {hi}]")
+                    # FMX-04: row-id values must be non-empty + unique.
+                    if rid_i >= 0:
+                        cell = str(row[rid_i]).strip() \
+                            if rid_i < len(row) else ""
+                        if not cell:
+                            problems.append(
+                                f"matrix CSV row {r + 1} has an empty "
+                                "row id")
+                        elif cell in rid_seen:
+                            problems.append(
+                                f"matrix CSV row {r + 1} duplicates "
+                                f"row id {cell!r}")
+                        else:
+                            rid_seen.add(cell)
+                    # FMX-04: coordinate ranges.
+                    for axis, ci, lo_b, hi_b in coord_specs:
+                        cell = str(row[ci]).strip() \
+                            if ci < len(row) else ""
+                        try:
+                            cval = float(cell)
+                        except ValueError:
+                            problems.append(
+                                f"matrix CSV row {r + 1} {axis} "
+                                f"coordinate {cell!r} is not numeric")
+                            continue
+                        if not math.isfinite(cval) or \
+                                not lo_b <= cval <= hi_b:
+                            problems.append(
+                                f"matrix CSV row {r + 1} {axis} "
+                                f"coordinate {cell!r} is outside "
+                                f"[{lo_b}, {hi_b}]")
+                    # FMX-05: per-row availability must precede cutoff.
+                    if avail_i >= 0:
+                        cell = str(row[avail_i]).strip() \
+                            if avail_i < len(row) else ""
+                        if not _is_strict_iso_date(cell):
+                            problems.append(
+                                f"matrix CSV row {r + 1} availability "
+                                f"value {cell!r} is not a strict ISO "
+                                "YYYY-MM-DD calendar date")
+                        elif cutoff is not None and \
+                                date.fromisoformat(cell) > cutoff:
+                            problems.append(
+                                f"matrix CSV row {r + 1} availability "
+                                f"value {cell!r} is after the declared "
+                                f"feature_cutoff {cutoff_raw!r}")
+                stats["bytes_scanned"] = max(stats["bytes_scanned"],
+                                             fh.tell())
+        except UnicodeDecodeError as exc:
+            problems.append(
+                f"matrix file unreadable for semantic scan: {exc}")
+            return
+        except csv.Error as exc:
+            problems.append(f"matrix CSV is not parseable: {exc}")
+            return
+        except OSError as exc:
+            problems.append(
+                f"matrix file unreadable for semantic scan: {exc}")
+            return
+
+        if header is None:
+            problems.append("matrix CSV has no header row")
+            return
+        if stats["data_rows"] == 0:
+            problems.append("matrix CSV must contain at least one "
+                            "data row")
+            return
+
+        # FMX-04: a declared n_rows must equal the actual data row
+        # count.
+        n_rows = matrix_meta.get("n_rows") if isinstance(
+            matrix_meta, Mapping) else None
+        if n_rows is not None:
+            if not isinstance(n_rows, int) or isinstance(n_rows, bool):
+                problems.append("matrix.n_rows must be an integer")
+            elif stats["data_rows"] != n_rows:
+                problems.append(
+                    f"matrix CSV has {stats['data_rows']} data rows "
+                    f"but matrix.n_rows declares {n_rows}")
+
+        # FMX-07: under a positive declared missingness fraction the
+        # observed empty-cell fraction must not exceed it — an
+        # under-declared missingness rejects.
+        total_cells = stats["data_rows"] * len(header)
+        observed = empty_cells / total_cells if total_cells else 0.0
+        stats["observed_missing_fraction"] = observed
+        if not strict_missing and \
+                observed > declared_fraction + 1e-12:
+            problems.append(
+                f"matrix CSV observed missingness fraction "
+                f"{observed:.6f} exceeds declared "
+                f"missingness.fraction {declared_fraction}")
+    finally:
+        if isinstance(summary, dict):
+            summary.update(stats)
 
 
 def build_fmx_envelope(matrix: Optional[Mapping[str, Any]] = None, *,
@@ -620,7 +859,11 @@ def build_fmx_envelope(matrix: Optional[Mapping[str, Any]] = None, *,
     ``dirty_checkout_root``); the artifact root and every bound file must
     not resolve under any of them.  ``lineage_paths`` must bind every
     lineage digest field to a frozen file whose SHA-256 equals the
-    declared matrix digest.
+    declared matrix digest.  The artifact root's resolved final path
+    component is bound as ``file_bindings.artifact_root_name``; when the
+    token declares ``approval_record_relpath`` the approval record is
+    resolved under the root and digest-bound to
+    ``freeze_token.approval_record_sha256``.
     """
     problems: list[str] = []
     if matrix is not None:
@@ -713,15 +956,43 @@ def build_fmx_envelope(matrix: Optional[Mapping[str, Any]] = None, *,
                         problems.append(
                             "freeze_token does not equal the on-disk "
                             "token file contents")
+            # FMX-VERIFY-02: optional approval-record binding — when the
+            # freeze token declares approval_record_relpath, the file
+            # must resolve under artifact_root (never a symlink, never
+            # escaping the root) and its recomputed digest must equal
+            # the declared approval_record_sha256.
+            apath: Optional[Path] = None
+            approval_rel = freeze_token.get("approval_record_relpath") \
+                if isinstance(freeze_token, Mapping) else None
+            if approval_rel is not None:
+                apath = _resolve_bound_file(
+                    root, approval_rel,
+                    "freeze_token.approval_record_relpath", problems)
+                if apath is not None:
+                    if _resolves_under(apath, protected):
+                        problems.append(
+                            "bound approval record file resolves under "
+                            "a protected root — refused")
+                    elif sha256_file(apath) != freeze_token.get(
+                            "approval_record_sha256"):
+                        problems.append(
+                            "approval record file digest does not "
+                            "match declared "
+                            "freeze_token.approval_record_sha256")
             if not problems and mpath is not None and tpath is not None:
                 file_bindings = {
-                    "artifact_root_name": root.name,
+                    "artifact_root_name": root.resolve().name,
                     "matrix_relative_path": matrix_relpath,
                     "token_relative_path": token_relpath,
                     "matrix_file_sha256": sha256_file(mpath),
                     "matrix_file_byte_count": mpath.stat().st_size,
                     "token_file_sha256": sha256_file(tpath),
                     "lineage": lineage_bindings}
+                if approval_rel is not None and apath is not None:
+                    file_bindings["approval_record_relative_path"] = \
+                        approval_rel
+                    file_bindings["approval_record_file_sha256"] = \
+                        sha256_file(apath)
     if problems:
         raise ValueError("FMX envelope is not valid: "
                          + "; ".join(problems[:8]))
@@ -788,10 +1059,15 @@ def verify_fmx_envelope(payload: Any, *,
     """Fail-closed FMX verification: envelope self-hash, profile/auth
     fields, schema, path safety, status consistency, freeze-token binding,
     and — for READY — recomputation of the bound matrix/token/lineage
-    files from disk under ``artifact_root``.  READY verification requires
-    BOTH ``artifact_root`` and ``protected_roots``; every bound file must
-    resolve under the root and outside every protected root.  A READY
-    envelope without verifiable file evidence always fails."""
+    files from disk under ``artifact_root`` plus a re-run of the matrix
+    semantic scan on the bound bytes (FMX-VERIFY-01).  READY verification
+    requires BOTH ``artifact_root`` and ``protected_roots``; every bound
+    file must resolve under the root and outside every protected root,
+    the root's resolved name must equal the bound
+    ``artifact_root_name``, and a declared
+    ``freeze_token.approval_record_relpath`` must resolve to a file
+    whose digest equals ``approval_record_sha256`` (FMX-VERIFY-02).  A
+    READY envelope without verifiable file evidence always fails."""
     problems: list[str] = []
     ok, env_problems = verify_artifact_envelope(payload)
     if not ok:
@@ -880,6 +1156,12 @@ def verify_fmx_envelope(payload: Any, *,
                               "matrix_file_byte_count", 0) <= 0:
                 problems.append("file_bindings.matrix_file_byte_count "
                                 "must be a positive integer")
+            # FMX-VERIFY-02: the artifact root identity is bound at
+            # build — a renamed root must not verify.
+            if not isinstance(bindings.get("artifact_root_name"), str) \
+                    or not bindings.get("artifact_root_name"):
+                problems.append("file_bindings.artifact_root_name must "
+                                "be a non-empty string")
             if artifact_root is None or not protected_roots:
                 problems.append("FMX_READY verification requires "
                                 "artifact_root and protected_roots — "
@@ -892,6 +1174,17 @@ def verify_fmx_envelope(payload: Any, *,
                 if _resolves_under(root, protected):
                     problems.append("artifact_root resolves under a "
                                     "protected root — refused")
+                # FMX-VERIFY-02: the supplied artifact root's resolved
+                # final component must equal the name bound at build.
+                declared_root_name = bindings.get("artifact_root_name")
+                if isinstance(declared_root_name, str) and \
+                        declared_root_name and \
+                        root.resolve().name != declared_root_name:
+                    problems.append(
+                        f"artifact_root resolves to name "
+                        f"{root.resolve().name!r} but file_bindings "
+                        f"declares {declared_root_name!r} — a renamed "
+                        "artifact root is rejected")
                 m = _resolve_bound_file(
                     root, bindings.get("matrix_relative_path"),
                     "file_bindings.matrix_relative_path", problems)
@@ -946,6 +1239,12 @@ def verify_fmx_envelope(payload: Any, *,
                             sha256_file(m) != matrix.get("matrix_sha256"):
                         problems.append("bound matrix file does not "
                                         "match declared matrix_sha256")
+                    # FMX-VERIFY-01: re-run the semantic scan on the
+                    # bound matrix bytes — an envelope whose digests
+                    # were rebound to mutated bytes must still fail the
+                    # CSV semantics.
+                    if isinstance(matrix, Mapping):
+                        _validate_matrix_file(m, matrix, problems)
                 if t is not None:
                     if sha256_file(t) != bindings.get(
                             "token_file_sha256"):
@@ -960,6 +1259,56 @@ def verify_fmx_envelope(payload: Any, *,
                     except (OSError, ValueError) as exc:
                         problems.append(f"bound token file unreadable: "
                                         f"{exc}")
+                # FMX-VERIFY-02: optional approval-record binding — when
+                # the freeze token declares approval_record_relpath the
+                # file must resolve under artifact_root and its
+                # recomputed digest must equal the declared
+                # approval_record_sha256; an unresolvable record
+                # rejects.
+                token_apr = token.get("approval_record_relpath") \
+                    if isinstance(token, Mapping) else None
+                bound_apr = bindings.get("approval_record_relative_path")
+                bound_apr_sha = bindings.get(
+                    "approval_record_file_sha256")
+                if token_apr is None and bound_apr is not None:
+                    problems.append(
+                        "file_bindings.approval_record_relative_path "
+                        "is declared but freeze_token carries no "
+                        "approval_record_relpath")
+                if bound_apr_sha is not None and \
+                        not _is_sha256(bound_apr_sha):
+                    problems.append(
+                        "file_bindings.approval_record_file_sha256 "
+                        "must be a lowercase SHA-256")
+                if token_apr is not None:
+                    if bound_apr != token_apr:
+                        problems.append(
+                            "file_bindings."
+                            "approval_record_relative_path does not "
+                            "match freeze_token."
+                            "approval_record_relpath")
+                    ap = _resolve_bound_file(
+                        root, token_apr,
+                        "freeze_token.approval_record_relpath",
+                        problems)
+                    if ap is not None:
+                        ap_sha = sha256_file(ap)
+                        if _resolves_under(ap, protected):
+                            problems.append(
+                                "bound approval record file resolves "
+                                "under a protected root — refused")
+                        if token is not None and ap_sha != token.get(
+                                "approval_record_sha256"):
+                            problems.append(
+                                "approval record file digest does not "
+                                "match declared freeze_token."
+                                "approval_record_sha256")
+                        if _is_sha256(bound_apr_sha) and \
+                                ap_sha != bound_apr_sha:
+                            problems.append(
+                                "approval record file digest does not "
+                                "match file_bindings."
+                                "approval_record_file_sha256")
     _check_paths({k: v for k, v in payload.items()
                   if k != "artifact_sha256"}, problems)
     return (not problems), problems

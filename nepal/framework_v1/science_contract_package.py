@@ -37,7 +37,7 @@ import shutil
 import sys
 import tempfile
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Mapping, Optional
 
 from .feature_matrix_contract import (FEATURE_CONTRACT_SHA256_FIELD,
@@ -65,6 +65,38 @@ PACKAGE_INDEX_TYPE = "SCIENCE_CONTRACT_PACKAGE_INDEX_V1"
 HANDOFF_TYPE = "RESEARCH_CONTRACT_HANDOFF_V1"
 MIN_FREE_GIB = 8.0
 CHECKPOINT_STATES = ("RUNNING", "INCOMPLETE", "BLOCKED", "PASS")
+
+# PKG-12: run-identity formats — a generation id is a portable token;
+# a code revision is lowercase hex (short or full commit hash).
+_GENERATION_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$")
+_CODE_REVISION_RE = re.compile(r"^[0-9a-f]{7,64}$")
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+
+# PKG-11: run_context.b_evidence_binding values.  A bound B evidence
+# file (run_context.b_evidence = {relative_path, sha256}) is the only
+# form that authorizes FILE_BOUND; ranked digests with no bound file
+# must carry exactly UNBOUND_INFORMATIONAL.
+B_EVIDENCE_BOUND = "FILE_BOUND"
+B_EVIDENCE_UNBOUND = "UNBOUND_INFORMATIONAL"
+
+# PKG-13: run_context.json is canonical for these fields; every other
+# package doc declaring one must carry the identical value.
+_CANONICAL_IDENTITY_FIELDS = ("candidate_generation_id",
+                              "code_revision", "package_status",
+                              "b_status")
+
+#: Subtrees that record *declared* (unverified, digest-nulled) foreign
+#: metadata rather than this package's identity — exempt from the
+#: canonical identity checks (the blocked-FMX fixture deliberately
+#: names a synthetic generation).
+_DECLARED_METADATA_KEYS = frozenset({"declared_matrix_metadata"})
+
+# HANDOFF-01: a package at this stage must remain residual-positive;
+# no document may claim the register is closed.
+_GAP_CLOSED_PHRASES = ("all gaps closed", "no remaining gaps")
+_NORMALIZE_SEP_RE = re.compile(r"[_-]+")
+_WHITESPACE_RE = re.compile(r"\s+")
+_DRIVE_PREFIX_RE = re.compile(r"^[A-Za-z]:")
 
 _REQUIRED_FILES = ("run_context.json", "mec_schema.json",
                    "fmx_blocked.json", "validation_scaffold.json",
@@ -125,6 +157,212 @@ def _iter_strings(value: Any):
 
 
 _ABS_PATH_RE = re.compile(r"^(?:/|[A-Za-z]:[\\/])")
+
+
+def _is_sha256(value: Any) -> bool:
+    return isinstance(value, str) and bool(_SHA256_RE.fullmatch(value))
+
+
+def _normalize_text(text: str) -> str:
+    """Canonical prose form for residual-closure scans: lowercase,
+    ``[_-]+`` -> single space, whitespace collapsed."""
+    return _WHITESPACE_RE.sub(
+        " ", _NORMALIZE_SEP_RE.sub(" ", text.lower())).strip()
+
+
+def _iter_declared_fields(node: Any, prefix: str = ""):
+    """Yield ``(dotted_path, key, value)`` for every mapping entry,
+    skipping ``_DECLARED_METADATA_KEYS`` subtrees (unverified declared
+    foreign metadata, not this package's identity)."""
+    if isinstance(node, Mapping):
+        for k, v in node.items():
+            if k in _DECLARED_METADATA_KEYS:
+                continue
+            yield f"{prefix}{k}", k, v
+            yield from _iter_declared_fields(v, f"{prefix}{k}.")
+    elif isinstance(node, (list, tuple)):
+        for i, v in enumerate(node):
+            yield from _iter_declared_fields(v, f"{prefix}[{i}].")
+
+
+def _rel_path_problem(value: Any) -> Optional[str]:
+    """Return a reason when ``value`` is not a safe, portable, canonical
+    relative path (forward slashes only, no drive/UNC/absolute prefix,
+    no traversal, no NUL)."""
+    if not isinstance(value, str) or not value or not value.strip():
+        return "must be a non-empty relative path"
+    if "\\" in value:
+        return "backslash separators are not portable"
+    if value.startswith("/"):
+        return "absolute/UNC paths are not allowed"
+    if _DRIVE_PREFIX_RE.match(value):
+        return "drive-letter paths are not portable"
+    if "\x00" in value:
+        return "NUL bytes are not allowed"
+    parts = PurePosixPath(value).parts
+    if not parts or ".." in parts:
+        return "traversal outside the root is not allowed"
+    if PurePosixPath(value).as_posix() != value:
+        return "path is not in canonical forward-slash form"
+    return None
+
+
+def _resolve_under_root(root: Path, relpath: Any, label: str,
+                        problems: list[str]) -> Optional[Path]:
+    """Resolve a root-relative path fail-closed: portable relative
+    form, no symlink entry or symlinked parent, and resolved
+    containment inside ``root``."""
+    problem = _rel_path_problem(relpath)
+    if problem is not None:
+        problems.append(f"{label} {relpath!r}: {problem}")
+        return None
+    parts = PurePosixPath(relpath).parts
+    target = root.joinpath(*parts)
+    cursor = root
+    for part in parts:
+        cursor = cursor / part
+        if cursor.is_symlink():
+            problems.append(f"{label} {relpath!r} traverses a symlink")
+            return None
+    root_r = root.resolve()
+    resolved = target.resolve()
+    if resolved != root_r and root_r not in resolved.parents:
+        problems.append(f"{label} {relpath!r} resolves outside the "
+                        "evidence root")
+        return None
+    return target
+
+
+def _b_evidence_doc_problems(doc: Any, *, ranked_digest: Any,
+                             b_status: Any) -> list[str]:
+    """PKG-11 content checks on a bound B evidence document: verified
+    artifact envelope, the declared ranked-array canonical digest must
+    be carried by the document, and any gate/status fields must agree
+    with the declared ``b_status``."""
+    problems: list[str] = []
+    if not isinstance(doc, Mapping):
+        return ["bound B evidence must be a JSON object"]
+    ok, envp = verify_artifact_envelope(doc)
+    if not ok:
+        problems.extend(f"bound B evidence envelope: {p}"
+                        for p in envp)
+    if isinstance(ranked_digest, str) and _is_sha256(ranked_digest) \
+            and not any(ranked_digest in s
+                        for s in _iter_strings(doc)):
+        problems.append(
+            "bound B evidence does not contain the declared "
+            "ranked_array_canonical_sha256 — the digest must be "
+            "carried by the referenced artifact")
+    blocked = "BLOCK" in str(b_status).upper()
+    if "gate_passed" in doc:
+        if doc["gate_passed"] is True and blocked:
+            problems.append(
+                "bound B evidence claims gate_passed=true while "
+                f"b_status is {b_status!r}")
+        elif doc["gate_passed"] is False and not blocked:
+            problems.append(
+                "bound B evidence claims gate_passed=false while "
+                f"b_status is {b_status!r}")
+    for key in ("status", "b_status"):
+        value = doc.get(key)
+        if not isinstance(value, str):
+            continue
+        if key == "b_status":
+            if value != b_status:
+                problems.append(
+                    f"bound B evidence b_status {value!r} disagrees "
+                    f"with the declared b_status {b_status!r}")
+            continue
+        upper = value.upper()
+        doc_blocked = "BLOCK" in upper
+        doc_passed = any(tok in upper for tok in
+                         ("PASS", "READY", "COMPLETE", "SUCCESS"))
+        if blocked and doc_passed and not doc_blocked:
+            problems.append(
+                f"bound B evidence status {value!r} asserts a "
+                f"passing state while b_status is {b_status!r}")
+        elif not blocked and doc_blocked:
+            problems.append(
+                f"bound B evidence status {value!r} asserts a "
+                f"blocked state while b_status is {b_status!r}")
+    return problems
+
+
+def _verify_b_evidence_binding(ev_root: Path, b_ev: Any, *,
+                               ranked_digest: Any, b_status: Any,
+                               expected_root_name: str = ""
+                               ) -> list[str]:
+    """PKG-11: verify a declared ``b_evidence`` mapping — exact
+    ``{relative_path, sha256}`` shape, safe resolution under the
+    evidence root, on-disk digest equality, and the B-evidence content
+    checks."""
+    label = "run_context.json b_evidence"
+    problems: list[str] = []
+    if not isinstance(b_ev, Mapping):
+        return [f"{label} must be a mapping "
+                "{relative_path, sha256}"]
+    extra = set(b_ev) - {"relative_path", "sha256"}
+    if extra:
+        problems.append(f"{label} has disallowed fields "
+                        f"{sorted(extra)}")
+    rel = b_ev.get("relative_path")
+    declared_sha = b_ev.get("sha256")
+    if not _is_sha256(declared_sha):
+        problems.append(f"{label}.sha256 must be a lowercase SHA-256")
+    if not ev_root.is_dir() or ev_root.is_symlink():
+        problems.append(f"{label}: evidence_root is not a real "
+                        f"directory: {ev_root}")
+        return problems
+    root_r = ev_root.resolve()
+    if expected_root_name and root_r.name != expected_root_name:
+        problems.append(
+            f"{label}: evidence_root identity mismatch — expected a "
+            f"root named {expected_root_name!r}, got {root_r.name!r}")
+        return problems
+    target = _resolve_under_root(ev_root, rel,
+                                 f"{label}.relative_path", problems)
+    if target is None:
+        return problems
+    if not target.is_file():
+        problems.append(f"{label}.relative_path {rel!r} is not a "
+                        "file under the evidence root")
+        return problems
+    if _is_sha256(declared_sha) and sha256_file(target) != \
+            declared_sha:
+        problems.append(f"{label} digest does not match the file on "
+                        "disk")
+    try:
+        doc = json.loads(target.read_text("utf-8"))
+    except (OSError, ValueError) as exc:
+        problems.append(f"{label} file unreadable: {exc}")
+        return problems
+    problems.extend(_b_evidence_doc_problems(
+        doc, ranked_digest=ranked_digest, b_status=b_status))
+    return problems
+
+
+def _residual_register_problems(register: Any) -> list[str]:
+    """HANDOFF-01: the embedded residual register must be non-empty,
+    typed ``{id, status}`` mappings, and residual-positive — a package
+    at this stage may not close out every residual."""
+    if not isinstance(register, list) or not register:
+        return ["residual_register must be a non-empty list — the "
+                "package must remain residual-positive"]
+    problems: list[str] = []
+    for i, entry in enumerate(register):
+        if not isinstance(entry, Mapping) or not isinstance(
+                entry.get("id"), str) or not entry["id"] or not \
+                isinstance(entry.get("status"), str) or \
+                not entry["status"]:
+            problems.append(f"residual_register[{i}] must be a "
+                            "mapping with non-empty id and status")
+    if all(isinstance(e, Mapping) and
+           str(e.get("status", "")).strip().upper() == "CLOSED"
+           for e in register):
+        problems.append("residual_register has every status CLOSED — "
+                        "a package at this stage must remain "
+                        "residual-positive")
+    return problems
 
 
 def _write_active_pointer(ev_root: Path, pkg_dir: Path, *,
@@ -390,7 +628,9 @@ def build_science_contract_package(
         b_status: str = "B_TO_C_BLOCKED",
         evidence_references: Optional[list] = None,
         forbidden_roots: Optional[list] = None,
-        evidence_root: Optional[str | Path] = None
+        evidence_root: Optional[str | Path] = None,
+        b_evidence_relative_path: Optional[str] = None,
+        residual_register: Optional[list] = None
         ) -> dict[str, Any]:
     """Build the external research package.  Returns the package index.
 
@@ -399,14 +639,48 @@ def build_science_contract_package(
     list is required).  ``evidence_references`` are typed digest refs;
     when any are supplied ``evidence_root`` is required and each
     relative_path must resolve to a regular, non-symlink file under it
-    whose recomputed SHA-256 matches the declared digest.  Raises
-    ``RuntimeError`` when the disk reserve is violated; the checkpoint is
-    left ``INCOMPLETE`` if the build fails partway.
+    whose recomputed SHA-256 matches the declared digest.
+
+    ``candidate_generation_id`` must match
+    ``^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$`` and ``code_revision`` must be
+    lowercase hex (``^[0-9a-f]{7,64}$``) — PKG-12.
+
+    ``b_evidence_relative_path`` (PKG-11) file-binds the B stage
+    evidence: it must name a verified artifact envelope under
+    ``evidence_root`` carrying the declared
+    ``ranked_array_canonical_sha256``; its binding is recorded in
+    run_context.json as ``b_evidence={relative_path, sha256}``.  When it
+    is not supplied the run context carries
+    ``b_evidence_binding="UNBOUND_INFORMATIONAL"``.
+
+    ``residual_register`` (HANDOFF-01) is embedded verbatim in the
+    research handoff with its canonical SHA-256; it must be a non-empty
+    list of ``{id, status}`` mappings and remain residual-positive (not
+    every status CLOSED).  Defaults to the open+deferred residual lists.
+
+    Raises ``RuntimeError`` when the disk reserve is violated; the
+    checkpoint is left ``INCOMPLETE`` if the build fails partway.
     """
     pkg_dir = Path(package_dir)
     if not forbidden_roots:
         raise ValueError("forbidden_roots is required — the protected "
                          "root list must be explicit")
+    # PKG-12: identity formats are enforced at construction — a package
+    # can never be built on a malformed generation id or code revision.
+    if not isinstance(candidate_generation_id, str) or not \
+            _GENERATION_ID_RE.fullmatch(candidate_generation_id):
+        raise ValueError("candidate_generation_id must match "
+                         "^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$")
+    if not isinstance(code_revision, str) or not \
+            _CODE_REVISION_RE.fullmatch(code_revision):
+        raise ValueError("code_revision must be lowercase hex matching "
+                         "^[0-9a-f]{7,64}$")
+    if residual_register is not None:
+        reg_problems = _residual_register_problems(residual_register)
+        if reg_problems:
+            raise ValueError("residual_register is not "
+                             "residual-positive: "
+                             + "; ".join(reg_problems))
     _check_package_dir_fresh(pkg_dir, forbidden_roots)
     pkg_dir.mkdir(parents=True, exist_ok=True)
     _check_disk_reserve(pkg_dir)
@@ -418,6 +692,54 @@ def build_science_contract_package(
                              "evidence_references are supplied")
         _verify_evidence_root(ev_root, checked_refs,
                               expected_root_name=run_root_name)
+
+    # PKG-11: optional file-bound B evidence — the path must resolve to
+    # a real, non-symlink file under evidence_root carrying a verified
+    # artifact envelope that itself records the declared ranked digest.
+    b_evidence_record: Optional[dict[str, str]] = None
+    if b_evidence_relative_path is not None:
+        if ev_root is None:
+            raise ValueError("evidence_root is required when "
+                             "b_evidence_relative_path is supplied")
+        b_problems: list[str] = []
+        root_r = ev_root.resolve()
+        if not ev_root.is_dir() or ev_root.is_symlink():
+            b_problems.append("evidence_root is not a real directory: "
+                              f"{ev_root}")
+        elif root_r.name != run_root_name:
+            b_problems.append("evidence_root identity mismatch: "
+                              f"expected a root named "
+                              f"{run_root_name!r}, got {root_r.name!r}")
+        else:
+            b_target = _resolve_under_root(
+                ev_root, b_evidence_relative_path,
+                "b_evidence_relative_path", b_problems)
+            if b_target is not None:
+                if not b_target.is_file():
+                    b_problems.append("b_evidence_relative_path "
+                                      f"{b_evidence_relative_path!r} is "
+                                      "not a file under the evidence "
+                                      "root")
+                else:
+                    try:
+                        b_doc = json.loads(
+                            b_target.read_text("utf-8"))
+                    except (OSError, ValueError) as exc:
+                        b_problems.append("bound B evidence file "
+                                          f"unreadable: {exc}")
+                    else:
+                        b_problems.extend(_b_evidence_doc_problems(
+                            b_doc,
+                            ranked_digest=ranked_array_canonical_sha256,
+                            b_status=b_status))
+                if not b_problems and b_target is not None:
+                    b_evidence_record = {
+                        "relative_path": PurePosixPath(
+                            b_evidence_relative_path).as_posix(),
+                        "sha256": sha256_file(b_target)}
+        if b_problems:
+            raise ValueError("bound B evidence is not valid: "
+                             + "; ".join(b_problems))
 
     checkpoint = {"run_state": "RUNNING", "created_at": _now(),
                   "states": list(CHECKPOINT_STATES),
@@ -433,6 +755,13 @@ def build_science_contract_package(
             _synthetic_mec_fixture(candidate_generation_id,
                                    code_revision))
         fmx_env = build_fmx_envelope(_blocked_fmx_fixture())
+        # Strict scaffold verification requires every file-bound
+        # referenced envelope to carry the assembly identity — stamp it
+        # on the blocked fixture envelope and re-bind.
+        fmx_env = bind_artifact_envelope(
+            {**fmx_env,
+             "candidate_generation_id": candidate_generation_id,
+             "code_revision": code_revision})
         assert fmx_env["fmx_status"] == FMX_BLOCKED_PENDING_EXPLICIT_FREEZE
         assert fmx_env["matrix"]["status"] == "ABSENT"
         # The scaffold's references are file-bound to the package's own
@@ -440,7 +769,10 @@ def build_science_contract_package(
         _atomic_write_json(pkg_dir / "mec_schema.json", mec_env)
         _atomic_write_json(pkg_dir / "fmx_blocked.json", fmx_env)
 
-        run_context = bind_artifact_envelope({
+        # PKG-11: b_evidence_binding is always recorded — FILE_BOUND
+        # only when a verified evidence file was bound above;
+        # otherwise the exact UNBOUND_INFORMATIONAL marker.
+        run_context_fields: dict[str, Any] = {
             "context_type": "SCIENCE_CONTRACT_RUN_CONTEXT_V1",
             "created_at": _now(),
             "run_root_name": run_root_name,
@@ -453,12 +785,18 @@ def build_science_contract_package(
             "ranked_payload_sha256_domain_status":
                 ranked_payload_sha256_domain_status,
             "evidence_references": checked_refs,
+            "b_evidence_binding": (B_EVIDENCE_BOUND
+                                   if b_evidence_record is not None
+                                   else B_EVIDENCE_UNBOUND),
             "environment": _environment_fingerprint(),
             "dirty_matrix_policy": "treated as absent; never inspected",
             "research_diagnostic_only": True,
             "promotion_eligible": False,
             "production_authorized": False,
-            "warning_path_authorized": False})
+            "warning_path_authorized": False}
+        if b_evidence_record is not None:
+            run_context_fields["b_evidence"] = b_evidence_record
+        run_context = bind_artifact_envelope(run_context_fields)
         _atomic_write_json(pkg_dir / "run_context.json", run_context)
 
         _metric_registry = [
@@ -522,6 +860,19 @@ def build_science_contract_package(
                 "no freeze token was generated or accepted",
                 "residuals C01-C07 remain open/deferred"]})
 
+        open_resids = [
+            {"id": "FMX-01", "status": "BLOCKED",
+             "title": "no externally frozen environmental feature "
+                      "matrix; freeze token required"},
+            {"id": "R04", "status": "OPEN",
+             "title": "merge requires explicit human approval"}]
+        deferred_resids = [{"id": f"C{i:02d}", "status": "DEFERRED"}
+                           for i in range(1, 8)]
+        # HANDOFF-01: the complete residual register is embedded
+        # verbatim and frozen by canonical digest.
+        register = (list(residual_register)
+                    if residual_register is not None
+                    else open_resids + deferred_resids)
         handoff = bind_artifact_envelope({
             "envelope_type": HANDOFF_TYPE,
             "research_diagnostic_only": True,
@@ -535,15 +886,10 @@ def build_science_contract_package(
                                 "e_status": "E_BLOCKED",
                                 "f_status": "F_BLOCKED",
                                 "ranking_rerun": False},
-            "open_residuals": [
-                {"id": "FMX-01", "status": "BLOCKED",
-                 "title": "no externally frozen environmental feature "
-                          "matrix; freeze token required"},
-                {"id": "R04", "status": "OPEN",
-                 "title": "merge requires explicit human approval"}],
-            "deferred_residuals": [
-                {"id": f"C{i:02d}", "status": "DEFERRED"}
-                for i in range(1, 8)],
+            "open_residuals": open_resids,
+            "deferred_residuals": deferred_resids,
+            "residual_register": register,
+            "residual_register_sha256": sha256_canonical(register),
             "promotion_eligible": False,
             "production_authorized": False,
             "warning_path_authorized": False})
@@ -763,6 +1109,9 @@ def verify_science_contract_package(
                             problems.append(f"package seal hash "
                                             f"mismatch: {name_s}")
 
+    docs: dict[str, Any] = {}
+    if isinstance(ckpt, Mapping) and ckpt:
+        docs["checkpoint.json"] = ckpt
     for name in ("run_context.json", "mec_schema.json",
                  "fmx_blocked.json", "validation_scaffold.json",
                  "research_no_claims.json",
@@ -777,6 +1126,8 @@ def verify_science_contract_package(
         except (OSError, ValueError) as exc:
             problems.append(f"{name} unreadable: {exc}")
             continue
+        if isinstance(doc, Mapping):
+            docs[name] = doc
         ok, envp = verify_artifact_envelope(doc)
         if not ok:
             problems.extend(f"{name}: {p}" for p in envp)
@@ -794,7 +1145,7 @@ def verify_science_contract_package(
                 problems.append(f"{name}: flag {flag!r} has an "
                                 f"unauthorized value "
                                 f"{doc[flag]!r}")
-        if name == "run_context.json":
+        if name == "run_context.json" and isinstance(doc, Mapping):
             refs = doc.get("evidence_references") or []
             if refs:
                 if evidence_root is None:
@@ -809,6 +1160,42 @@ def verify_science_contract_package(
                                 doc.get("run_root_name") or ""))
                     except ValueError as exc:
                         problems.append(f"evidence references: {exc}")
+            # PKG-11: a declared bound B evidence file must resolve and
+            # re-verify under the evidence root; ranked digests with no
+            # bound file require the exact UNBOUND_INFORMATIONAL marker.
+            b_ev = doc.get("b_evidence")
+            b_binding = doc.get("b_evidence_binding")
+            if b_ev is not None:
+                if b_binding != B_EVIDENCE_BOUND:
+                    problems.append(
+                        "run_context.json: b_evidence is declared but "
+                        "b_evidence_binding is not "
+                        f"{B_EVIDENCE_BOUND!r}")
+                if evidence_root is None:
+                    problems.append(
+                        "run_context.json declares bound B evidence but "
+                        "no evidence_root was supplied — unverified")
+                else:
+                    problems.extend(
+                        _verify_b_evidence_binding(
+                            Path(evidence_root), b_ev,
+                            ranked_digest=doc.get(
+                                "ranked_array_canonical_sha256"),
+                            b_status=doc.get("b_status"),
+                            expected_root_name=str(
+                                doc.get("run_root_name") or "")))
+            elif any(_is_sha256(doc.get(k)) for k in
+                     ("ranked_array_canonical_sha256",
+                      "ranked_payload_sha256")):
+                if b_binding != B_EVIDENCE_UNBOUND:
+                    problems.append(
+                        "run_context.json: ranked digests without a "
+                        "bound B evidence file require "
+                        f"b_evidence_binding={B_EVIDENCE_UNBOUND!r}")
+            elif b_binding not in (None, B_EVIDENCE_UNBOUND):
+                problems.append(
+                    "run_context.json: b_evidence_binding "
+                    f"{b_binding!r} is not a recognized binding state")
         # OPS-03: portable provenance — no absolute machine-local paths
         # may appear anywhere in a package document.
         for s in _iter_strings(doc):
@@ -816,6 +1203,90 @@ def verify_science_contract_package(
                 problems.append(f"{name}: absolute path string "
                                 f"{s!r} is not portable provenance")
                 break
+
+    # PKG-13: run_context.json is canonical for the run-identity fields.
+    rc_doc = docs.get("run_context.json")
+    canonical: dict[str, Any] = {}
+    if isinstance(rc_doc, Mapping):
+        for field in _CANONICAL_IDENTITY_FIELDS:
+            value = rc_doc.get(field)
+            if not isinstance(value, str) or not value:
+                problems.append(
+                    f"run_context.json: canonical field {field!r} must "
+                    "be a non-empty string")
+            else:
+                canonical[field] = value
+        if canonical.get("package_status") is not None and \
+                canonical["package_status"] != PACKAGE_STATUS:
+            problems.append(
+                f"run_context.json: package_status must be "
+                f"{PACKAGE_STATUS!r}")
+    else:
+        problems.append("run_context.json unavailable — canonical "
+                        "run identity cannot be established")
+
+    for doc_name, doc in docs.items():
+        if not isinstance(doc, Mapping):
+            continue
+        # HANDOFF-01: no package doc may claim the residual register is
+        # fully closed — this stage must remain residual-positive.
+        for s in _iter_strings(doc):
+            norm = _normalize_text(s)
+            if any(phrase in norm for phrase in _GAP_CLOSED_PHRASES):
+                problems.append(
+                    f"{doc_name}: document claims the residual "
+                    "register is closed — 'all gaps closed' / 'no "
+                    "remaining gaps' claims are forbidden at this "
+                    "stage")
+                break
+        for dotted, key, value in _iter_declared_fields(doc):
+            # PKG-12: present identity fields must be well-formed.
+            if key == "candidate_generation_id" and (
+                    not isinstance(value, str) or
+                    not _GENERATION_ID_RE.fullmatch(value)):
+                problems.append(
+                    f"{doc_name}: {dotted} value {value!r} is not a "
+                    "well-formed candidate_generation_id")
+            elif key == "code_revision" and (
+                    not isinstance(value, str) or
+                    not _CODE_REVISION_RE.fullmatch(value)):
+                problems.append(
+                    f"{doc_name}: {dotted} value {value!r} is not a "
+                    "well-formed code_revision (lowercase hex, 7-64 "
+                    "chars)")
+            # PKG-13: declared identity fields must equal canonical.
+            if doc_name != "run_context.json" and \
+                    key in _CANONICAL_IDENTITY_FIELDS and \
+                    key in canonical and value != canonical[key]:
+                problems.append(
+                    f"{doc_name}: {dotted} declares {value!r} but "
+                    "run_context.json canonical value is "
+                    f"{canonical[key]!r}")
+
+    # HANDOFF-01: the handoff embeds the complete residual register,
+    # frozen by canonical digest, and must remain residual-positive.
+    ho_doc = docs.get("research_contract_handoff.json")
+    if isinstance(ho_doc, Mapping):
+        register = ho_doc.get("residual_register")
+        problems.extend(
+            f"research_contract_handoff.json: {p}"
+            for p in _residual_register_problems(register))
+        declared_reg_sha = ho_doc.get("residual_register_sha256")
+        if not _is_sha256(declared_reg_sha):
+            problems.append(
+                "research_contract_handoff.json: "
+                "residual_register_sha256 must be a lowercase SHA-256 "
+                "of the embedded register")
+        elif isinstance(register, list):
+            try:
+                actual_reg_sha = sha256_canonical(register)
+            except (TypeError, ValueError):
+                actual_reg_sha = None
+            if declared_reg_sha != actual_reg_sha:
+                problems.append(
+                    "research_contract_handoff.json: "
+                    "residual_register_sha256 does not recompute from "
+                    "the embedded register")
 
     fmx_path = pkg_dir / "fmx_blocked.json"
     if fmx_path.is_file():
@@ -839,39 +1310,84 @@ def verify_science_contract_package(
             problems.append("validation_scaffold.json must carry "
                             "BLOCKED_PENDING_FMX")
 
-    # PKG-09: when an evidence root is supplied and it carries an
-    # active-generation pointer, a package living under that root must
-    # be the generation the pointer names — stale siblings reject.
+    # PKG-09/PKG-10: when an evidence root is supplied and the package
+    # resolves under it, the active-generation pointer at the root is
+    # MANDATORY — a verified envelope binding pointer_type, run-root
+    # name, generation, code revision, package relpath, and the index +
+    # seal file digests to THIS package.  A missing, forged, or renamed
+    # pointer fails; stale siblings reject.
     if evidence_root is not None:
         ev_root = Path(evidence_root)
         ptr_path = ev_root / POINTER_NAME
         pkg_r = pkg_dir.resolve()
         root_r = ev_root.resolve() if ev_root.is_dir() else None
-        if ptr_path.is_file() and root_r is not None and \
+        if root_r is not None and \
                 (pkg_r == root_r or root_r in pkg_r.parents):
-            try:
-                ptr = json.loads(ptr_path.read_text("utf-8"))
-            except (OSError, ValueError) as exc:
-                problems.append(f"active-generation pointer unreadable: "
-                                f"{exc}")
-                ptr = {}
-            if ptr:
-                ok_p, ptr_env = verify_artifact_envelope(ptr)
-                if not ok_p:
-                    problems.extend(f"active pointer: {p}"
-                                    for p in ptr_env)
-                if ptr.get("pointer_type") != POINTER_TYPE:
-                    problems.append("active pointer type mismatch")
-                rel = pkg_r.relative_to(root_r).as_posix()
-                if ptr.get("package_relpath") != rel:
-                    problems.append(
-                        "stale generation: active pointer names "
-                        f"{ptr.get('package_relpath')!r}, not {rel!r}")
-                if index_path.is_file() and \
-                        ptr.get("index_file_sha256") != \
-                        sha256_file(index_path):
-                    problems.append("active pointer index digest does "
-                                    "not match this package")
+            if ptr_path.is_symlink() or not ptr_path.is_file():
+                problems.append(
+                    f"active-generation pointer {POINTER_NAME} missing "
+                    "at the evidence root — a package resolving under "
+                    "the root must be the generation the pointer names")
+            else:
+                try:
+                    ptr = json.loads(ptr_path.read_text("utf-8"))
+                except (OSError, ValueError) as exc:
+                    problems.append(f"active-generation pointer "
+                                    f"unreadable: {exc}")
+                    ptr = None
+                if not isinstance(ptr, Mapping) or not ptr:
+                    problems.append("active-generation pointer is not a "
+                                    "JSON object")
+                else:
+                    ok_p, ptr_env = verify_artifact_envelope(ptr)
+                    if not ok_p:
+                        problems.extend(f"active pointer: {p}"
+                                        for p in ptr_env)
+                    for field in ("pointer_type", "run_root_name",
+                                  "candidate_generation_id",
+                                  "code_revision", "package_relpath",
+                                  "index_file_sha256",
+                                  "package_seal_sha256"):
+                        if field not in ptr:
+                            problems.append(
+                                f"active pointer lacks {field!r}")
+                    rel = pkg_r.relative_to(root_r).as_posix()
+                    rc = rc_doc if isinstance(rc_doc, Mapping) else {}
+                    for field, expected in (
+                            ("pointer_type", POINTER_TYPE),
+                            ("run_root_name",
+                             rc.get("run_root_name")),
+                            ("candidate_generation_id",
+                             canonical.get("candidate_generation_id")),
+                            ("code_revision",
+                             canonical.get("code_revision")),
+                            ("package_relpath", rel)):
+                        if field in ptr and expected is not None and \
+                                ptr.get(field) != expected:
+                            if field == "package_relpath":
+                                problems.append(
+                                    "stale generation: active pointer "
+                                    f"names {ptr.get(field)!r}, not "
+                                    f"{expected!r}")
+                            elif field == "pointer_type":
+                                problems.append(
+                                    "active pointer type mismatch")
+                            else:
+                                problems.append(
+                                    f"active pointer {field} "
+                                    f"{ptr.get(field)!r} does not "
+                                    f"match this package's "
+                                    f"{expected!r}")
+                    if index_path.is_file() and \
+                            ptr.get("index_file_sha256") != \
+                            sha256_file(index_path):
+                        problems.append("active pointer index digest "
+                                        "does not match this package")
+                    if seal_path.is_file() and \
+                            ptr.get("package_seal_sha256") != \
+                            sha256_file(seal_path):
+                        problems.append("active pointer seal digest "
+                                        "does not match this package")
 
     for path in pkg_dir.iterdir():
         if path.is_file() and path.name.startswith(("e_", "f_", "E_",

@@ -42,6 +42,22 @@ Contract invariants enforced by :func:`verify_mec_envelope`:
   be bound to a real file: ``packet_relpath`` resolves under
   ``packet_root`` to a regular non-symlink JSON file whose SHA-256 equals
   ``packet_sha256`` and whose approval fields match the envelope claim;
+  the optional ``approval_record_relpath``/``approval_record_sha256``
+  pair binds an approval-record file under the same root with the same
+  discipline (MEC-REAL-05);
+* in ``REAL_SOURCE_DESIGN`` mode the row schema is an explicit
+  allowlist: ``row_fields`` names every field any event's
+  ``row_source`` may carry, each ``row_source`` is a non-empty
+  ``{field: value}`` mapping whose keys stay inside the allowlist, and
+  values are bounded canonical-JSON structures (MEC-REAL-02R);
+* in ``REAL_SOURCE_DESIGN`` mode the catalog carries typed
+  ``asset_records`` (asset id, source URL, version, retrieval
+  timestamp, byte count, content digest) and ``asset_ids`` must equal
+  the records' id set — string-only declarations reject
+  (MEC-REAL-03);
+* in ``REAL_SOURCE_DESIGN`` mode ``timezone_policy`` must be ``UTC``,
+  every ``date_spec.timezone`` is UTC, and every window timezone that
+  is declared is UTC (MEC-REAL-04);
 * label evidence is bound: ``adjudication`` carries ``ledger_sha256`` and
   unique ``reviewer_ids``; ``negative_controls`` carries
   ``artifact_sha256``;
@@ -66,8 +82,9 @@ a row serialization it does not use.
 from __future__ import annotations
 
 import json
+import math
 import re
-from datetime import date as _date
+from datetime import date as _date, datetime as _datetime
 from pathlib import Path, PureWindowsPath
 from typing import Any, Mapping, Optional, TypeGuard
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -99,6 +116,14 @@ _FORBIDDEN_CATALOG_IDS = ("hma_events_all", "hma", "real", "production")
 _WINDOW_KEYS = ("acquisition_window", "production_time",
                 "publication_time", "issue_time",
                 "feature_availability_time", "target_window")
+
+#: MEC-REAL-03 — the only permitted keys on a typed real-mode
+#: ``source_catalog.asset_records`` entry.
+_ASSET_RECORD_KEYS = frozenset({"asset_id", "source_url", "version",
+                                "retrieved_at", "byte_count", "sha256"})
+
+#: MEC-REAL-04 — the only permitted real-mode timezone policy.
+_REAL_TIMEZONE_POLICY = "UTC"
 
 
 def _is_sha256(value: Any) -> bool:
@@ -148,6 +173,38 @@ def _is_number(value: Any) -> TypeGuard[float]:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
+def _resolve_packet_file(relpath: str, packet_root: Any, label: str,
+                         problems: list[str]) -> Optional[Path]:
+    """Resolve a packet-root-relative binding: safe relative path, stays
+    inside the resolved root, no symlink component, regular file."""
+    rel = Path(relpath)
+    if (rel.is_absolute() or PureWindowsPath(relpath).is_absolute()
+            or ".." in rel.parts or "\\" in relpath or "\x00" in relpath):
+        problems.append(f"{label} is not a safe relative path under "
+                        "packet_root")
+        return None
+    try:
+        root_resolved = Path(packet_root).resolve()
+        target = (root_resolved / rel).resolve()
+        target.relative_to(root_resolved)
+    except (OSError, ValueError):
+        problems.append(f"{label} escapes packet_root")
+        return None
+    # No path component under the root may be a symlink.
+    cursor = root_resolved
+    for part in rel.parts:
+        cursor = cursor / part
+        if cursor.is_symlink():
+            problems.append(f"{label} traverses a symlink — packet "
+                            "files must be regular")
+            return None
+    if not target.is_file():
+        problems.append(f"{label} does not resolve to a regular file "
+                        "under packet_root")
+        return None
+    return target
+
+
 def _check_packet_file(packet: Mapping[str, Any], relpath: str,
                        packet_root: Any, problems: list[str]) -> None:
     """Bind ``source_packet`` to a real approved file under packet_root.
@@ -158,31 +215,10 @@ def _check_packet_file(packet: Mapping[str, Any], relpath: str,
     field it does carry must equal the envelope claim; and the envelope's
     ``packet_sha256`` must equal the file's SHA-256.
     """
-    rel = Path(relpath)
-    if (rel.is_absolute() or PureWindowsPath(relpath).is_absolute()
-            or ".." in rel.parts or "\\" in relpath or "\x00" in relpath):
-        problems.append("source_packet.packet_relpath is not a safe "
-                        "relative path under packet_root")
-        return
-    try:
-        root_resolved = Path(packet_root).resolve()
-        target = (root_resolved / rel).resolve()
-        target.relative_to(root_resolved)
-    except (OSError, ValueError):
-        problems.append("source_packet.packet_relpath escapes "
-                        "packet_root")
-        return
-    # No path component under the root may be a symlink.
-    cursor = root_resolved
-    for part in rel.parts:
-        cursor = cursor / part
-        if cursor.is_symlink():
-            problems.append("source_packet.packet_relpath traverses a "
-                            "symlink — packet files must be regular")
-            return
-    if not target.is_file():
-        problems.append("source_packet.packet_relpath does not resolve "
-                        "to a regular file under packet_root")
+    target = _resolve_packet_file(relpath, packet_root,
+                                  "source_packet.packet_relpath",
+                                  problems)
+    if target is None:
         return
     try:
         data = json.loads(target.read_text(encoding="utf-8"))
@@ -205,10 +241,85 @@ def _check_packet_file(packet: Mapping[str, Any], relpath: str,
                         "SHA-256 of the packet file under packet_root")
 
 
-def _window_endpoints(value: Any, label: str, problems: list[str]
+def _check_approval_record_file(packet: Mapping[str, Any], relpath: str,
+                                sha256: str, packet_root: Any,
+                                problems: list[str]) -> None:
+    """MEC-REAL-05 — bind the optional source-packet approval record to
+    a real file under ``packet_root``.  The record resolves with the same
+    path/symlink discipline as the packet itself, its recomputed SHA-256
+    must equal the declared ``approval_record_sha256``, and every
+    approval field the record carries must agree with the packet claims."""
+    target = _resolve_packet_file(
+        relpath, packet_root, "source_packet.approval_record_relpath",
+        problems)
+    if target is None:
+        return
+    if sha256_file(target) != sha256:
+        problems.append("source_packet.approval_record_sha256 does not "
+                        "equal the SHA-256 of the approval record file "
+                        "under packet_root")
+    try:
+        data = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        problems.append("source_packet approval record file is not "
+                        "readable JSON")
+        return
+    if not isinstance(data, Mapping):
+        problems.append("source_packet approval record file must "
+                        "contain a JSON object")
+        return
+    if "approval_record_sha256" in data:
+        problems.append("source_packet approval record file must not "
+                        "contain approval_record_sha256 — a record "
+                        "cannot hash itself")
+    for field in ("packet_id", "approved_by", "human_approved",
+                  "approved_at"):
+        if field in data and data[field] != packet.get(field):
+            problems.append(f"source_packet approval record {field} "
+                            "does not match the envelope source_packet "
+                            "claim")
+
+
+def _is_row_value(value: Any, _depth: int = 0) -> bool:
+    """A canonical-JSON row value: ``str``/``int``/``float``/``bool``/
+    ``None`` scalars or nested JSON structures built from them.
+    Non-finite floats and unbounded depth are rejected — canonical JSON
+    cannot encode them."""
+    if _depth > 16:
+        return False
+    if value is None or isinstance(value, (str, bool)):
+        return True
+    if isinstance(value, (int, float)):
+        return math.isfinite(value)
+    if isinstance(value, Mapping):
+        return all(isinstance(k, str) and _is_row_value(v, _depth + 1)
+                   for k, v in value.items())
+    if isinstance(value, (list, tuple)):
+        return all(_is_row_value(v, _depth + 1) for v in value)
+    return False
+
+
+def _is_iso_datetime_or_date(value: Any) -> bool:
+    """Strict ISO-8601 date (``YYYY-MM-DD``, real calendar day) or
+    datetime string — the only permitted ``retrieved_at`` forms."""
+    if not isinstance(value, str) or not value:
+        return False
+    if _parse_date(value) is not None:
+        return True
+    text = value[:-1] + "+00:00" if value.endswith("Z") else value
+    try:
+        _datetime.fromisoformat(text)
+        return True
+    except ValueError:
+        return False
+
+
+def _window_endpoints(value: Any, label: str, problems: list[str], *,
+                      require_utc: bool = False
                       ) -> tuple[Optional[tuple], Optional[tuple]]:
     """Return (start, end) date tuples for a window spec, or record
-    problems.  Accepts an ISO date string or {start, end} mapping."""
+    problems.  Accepts an ISO date string or {start, end} mapping.  With
+    ``require_utc`` a declared window timezone must be UTC."""
     if isinstance(value, str):
         d = _parse_date(value)
         if d is None:
@@ -216,7 +327,13 @@ def _window_endpoints(value: Any, label: str, problems: list[str]
             return None, None
         return d, d
     if isinstance(value, Mapping):
-        _check_timezone(value.get("timezone"), label, problems)
+        tz = value.get("timezone")
+        _check_timezone(tz, label, problems)
+        if require_utc and tz is not None and \
+                tz != _REAL_TIMEZONE_POLICY:
+            problems.append(f"{label}.timezone must be "
+                            f"{_REAL_TIMEZONE_POLICY!r} in "
+                            f"{_MODE_REAL} mode")
         extra = set(value) - {"start", "end", "timezone"}
         if extra:
             problems.append(f"{label} has unknown keys {sorted(extra)}")
@@ -232,13 +349,18 @@ def _window_endpoints(value: Any, label: str, problems: list[str]
     return None, None
 
 
-def _check_date_spec(spec: Any, label: str, problems: list[str]
-                     ) -> Optional[tuple]:
+def _check_date_spec(spec: Any, label: str, problems: list[str], *,
+                     require_utc: bool = False) -> Optional[tuple]:
     """Validate one event date_spec.  Returns the event date (or interval
-    end) for post-event checks, or None on failure."""
+    end) for post-event checks, or None on failure.  With ``require_utc``
+    the spec must pin ``timezone='UTC'``."""
     if not isinstance(spec, Mapping):
         problems.append(f"{label}.date_spec must be a mapping")
         return None
+    if require_utc and spec.get("timezone") != _REAL_TIMEZONE_POLICY:
+        problems.append(f"{label}.date_spec.timezone must be "
+                        f"{_REAL_TIMEZONE_POLICY!r} in {_MODE_REAL} "
+                        "mode")
     source = spec.get("source")
     if not isinstance(source, str) or not source:
         problems.append(f"{label}.date_spec.source is required "
@@ -334,6 +456,7 @@ def verify_mec_envelope(payload: Any, *,
     if mode not in _MODES:
         problems.append(f"mode must be one of {_MODES}")
         mode = _MODE_SYNTHETIC
+    row_field_set: Optional[set] = None
 
     if mode == _MODE_SYNTHETIC:
         if payload.get("synthetic_fixture") is not True:
@@ -386,6 +509,51 @@ def verify_mec_envelope(payload: Any, *,
             elif packet_root is not None:
                 _check_packet_file(packet, relpath, packet_root,
                                    problems)
+            # MEC-REAL-05: the approval record is an optional file-bound
+            # companion to the packet — when either approval-record
+            # binding field is declared, both must be present and the
+            # record must resolve under packet_root to a file whose
+            # recomputed digest matches.
+            approval_rel = packet.get("approval_record_relpath")
+            approval_sha = packet.get("approval_record_sha256")
+            if approval_rel is not None or approval_sha is not None:
+                if not isinstance(approval_rel, str) or not approval_rel:
+                    problems.append(
+                        "source_packet.approval_record_relpath is "
+                        "required when the approval record is bound — "
+                        "a safe relative path under packet_root")
+                if not _is_sha256(approval_sha):
+                    problems.append(
+                        "source_packet.approval_record_sha256 must be "
+                        "a lowercase SHA-256 when the approval record "
+                        "is bound")
+                elif isinstance(approval_rel, str) and approval_rel and \
+                        isinstance(approval_sha, str) and \
+                        packet_root is not None:
+                    _check_approval_record_file(
+                        packet, approval_rel, approval_sha, packet_root,
+                        problems)
+        # MEC-REAL-02R: the real row schema is an explicit allowlist —
+        # row_fields names every field any event's row_source may carry.
+        row_fields = payload.get("row_fields")
+        if not isinstance(row_fields, list) or not row_fields or not \
+                all(isinstance(f, str) and f for f in row_fields):
+            problems.append("row_fields is required in real mode — a "
+                            "non-empty list of unique field-name "
+                            "strings allowlisting every event's "
+                            "row_source keys")
+        elif len(set(row_fields)) != len(row_fields):
+            problems.append("row_fields must not contain duplicate "
+                            "field names")
+            row_field_set = set(row_fields)
+        else:
+            row_field_set = set(row_fields)
+        # MEC-REAL-04: one declared timezone policy for the whole
+        # envelope — real rows may not mix zones.
+        if payload.get("timezone_policy") != _REAL_TIMEZONE_POLICY:
+            problems.append(f"timezone_policy must be "
+                            f"{_REAL_TIMEZONE_POLICY!r} in "
+                            f"{_MODE_REAL} mode")
 
     catalog = payload.get("source_catalog")
     if not isinstance(catalog, Mapping):
@@ -439,6 +607,73 @@ def verify_mec_envelope(payload: Any, *,
                                     "duplicate")
                 else:
                     seen_assets.add(aid)
+        if mode == _MODE_REAL:
+            # MEC-REAL-03: real mode requires typed asset provenance —
+            # a string-only asset_ids declaration is not enough.  Every
+            # record carries identity, source URL, version, retrieval
+            # timestamp, byte count, and content digest; asset_ids must
+            # be exactly the records' id set.
+            records = catalog.get("asset_records")
+            if not isinstance(records, list) or not records:
+                problems.append(
+                    "source_catalog.asset_records is required in real "
+                    "mode — a non-empty list of typed {asset_id, "
+                    "source_url, version, retrieved_at, byte_count, "
+                    "sha256} provenance records")
+                records = []
+            record_ids: list[str] = []
+            seen_record_ids: set[str] = set()
+            for ri, rec in enumerate(records):
+                rlabel = f"source_catalog.asset_records[{ri}]"
+                if not isinstance(rec, Mapping):
+                    problems.append(f"{rlabel} must be a typed asset "
+                                    "record mapping")
+                    continue
+                extra = set(rec) - _ASSET_RECORD_KEYS
+                if extra:
+                    problems.append(f"{rlabel} has disallowed fields "
+                                    f"{sorted(extra)}")
+                raid = rec.get("asset_id")
+                if not isinstance(raid, str) or not raid:
+                    problems.append(f"{rlabel}.asset_id must be a "
+                                    "non-empty string")
+                elif raid in seen_record_ids:
+                    problems.append(f"{rlabel}.asset_id {raid!r} is a "
+                                    "duplicate")
+                else:
+                    seen_record_ids.add(raid)
+                    record_ids.append(raid)
+                if not isinstance(rec.get("source_url"), str) or not \
+                        rec.get("source_url"):
+                    problems.append(f"{rlabel}.source_url must be a "
+                                    "non-empty string")
+                if not isinstance(rec.get("version"), str) or not \
+                        rec.get("version"):
+                    problems.append(f"{rlabel}.version must be a "
+                                    "non-empty string")
+                if not _is_iso_datetime_or_date(rec.get("retrieved_at")):
+                    problems.append(f"{rlabel}.retrieved_at must be a "
+                                    "strict ISO-8601 datetime or date")
+                nbytes = rec.get("byte_count")
+                if not isinstance(nbytes, int) or isinstance(
+                        nbytes, bool) or nbytes < 0:
+                    problems.append(f"{rlabel}.byte_count must be a "
+                                    "non-negative integer")
+                if not _is_sha256(rec.get("sha256")):
+                    problems.append(f"{rlabel}.sha256 must be a "
+                                    "lowercase SHA-256")
+            if isinstance(assets, list) and assets:
+                if not all(isinstance(a, str) and a for a in assets):
+                    problems.append(
+                        "source_catalog.asset_ids entries must be "
+                        "non-empty id strings in real mode — typed "
+                        "provenance lives on asset_records")
+                elif sorted(assets) != sorted(record_ids):
+                    problems.append(
+                        "source_catalog.asset_ids must equal the "
+                        "sorted asset_id set of asset_records — the "
+                        "identity list and the provenance records may "
+                        "not diverge")
 
     # Declared collections for referential integrity — events may only
     # reference declared groups/holdouts.
@@ -542,18 +777,51 @@ def verify_mec_envelope(payload: Any, *,
                 bad_mapping = isinstance(row_source, Mapping) and (
                     not row_source or not all(
                         isinstance(k, str) for k in row_source))
-                if bad_mapping:
+                if mode == _MODE_REAL and not isinstance(
+                        row_source, Mapping):
+                    # MEC-REAL-02R: in real mode the row source is the
+                    # typed source record — a non-empty {field: value}
+                    # mapping, never bare bytes.
+                    problems.append(
+                        f"{label}.row_source must be a non-empty "
+                        "{field: value} mapping in real mode")
+                elif bad_mapping:
                     problems.append(
                         f"{label}.row_source must be a non-empty "
                         "mapping with string keys — an empty mapping "
                         "carries no row content and non-string keys "
                         "are not canonical JSON object keys")
-                elif not _is_sha256(ev.get("row_sha256")) or \
-                        sha256_canonical(row_source) != \
-                        ev.get("row_sha256"):
-                    problems.append(f"{label}.row_sha256 does not equal "
-                                    "sha256 of the supplied canonical "
-                                    "row source bytes")
+                else:
+                    if mode == _MODE_REAL and isinstance(
+                            row_source, Mapping):
+                        if row_field_set is not None:
+                            extra_keys = sorted(
+                                set(row_source) - row_field_set)
+                            if extra_keys:
+                                problems.append(
+                                    f"{label}.row_source carries "
+                                    f"undeclared fields {extra_keys} — "
+                                    "every key must appear in the "
+                                    "envelope row_fields allowlist")
+                        bad_values = sorted(
+                            k for k, v in row_source.items()
+                            if not _is_row_value(v))
+                        if bad_values:
+                            problems.append(
+                                f"{label}.row_source fields "
+                                f"{bad_values} carry non-JSON values — "
+                                "values must be str/int/float/bool/null "
+                                "or nested JSON structures")
+                    try:
+                        actual_row = sha256_canonical(row_source)
+                    except (TypeError, ValueError):
+                        actual_row = None
+                    if not _is_sha256(ev.get("row_sha256")) or \
+                            actual_row != ev.get("row_sha256"):
+                        problems.append(
+                            f"{label}.row_sha256 does not equal "
+                            "sha256 of the supplied canonical "
+                            "row source bytes")
         elif mode == _MODE_REAL:
             problems.append(f"{label}.row_source is required in "
                             f"{_MODE_REAL} mode — a caller-supplied "
@@ -561,7 +829,9 @@ def verify_mec_envelope(payload: Any, *,
         elif not _is_sha256(ev.get("row_sha256")):
             problems.append(f"{label}.row_sha256 must be a lowercase "
                             "SHA-256")
-        event_ref = _check_date_spec(ev.get("date_spec"), label, problems)
+        event_ref = _check_date_spec(ev.get("date_spec"), label,
+                                     problems,
+                                     require_utc=mode == _MODE_REAL)
         windows = ev.get("windows")
         if not isinstance(windows, Mapping):
             problems.append(f"{label}.windows must be a mapping")
@@ -576,7 +846,8 @@ def verify_mec_envelope(payload: Any, *,
                 problems.append(f"{label}.windows.{wkey} is required")
                 continue
             endpoints[wkey] = _window_endpoints(
-                windows[wkey], f"{label}.windows.{wkey}", problems)
+                windows[wkey], f"{label}.windows.{wkey}", problems,
+                require_utc=mode == _MODE_REAL)
         # Ordering invariants: acquisition completes before features are
         # available; features never extend past the event date; the event
         # date sits inside the target window; and the publication chain

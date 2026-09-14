@@ -324,3 +324,195 @@ class TestNormalizedProsePhrases:
             "scientific or operational readiness",
         ]))
         assert ok, problems
+
+
+class TestClaimVariantKeys:
+    """BOUND-05: authorization/ready-shaped keys may only carry falsy
+    values; normalized string values that are themselves forbidden
+    claims reject."""
+
+    @pytest.mark.parametrize("key", [
+        "B_TO_C_READY", "b_to_c_ready", "Fmx Ready", "fmx-ready",
+        "warning_ready", "production ready", "production-ready",
+        "t2_ready", "e_ready", "f_ready", "eligible",
+        "authorized", "authorised", "enabled", "cleared",
+        "deployed", "gate authorized flag",
+    ])
+    def test_truthy_value_under_auth_key_rejected(self, key):
+        ok, problems = rb.lint_research_claims(_doc(**{key: True}))
+        assert not ok and problems
+
+    def test_nested_claim_variant_key_rejected(self):
+        ok, _ = rb.lint_research_claims(
+            _doc(a={"B_TO_C_READY": True}))
+        assert not ok
+
+    def test_deeply_nested_claim_variant_key_rejected(self):
+        ok, _ = rb.lint_research_claims(
+            _doc(a={"b": [{"c": {"fmx_ready": True}}]}))
+        assert not ok
+
+    @pytest.mark.parametrize("value", [1, "yes", "true", "TRUE", "on",
+                                       ["x"], {"x": 1}, 0.5])
+    def test_non_string_truthy_values_rejected(self, value):
+        ok, _ = rb.lint_research_claims(_doc(fmx_ready=value))
+        assert not ok
+
+    @pytest.mark.parametrize("value", [False, None, "false", "FALSE",
+                                       "no", "none", "", 0, "0"])
+    def test_falsy_values_under_auth_key_pass(self, value):
+        ok, problems = rb.lint_research_claims(
+            _doc(b_to_c_ready=value, fmx_ready=value))
+        assert ok, problems
+
+    def test_mixed_case_unicode_key_rejected(self):
+        ok, _ = rb.lint_research_claims(_doc(**{"FmX_ReAdY": True}))
+        assert not ok
+
+    @pytest.mark.parametrize("key", [
+        "human_approved", "approved_by", "approved_at",
+        "group_disjoint", "assigned_before_filtering",
+        "exact_day15_supported", "research_diagnostic_only",
+        "required", "group_separation",
+    ])
+    def test_allowlisted_truthy_keys_pass(self, key):
+        ok, problems = rb.lint_research_claims(_doc(**{key: True}))
+        assert ok, problems
+
+    @pytest.mark.parametrize("value", [
+        "b to c ready", "B_TO_C_READY".lower().replace("_", " "),
+        "fmx ready", "fmx-ready", "e ready", "f ready", "t2 ready",
+        "warning ready", "production ready", "scientifically validated",
+        "authority approved", "all gaps closed", "no remaining gaps",
+        "validation passed",
+    ])
+    def test_forbidden_claim_value_rejected(self, value):
+        ok, problems = rb.lint_research_claims(_doc(status=value))
+        assert not ok and problems
+
+    @pytest.mark.parametrize("value", [
+        "B_TO_C_BLOCKED", "FMX_BLOCKED_PENDING_EXPLICIT_FREEZE",
+        "b to c blocked", "not fmx ready", "e blocked", "f blocked",
+        "t2 real v1", "PASS", "BLOCKED_PENDING_FMX",
+    ])
+    def test_blocked_or_negated_values_pass(self, value):
+        ok, problems = rb.lint_research_claims(_doc(status=value))
+        assert ok, problems
+
+    def test_blocked_key_variants_pass(self):
+        ok, problems = rb.lint_research_claims(_doc(
+            fmx_status="FMX_BLOCKED_PENDING_EXPLICIT_FREEZE",
+            b_status="B_TO_C_BLOCKED",
+            e_status="E_BLOCKED", f_status="F_BLOCKED"))
+        assert ok, problems
+
+
+class TestRankedPayloadKeys:
+    """BOUND-06: ranked/score-named keys may not carry list/dict
+    payloads; digest-keyed references and scalar metadata are legal."""
+
+    @pytest.mark.parametrize("key", [
+        "scores", "score", "ranked", "ranking", "top five", "top5",
+        "priority", "priorities", "anomaly scores", "screen scores",
+        "ranked array", "ranked list", "anomaly_scores",
+        "screen-scores",
+    ])
+    def test_ranked_key_with_list_rejected(self, key):
+        ok, problems = rb.lint_research_claims(_doc(**{key: [1, 2, 3]}))
+        assert not ok and problems
+
+    def test_ranked_key_with_dict_rejected(self):
+        ok, _ = rb.lint_research_claims(
+            _doc(**{"anomaly scores": {"AU-1": 0.9}}))
+        assert not ok
+
+    def test_scores_payload_rejected(self):
+        ok, _ = rb.lint_research_claims(_doc(scores=[1, 2, 3]))
+        assert not ok
+
+    def test_nested_ranked_payload_rejected(self):
+        ok, _ = rb.lint_research_claims(
+            _doc(features={"ranked array": [0.9, 0.8]}))
+        assert not ok
+
+    @pytest.mark.parametrize("key", [
+        "ranked_array_canonical_sha256", "ranked_payload_sha256",
+        "loo_top5_digest", "scores_sha256", "ranked hash",
+        "score_digest",
+    ])
+    def test_digest_keyed_ranked_fields_pass(self, key):
+        ok, problems = rb.lint_research_claims(
+            _doc(**{key: "ab" * 32}))
+        assert ok, problems
+
+    def test_ranked_bool_metadata_passes(self):
+        """Scalar metadata like ranking_rerun=false is not a payload.
+        (A bare ``ranked`` key is already rejected by the pre-existing
+        exact-key check, bool or not.)"""
+        ok, problems = rb.lint_research_claims(
+            _doc(ranking_rerun=False, priority_rerun=False))
+        assert ok, problems
+
+    def test_scalar_string_under_ranked_key_passes(self):
+        ok, problems = rb.lint_research_claims(
+            _doc(top_five="withheld; digest reference only"))
+        assert ok, problems
+
+
+class TestMethodNameValues:
+    """BOUND-06: descriptive-only method names in prose values need an
+    inline disclaimer token in the same string."""
+
+    @pytest.mark.parametrize("value", [
+        "isolation forest", "isolation_forest", "ISOLATION FOREST",
+        "gaussian mixture", "gmm", "GMM", "change point",
+        "changepoint", "change-point", "bayesian change",
+        "anomaly detection", "screening model",
+        "baseline uses isolation forest",
+    ])
+    def test_method_name_without_disclaimer_rejected(self, value):
+        ok, problems = rb.lint_research_claims(_doc(note=value))
+        assert not ok and problems
+
+    @pytest.mark.parametrize("value", [
+        "isolation forest diagnostic only",
+        "gmm descriptive statistic",
+        "change point analysis; research only",
+        "screening model, screening only",
+        "anomaly detection is non authorizing",
+    ])
+    def test_method_name_with_disclaimer_passes(self, value):
+        ok, problems = rb.lint_research_claims(_doc(note=value))
+        assert ok, problems
+
+    def test_method_key_exempt_bare_identifier(self):
+        """A bare method identifier under ``method`` is governed by the
+        structured descriptive_only/disclaimer check, not the prose
+        rule."""
+        ok, problems = rb.lint_research_claims(_doc(legacy_output={
+            "method": "gmm", "descriptive_only": True,
+            "disclaimer": "retrospective descriptive statistic"}))
+        assert ok, problems
+
+    def test_method_key_undisclaimed_still_rejected(self):
+        """The structured check still rejects a bare method mapping."""
+        ok, _ = rb.lint_research_claims(
+            _doc(legacy_output={"method": "gmm"}))
+        assert not ok
+
+    def test_legit_docs_still_pass(self):
+        ok, problems = rb.lint_research_claims(_doc(
+            b_status="B_TO_C_BLOCKED",
+            fmx_status="FMX_BLOCKED_PENDING_EXPLICIT_FREEZE",
+            e_status="E_BLOCKED", f_status="F_BLOCKED",
+            ranking_rerun=False,
+            inherited_state={"b_status": "B_TO_C_BLOCKED",
+                             "ranking_rerun": False},
+            b_reference={"ranked_array_canonical_sha256": "ab" * 32},
+            source_packet={"approved_by": "operator",
+                           "human_approved": True,
+                           "approved_at": "2026-09-13"},
+            label_spec={"adjudication": {"required": True}},
+            holdout={"assigned_before_filtering": True,
+                     "event_separation": {"group_disjoint": True}}))
+        assert ok, problems

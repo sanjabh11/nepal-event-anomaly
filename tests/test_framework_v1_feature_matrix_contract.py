@@ -44,7 +44,10 @@ def _columns():
     t2m["min_value"] = 200.0
     t2m["max_value"] = 330.0
     return [
-        {"name": "obs_date", "unit": "ISO8601", "role": "time",
+        # FMX-07: roles are a closed vocabulary — a date column is
+        # declared as metadata with an ISO-8601 unit, which keeps it
+        # inside the date semantics of the CSV scan.
+        {"name": "obs_date", "unit": "ISO8601", "role": "metadata",
          "aggregation": "none", "temporal_resolution": "daily",
          "availability_time": "2015-04-01"},
         t2m,
@@ -127,9 +130,13 @@ def _protected(tmp_path):
     return p
 
 
-def _staged(tmp_path, matrix_bytes=None, token=None):
+def _staged(tmp_path, matrix_bytes=None, token=None,
+            approval_record=None):
     """Stage a real matrix CSV + token file + frozen lineage files under
-    an external artifact root, with digests computed from disk."""
+    an external artifact root, with digests computed from disk.  When
+    ``approval_record`` bytes are given, an approval record file is
+    written and bound into the token via approval_record_relpath +
+    approval_record_sha256."""
     root = tmp_path / "ext-root"
     root.mkdir()
     digests = {}
@@ -144,6 +151,11 @@ def _staged(tmp_path, matrix_bytes=None, token=None):
                         byte_count=len(mbytes), digests=digests)
     if token is None:
         token = _token_for(meta)
+    if approval_record is not None:
+        apath = root / "approval_record.json"
+        apath.write_bytes(approval_record)
+        token["approval_record_relpath"] = "approval_record.json"
+        token["approval_record_sha256"] = sha256_file(apath)
     (root / "freeze_token.json").write_text(json.dumps(token))
     return root, meta, token
 
@@ -766,3 +778,291 @@ class TestSchema:
         env = fmx.bind_fmx_envelope(env)
         ok, problems = fmx.verify_fmx_envelope(env)
         assert not ok
+
+
+class TestVerifyTimeRescan:
+    """FMX-VERIFY-01: verify re-runs the semantic scan on the bound
+    matrix bytes — rebinding every digest cannot launder a
+    semantically-invalid matrix."""
+
+    def _rebound_env(self, env, root):
+        """Recompute every digest/byte binding in the envelope and the
+        on-disk token file from the current matrix bytes, so that only
+        a *semantic* problem can still fail verification."""
+        env = json.loads(json.dumps(env))
+        msha = sha256_file(root / "matrix.csv")
+        msize = (root / "matrix.csv").stat().st_size
+        env["matrix"]["matrix_sha256"] = msha
+        env["matrix"]["byte_count"] = msize
+        env["freeze_token"]["matrix_sha256"] = msha
+        (root / "freeze_token.json").write_text(
+            json.dumps(env["freeze_token"]))
+        env["file_bindings"]["matrix_file_sha256"] = msha
+        env["file_bindings"]["matrix_file_byte_count"] = msize
+        env["file_bindings"]["token_file_sha256"] = sha256_file(
+            root / "freeze_token.json")
+        return fmx.bind_fmx_envelope(env)
+
+    def test_verify_rescan_rejects_rebound_value_mutation(
+            self, tmp_path):
+        """t2m_mean 450 > declared max_value 330; every digest is
+        truthfully rebound, so only the semantic re-scan can catch it."""
+        root, meta, token = _staged(tmp_path)
+        env = _build_ready(meta, token, root, tmp_path)
+        bad = (_CSV_HEADER +
+               "row-001,2015-06-01,27.7,85.3,450.0,1.0,0,2015-06-05\n" +
+               _CSV_TAIL)
+        (root / "matrix.csv").write_bytes(bad.encode("utf-8"))
+        env = self._rebound_env(env, root)
+        ok, problems = _verify_ready(env, root, tmp_path)
+        assert not ok
+        assert any("bounds" in p for p in problems), problems
+
+    def test_verify_rescan_rejects_rebound_structure_mutation(
+            self, tmp_path):
+        """A rebound matrix carrying an undeclared extra column fails
+        only on the semantic re-scan."""
+        root, meta, token = _staged(tmp_path)
+        env = _build_ready(meta, token, root, tmp_path)
+        bad = (_CSV_HEADER.rstrip("\n") + ",mystery\n"
+               "row-001,2015-06-01,27.7,85.3,288.5,12.3,0,2015-06-05,9\n"
+               "row-002,2015-06-02,27.8,85.4,289.1,0.0,1,2015-06-06,9\n"
+               "row-003,2015-06-03,27.9,85.5,287.9,4.25,0,2015-06-07,9\n")
+        (root / "matrix.csv").write_bytes(bad.encode("utf-8"))
+        env = self._rebound_env(env, root)
+        ok, problems = _verify_ready(env, root, tmp_path)
+        assert not ok
+        assert any("declared column" in p for p in problems)
+
+    def test_verify_rescan_rejects_rebound_row_id_mutation(
+            self, tmp_path):
+        root, meta, token = _staged(tmp_path)
+        env = _build_ready(meta, token, root, tmp_path)
+        bad = (_CSV_HEADER +
+               "row-001,2015-06-01,27.7,85.3,288.5,1.0,0,2015-06-05\n"
+               "row-001,2015-06-02,27.8,85.4,289.1,0.0,1,2015-06-06\n"
+               "row-003,2015-06-03,27.9,85.5,287.9,4.25,0,2015-06-07\n")
+        (root / "matrix.csv").write_bytes(bad.encode("utf-8"))
+        env = self._rebound_env(env, root)
+        ok, problems = _verify_ready(env, root, tmp_path)
+        assert not ok
+        assert any("row id" in p for p in problems)
+
+
+class TestArtifactRootIdentity:
+    """FMX-VERIFY-02: the artifact root identity is bound at build."""
+
+    def test_verify_rejects_renamed_artifact_root(self, tmp_path):
+        root, meta, token = _staged(tmp_path)
+        env = _build_ready(meta, token, root, tmp_path)
+        moved = tmp_path / "renamed-root"
+        root.rename(moved)
+        ok, problems = _verify_ready(env, moved, tmp_path)
+        assert not ok
+        assert any("artifact_root_name" in p or "artifact root" in p
+                   for p in problems), problems
+
+    def test_verify_rejects_missing_artifact_root_name(self, tmp_path):
+        root, meta, token = _staged(tmp_path)
+        env = _build_ready(meta, token, root, tmp_path)
+        env = json.loads(json.dumps(env))
+        del env["file_bindings"]["artifact_root_name"]
+        env = fmx.bind_fmx_envelope(env)
+        ok, problems = _verify_ready(env, root, tmp_path)
+        assert not ok
+        assert any("artifact_root_name" in p for p in problems)
+
+
+class TestApprovalRecordBinding:
+    """FMX-VERIFY-02: optional approval-record file binding."""
+
+    _RECORD = b'{"approval": "freeze-board", "record": 1}\n'
+
+    def test_ready_with_approval_record(self, tmp_path):
+        root, meta, token = _staged(
+            tmp_path, approval_record=self._RECORD)
+        env = _build_ready(meta, token, root, tmp_path)
+        assert env["fmx_status"] == fmx.FMX_READY
+        fb = env["file_bindings"]
+        assert fb["approval_record_relative_path"] == \
+            "approval_record.json"
+        assert fb["approval_record_file_sha256"] == sha256_file(
+            root / "approval_record.json")
+        ok, problems = _verify_ready(env, root, tmp_path)
+        assert ok, problems
+
+    def test_build_rejects_approval_record_digest_mismatch(
+            self, tmp_path):
+        root, meta, token = _staged(tmp_path)
+        (root / "approval_record.json").write_bytes(self._RECORD)
+        token["approval_record_relpath"] = "approval_record.json"
+        # approval_record_sha256 intentionally left stale
+        (root / "freeze_token.json").write_text(json.dumps(token))
+        with pytest.raises(ValueError, match="approval record"):
+            _build_ready(meta, token, root, tmp_path)
+
+    def test_build_rejects_unresolvable_approval_record(self, tmp_path):
+        root, meta, token = _staged(tmp_path)
+        token["approval_record_relpath"] = "missing.json"
+        (root / "freeze_token.json").write_text(json.dumps(token))
+        with pytest.raises(ValueError):
+            _build_ready(meta, token, root, tmp_path)
+
+    def test_build_rejects_approval_record_traversal(self, tmp_path):
+        root, meta, token = _staged(tmp_path)
+        token["approval_record_relpath"] = "../escape.json"
+        (root / "freeze_token.json").write_text(json.dumps(token))
+        with pytest.raises(ValueError):
+            _build_ready(meta, token, root, tmp_path)
+
+    def test_verify_rejects_tampered_approval_record(self, tmp_path):
+        root, meta, token = _staged(
+            tmp_path, approval_record=self._RECORD)
+        env = _build_ready(meta, token, root, tmp_path)
+        (root / "approval_record.json").write_bytes(
+            b'{"approval": "forged"}\n')
+        ok, problems = _verify_ready(env, root, tmp_path)
+        assert not ok
+        assert any("approval record" in p for p in problems)
+
+    def test_verify_rejects_missing_approval_record(self, tmp_path):
+        """approval_record_sha256 is declared but the file is
+        unresolvable → reject."""
+        root, meta, token = _staged(
+            tmp_path, approval_record=self._RECORD)
+        env = _build_ready(meta, token, root, tmp_path)
+        (root / "approval_record.json").unlink()
+        ok, problems = _verify_ready(env, root, tmp_path)
+        assert not ok
+
+    def test_verify_rejects_approval_record_symlink(self, tmp_path):
+        root, meta, token = _staged(
+            tmp_path, approval_record=self._RECORD)
+        env = _build_ready(meta, token, root, tmp_path)
+        target = tmp_path / "real_approval.json"
+        target.write_bytes(self._RECORD)
+        (root / "approval_record.json").unlink()
+        (root / "approval_record.json").symlink_to(target)
+        ok, problems = _verify_ready(env, root, tmp_path)
+        assert not ok
+
+
+class TestStrictCsvStructure:
+    """FMX-07: strict CSV structure checks."""
+
+    def _stage(self, tmp_path, text):
+        return _staged(tmp_path, matrix_bytes=text.encode("utf-8"))
+
+    def test_duplicate_header_rejected(self, tmp_path):
+        root, meta, token = self._stage(
+            tmp_path,
+            "row_id,obs_date,lat,lon,t2m_mean,t2m_mean,tp_total,"
+            "synthetic_target,avail_date\n"
+            "row-001,2015-06-01,27.7,85.3,288.5,288.5,12.3,0,"
+            "2015-06-05\n"
+            "row-002,2015-06-02,27.8,85.4,289.1,289.1,0.0,1,"
+            "2015-06-06\n"
+            "row-003,2015-06-03,27.9,85.5,287.9,287.9,4.25,0,"
+            "2015-06-07\n")
+        with pytest.raises(ValueError, match="duplicate"):
+            _build_ready(meta, token, root, tmp_path)
+
+    def test_undeclared_header_cell_rejected(self, tmp_path):
+        root, meta, token = self._stage(
+            tmp_path,
+            _CSV_HEADER.rstrip("\n") + ",mystery\n"
+            "row-001,2015-06-01,27.7,85.3,288.5,12.3,0,2015-06-05,9\n"
+            "row-002,2015-06-02,27.8,85.4,289.1,0.0,1,2015-06-06,9\n"
+            "row-003,2015-06-03,27.9,85.5,287.9,4.25,0,2015-06-07,9\n")
+        with pytest.raises(ValueError, match="declared column"):
+            _build_ready(meta, token, root, tmp_path)
+
+    @pytest.mark.parametrize("row", (
+        "row-001,2015-06-01,27.7,85.3,288.5,12.3,0",
+        "row-001,2015-06-01,27.7,85.3,288.5,12.3,0,2015-06-05,9,x"))
+    def test_row_width_mismatch_rejected(self, tmp_path, row):
+        root, meta, token = self._stage(
+            tmp_path, _CSV_HEADER + row + "\n" + _CSV_TAIL)
+        with pytest.raises(ValueError, match="cells"):
+            _build_ready(meta, token, root, tmp_path)
+
+    @pytest.mark.parametrize("role", ("time", "date", "ranked",
+                                      "score", ""))
+    def test_unknown_role_rejected(self, role):
+        m = _matrix_meta()
+        m["columns"][0]["role"] = role
+        with pytest.raises(ValueError, match="role"):
+            fmx.build_fmx_envelope(m)
+
+    def test_missingness_under_declared_rejected(self, tmp_path):
+        """1 empty cell / 24 cells = 0.042 observed > 0.01 declared."""
+        root, meta, token = self._stage(
+            tmp_path,
+            _CSV_HEADER +
+            "row-001,2015-06-01,27.7,85.3,288.5,,0,2015-06-05\n" +
+            _CSV_TAIL)
+        meta["missingness"] = {"fraction": 0.01, "policy": "permitted"}
+        with pytest.raises(ValueError, match="missingness"):
+            _build_ready(meta, token, root, tmp_path)
+
+    def test_missingness_within_declared_ok(self, tmp_path):
+        root, meta, token = self._stage(
+            tmp_path,
+            _CSV_HEADER +
+            "row-001,2015-06-01,27.7,85.3,288.5,,0,2015-06-05\n" +
+            _CSV_TAIL)
+        meta["missingness"] = {"fraction": 0.5, "policy": "permitted"}
+        env = _build_ready(meta, token, root, tmp_path)
+        assert env["fmx_status"] == fmx.FMX_READY
+        ok, problems = _verify_ready(env, root, tmp_path)
+        assert ok, problems
+
+    def test_inverted_date_range_rejected(self):
+        m = _matrix_meta()
+        m["date_range"] = {"start": "2015-08-31", "end": "2001-06-01"}
+        with pytest.raises(ValueError, match="date_range"):
+            fmx.build_fmx_envelope(m)
+
+
+class TestResourceBounds:
+    """FMX-08: the matrix scan is streamed and resource-bounded."""
+
+    def test_oversized_matrix_rejected(self, tmp_path, monkeypatch):
+        root, meta, token = _staged(tmp_path)
+        monkeypatch.setattr(fmx, "MAX_MATRIX_BYTES", 8)
+        with pytest.raises(ValueError, match="MAX_MATRIX_BYTES"):
+            _build_ready(meta, token, root, tmp_path)
+
+    def test_row_bound_rejected(self, tmp_path, monkeypatch):
+        root, meta, token = _staged(tmp_path)
+        monkeypatch.setattr(fmx, "MAX_MATRIX_ROWS", 1)
+        with pytest.raises(ValueError, match="MAX_MATRIX_ROWS"):
+            _build_ready(meta, token, root, tmp_path)
+
+    def test_oversize_also_rejected_at_verify(
+            self, tmp_path, monkeypatch):
+        root, meta, token = _staged(tmp_path)
+        env = _build_ready(meta, token, root, tmp_path)
+        monkeypatch.setattr(fmx, "MAX_MATRIX_BYTES", 8)
+        ok, problems = _verify_ready(env, root, tmp_path)
+        assert not ok
+        assert any("MAX_MATRIX_BYTES" in p for p in problems)
+
+    def test_validation_streams_without_read_bytes(
+            self, tmp_path, monkeypatch):
+        """The semantic scan must never slurp the matrix file."""
+        root, meta, token = _staged(tmp_path)
+
+        def _no_read_bytes(self, *a, **k):
+            raise AssertionError("read_bytes() must not be used")
+
+        monkeypatch.setattr(Path, "read_bytes", _no_read_bytes)
+        problems: list = []
+        summary: dict = {}
+        fmx._validate_matrix_file(root / "matrix.csv", meta, problems,
+                                  summary=summary)
+        assert problems == []
+        assert summary["data_rows"] == 3
+        assert summary["bytes_scanned"] == \
+            (root / "matrix.csv").stat().st_size
+        assert summary["observed_missing_fraction"] == 0.0

@@ -28,14 +28,21 @@ Guarantees:
   is unverifiable without the root, and strict verification requires it
   (T2S-05);
 * ``candidate_generation_id`` and ``code_revision`` are required
-  non-empty strings under strict verification, and every file-bound
+  non-empty strings under strict verification, every file-bound
   referenced envelope that carries them must agree with the declared
-  values — mixed-generation assemblies are never legal (T2S-06);
+  values, and under strict verification every bound referenced envelope
+  must carry them at all — mixed-generation or unattributed assemblies
+  are never legal (T2S-06, T2S-11);
 * ``scaffold_profile`` defaults to ``T2_RESEARCH_BLOCKED``; the
-  successor profile ``T2_REAL_V1`` may carry
-  ``fmx_status=FMX_READY`` only file-bound — a ``reference_root`` is
-  required and the bound FMX envelope must itself carry
-  ``file_bindings`` freeze evidence (T2S-08);
+  successor profile ``T2_REAL_V1`` requires
+  ``fmx_status=FMX_READY``, claimed only file-bound — a
+  ``reference_root`` is required and the bound FMX envelope must itself
+  carry ``file_bindings`` freeze evidence (T2S-08, T2S-09);
+* a file-bound reference's declared fields must equal the bound
+  envelope's own records — ``mec_reference.envelope_type``,
+  ``fmx_reference.fmx_status``, and the ``b_reference`` status derived
+  from the bound doc's ``b_status``/``phase_status``/``gate_passed``
+  are all compared against the artifact (T2S-10);
 * ``verify_scaffold_envelope(strict=True)`` requires a
   ``reference_root``, ``binding_status=FILE_BOUND``, declared
   ``candidate_generation_id``/``code_revision``, and file-bound
@@ -166,7 +173,8 @@ def _resolve_reference_file(root: Path, relpath: Any, label: str,
 
 
 def _check(payload: Mapping[str, Any], problems: list[str],
-           reference_root: "Optional[str | Path]" = None) -> None:
+           reference_root: "Optional[str | Path]" = None,
+           strict: bool = False) -> None:
     # Recursive claim lint — nested forged READY/WARNING/operational
     # fields are rejected wherever they hide in the payload.  The
     # references subtree is deliberately excluded: reference digests and
@@ -224,26 +232,33 @@ def _check(payload: Mapping[str, Any], problems: list[str],
         problems.append("references.mec_reference must be a typed MEC "
                         "envelope digest reference")
     fmx_ref = refs.get("fmx_reference")
-    # T2S-08 — under the successor profile an FMX_READY claim is legal
-    # only as a file-bound claim: the reference_root is required even on
-    # a non-strict verify and the bound FMX envelope must itself carry
+    # T2S-08/T2S-09 — the profile decides the FMX contract: the default
+    # research profile requires the blocked status; the successor
+    # T2_REAL_V1 profile REQUIRES a ready matrix, claimed only as a
+    # file-bound claim — the reference_root is required even on a
+    # non-strict verify and the bound FMX envelope must itself carry
     # file_bindings freeze evidence (checked with the bound docs below).
     fmx_ready_claim = isinstance(fmx_ref, Mapping) and fmx_ref.get(
         "fmx_status") == _FMX_READY_STATUS
-    allowed_fmx = _ALLOWED_FMX_STATUSES + (
-        (_FMX_READY_STATUS,) if profile == PROFILE_T2_REAL_V1 else ())
+    allowed_fmx = ((_FMX_READY_STATUS,)
+                   if profile == PROFILE_T2_REAL_V1
+                   else _ALLOWED_FMX_STATUSES)
     if not isinstance(fmx_ref, Mapping) or not _is_sha256(
             fmx_ref.get("envelope_sha256")):
         problems.append("references.fmx_reference must be a typed FMX "
                         "envelope digest reference")
     elif fmx_ref.get("fmx_status") not in allowed_fmx:
-        problems.append(
-            "references.fmx_reference.fmx_status must be "
-            "FMX_BLOCKED_PENDING_EXPLICIT_FREEZE"
-            + (" or a file-bound FMX_READY under the "
-               f"{PROFILE_T2_REAL_V1} profile"
-               if profile == PROFILE_T2_REAL_V1 else "")
-            + " — the scaffold cannot advance on an unverified matrix")
+        if profile == PROFILE_T2_REAL_V1:
+            problems.append(
+                "references.fmx_reference.fmx_status must be a "
+                "file-bound FMX_READY under the "
+                f"{PROFILE_T2_REAL_V1} profile — a blocked matrix "
+                "cannot back a real-validation design")
+        else:
+            problems.append(
+                "references.fmx_reference.fmx_status must be "
+                "FMX_BLOCKED_PENDING_EXPLICIT_FREEZE — the scaffold "
+                "cannot advance on an unverified matrix")
     if fmx_ready_claim and reference_root is None:
         problems.append(
             "references.fmx_reference.fmx_status FMX_READY requires a "
@@ -314,6 +329,30 @@ def _check(payload: Mapping[str, Any], problems: list[str],
                 continue
             bound_docs[rname] = doc
 
+        # T2S-10: typed ref/doc equality — once a reference is
+        # file-bound, the declared reference fields must equal what the
+        # bound envelope itself records.  A reference may not describe a
+        # document differently from the document's own self-description.
+        mec_doc = bound_docs.get("mec_reference")
+        if mec_doc is not None and isinstance(mec_ref, Mapping) and \
+                mec_doc.get("envelope_type") != \
+                mec_ref.get("envelope_type"):
+            problems.append(
+                "references.mec_reference.envelope_type "
+                f"{mec_ref.get('envelope_type')!r} does not equal the "
+                f"bound envelope's envelope_type "
+                f"{mec_doc.get('envelope_type')!r}")
+        fmx_doc_for_status = bound_docs.get("fmx_reference")
+        if fmx_doc_for_status is not None and isinstance(
+                fmx_ref, Mapping) and \
+                fmx_doc_for_status.get("fmx_status") != \
+                fmx_ref.get("fmx_status"):
+            problems.append(
+                "references.fmx_reference.fmx_status "
+                f"{fmx_ref.get('fmx_status')!r} does not equal the "
+                f"bound envelope's fmx_status "
+                f"{fmx_doc_for_status.get('fmx_status')!r}")
+
         # T2S-02: the B reference is content-bound, not merely
         # existence-bound — the verified B envelope must itself contain
         # the declared ranked-array canonical digest, so a caller cannot
@@ -329,18 +368,36 @@ def _check(payload: Mapping[str, Any], problems: list[str],
                     "references.b_reference.ranked_array_canonical_sha256 "
                     "is not contained in the bound B envelope — the "
                     "digest must be carried by the referenced artifact")
-            # T2S-03: a bound B envelope that records its own b_status is
-            # the authoritative derived state; caller-asserted statuses
-            # that disagree with the artifact are rejected.
+            # T2S-03/T2S-10: the bound B envelope's own recorded status
+            # is authoritative — an explicit b_status or phase_status is
+            # used directly; a bare gate_passed maps to the B_TO_C phase
+            # status it would produce.  The derived doc status must equal
+            # the caller-asserted references.b_reference.status and
+            # inherited_state.b_status; a bound doc recording no status
+            # at all cannot verify the declared one and is rejected.
             if "b_status" in b_doc:
                 doc_status = b_doc.get("b_status")
+            elif "phase_status" in b_doc:
+                doc_status = b_doc.get("phase_status")
+            elif "gate_passed" in b_doc:
+                doc_status = ("B_TO_C_READY" if b_doc.get("gate_passed")
+                              is True else "B_TO_C_BLOCKED")
+            else:
+                doc_status = None
+            if doc_status is None:
+                problems.append(
+                    "references.b_reference bound envelope records no "
+                    "b_status, phase_status, or gate_passed — the "
+                    "declared status cannot be verified against the "
+                    "artifact")
+            else:
                 inh = payload.get("inherited_state")
                 inh_status = (inh.get("b_status")
                               if isinstance(inh, Mapping) else None)
                 if doc_status != b_ref.get("status") or \
                         doc_status != inh_status:
                     problems.append(
-                        f"bound B envelope b_status {doc_status!r} "
+                        f"bound B envelope status {doc_status!r} "
                         "disagrees with the caller-asserted "
                         "references.b_reference.status or "
                         "inherited_state.b_status")
@@ -362,17 +419,27 @@ def _check(payload: Mapping[str, Any], problems: list[str],
                     "FMX_READY claim requires real freeze evidence "
                     "carried by the referenced artifact")
 
-        # T2S-06: cross-generation equality — when the payload declares
-        # candidate_generation_id / code_revision, every file-bound
-        # referenced envelope that carries the same field must agree
-        # with the declared value; a mixed-generation assembly is never
-        # legal, on strict and non-strict verifies alike.
+        # T2S-06/T2S-11: cross-generation equality — when the payload
+        # declares candidate_generation_id / code_revision, every
+        # file-bound referenced envelope that carries the same field
+        # must agree with the declared value; a mixed-generation
+        # assembly is never legal, on strict and non-strict verifies
+        # alike.  Under strict verification the identity is mandatory:
+        # a bound envelope missing the field rejects outright — an
+        # unattributed artifact can never join a strict assembly.
         for field in _CROSS_GENERATION_FIELDS:
             declared = payload.get(field)
             if not (isinstance(declared, str) and declared):
                 continue
             for rname, doc in bound_docs.items():
-                if field in doc and doc.get(field) != declared:
+                if field not in doc:
+                    if strict:
+                        problems.append(
+                            f"references.{rname} bound envelope lacks "
+                            f"{field!r} — strict verification requires "
+                            "every bound reference to carry the "
+                            "declared assembly identity")
+                elif doc.get(field) != declared:
                     problems.append(
                         f"references.{rname} bound envelope carries "
                         f"{field}={doc.get(field)!r} but the payload "
@@ -586,5 +653,5 @@ def verify_scaffold_envelope(payload: Any, *,
                     f"strict verification requires references.{rname}."
                     "relative_path bound to a verified envelope file "
                     "under the reference root")
-    _check(payload, problems, reference_root)
+    _check(payload, problems, reference_root, strict=strict)
     return (not problems), problems

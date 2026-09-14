@@ -405,9 +405,26 @@ def _real_envelope(tmp_path, packet=True):
     e = _envelope()
     e["mode"] = "REAL_SOURCE_DESIGN"
     e["synthetic_fixture"] = False
+    # MEC-REAL-02R: the row schema allowlist; every event row_source
+    # below uses only these fields.
+    e["row_fields"] = ["fixture_row", "group", "region"]
+    # MEC-REAL-04: single declared timezone policy for the envelope.
+    e["timezone_policy"] = "UTC"
+    # MEC-REAL-03: typed asset provenance records; asset_ids must equal
+    # the records' id set.
+    e["source_catalog"]["asset_ids"] = ["ASSET-REAL-1"]
+    e["source_catalog"]["asset_records"] = [{
+        "asset_id": "ASSET-REAL-1",
+        "source_url": "https://data.example.org/assets/asset-1.csv",
+        "version": "v1",
+        "retrieved_at": "2026-09-01",
+        "byte_count": 128,
+        "sha256": "ab" * 32,
+    }]
     for i, ev in enumerate(e["events"], start=1):
         ev["event_id"] = f"EVT-REAL-{i:03d}"
         ev["synthetic"] = False
+        ev["date_spec"]["timezone"] = "UTC"
     e["holdout"]["assignment"] = {
         ev["event_id"]: ev["holdout_group"] for ev in e["events"]}
     e["holdout"]["assignment_sha256"] = sha256_canonical(
@@ -826,3 +843,227 @@ def test_day15_flag_false_still_rejected():
         "start": "2015-04-14", "end": "2015-04-16"}
     ok, problems = mec.verify_mec_envelope(e)
     assert not ok and any("day-15" in p for p in problems)
+
+
+# MEC-REAL-02R: real-mode row_fields allowlist
+
+
+def test_real_mode_requires_row_fields(tmp_path):
+    e = _real_envelope(tmp_path)
+    del e["row_fields"]
+    ok, problems = mec.verify_mec_envelope(e, packet_root=tmp_path)
+    assert not ok and any("row_fields" in p for p in problems)
+
+
+def test_real_mode_row_fields_not_string_list_rejected(tmp_path):
+    e = _real_envelope(tmp_path)
+    e["row_fields"] = "fixture_row"
+    ok, problems = mec.verify_mec_envelope(e, packet_root=tmp_path)
+    assert not ok and any("row_fields" in p for p in problems)
+
+
+def test_real_mode_row_fields_duplicates_rejected(tmp_path):
+    e = _real_envelope(tmp_path)
+    e["row_fields"] = ["fixture_row", "group", "region", "group"]
+    ok, problems = mec.verify_mec_envelope(e, packet_root=tmp_path)
+    assert not ok and any("duplicate" in p for p in problems)
+
+
+def test_real_mode_row_source_extra_field_rejected(tmp_path):
+    e = _real_envelope(tmp_path)
+    row = dict(e["events"][0]["row_source"])
+    row["undeclared_field"] = "x"
+    e["events"][0]["row_source"] = row
+    e["events"][0]["row_sha256"] = sha256_canonical(row)
+    ok, problems = mec.verify_mec_envelope(e, packet_root=tmp_path)
+    assert not ok and any("row_fields" in p for p in problems)
+
+
+def test_real_mode_row_source_non_mapping_rejected(tmp_path):
+    e = _real_envelope(tmp_path)
+    row = ["a", "b"]  # a list is legal synthetic row bytes, not a real row
+    e["events"][0]["row_source"] = row
+    e["events"][0]["row_sha256"] = sha256_canonical(row)
+    ok, problems = mec.verify_mec_envelope(e, packet_root=tmp_path)
+    assert not ok and any("row_source" in p for p in problems)
+
+
+def test_real_mode_row_source_non_json_value_rejected(tmp_path):
+    e = _real_envelope(tmp_path)
+    row = dict(e["events"][0]["row_source"])
+    row["group"] = float("nan")  # canonical JSON cannot encode NaN
+    e["events"][0]["row_source"] = row
+    e["events"][0]["row_sha256"] = "ab" * 32
+    ok, problems = mec.verify_mec_envelope(e, packet_root=tmp_path)
+    assert not ok and any("row_source" in p for p in problems)
+
+
+# MEC-REAL-03: typed asset records in real mode
+
+
+def test_real_mode_requires_asset_records(tmp_path):
+    """String-only asset_ids without typed provenance records reject."""
+    e = _real_envelope(tmp_path)
+    del e["source_catalog"]["asset_records"]
+    ok, problems = mec.verify_mec_envelope(e, packet_root=tmp_path)
+    assert not ok and any("asset_records" in p for p in problems)
+
+
+def test_real_mode_asset_record_incomplete_rejected(tmp_path):
+    e = _real_envelope(tmp_path)
+    del e["source_catalog"]["asset_records"][0]["sha256"]
+    ok, problems = mec.verify_mec_envelope(e, packet_root=tmp_path)
+    assert not ok and any("asset_records" in p for p in problems)
+
+
+def test_real_mode_asset_record_bad_retrieved_at_rejected(tmp_path):
+    e = _real_envelope(tmp_path)
+    e["source_catalog"]["asset_records"][0]["retrieved_at"] = \
+        "last Tuesday"
+    ok, problems = mec.verify_mec_envelope(e, packet_root=tmp_path)
+    assert not ok and any("retrieved_at" in p for p in problems)
+
+
+def test_real_mode_asset_record_extra_field_rejected(tmp_path):
+    e = _real_envelope(tmp_path)
+    e["source_catalog"]["asset_records"][0]["operator"] = "x"
+    ok, problems = mec.verify_mec_envelope(e, packet_root=tmp_path)
+    assert not ok and any("asset_records" in p for p in problems)
+
+
+def test_real_mode_asset_ids_diverge_from_records_rejected(tmp_path):
+    e = _real_envelope(tmp_path)
+    e["source_catalog"]["asset_ids"] = ["ASSET-REAL-1", "ASSET-REAL-2"]
+    ok, problems = mec.verify_mec_envelope(e, packet_root=tmp_path)
+    assert not ok and any("asset_ids" in p for p in problems)
+
+
+def test_real_mode_asset_id_record_form_rejected(tmp_path):
+    """The synthetic-mode {asset_id, asset_sha256, bytes} record form is
+    not a valid real-mode asset_ids entry — typed provenance lives on
+    asset_records."""
+    e = _real_envelope(tmp_path)
+    e["source_catalog"]["asset_ids"] = [
+        {"asset_id": "ASSET-REAL-1", "asset_sha256": "ab" * 32,
+         "bytes": 128}]
+    ok, problems = mec.verify_mec_envelope(e, packet_root=tmp_path)
+    assert not ok and any("asset_ids" in p for p in problems)
+
+
+def test_real_mode_asset_record_datetime_retrieved_at_ok(tmp_path):
+    e = _real_envelope(tmp_path)
+    e["source_catalog"]["asset_records"][0]["retrieved_at"] = \
+        "2026-09-01T12:00:00Z"
+    env = mec.build_mec_envelope(e, packet_root=tmp_path)
+    ok, problems = mec.verify_mec_envelope(env, packet_root=tmp_path)
+    assert ok, problems
+
+
+# MEC-REAL-04: UTC timezone policy in real mode
+
+
+def test_real_mode_requires_timezone_policy(tmp_path):
+    e = _real_envelope(tmp_path)
+    del e["timezone_policy"]
+    ok, problems = mec.verify_mec_envelope(e, packet_root=tmp_path)
+    assert not ok and any("timezone_policy" in p for p in problems)
+
+
+def test_real_mode_non_utc_timezone_policy_rejected(tmp_path):
+    e = _real_envelope(tmp_path)
+    e["timezone_policy"] = "Asia/Kathmandu"
+    ok, problems = mec.verify_mec_envelope(e, packet_root=tmp_path)
+    assert not ok and any("timezone_policy" in p for p in problems)
+
+
+def test_real_mode_non_utc_window_timezone_rejected(tmp_path):
+    e = _real_envelope(tmp_path)
+    e["events"][0]["windows"]["acquisition_window"]["timezone"] = \
+        "Asia/Kathmandu"
+    ok, problems = mec.verify_mec_envelope(e, packet_root=tmp_path)
+    assert not ok and any("timezone" in p for p in problems)
+
+
+def test_real_mode_missing_date_spec_timezone_rejected(tmp_path):
+    e = _real_envelope(tmp_path)
+    del e["events"][0]["date_spec"]["timezone"]
+    ok, problems = mec.verify_mec_envelope(e, packet_root=tmp_path)
+    assert not ok and any("timezone" in p for p in problems)
+
+
+def test_real_mode_non_utc_date_spec_timezone_rejected(tmp_path):
+    e = _real_envelope(tmp_path)
+    e["events"][0]["date_spec"]["timezone"] = "Asia/Kathmandu"
+    ok, problems = mec.verify_mec_envelope(e, packet_root=tmp_path)
+    assert not ok and any("timezone" in p for p in problems)
+
+
+# MEC-REAL-05: optional approval-record file binding
+
+
+def _write_approval(tmp_path, name="approval_record.json", **overrides):
+    """Write an approval-record JSON file under the packet root."""
+    data = {"packet_id": "p1", "approved_by": "operator",
+            "human_approved": True, "approved_at": "2026-09-13",
+            "record_type": "source_packet_approval"}
+    data.update(overrides)
+    path = tmp_path / name
+    path.write_text(json.dumps(data), encoding="utf-8")
+    return path
+
+
+def test_real_mode_approval_record_bound_verifies(tmp_path):
+    e = _real_envelope(tmp_path)
+    afile = _write_approval(tmp_path)
+    e["source_packet"]["approval_record_relpath"] = afile.name
+    e["source_packet"]["approval_record_sha256"] = sha256_file(afile)
+    env = mec.build_mec_envelope(e, packet_root=tmp_path)
+    ok, problems = mec.verify_mec_envelope(env, packet_root=tmp_path)
+    assert ok, problems
+
+
+def test_real_mode_approval_record_tamper_rejected(tmp_path):
+    e = _real_envelope(tmp_path)
+    afile = _write_approval(tmp_path)
+    e["source_packet"]["approval_record_relpath"] = afile.name
+    e["source_packet"]["approval_record_sha256"] = sha256_file(afile)
+    # Tamper with the record after the digest was declared.
+    afile.write_text(json.dumps({"packet_id": "p1",
+                                 "approved_by": "forger"}),
+                     encoding="utf-8")
+    ok, problems = mec.verify_mec_envelope(e, packet_root=tmp_path)
+    assert not ok and any("approval_record" in p for p in problems)
+
+
+def test_real_mode_approval_record_field_mismatch_rejected(tmp_path):
+    e = _real_envelope(tmp_path)
+    afile = _write_approval(tmp_path, approved_by="someone-else")
+    e["source_packet"]["approval_record_relpath"] = afile.name
+    e["source_packet"]["approval_record_sha256"] = sha256_file(afile)
+    ok, problems = mec.verify_mec_envelope(e, packet_root=tmp_path)
+    assert not ok and any("approved_by" in p for p in problems)
+
+
+def test_real_mode_approval_record_missing_file_rejected(tmp_path):
+    e = _real_envelope(tmp_path)
+    e["source_packet"]["approval_record_relpath"] = "no_such_record.json"
+    e["source_packet"]["approval_record_sha256"] = "ab" * 32
+    ok, problems = mec.verify_mec_envelope(e, packet_root=tmp_path)
+    assert not ok and any("approval_record" in p for p in problems)
+
+
+def test_real_mode_approval_record_relpath_alone_rejected(tmp_path):
+    """Declaring the record path without its digest fails closed."""
+    e = _real_envelope(tmp_path)
+    afile = _write_approval(tmp_path)
+    e["source_packet"]["approval_record_relpath"] = afile.name
+    ok, problems = mec.verify_mec_envelope(e, packet_root=tmp_path)
+    assert not ok and any("approval_record" in p for p in problems)
+
+
+def test_real_mode_approval_record_escape_rejected(tmp_path):
+    e = _real_envelope(tmp_path)
+    e["source_packet"]["approval_record_relpath"] = "../outside.json"
+    e["source_packet"]["approval_record_sha256"] = "ab" * 32
+    ok, problems = mec.verify_mec_envelope(e, packet_root=tmp_path)
+    assert not ok and any("approval_record" in p for p in problems)

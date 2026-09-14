@@ -155,8 +155,10 @@ class TestClaimLinter:
         ok, problems = rb.lint_research_claims(
             self._doc(legacy_output={"method": "gmm", "scores": [1, 2]}))
         assert not ok
+        # BOUND-06: a raw "scores" payload rejects even with a valid
+        # disclaimer — the passing form carries no score data.
         ok2, _ = rb.lint_research_claims(self._doc(legacy_output={
-            "method": "gmm", "scores": [1, 2],
+            "method": "gmm",
             "descriptive_only": True,
             "disclaimer": "retrospective descriptive statistic; not a "
                           "precursor or validated predictor"}))

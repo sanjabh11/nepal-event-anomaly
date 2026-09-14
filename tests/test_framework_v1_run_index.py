@@ -200,3 +200,170 @@ class TestHandoffV3:
                                        "candidate_root": "/abs/cand-v2"}
         with pytest.raises(ValueError, match="absolute path"):
             build_remediation_handoff(**kwargs)
+
+
+# ---------- INDEX-01/02: path safety + active-profile binding ----------
+
+
+def _forged_index(index, **overrides):
+    """Return a copy of a built index with edits and a fresh self-hash —
+    an internally consistent forgery that isolates the check under
+    test."""
+    forged = dict(index)
+    forged.update(overrides)
+    forged.pop("artifact_sha256", None)
+    return bind_artifact_envelope(forged)
+
+
+class TestIndexPathSafety:
+    """INDEX-01: cross-platform path safety — no drive letters, UNC,
+    backslashes, absolute paths, traversal, or symlink escapes in stored
+    run-root-relative paths."""
+
+    @pytest.mark.parametrize("bad", ["C:\\cand", "C:/cand",
+                                     "cand\\v2", "\\\\server\\share",
+                                     "//server/share", "/abs/cand",
+                                     "../cand", "cand/../x"])
+    def test_verify_rejects_nonportable_paths(self, tmp_path, bad):
+        root = _run_root(tmp_path)
+        index = _index_for(root)
+        forged = _forged_index(index, candidate_root=bad)
+        ok, problems = verify_run_index(forged, run_root=root)
+        assert not ok
+        assert any("safe relative" in p or "backslash" in p
+                   or "drive" in p or "absolute" in p
+                   for p in problems)
+
+    def test_verify_rejects_noncanonical_stored_path(self, tmp_path):
+        root = _run_root(tmp_path)
+        index = _index_for(root)
+        forged = _forged_index(index, handoff_path="a//b/handoff.json")
+        ok, problems = verify_run_index(forged, run_root=root)
+        assert not ok
+
+    def test_build_canonicalizes_forward_slashes(self, tmp_path):
+        root = _run_root(tmp_path)
+        index = _index_for(root, candidate_root="cand-v2//")
+        assert index["candidate_root"] == "cand-v2"
+        ok, problems = verify_run_index(index, run_root=root)
+        assert ok, problems
+
+    def test_symlinked_indexed_file_rejected(self, tmp_path):
+        root = _run_root(tmp_path)
+        index = _index_for(root)
+        path = write_run_index(root / "run_index.json", index)
+        # keep identical bytes behind a symlink so only the symlink
+        # check can fail
+        real = (root / "audit_real.json")
+        real.write_bytes((root / "audit.json").read_bytes())
+        (root / "audit.json").unlink()
+        (root / "audit.json").symlink_to(real)
+        ok, problems = verify_run_index(
+            json.loads(path.read_text()), run_root=root)
+        assert not ok and any("symlink" in p for p in problems)
+
+    def test_symlinked_parent_dir_rejected(self, tmp_path):
+        root = _run_root(tmp_path)
+        index = _index_for(root)
+        path = write_run_index(root / "run_index.json", index)
+        outside = tmp_path / "outside_cand"
+        outside.mkdir()
+        (outside / "manifest.json").write_bytes(
+            (root / "cand-v2" / "manifest.json").read_bytes())
+        for p in (root / "cand-v2").iterdir():
+            p.unlink()
+        (root / "cand-v2").rmdir()
+        (root / "cand-v2").symlink_to(outside)
+        ok, problems = verify_run_index(
+            json.loads(path.read_text()), run_root=root)
+        assert not ok and any("symlink" in p for p in problems)
+
+    def test_backslash_path_on_disk_rejected(self, tmp_path):
+        """A stored backslash path must never resolve — even where a
+        same-named file exists."""
+        root = _run_root(tmp_path)
+        index = _index_for(root)
+        forged = _forged_index(index, active_audit_packet="a\\u.json")
+        ok, problems = verify_run_index(forged, run_root=root)
+        assert not ok
+
+
+class TestActiveProfileBinding:
+    """INDEX-02: index_profile=ACTIVE requires a non-null handoff
+    (digest+relpath), run-root name equality, and an on-disk handoff
+    that verifies as an artifact envelope."""
+
+    def _active_root(self, tmp_path):
+        root = _run_root(tmp_path)
+        handoff = bind_artifact_envelope(
+            {"envelope_type": "REMEDIATION_HANDOFF_V3",
+             "research_diagnostic_only": True})
+        (root / "handoff.json").write_text(
+            canonical_json(handoff) + "\n", encoding="utf-8")
+        return root
+
+    def test_active_profile_round_trip(self, tmp_path):
+        root = self._active_root(tmp_path)
+        index = _index_for(root, index_profile="ACTIVE",
+                           handoff_sha256=sha256_file(
+                               root / "handoff.json"))
+        assert index["index_profile"] == "ACTIVE"
+        ok, problems = verify_run_index(index, run_root=root)
+        assert ok, problems
+
+    def test_active_null_handoff_rejected(self, tmp_path):
+        root = self._active_root(tmp_path)
+        index = _index_for(
+            root, index_profile="ACTIVE",
+            handoff_sha256=sha256_file(root / "handoff.json"))
+        forged = _forged_index(index, handoff_sha256=None)
+        ok, problems = verify_run_index(forged, run_root=root)
+        assert not ok and any("handoff" in p for p in problems)
+
+    def test_active_build_requires_handoff_digest(self, tmp_path):
+        root = self._active_root(tmp_path)
+        with pytest.raises(ValueError):
+            _index_for(root, index_profile="ACTIVE",
+                       handoff_sha256=None)
+
+    def test_active_missing_handoff_file_rejected(self, tmp_path):
+        root = self._active_root(tmp_path)
+        index = _index_for(root, index_profile="ACTIVE",
+                           handoff_path="missing-handoff.json",
+                           handoff_sha256="0" * 64)
+        ok, problems = verify_run_index(index, run_root=root)
+        assert not ok and any("handoff" in p for p in problems)
+
+    def test_active_handoff_not_envelope_rejected(self, tmp_path):
+        root = _run_root(tmp_path)  # handoff.json is NOT an envelope
+        index = _index_for(root, index_profile="ACTIVE",
+                           handoff_sha256=sha256_file(
+                               root / "handoff.json"))
+        ok, problems = verify_run_index(index, run_root=root)
+        assert not ok and any("handoff" in p for p in problems)
+
+    def test_active_run_root_name_mismatch_rejected(self, tmp_path):
+        import shutil as _sh
+        root = self._active_root(tmp_path)
+        index = _index_for(root, index_profile="ACTIVE",
+                           handoff_sha256=sha256_file(
+                               root / "handoff.json"))
+        sibling = tmp_path / "renamed-root"
+        _sh.copytree(root, sibling)
+        ok, problems = verify_run_index(index, run_root=sibling)
+        assert not ok and any("run-root name" in p or
+                              "run_root_name" in p for p in problems)
+
+    def test_unknown_profile_rejected(self, tmp_path):
+        root = _run_root(tmp_path)
+        index = _index_for(root)
+        forged = _forged_index(index, index_profile="EXECUTABLE-ISH")
+        ok, problems = verify_run_index(forged, run_root=root)
+        assert not ok and any("index_profile" in p for p in problems)
+
+    def test_historical_profile_allows_null_handoff(self, tmp_path):
+        root = _run_root(tmp_path)
+        index = _index_for(root, index_profile="HISTORICAL",
+                           handoff_sha256=None)
+        ok, problems = verify_run_index(index)
+        assert ok, problems

@@ -166,13 +166,19 @@ def _bound_refs(tmp_path):
     from nepal.framework_v1.provenance import bind_artifact_envelope
     refs = _refs()
     bound_docs = {
+        # T2S-10: bound docs must self-describe the same typed fields the
+        # references declare — envelope_type on the MEC doc, fmx_status
+        # on the FMX doc, b_status on the B doc.
         "mec_reference": ("mec.json",
                           {"doc": "mec_reference",
+                           "envelope_type": "MULTI_EVENT_CONTRACT_V1",
                            "candidate_generation_id": _GENERATION_ID,
                            "code_revision": _CODE_REVISION,
                            "research_diagnostic_only": True}),
         "fmx_reference": ("fmx.json",
                           {"doc": "fmx_reference",
+                           "fmx_status":
+                               "FMX_BLOCKED_PENDING_EXPLICIT_FREEZE",
                            "candidate_generation_id": _GENERATION_ID,
                            "code_revision": _CODE_REVISION,
                            "research_diagnostic_only": True}),
@@ -501,15 +507,23 @@ def test_mixed_generation_rejected_on_non_strict_verify(tmp_path):
     assert any("generation" in pr for pr in problems)
 
 
-def test_real_v1_profile_blocked_fmx_ok():
-    """T2S-08: the successor profile still accepts the blocked FMX
-    status — READY is optional, not required."""
+def test_real_v1_profile_blocked_fmx_rejected():
+    """T2S-09: the successor profile REQUIRES a ready FMX — a blocked
+    matrix cannot back a real-validation design."""
     p = _payload()
     p["scaffold_profile"] = "T2_REAL_V1"
-    env = t2s.build_scaffold_envelope(p)
-    assert env["scaffold_status"] == "BLOCKED_PENDING_FMX"
-    ok, problems = t2s.verify_scaffold_envelope(env)
-    assert ok, problems
+    with pytest.raises(ValueError):
+        t2s.build_scaffold_envelope(p)
+
+
+def test_real_v1_profile_missing_fmx_status_rejected():
+    """T2S-09: under T2_REAL_V1 an fmx_reference without a status does
+    not satisfy the required file-bound FMX_READY claim."""
+    p = _payload()
+    p["scaffold_profile"] = "T2_REAL_V1"
+    del p["references"]["fmx_reference"]["fmx_status"]
+    with pytest.raises(ValueError):
+        t2s.build_scaffold_envelope(p)
 
 
 def test_unknown_scaffold_profile_rejected():
@@ -570,4 +584,175 @@ def test_real_v1_fmx_ready_bound_with_file_bindings_ok(tmp_path):
     assert ok, problems
     ok, problems = t2s.verify_scaffold_envelope(
         env, reference_root=tmp_path, strict=True)
+    assert ok, problems
+
+
+# ---------- T2S-09/10/11 strict binding hardening ----------
+
+
+def test_bound_mec_envelope_type_mismatch_rejected(tmp_path):
+    """T2S-10: the declared mec_reference.envelope_type must equal the
+    bound envelope's own envelope_type."""
+    import json
+    from nepal.framework_v1.provenance import bind_artifact_envelope
+    p = _payload()
+    refs = _bound_refs(tmp_path)
+    doc = bind_artifact_envelope({
+        "doc": "mec_reference",
+        "envelope_type": "SOME_OTHER_ENVELOPE",
+        "candidate_generation_id": _GENERATION_ID,
+        "code_revision": _CODE_REVISION,
+        "research_diagnostic_only": True})
+    (tmp_path / "mec.json").write_text(json.dumps(doc))
+    refs["mec_reference"]["envelope_sha256"] = doc["artifact_sha256"]
+    p["references"] = refs
+    with pytest.raises(ValueError):
+        t2s.build_scaffold_envelope(p, reference_root=tmp_path)
+
+
+def test_bound_mec_envelope_type_absent_rejected(tmp_path):
+    """T2S-10: a bound MEC doc that records no envelope_type cannot
+    satisfy the declared typed reference."""
+    import json
+    from nepal.framework_v1.provenance import bind_artifact_envelope
+    p = _payload()
+    refs = _bound_refs(tmp_path)
+    doc = bind_artifact_envelope({
+        "doc": "mec_reference",
+        "candidate_generation_id": _GENERATION_ID,
+        "code_revision": _CODE_REVISION,
+        "research_diagnostic_only": True})
+    (tmp_path / "mec.json").write_text(json.dumps(doc))
+    refs["mec_reference"]["envelope_sha256"] = doc["artifact_sha256"]
+    p["references"] = refs
+    with pytest.raises(ValueError):
+        t2s.build_scaffold_envelope(p, reference_root=tmp_path)
+
+
+def test_bound_fmx_status_mismatch_rejected(tmp_path):
+    """T2S-10: the bound FMX envelope's fmx_status must equal the
+    declared references.fmx_reference.fmx_status."""
+    import json
+    from nepal.framework_v1.provenance import bind_artifact_envelope
+    p = _payload()
+    refs = _bound_refs(tmp_path)
+    doc = bind_artifact_envelope({
+        "doc": "fmx_reference",
+        "fmx_status": "FMX_TAMPERED_STATUS",
+        "candidate_generation_id": _GENERATION_ID,
+        "code_revision": _CODE_REVISION,
+        "research_diagnostic_only": True})
+    (tmp_path / "fmx.json").write_text(json.dumps(doc))
+    refs["fmx_reference"]["envelope_sha256"] = doc["artifact_sha256"]
+    p["references"] = refs
+    with pytest.raises(ValueError):
+        t2s.build_scaffold_envelope(p, reference_root=tmp_path)
+
+
+def test_bound_b_doc_gate_passed_maps_status_rejected(tmp_path):
+    """T2S-10: a bound B doc carrying gate_passed=True maps to
+    B_TO_C_READY, which disagrees with the declared blocked status."""
+    import json
+    from nepal.framework_v1.provenance import bind_artifact_envelope
+    p = _payload()
+    refs = _bound_refs(tmp_path)
+    doc = bind_artifact_envelope({
+        "gate_passed": True,
+        "ranked_array_canonical_sha256": "ef" * 32,
+        "candidate_generation_id": _GENERATION_ID,
+        "code_revision": _CODE_REVISION,
+        "research_diagnostic_only": True})
+    (tmp_path / "b_env.json").write_text(json.dumps(doc))
+    refs["b_reference"]["envelope_sha256"] = doc["artifact_sha256"]
+    p["references"] = refs
+    with pytest.raises(ValueError):
+        t2s.build_scaffold_envelope(p, reference_root=tmp_path)
+
+
+def test_bound_b_doc_without_status_rejected(tmp_path):
+    """T2S-10: a bound B doc recording no b_status/phase_status/
+    gate_passed cannot verify the declared status — fail closed."""
+    import json
+    from nepal.framework_v1.provenance import bind_artifact_envelope
+    p = _payload()
+    refs = _bound_refs(tmp_path)
+    doc = bind_artifact_envelope({
+        "doc": "b_reference",
+        "ranked_array_canonical_sha256": "ef" * 32,
+        "candidate_generation_id": _GENERATION_ID,
+        "code_revision": _CODE_REVISION,
+        "research_diagnostic_only": True})
+    (tmp_path / "b_env.json").write_text(json.dumps(doc))
+    refs["b_reference"]["envelope_sha256"] = doc["artifact_sha256"]
+    p["references"] = refs
+    with pytest.raises(ValueError):
+        t2s.build_scaffold_envelope(p, reference_root=tmp_path)
+
+
+def test_strict_bound_doc_missing_generation_id_rejected(tmp_path):
+    """T2S-11: strict verification requires every bound doc to carry the
+    declared identity — a doc missing candidate_generation_id rejects
+    even though its digest is honest (non-strict build still passes)."""
+    import json
+    from nepal.framework_v1.provenance import bind_artifact_envelope
+    p = _payload()
+    refs = _bound_refs(tmp_path)
+    doc = bind_artifact_envelope({
+        "doc": "mec_reference",
+        "envelope_type": "MULTI_EVENT_CONTRACT_V1",
+        "code_revision": _CODE_REVISION,  # candidate_generation_id absent
+        "research_diagnostic_only": True})
+    (tmp_path / "mec.json").write_text(json.dumps(doc))
+    refs["mec_reference"]["envelope_sha256"] = doc["artifact_sha256"]
+    p["references"] = refs
+    env = t2s.build_scaffold_envelope(p, reference_root=tmp_path)
+    ok, problems = t2s.verify_scaffold_envelope(
+        env, reference_root=tmp_path)
+    assert ok, problems  # non-strict: when-present semantics
+    ok, problems = t2s.verify_scaffold_envelope(
+        env, reference_root=tmp_path, strict=True)
+    assert not ok
+    assert any("candidate_generation_id" in pr for pr in problems)
+
+
+def test_strict_bound_doc_missing_code_revision_rejected(tmp_path):
+    """T2S-11: a bound doc missing code_revision rejects under strict."""
+    import json
+    from nepal.framework_v1.provenance import bind_artifact_envelope
+    p = _payload()
+    refs = _bound_refs(tmp_path)
+    doc = bind_artifact_envelope({
+        "doc": "fmx_reference",
+        "fmx_status": "FMX_BLOCKED_PENDING_EXPLICIT_FREEZE",
+        "candidate_generation_id": _GENERATION_ID,
+        # code_revision absent
+        "research_diagnostic_only": True})
+    (tmp_path / "fmx.json").write_text(json.dumps(doc))
+    refs["fmx_reference"]["envelope_sha256"] = doc["artifact_sha256"]
+    p["references"] = refs
+    env = t2s.build_scaffold_envelope(p, reference_root=tmp_path)
+    ok, problems = t2s.verify_scaffold_envelope(
+        env, reference_root=tmp_path, strict=True)
+    assert not ok
+    assert any("code_revision" in pr for pr in problems)
+
+
+def test_non_strict_bound_doc_missing_identity_tolerated(tmp_path):
+    """T2S-11: without strict, a bound doc that simply does not carry
+    the identity fields remains legal (they are only compared when
+    present)."""
+    import json
+    from nepal.framework_v1.provenance import bind_artifact_envelope
+    p = _payload()
+    refs = _bound_refs(tmp_path)
+    doc = bind_artifact_envelope({
+        "doc": "mec_reference",
+        "envelope_type": "MULTI_EVENT_CONTRACT_V1",
+        "research_diagnostic_only": True})
+    (tmp_path / "mec.json").write_text(json.dumps(doc))
+    refs["mec_reference"]["envelope_sha256"] = doc["artifact_sha256"]
+    p["references"] = refs
+    env = t2s.build_scaffold_envelope(p, reference_root=tmp_path)
+    ok, problems = t2s.verify_scaffold_envelope(
+        env, reference_root=tmp_path)
     assert ok, problems

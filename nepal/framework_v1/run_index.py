@@ -14,8 +14,9 @@ as non-authoritative.
 """
 from __future__ import annotations
 
+import json
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Mapping, Optional
 
 from .provenance import (bind_artifact_envelope, sha256_file,
@@ -26,7 +27,18 @@ RUN_INDEX_TYPE = "RUN_INDEX_V1"
 RUN_INDEX_I1_TYPE = "RUN_INDEX_I1"
 RUN_INDEX_FILENAME = "run_index.json"
 
+# INDEX-02: index_profile declares the role the index claims.
+# ``ACTIVE`` is the executable profile — it requires a non-null handoff
+# binding (digest + relpath), run-root name equality, and an on-disk
+# handoff that verifies as an artifact envelope.  ``HISTORICAL`` marks
+# an explicitly non-active index; an absent profile is a legacy
+# informational index verified under the pre-hardening rules only.
+RUN_INDEX_PROFILE_ACTIVE = "ACTIVE"
+RUN_INDEX_PROFILE_HISTORICAL = "HISTORICAL"
+_INDEX_PROFILES = (RUN_INDEX_PROFILE_ACTIVE, RUN_INDEX_PROFILE_HISTORICAL)
+
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
+_DRIVE_PREFIX_RE = re.compile(r"^[A-Za-z]:")
 
 #: Index fields whose values must be run-root-relative paths, never absolute.
 _RELATIVE_PATH_FIELDS = ("candidate_root", "pipeline_root", "handoff_path",
@@ -42,6 +54,67 @@ _I1_PATH_FIELDS = ("candidate_manifest_path", "candidate_artifact_root",
 
 def _is_sha256(value: Any) -> bool:
     return isinstance(value, str) and bool(_SHA256_RE.fullmatch(value))
+
+
+def _rel_path_problem(value: Any) -> Optional[str]:
+    """INDEX-01: return a reason when ``value`` is not a safe, portable,
+    canonical run-root-relative path — forward slashes only, no drive
+    letters, no UNC/absolute prefix, no traversal, no NUL, and already
+    in canonical form."""
+    if not isinstance(value, str) or not value or not value.strip():
+        return "must be a non-empty relative path"
+    if "\\" in value:
+        return "backslash separators are not portable"
+    if value.startswith("/"):
+        return "absolute/UNC paths are not allowed"
+    if _DRIVE_PREFIX_RE.match(value):
+        return "drive-letter paths are not portable"
+    if "\x00" in value:
+        return "NUL bytes are not allowed"
+    parts = PurePosixPath(value).parts
+    if not parts or ".." in parts:
+        return "traversal outside the run root is not allowed"
+    if PurePosixPath(value).as_posix() != value:
+        return "path is not in canonical forward-slash form"
+    return None
+
+
+def _stored_relpath(value: Any) -> Any:
+    """Canonicalize a path to forward-slash form for storage.  Values
+    that are merely non-canonical (``a//b``, ``a/./b``) are normalized;
+    unsafe values (backslash, drive-letter, absolute, traversal) are
+    stored verbatim so verification rejects them — they can never be
+    silently reinterpreted."""
+    problem = _rel_path_problem(value)
+    if problem is None or \
+            problem == "path is not in canonical forward-slash form":
+        return PurePosixPath(value).as_posix()
+    return value
+
+
+def _resolve_index_target(root: Path, rel: Any, label: str,
+                          problems: list[str]) -> Optional[Path]:
+    """Resolve an indexed path under ``root`` fail-closed: safe relative
+    form, no symlink entry or symlinked parent component, and resolved
+    containment inside the run root."""
+    if _rel_path_problem(rel) is not None:
+        return None  # the field-level check reports the shape problem
+    parts = PurePosixPath(rel).parts
+    target = root.joinpath(*parts)
+    cursor = root
+    for part in parts:
+        cursor = cursor / part
+        if cursor.is_symlink():
+            problems.append(
+                f"indexed {label} traverses a symlink: {rel}")
+            return None
+    root_r = root.resolve()
+    resolved = target.resolve()
+    if resolved != root_r and root_r not in resolved.parents:
+        problems.append(
+            f"indexed {label} resolves outside the run root: {rel}")
+        return None
+    return target
 
 
 def _iter_strings(obj: Any, prefix: str = ""):
@@ -68,16 +141,38 @@ def build_run_index(*, run_root_name: str,
                     handoff_path: str,
                     handoff_sha256: Optional[str] = None,
                     superseded_generations: tuple | list = (),
-                    diagnostics: Optional[Mapping[str, Any]] = None
+                    diagnostics: Optional[Mapping[str, Any]] = None,
+                    index_profile: Optional[str] = None
                     ) -> dict[str, Any]:
     """Build a self-hashed RUN_INDEX_V1 document.
 
     ``candidate_root``, ``pipeline_root``, ``active_audit_packet`` and
-    ``handoff_path`` are paths relative to the run root.  ``superseded_*``
-    lists are informational: everything not named active is historical.
+    ``handoff_path`` are paths relative to the run root — canonicalized
+    to forward-slash form; unsafe values (drive letters, UNC, absolute,
+    traversal, backslashes) are stored verbatim so verification rejects
+    them (INDEX-01).  ``superseded_*`` lists are informational:
+    everything not named active is historical.
+
+    ``index_profile=RUN_INDEX_PROFILE_ACTIVE`` (INDEX-02) marks the
+    executable profile: it requires a non-null ``handoff_sha256``
+    binding the handoff file and a non-empty ``run_root_name``.
     """
     if not isinstance(active_generation_id, str) or not active_generation_id:
         raise ValueError("active_generation_id must be a non-empty string")
+    if index_profile is not None and index_profile not in _INDEX_PROFILES:
+        raise ValueError(f"index_profile must be one of {_INDEX_PROFILES}")
+    candidate_root = _stored_relpath(candidate_root)
+    pipeline_root = _stored_relpath(pipeline_root)
+    active_audit_packet = _stored_relpath(active_audit_packet)
+    handoff_path = _stored_relpath(handoff_path)
+    if index_profile == RUN_INDEX_PROFILE_ACTIVE:
+        if not _is_sha256(handoff_sha256):
+            raise ValueError("the active index profile requires a "
+                             "non-null handoff_sha256 binding the "
+                             "handoff file")
+        if not isinstance(run_root_name, str) or not run_root_name:
+            raise ValueError("the active index profile requires a "
+                             "non-empty run_root_name")
     index: dict[str, Any] = {
         "index_type": RUN_INDEX_TYPE,
         "active_generation_id": active_generation_id,
@@ -99,6 +194,8 @@ def build_run_index(*, run_root_name: str,
             "unless explicitly re-indexed"),
         "diagnostics": dict(diagnostics or {}),
     }
+    if index_profile is not None:
+        index["index_profile"] = index_profile
     return bind_artifact_envelope(index)
 
 
@@ -117,7 +214,8 @@ def build_run_index_i1(*, run_root_name: str,
                        handoff_path: str,
                        handoff_file_sha256: str,
                        superseded_generations: tuple | list = (),
-                       diagnostics: Optional[Mapping[str, Any]] = None
+                       diagnostics: Optional[Mapping[str, Any]] = None,
+                       index_profile: Optional[str] = None
                        ) -> dict[str, Any]:
     """Build a self-hashed RUN_INDEX_I1 document (N01).
 
@@ -139,6 +237,18 @@ def build_run_index_i1(*, run_root_name: str,
     """
     if not isinstance(active_generation_id, str) or not active_generation_id:
         raise ValueError("active_generation_id must be a non-empty string")
+    if index_profile is not None and index_profile not in _INDEX_PROFILES:
+        raise ValueError(f"index_profile must be one of {_INDEX_PROFILES}")
+    # INDEX-01: stored paths are canonical forward-slash run-root-relative
+    # forms; unsafe values are stored verbatim so verification rejects.
+    candidate_manifest_path = _stored_relpath(candidate_manifest_path)
+    candidate_artifact_root = _stored_relpath(candidate_artifact_root)
+    active_audit_packet = _stored_relpath(active_audit_packet)
+    handoff_path = _stored_relpath(handoff_path)
+    if index_profile == RUN_INDEX_PROFILE_ACTIVE and (
+            not isinstance(run_root_name, str) or not run_root_name):
+        raise ValueError("the active index profile requires a "
+                         "non-empty run_root_name")
     for label, digest in (("manifest_sha256", manifest_sha256),
                           ("manifest_file_sha256", manifest_file_sha256),
                           ("parent_manifest_sha256", parent_manifest_sha256),
@@ -157,6 +267,13 @@ def build_run_index_i1(*, run_root_name: str,
     if not isinstance(compute_parent, Mapping) or not _is_sha256(
             compute_parent.get("report_file_sha256")):
         raise ValueError("compute_parent requires report_file_sha256")
+    active_report = dict(active_report)
+    compute_parent = dict(compute_parent)
+    for holder, key in ((active_report, "path"),
+                        (compute_parent, "report_path"),
+                        (compute_parent, "pipeline_root")):
+        if isinstance(holder.get(key), str):
+            holder[key] = _stored_relpath(holder[key])
     index: dict[str, Any] = {
         "index_type": RUN_INDEX_I1_TYPE,
         "active_generation_id": active_generation_id,
@@ -168,8 +285,8 @@ def build_run_index_i1(*, run_root_name: str,
         "parent_manifest_sha256": parent_manifest_sha256,
         "parent_manifest_file_sha256": parent_manifest_file_sha256,
         "pipeline_run_id": active_report.get("run_id"),
-        "active_report": dict(active_report),
-        "compute_parent": dict(compute_parent),
+        "active_report": active_report,
+        "compute_parent": compute_parent,
         "active_audit_packet": active_audit_packet,
         "active_audit_packet_file_sha256": active_audit_packet_file_sha256,
         "handoff_path": handoff_path,
@@ -181,6 +298,8 @@ def build_run_index_i1(*, run_root_name: str,
             "immutable historical compute evidence"),
         "diagnostics": dict(diagnostics or {}),
     }
+    if index_profile is not None:
+        index["index_profile"] = index_profile
     return bind_artifact_envelope(index)
 
 
@@ -252,7 +371,10 @@ def _verify_i1_index(payload: Mapping[str, Any],
         for label, rel, expected in bindings:
             if not isinstance(rel, str) or expected is None:
                 continue
-            target = run_root / rel
+            target = _resolve_index_target(run_root, rel, label,
+                                           problems)
+            if target is None:
+                continue
             if not target.is_file():
                 problems.append(f"indexed {label} missing on disk: {rel}")
                 continue
@@ -262,15 +384,20 @@ def _verify_i1_index(payload: Mapping[str, Any],
                     f"indexed {label} checksum mismatch: {rel} "
                     f"({expected} -> {actual})")
         artifact_root = payload.get("candidate_artifact_root")
-        if isinstance(artifact_root, str) and not (
-                run_root / artifact_root).is_dir():
-            problems.append("indexed candidate_artifact_root missing on "
-                            f"disk: {artifact_root}")
+        if isinstance(artifact_root, str):
+            art_target = _resolve_index_target(
+                run_root, artifact_root, "candidate_artifact_root",
+                problems)
+            if art_target is not None and not art_target.is_dir():
+                problems.append(
+                    "indexed candidate_artifact_root missing on "
+                    f"disk: {artifact_root}")
         if isinstance(active_report.get("path"), str) and _is_sha256(
                 active_report.get("artifact_sha256")):
-            target = run_root / active_report["path"]
-            if target.is_file():
-                import json
+            target = _resolve_index_target(
+                run_root, active_report["path"], "active report",
+                problems)
+            if target is not None and target.is_file():
                 try:
                     report = json.loads(target.read_text("utf-8"))
                 except (OSError, ValueError) as exc:
@@ -285,9 +412,10 @@ def _verify_i1_index(payload: Mapping[str, Any],
 
 
 def _check_rel(value: Any, field: str, problems: list[str]) -> None:
-    if not isinstance(value, str) or not value or value.startswith("/") \
-            or ".." in Path(value).parts:
-        problems.append(f"run index {field} must be a safe relative path")
+    problem = _rel_path_problem(value)
+    if problem is not None:
+        problems.append(f"run index {field} must be a safe relative "
+                        f"path ({problem})")
 
 
 def verify_run_index(payload: Any, *,
@@ -338,6 +466,69 @@ def verify_run_index(payload: Any, *,
             problems.append(
                 "run index handoff_sha256 must be a lowercase SHA-256")
 
+    # INDEX-02: a declared index_profile must be a known role; the
+    # ACTIVE (executable) profile requires a non-null handoff binding
+    # (digest + relpath), run-root name equality, and — when a run_root
+    # is supplied — an on-disk handoff that verifies as an artifact
+    # envelope.
+    profile = payload.get("index_profile")
+    if profile is not None and profile not in _INDEX_PROFILES:
+        problems.append(
+            f"index_profile must be one of {_INDEX_PROFILES}")
+    if profile == RUN_INDEX_PROFILE_ACTIVE:
+        digest_field = ("handoff_file_sha256"
+                        if index_type == RUN_INDEX_I1_TYPE
+                        else "handoff_sha256")
+        active_handoff_rel = payload.get("handoff_path")
+        if _rel_path_problem(active_handoff_rel) is not None:
+            problems.append(
+                "the active index profile requires a non-null handoff "
+                "relative path")
+        if not _is_sha256(payload.get(digest_field)):
+            problems.append(
+                "the active index profile requires a non-null "
+                f"{digest_field} binding the handoff file")
+        roots = payload.get("roots")
+        rr_name = (roots.get("run_root_name")
+                   if isinstance(roots, Mapping) else None)
+        if not isinstance(rr_name, str) or not rr_name:
+            problems.append("the active index profile requires "
+                            "roots.run_root_name")
+        if run_root is not None:
+            root_for_active = Path(run_root)
+            if isinstance(rr_name, str) and rr_name and \
+                    root_for_active.resolve().name != rr_name:
+                problems.append(
+                    "run-root name mismatch: index declares "
+                    f"{rr_name!r} but the verified root is "
+                    f"{root_for_active.resolve().name!r}")
+            if isinstance(active_handoff_rel, str) and \
+                    _rel_path_problem(active_handoff_rel) is None:
+                target = _resolve_index_target(
+                    root_for_active, active_handoff_rel, "handoff",
+                    problems)
+                if target is not None:
+                    if not target.is_file():
+                        problems.append(
+                            "active-profile handoff missing on disk: "
+                            f"{active_handoff_rel}")
+                    else:
+                        try:
+                            hdoc = json.loads(
+                                target.read_text("utf-8"))
+                        except (OSError, ValueError) as exc:
+                            problems.append(
+                                f"active-profile handoff unreadable: "
+                                f"{exc}")
+                        else:
+                            ok_h, h_env = verify_artifact_envelope(hdoc)
+                            if not ok_h:
+                                problems.append(
+                                    "active-profile handoff is not a "
+                                    "verified artifact envelope: "
+                                    + (h_env[0] if h_env else
+                                       "invalid envelope"))
+
     canonical_view = {k: v for k, v in payload.items()
                       if k not in ("diagnostics", "artifact_sha256")}
     for dotted, value in _iter_strings(canonical_view):
@@ -345,14 +536,19 @@ def verify_run_index(payload: Any, *,
             problems.append(
                 f"absolute path in canonical run index field {dotted!r}; "
                 "canonical bindings must be run-root-relative")
+        elif "\\" in value:
+            problems.append(
+                f"backslash in canonical run index field {dotted!r}; "
+                "canonical bindings use forward slashes only")
+        elif _DRIVE_PREFIX_RE.match(value):
+            problems.append(
+                f"drive-letter path in canonical run index field "
+                f"{dotted!r}; canonical bindings must be "
+                "run-root-relative")
 
     if index_type == RUN_INDEX_TYPE:
         for field in _RELATIVE_PATH_FIELDS:
-            value = payload.get(field)
-            if not isinstance(value, str) or not value or ".." in Path(
-                    value).parts:
-                problems.append(
-                    f"run index {field} must be a safe relative path")
+            _check_rel(payload.get(field), field, problems)
 
     if run_root is not None and index_type == RUN_INDEX_TYPE:
         root = Path(run_root)
@@ -369,7 +565,11 @@ def verify_run_index(payload: Any, *,
         for label, rel, leaf, expected in bindings:
             if not isinstance(rel, str) or expected is None:
                 continue
-            target = root / rel if leaf is None else root / rel / leaf
+            combined = rel if leaf is None else f"{rel}/{leaf}"
+            target = _resolve_index_target(root, combined, label,
+                                           problems)
+            if target is None:
+                continue
             if not target.is_file():
                 problems.append(f"indexed {label} missing on disk: {rel}")
                 continue

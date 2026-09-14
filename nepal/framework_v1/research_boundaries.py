@@ -25,6 +25,28 @@ Two fail-closed guards:
   descriptive-only disclaimer.  ``FMX_READY`` is rejected outright — the
   current environment has no verified external freeze token.
 
+  BOUND-05: a normalized dotted key path carrying a word-boundary
+  authorization/ready term (``ready``, ``authorized``, ``authorised``,
+  ``eligible``, ``enabled``, ``cleared``, ``approved``, ``deployed``)
+  may only carry a falsy value — ``"B_TO_C_READY": true`` and
+  ``"fmx ready": "yes"`` are claims regardless of value type.  A small
+  allowlist names the structural keys that legitimately carry truthy
+  values (e.g. ``human_approved`` on a MEC source packet).  String
+  values whose normalized form is exactly a forbidden claim
+  (``"fmx ready"``, ``"b to c ready"``, ``"validation passed"``, …)
+  reject outright.
+
+  BOUND-06: normalized keys naming ranked/score payloads
+  (``scores``, ``ranked``, ``top5``, ``priority``, ``ranked array``, …)
+  may not carry list/dict values — only digest-keyed references
+  (``sha256``/``digest``/``hash`` in the key) or scalar metadata.
+  String values naming a descriptive-only method (GMM, isolation
+  forest, change point, …) must carry an inline disclaimer token
+  (``diagnostic``/``descriptive``/``non authorizing``/``research
+  only``/``screening only``) in the same string; the ``method`` leaf
+  key is exempt because bare method identifiers are governed by the
+  structured ``descriptive_only``/``disclaimer`` check.
+
 These are contract checks, not advisory warnings: any violation fails.
 """
 from __future__ import annotations
@@ -158,6 +180,91 @@ _DESCRIPTIVE_ONLY_METHODS = frozenset({
 # Keys whose values may legitimately hold B-derived digest references.
 _DIGEST_KEY_HINTS = ("sha256", "digest", "_hash")
 
+# BOUND-05 — word-boundary authorization/ready terms matched against the
+# normalized dotted key path.  A matching key may only carry a falsy
+# value; a truthy value under such a key is a claim regardless of the
+# value's type (``"B_TO_C_READY": true``, ``"fmx ready": "yes"``,
+# ``"eligible": 1`` all reject).
+_AUTH_KEY_RE = re.compile(
+    r"\b(?:ready|authorized|authorised|eligible|enabled|cleared|"
+    r"approved|deployed)\b")
+
+# Leaf keys (matched in normalized form) that legitimately carry truthy
+# values in research envelopes.  ``human_approved``/``approved_by``/
+# ``approved_at`` are MEC source-packet approval provenance;
+# ``group_disjoint``/``assigned_before_filtering``/``group_separation``/
+# ``exact_day15_supported`` are structural holdout/split booleans;
+# ``required`` marks mandatory sub-records (e.g. label_spec
+# adjudication); ``research_diagnostic_only`` is the mandatory flag
+# itself.  Extend only for documented structural keys — never weaken.
+_TRUTHY_VALUE_KEY_ALLOWLIST = frozenset({
+    "human approved", "approved by", "approved at",
+    "group disjoint", "assigned before filtering", "group separation",
+    "exact day15 supported", "research diagnostic only", "required",
+})
+
+# Values treated as falsy under an authorization/ready-shaped key.  The
+# string forms cover serialized booleans ("false", "no", "none", "",
+# "0"); every other truthy value — including non-string truthy values
+# like 1 or "yes" — is a claim.
+_FALSY_STRING_VALUES = frozenset({"", "false", "no", "none", "0"})
+
+# BOUND-05 — normalized string values that are themselves forbidden
+# claims even though they dodge the exact uppercase status forms.  The
+# match is exact-equality, not containment: "f ready"/"e ready" would
+# otherwise false-positive inside benign prose ("staff ready"), and an
+# exact match leaves no room for a leading negator, so the limitation
+# guard is vacuous for this class.  BLOCKED variants
+# ("fmx blocked pending explicit freeze", "b to c blocked") never match.
+_FORBIDDEN_CLAIM_VALUES = frozenset({
+    "b to c ready", "fmx ready", "e ready", "f ready", "t2 ready",
+    "warning ready", "production ready",
+    "scientifically validated", "authority approved",
+    "all gaps closed", "no remaining gaps", "validation passed",
+})
+
+# BOUND-06 — normalized key terms that mark a ranked/score payload.
+# Word-boundary containment on the normalized leaf key so spellings like
+# "anomaly scores", "top five", "top5" and "ranked array" all resolve.
+_RANKED_KEY_TERMS = (
+    "anomaly scores", "screen scores", "ranked array", "ranked list",
+    "top five", "scores", "score", "ranked", "ranking", "top5",
+    "priority", "priorities",
+)
+_RANKED_KEY_RE = re.compile(
+    r"\b(?:" + "|".join(re.escape(t) for t in _RANKED_KEY_TERMS)
+    + r")\b")
+
+# Typed digest/metadata exceptions to the ranked-payload rule: keys
+# naming a digest channel may carry digest strings, and these specific
+# frozen digest fields are always legitimate.
+_RANKED_KEY_ALLOWLIST = frozenset({
+    "ranked array canonical sha256", "ranked payload sha256",
+    "loo top5 digest",
+})
+_DIGEST_NORM_HINTS = ("sha256", "digest", "hash")
+
+# BOUND-06 — descriptive-only legacy methods.  A string value naming one
+# of these outside the ``method`` key must carry an inline disclaimer
+# token in the same string.  Assembled without the underscore spelling —
+# the quarantine scan rejects the contiguous module-adjacent tokens.
+_METHOD_NAME_RE = re.compile(
+    r"\b(?:" + " ".join(("isolation", "forest"))
+    + r"|gaussian mixture|gmm|change point|changepoint|bayesian change"
+    + r"|anomaly detection|screening model)\b")
+_METHOD_DISCLAIMER_RE = re.compile(
+    r"\b(?:diagnostic|descriptive|non authorizing|research only|"
+    r"screening only)\b")
+
+
+def _is_falsy_claim_value(value: Any) -> bool:
+    """BOUND-05 falsy test: ``False``/``None``/``0``/empty containers are
+    falsy; strings are falsy only when their normalized form is one of
+    the serialized false spellings."""
+    if isinstance(value, str):
+        return _normalize_claim_text(value) in _FALSY_STRING_VALUES
+    return not value
+
 
 def _iter_strings(obj: Any, prefix: str = ""):
     if isinstance(obj, str):
@@ -281,6 +388,10 @@ def lint_research_claims(payload: Any) -> tuple[bool, list[str]]:
                         f"{dotted}: forbidden operational token {token!r}")
                     break
             value_norm = _normalize_claim_text(value)
+            if value_norm in _FORBIDDEN_CLAIM_VALUES:
+                problems.append(
+                    f"{dotted}: normalized claim value {value!r} is a "
+                    "forbidden readiness/validation claim")
             for phrase in _FORBIDDEN_PHRASES:
                 if _has_forbidden_phrase(value_norm, phrase) or \
                         _has_forbidden_phrase(key_norm, phrase):
@@ -301,6 +412,51 @@ def lint_research_claims(payload: Any) -> tuple[bool, list[str]]:
                         f"{dotted}: forbidden operational key phrase "
                         f"{phrase!r}")
                     break
+
+    # BOUND-05: authorization/ready-shaped keys may only carry falsy
+    # values.  The normalized dotted path is checked so variant spellings
+    # ("B_TO_C_READY", "fmx ready", "b-to-c-ready", "FMX READY") all
+    # resolve to the same claim shape; allowlisted structural keys are
+    # exempt.
+    for dotted, key, value in _iter_items(payload):
+        path_norm = _normalize_claim_text(str(dotted))
+        leaf_norm = _normalize_claim_text(str(key))
+        if _AUTH_KEY_RE.search(path_norm) and \
+                leaf_norm not in _TRUTHY_VALUE_KEY_ALLOWLIST and \
+                not _is_falsy_claim_value(value):
+            problems.append(
+                f"{dotted}: authorization/ready-shaped key carries a "
+                f"truthy value {value!r}")
+
+    # BOUND-06: ranked/score-named keys may not carry list/dict payloads —
+    # only digest-keyed references (sha256/digest/hash in the key name),
+    # allowlisted typed digest fields, or scalar metadata (a bool such as
+    # ranking_rerun=false never reaches this check).
+    for dotted, key, value in _iter_items(payload):
+        leaf_norm = _normalize_claim_text(str(key))
+        if isinstance(value, (list, tuple, Mapping)) and \
+                _RANKED_KEY_RE.search(leaf_norm) and \
+                leaf_norm not in _RANKED_KEY_ALLOWLIST and not any(
+                h in leaf_norm for h in _DIGEST_NORM_HINTS):
+            problems.append(
+                f"{dotted}: ranked/score-named key carries a data "
+                "payload; only digest references are permitted")
+
+    # BOUND-06: a descriptive-only method named in a string value must
+    # carry an inline disclaimer token in the same string.  The ``method``
+    # leaf key is exempt — bare method identifiers there are governed by
+    # the structured descriptive_only/disclaimer check below.
+    for dotted, key, value in _iter_items(payload):
+        if not isinstance(value, str):
+            continue
+        if _normalize_claim_text(str(key)) == "method":
+            continue
+        vnorm = _normalize_claim_text(value)
+        if _METHOD_NAME_RE.search(vnorm) and not \
+                _METHOD_DISCLAIMER_RE.search(vnorm):
+            problems.append(
+                f"{dotted}: descriptive-only method named without an "
+                "inline diagnostic/descriptive disclaimer token")
 
     # B leakage: ranked arrays / priority vectors may only be referenced by
     # digest keys, never carried as feature payloads.

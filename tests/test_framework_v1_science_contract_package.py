@@ -586,3 +586,484 @@ def test_fmx_blocked_anti_confusion_fields(tmp_path):
     assert fmx["external_freeze"] is False
     assert fmx["artifact_present"] is False
     assert fmx["not_a_real_matrix"] is True
+
+
+# ---------- N5 audit-gap closure (PKG-10..13, HANDOFF-01) ----------
+
+
+def _edit_doc(pkg_dir, name, mutate):
+    """Apply an honest content edit to a package doc and rebind its
+    envelope self-hash so the change is internally consistent."""
+    from nepal.framework_v1.provenance import bind_artifact_envelope
+    path = Path(pkg_dir) / name
+    doc = json.loads(path.read_text())
+    mutate(doc)
+    doc.pop("artifact_sha256", None)
+    doc = bind_artifact_envelope(doc)
+    path.write_text(json.dumps(doc, indent=1, sort_keys=True) + "\n")
+    return doc
+
+
+def _resign_package(pkg_dir):
+    """Re-hash the index/checkpoint/seal chain after honest doc edits so
+    verification isolates the targeted check rather than the hash
+    chain."""
+    from nepal.framework_v1.provenance import sha256_file
+    pkg_dir = Path(pkg_dir)
+    idx_path = pkg_dir / "science_contract_package_index.json"
+    idx = json.loads(idx_path.read_text())
+    for entry in idx["files"]:
+        f = pkg_dir / entry["relative_path"]
+        entry["sha256"] = sha256_file(f)
+        entry["bytes"] = f.stat().st_size
+    idx_path.write_text(json.dumps(idx, indent=1, sort_keys=True) + "\n")
+    _edit_doc(pkg_dir, "science_contract_package_index.json",
+              lambda d: None)
+    _edit_doc(pkg_dir, "checkpoint.json",
+              lambda d: d.__setitem__("index_file_sha256",
+                                      sha256_file(idx_path)))
+    _edit_doc(pkg_dir, "package_seal.json",
+              lambda d: d.__setitem__(
+                  "files",
+                  {f.name: sha256_file(f) for f in sorted(
+                      pkg_dir.iterdir())
+                   if f.is_file() and not f.is_symlink()
+                   and f.name != "package_seal.json"}))
+
+
+def _edit_pointer(ev_root, mutate):
+    """Rewrite the active-generation pointer with a valid self-hash."""
+    from nepal.framework_v1.provenance import bind_artifact_envelope
+    path = Path(ev_root) / "active_generation.json"
+    doc = json.loads(path.read_text())
+    mutate(doc)
+    doc.pop("artifact_sha256", None)
+    doc = bind_artifact_envelope(doc)
+    path.write_text(json.dumps(doc, indent=1, sort_keys=True) + "\n")
+    return doc
+
+
+def _write_b_evidence(ev_root, ranked_sha, name="b_evidence.json",
+                      **extra):
+    """Write a well-formed bound B evidence envelope under a root."""
+    from nepal.framework_v1.provenance import (bind_artifact_envelope,
+                                               write_deterministic_json)
+    doc = {"doc_type": "B_STAGE_EVIDENCE_V1",
+           "ranked_array_canonical_sha256": ranked_sha,
+           "status": "B_TO_C_BLOCKED",
+           "research_diagnostic_only": True,
+           "promotion_eligible": False,
+           "production_authorized": False,
+           "warning_path_authorized": False}
+    doc.update(extra)
+    write_deterministic_json(Path(ev_root) / name,
+                             bind_artifact_envelope(doc))
+    return Path(ev_root) / name
+
+
+class TestMandatoryActivePointer:
+    """PKG-10: a package resolving under an evidence root must be the
+    generation named by a verified active_generation.json pointer."""
+
+    def _pkg_under_root(self, tmp_path):
+        ctx, ev_root = _evidence_ctx(tmp_path)
+        ctx["package_dir"] = ev_root / "gen-a" / "package"
+        pkg.build_science_contract_package(**ctx)
+        assert (ev_root / "active_generation.json").is_file()
+        return ctx, ev_root
+
+    def test_missing_pointer_fails(self, tmp_path):
+        ctx, ev_root = self._pkg_under_root(tmp_path)
+        (ev_root / "active_generation.json").unlink()
+        ok, problems = pkg.verify_science_contract_package(
+            ctx["package_dir"], evidence_root=ev_root)
+        assert not ok
+        assert any("pointer" in p for p in problems)
+
+    def test_pointer_wrong_relpath_fails(self, tmp_path):
+        ctx, ev_root = self._pkg_under_root(tmp_path)
+        _edit_pointer(ev_root, lambda d: d.__setitem__(
+            "package_relpath", "gen-b/package"))
+        ok, problems = pkg.verify_science_contract_package(
+            ctx["package_dir"], evidence_root=ev_root)
+        assert not ok and any("stale" in p for p in problems)
+
+    def test_pointer_wrong_generation_fails(self, tmp_path):
+        ctx, ev_root = self._pkg_under_root(tmp_path)
+        _edit_pointer(ev_root, lambda d: d.__setitem__(
+            "candidate_generation_id", "gen-other-9"))
+        ok, problems = pkg.verify_science_contract_package(
+            ctx["package_dir"], evidence_root=ev_root)
+        assert not ok and any("pointer" in p for p in problems)
+
+    def test_pointer_wrong_code_revision_fails(self, tmp_path):
+        ctx, ev_root = self._pkg_under_root(tmp_path)
+        _edit_pointer(ev_root, lambda d: d.__setitem__(
+            "code_revision", "0" * 40))
+        ok, problems = pkg.verify_science_contract_package(
+            ctx["package_dir"], evidence_root=ev_root)
+        assert not ok and any("pointer" in p for p in problems)
+
+    def test_pointer_wrong_run_root_name_fails(self, tmp_path):
+        ctx, ev_root = self._pkg_under_root(tmp_path)
+        _edit_pointer(ev_root, lambda d: d.__setitem__(
+            "run_root_name", "other-root"))
+        ok, problems = pkg.verify_science_contract_package(
+            ctx["package_dir"], evidence_root=ev_root)
+        assert not ok and any("pointer" in p for p in problems)
+
+    def test_pointer_wrong_seal_digest_fails(self, tmp_path):
+        ctx, ev_root = self._pkg_under_root(tmp_path)
+        _edit_pointer(ev_root, lambda d: d.__setitem__(
+            "package_seal_sha256", "00" * 32))
+        ok, problems = pkg.verify_science_contract_package(
+            ctx["package_dir"], evidence_root=ev_root)
+        assert not ok and any("pointer" in p for p in problems)
+
+    def test_non_envelope_pointer_fails(self, tmp_path):
+        ctx, ev_root = self._pkg_under_root(tmp_path)
+        (ev_root / "active_generation.json").write_text(json.dumps({
+            "pointer_type": "ACTIVE_GENERATION_POINTER_V1",
+            "package_relpath": "gen-a/package"}))
+        ok, problems = pkg.verify_science_contract_package(
+            ctx["package_dir"], evidence_root=ev_root)
+        assert not ok and any("pointer" in p for p in problems)
+
+    def test_pointer_field_dropped_fails(self, tmp_path):
+        ctx, ev_root = self._pkg_under_root(tmp_path)
+        _edit_pointer(ev_root, lambda d: d.pop("index_file_sha256"))
+        ok, problems = pkg.verify_science_contract_package(
+            ctx["package_dir"], evidence_root=ev_root)
+        assert not ok and any("pointer" in p for p in problems)
+
+
+class TestBEvidenceBinding:
+    """PKG-11: file-bound B evidence vs the UNBOUND_INFORMATIONAL
+    marker."""
+
+    def test_bound_b_evidence_round_trip(self, tmp_path):
+        ctx, ev_root = _evidence_ctx(tmp_path)
+        _write_b_evidence(ev_root, ctx["ranked_array_canonical_sha256"])
+        ctx["b_evidence_relative_path"] = "b_evidence.json"
+        pkg.build_science_contract_package(**ctx)
+        rc = json.loads(
+            (ctx["package_dir"] / "run_context.json").read_text())
+        assert rc["b_evidence_binding"] == "FILE_BOUND"
+        assert rc["b_evidence"]["relative_path"] == "b_evidence.json"
+        assert len(rc["b_evidence"]["sha256"]) == 64
+        ok, problems = pkg.verify_science_contract_package(
+            ctx["package_dir"], evidence_root=ev_root)
+        assert ok, problems
+
+    def test_unbound_marker_written(self, tmp_path):
+        ctx = _context(tmp_path)
+        pkg.build_science_contract_package(**ctx)
+        rc = json.loads(
+            (ctx["package_dir"] / "run_context.json").read_text())
+        assert rc["b_evidence_binding"] == "UNBOUND_INFORMATIONAL"
+        assert "b_evidence" not in rc
+
+    def test_unbound_marker_required_at_verify(self, tmp_path):
+        """Ranked digests without a bound file require the exact
+        UNBOUND_INFORMATIONAL marker."""
+        ctx = _context(tmp_path)
+        pkg.build_science_contract_package(**ctx)
+        _edit_doc(ctx["package_dir"], "run_context.json",
+                  lambda d: d.pop("b_evidence_binding"))
+        _resign_package(ctx["package_dir"])
+        ok, problems = pkg.verify_science_contract_package(
+            ctx["package_dir"])
+        assert not ok and any("UNBOUND_INFORMATIONAL" in p
+                              for p in problems)
+
+    def test_fake_bound_evidence_without_file_fails(self, tmp_path):
+        """A declared b_evidence binding with no resolvable file fails
+        closed."""
+        ctx = _context(tmp_path)
+        pkg.build_science_contract_package(**ctx)
+
+        def forge(d):
+            d["b_evidence"] = {"relative_path": "b_evidence.json",
+                               "sha256": "ab" * 32}
+            d["b_evidence_binding"] = "FILE_BOUND"
+        _edit_doc(ctx["package_dir"], "run_context.json", forge)
+        _resign_package(ctx["package_dir"])
+        ok, problems = pkg.verify_science_contract_package(
+            ctx["package_dir"])
+        assert not ok and any("b_evidence" in p or "evidence_root" in p
+                              for p in problems)
+
+    def test_bound_b_evidence_missing_file_fails(self, tmp_path):
+        ctx, ev_root = _evidence_ctx(tmp_path)
+        target = _write_b_evidence(
+            ev_root, ctx["ranked_array_canonical_sha256"])
+        ctx["b_evidence_relative_path"] = "b_evidence.json"
+        pkg.build_science_contract_package(**ctx)
+        target.unlink()
+        ok, problems = pkg.verify_science_contract_package(
+            ctx["package_dir"], evidence_root=ev_root)
+        assert not ok and any("b_evidence" in p for p in problems)
+
+    def test_bound_b_evidence_tampered_file_fails(self, tmp_path):
+        ctx, ev_root = _evidence_ctx(tmp_path)
+        _write_b_evidence(ev_root, ctx["ranked_array_canonical_sha256"])
+        ctx["b_evidence_relative_path"] = "b_evidence.json"
+        pkg.build_science_contract_package(**ctx)
+        _write_b_evidence(ev_root, "00" * 32)
+        ok, problems = pkg.verify_science_contract_package(
+            ctx["package_dir"], evidence_root=ev_root)
+        assert not ok and any("b_evidence" in p for p in problems)
+
+    def test_verify_gate_passed_consistency(self, tmp_path):
+        """A bound B doc claiming gate_passed while b_status is blocked
+        is rejected at verify."""
+        ctx, ev_root = _evidence_ctx(tmp_path)
+        _write_b_evidence(ev_root, ctx["ranked_array_canonical_sha256"])
+        ctx["b_evidence_relative_path"] = "b_evidence.json"
+        pkg.build_science_contract_package(**ctx)
+        target = _write_b_evidence(
+            ev_root, ctx["ranked_array_canonical_sha256"],
+            gate_passed=True)
+        from nepal.framework_v1.provenance import sha256_file
+        new_sha = sha256_file(target)
+        _edit_doc(ctx["package_dir"], "run_context.json",
+                  lambda d: d["b_evidence"].__setitem__("sha256",
+                                                        new_sha))
+        _resign_package(ctx["package_dir"])
+        ok, problems = pkg.verify_science_contract_package(
+            ctx["package_dir"], evidence_root=ev_root)
+        assert not ok and any("gate_passed" in p for p in problems)
+
+    def test_build_rejects_b_evidence_without_root(self, tmp_path):
+        ctx = _context(tmp_path)
+        ctx["b_evidence_relative_path"] = "b_evidence.json"
+        with pytest.raises(ValueError):
+            pkg.build_science_contract_package(**ctx)
+
+    def test_build_rejects_b_evidence_traversal(self, tmp_path):
+        ctx, ev_root = _evidence_ctx(tmp_path)
+        ctx["b_evidence_relative_path"] = "../escape.json"
+        with pytest.raises(ValueError):
+            pkg.build_science_contract_package(**ctx)
+
+    def test_build_rejects_b_evidence_symlink(self, tmp_path):
+        ctx, ev_root = _evidence_ctx(tmp_path)
+        target = _write_b_evidence(
+            ev_root, ctx["ranked_array_canonical_sha256"],
+            name="real_b.json")
+        (ev_root / "link_b.json").symlink_to(target)
+        ctx["b_evidence_relative_path"] = "link_b.json"
+        with pytest.raises(ValueError):
+            pkg.build_science_contract_package(**ctx)
+
+    def test_build_rejects_b_evidence_non_envelope(self, tmp_path):
+        ctx, ev_root = _evidence_ctx(tmp_path)
+        (ev_root / "b_evidence.json").write_text('{"x": 1}')
+        ctx["b_evidence_relative_path"] = "b_evidence.json"
+        with pytest.raises(ValueError):
+            pkg.build_science_contract_package(**ctx)
+
+    def test_build_rejects_b_evidence_missing_ranked_digest(
+            self, tmp_path):
+        ctx, ev_root = _evidence_ctx(tmp_path)
+        _write_b_evidence(ev_root, "00" * 32)  # wrong digest carried
+        ctx["b_evidence_relative_path"] = "b_evidence.json"
+        with pytest.raises(ValueError):
+            pkg.build_science_contract_package(**ctx)
+
+    def test_build_rejects_gate_passed_while_blocked(self, tmp_path):
+        ctx, ev_root = _evidence_ctx(tmp_path)
+        _write_b_evidence(ev_root, ctx["ranked_array_canonical_sha256"],
+                          gate_passed=True)
+        ctx["b_evidence_relative_path"] = "b_evidence.json"
+        with pytest.raises(ValueError):
+            pkg.build_science_contract_package(**ctx)
+
+
+class TestIdentityFormat:
+    """PKG-12: candidate_generation_id / code_revision formats."""
+
+    @pytest.mark.parametrize("bad", ["", "   ", "x", "ab", "bad id!",
+                                     "-leading", ".leading",
+                                     "a" * 129])
+    def test_build_rejects_bad_generation_id(self, tmp_path, bad):
+        ctx = _context(tmp_path)
+        ctx["candidate_generation_id"] = bad
+        with pytest.raises(ValueError):
+            pkg.build_science_contract_package(**ctx)
+
+    @pytest.mark.parametrize("bad", ["", "   ", "xyz", "ABCDEF0",
+                                     "0" * 6, "g" * 40, "z" * 65])
+    def test_build_rejects_bad_code_revision(self, tmp_path, bad):
+        ctx = _context(tmp_path)
+        ctx["code_revision"] = bad
+        with pytest.raises(ValueError):
+            pkg.build_science_contract_package(**ctx)
+
+    def test_verify_flags_malformed_doc_identity(self, tmp_path):
+        ctx = _context(tmp_path)
+        pkg.build_science_contract_package(**ctx)
+        _edit_doc(ctx["package_dir"], "research_contract_handoff.json",
+                  lambda d: d.__setitem__("code_revision", "not-hex"))
+        _resign_package(ctx["package_dir"])
+        ok, problems = pkg.verify_science_contract_package(
+            ctx["package_dir"])
+        assert not ok and any("code_revision" in p for p in problems)
+
+
+class TestCrossDocumentConsistency:
+    """PKG-13: run_context.json is canonical for the identity fields."""
+
+    def test_handoff_generation_drift_rejected(self, tmp_path):
+        ctx = _context(tmp_path)
+        pkg.build_science_contract_package(**ctx)
+        _edit_doc(ctx["package_dir"], "research_contract_handoff.json",
+                  lambda d: d.__setitem__("candidate_generation_id",
+                                          "gen-drift-1"))
+        _resign_package(ctx["package_dir"])
+        ok, problems = pkg.verify_science_contract_package(
+            ctx["package_dir"])
+        assert not ok
+        assert any("research_contract_handoff.json" in p and
+                   "candidate_generation_id" in p for p in problems)
+
+    def test_index_code_revision_drift_rejected(self, tmp_path):
+        ctx = _context(tmp_path)
+        pkg.build_science_contract_package(**ctx)
+        _edit_doc(ctx["package_dir"],
+                  "science_contract_package_index.json",
+                  lambda d: d.__setitem__("code_revision", "1" * 40))
+        _resign_package(ctx["package_dir"])
+        ok, problems = pkg.verify_science_contract_package(
+            ctx["package_dir"])
+        assert not ok and any("code_revision" in p for p in problems)
+
+    def test_seal_package_status_drift_rejected(self, tmp_path):
+        ctx = _context(tmp_path)
+        pkg.build_science_contract_package(**ctx)
+        _edit_doc(ctx["package_dir"], "package_seal.json",
+                  lambda d: d.__setitem__("package_status",
+                                          "SOME_OTHER_STATUS"))
+        _resign_package(ctx["package_dir"])
+        ok, problems = pkg.verify_science_contract_package(
+            ctx["package_dir"])
+        assert not ok and any("package_status" in p for p in problems)
+
+    def test_nested_b_status_drift_rejected(self, tmp_path):
+        ctx = _context(tmp_path)
+        pkg.build_science_contract_package(**ctx)
+        _edit_doc(ctx["package_dir"], "research_contract_handoff.json",
+                  lambda d: d["inherited_state"].__setitem__(
+                      "b_status", "B_TO_C_PASSED_THROUGH"))
+        _resign_package(ctx["package_dir"])
+        ok, problems = pkg.verify_science_contract_package(
+            ctx["package_dir"])
+        assert not ok and any("b_status" in p for p in problems)
+
+
+class TestResidualRegister:
+    """HANDOFF-01: the handoff embeds a residual-positive register."""
+
+    def test_residual_register_embedded_verbatim(self, tmp_path):
+        ctx = _context(tmp_path)
+        reg = [{"id": "X1", "status": "OPEN", "note": "merge gate"},
+               {"id": "X2", "status": "DEFERRED"}]
+        ctx["residual_register"] = reg
+        pkg.build_science_contract_package(**ctx)
+        ho = json.loads(
+            (ctx["package_dir"] / "research_contract_handoff.json")
+            .read_text())
+        assert ho["residual_register"] == reg
+        from nepal.framework_v1.provenance import sha256_canonical
+        assert ho["residual_register_sha256"] == sha256_canonical(reg)
+        ok, problems = pkg.verify_science_contract_package(
+            ctx["package_dir"])
+        assert ok, problems
+
+    def test_default_register_is_residual_positive(self, tmp_path):
+        ctx = _context(tmp_path)
+        pkg.build_science_contract_package(**ctx)
+        ho = json.loads(
+            (ctx["package_dir"] / "research_contract_handoff.json")
+            .read_text())
+        assert ho["residual_register"]
+        assert any(e["status"] != "CLOSED"
+                   for e in ho["residual_register"])
+
+    def test_build_rejects_empty_register(self, tmp_path):
+        ctx = _context(tmp_path)
+        ctx["residual_register"] = []
+        with pytest.raises(ValueError):
+            pkg.build_science_contract_package(**ctx)
+
+    def test_build_rejects_all_closed_register(self, tmp_path):
+        ctx = _context(tmp_path)
+        ctx["residual_register"] = [{"id": "X1", "status": "CLOSED"}]
+        with pytest.raises(ValueError):
+            pkg.build_science_contract_package(**ctx)
+
+    def test_verify_rejects_tampered_register_sha(self, tmp_path):
+        ctx = _context(tmp_path)
+        pkg.build_science_contract_package(**ctx)
+        _edit_doc(ctx["package_dir"], "research_contract_handoff.json",
+                  lambda d: d["residual_register"].append(
+                      {"id": "FORGED", "status": "OPEN"}))
+        _resign_package(ctx["package_dir"])
+        ok, problems = pkg.verify_science_contract_package(
+            ctx["package_dir"])
+        assert not ok and any("residual_register_sha256" in p
+                              for p in problems)
+
+    def test_verify_rejects_all_closed_register(self, tmp_path):
+        ctx = _context(tmp_path)
+        pkg.build_science_contract_package(**ctx)
+
+        def close_all(d):
+            for e in d["residual_register"]:
+                e["status"] = "CLOSED"
+            from nepal.framework_v1.provenance import sha256_canonical
+            d["residual_register_sha256"] = sha256_canonical(
+                d["residual_register"])
+        _edit_doc(ctx["package_dir"], "research_contract_handoff.json",
+                  close_all)
+        _resign_package(ctx["package_dir"])
+        ok, problems = pkg.verify_science_contract_package(
+            ctx["package_dir"])
+        assert not ok and any("residual" in p for p in problems)
+
+    def test_verify_rejects_empty_register(self, tmp_path):
+        ctx = _context(tmp_path)
+        pkg.build_science_contract_package(**ctx)
+
+        def empty(d):
+            from nepal.framework_v1.provenance import sha256_canonical
+            d["residual_register"] = []
+            d["residual_register_sha256"] = sha256_canonical([])
+        _edit_doc(ctx["package_dir"], "research_contract_handoff.json",
+                  empty)
+        _resign_package(ctx["package_dir"])
+        ok, problems = pkg.verify_science_contract_package(
+            ctx["package_dir"])
+        assert not ok and any("residual_register" in p
+                              for p in problems)
+
+    def test_verify_rejects_gap_closure_claim(self, tmp_path):
+        ctx = _context(tmp_path)
+        pkg.build_science_contract_package(**ctx)
+        _edit_doc(ctx["package_dir"], "research_no_claims.json",
+                  lambda d: d["claims"].append("All gaps closed."))
+        _resign_package(ctx["package_dir"])
+        ok, problems = pkg.verify_science_contract_package(
+            ctx["package_dir"])
+        assert not ok and any("gaps" in p for p in problems)
+
+    def test_verify_rejects_no_remaining_gaps_claim(self, tmp_path):
+        ctx = _context(tmp_path)
+        pkg.build_science_contract_package(**ctx)
+        _edit_doc(ctx["package_dir"], "research_contract_handoff.json",
+                  lambda d: d.__setitem__("note",
+                                          "no-remaining-gaps"))
+        _resign_package(ctx["package_dir"])
+        ok, problems = pkg.verify_science_contract_package(
+            ctx["package_dir"])
+        assert not ok and any("gaps" in p for p in problems)
