@@ -14,6 +14,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 
@@ -50,6 +51,14 @@ BUNDLE_FILE = RUN_DIR / "bundle.json"
 FEATURE_FILENAME = "features_nepal_jja_2001_2026.csv"
 UNITS_FILENAME = "feature_units.json"
 RUN_METADATA_FILENAME = "run_metadata.json"
+# P5-08 — the extractor writes this marker beside the merged file
+# only after a validated merge; it records "merged_sha256".
+MERGED_MARKER_NAME = "complete.json"
+# P5-09 — legitimate edge censoring is calendar-bound: only the
+# first EDGE_CENSOR_DAYS of each June run can lack a complete
+# trailing 7-day pdd window.  A flag anywhere else is a defect.
+EDGE_CENSOR_MONTH = 6
+EDGE_CENSOR_DAYS = 6
 
 # P5-02/P5-11 — frozen contract surfaces that must never receive run
 # outputs.  A run root inside any of these is rejected.
@@ -370,7 +379,8 @@ def run_gmm_descriptive(daily_df: pd.DataFrame,
                         target_year: int = 2026,
                         provenance: dict | None = None,
                         feature_units: dict | None = None,
-                        run_dir: Path | None = None) -> dict:
+                        run_dir: Path | None = None,
+                        fixture_ok: bool = True) -> dict:
     """Run the bounded GMM descriptive confirmation.
 
     CFM-02: single-cell, single-period — inference is limited to the
@@ -379,6 +389,12 @@ def run_gmm_descriptive(daily_df: pd.DataFrame,
     features are required — no silent column reduction.  CFM-04:
     scaling is fit on the baseline only.  Event dates never touch
     fitting or K selection (CFM-12).
+
+    P5-10 — direct-API boundary: fixture_ok=False (the real path;
+    main() always passes it) applies the same exact JJA-universe
+    check as preflight() to the incoming frame and returns
+    {"error": ...} on violation.  fixture_ok=True is preserved for
+    test fixtures, which need not cover the full contract universe.
     """
     # P5-11 — frozen-surface guard on this call path too.
     if run_dir is not None:
@@ -406,6 +422,26 @@ def run_gmm_descriptive(daily_df: pd.DataFrame,
     if missing_cols:
         return {**status_meta,
                 "error": f"required features missing: {missing_cols}"}
+
+    # P5-10 — real-path callers get the same exact JJA-universe gate
+    # as preflight(); a frame that would fail the file-level gate
+    # must not be fitted through the API either.
+    if not fixture_ok:
+        if not isinstance(daily_df.index, pd.DatetimeIndex):
+            try:
+                daily_df = daily_df.copy()
+                daily_df.index = pd.to_datetime(daily_df.index)
+            except Exception:
+                return {**status_meta,
+                        "error": "index is not parseable as dates"}
+        universe_problems = _jja_universe_problems(daily_df)
+        if universe_problems:
+            return {**status_meta,
+                    "error": ("input frame fails the exact "
+                              "JJA-universe check "
+                              f"({len(universe_problems)} "
+                              "problem(s)): "
+                              + "; ".join(universe_problems))}
 
     # P5-09 (defense in depth) — preflight hard-fails on anything
     # outside the exact JJA universe; here we still restrict to JJA
@@ -500,10 +536,35 @@ def run_gmm_descriptive(daily_df: pd.DataFrame,
                 "rows_used": int(len(feature_df)),
                 "edge_censored_dropped": int(edge_censored_dropped),
                 "scaling": scaling_record,
+                # P5-14 — no converged best_k at all: coverage 0 and
+                # nothing close to a stable regime description.
+                "seed_coverage": round(
+                    len(gmm_results["best_k_per_seed"])
+                    / len(GMM_SEEDS), 4),
+                "stability": "CANDIDATE_ONLY",
                 "error": "All GMM fits failed"}
 
     best_k = gmm_results["modal_k"]
     best_model = gmm_results["best_model"]
+
+    # P5-14 — seed coverage: a run is only
+    # DESCRIPTIVE_REGIME_ONLY-eligible when EVERY declared seed
+    # produced a converged best_k.  Partial coverage downgrades the
+    # result to CANDIDATE_ONLY — the selected K and cluster regimes
+    # are candidates, not a stability statement.
+    seeds_converged = len(gmm_results["best_k_per_seed"])
+    seed_coverage = seeds_converged / len(GMM_SEEDS)
+    full_seed_coverage = seeds_converged == len(GMM_SEEDS)
+    stability = ("DESCRIPTIVE_REGIME_ONLY" if full_seed_coverage
+                 else "CANDIDATE_ONLY")
+    stability_note = (
+        "all declared seeds produced a converged best_k; regime "
+        "description is stable at the declared-seed level (see "
+        "k_instability for any K disagreement)"
+        if full_seed_coverage else
+        f"only {seeds_converged}/{len(GMM_SEEDS)} declared seeds "
+        "produced a converged best_k — selected K and cluster "
+        "regimes are CANDIDATE_ONLY, not a stability statement")
 
     # Retrospective overlay — event dates did NOT influence fitting
     # or K selection (CFM-12).
@@ -564,6 +625,12 @@ def run_gmm_descriptive(daily_df: pd.DataFrame,
         "best_k_per_seed": {str(s): k for s, k in
                             gmm_results["best_k_per_seed"].items()},
         "seeds": list(GMM_SEEDS),
+        # P5-14 — seed coverage + stability label.
+        "seeds_declared": len(GMM_SEEDS),
+        "seeds_converged": seeds_converged,
+        "seed_coverage": round(seed_coverage, 4),
+        "stability": stability,
+        "stability_note": stability_note,
         "bic_scores": {str(s): {str(k): v for k, v in d.items()}
                        for s, d in gmm_results["bic_scores"].items()},
         "aic_scores": {str(s): {str(k): v for k, v in d.items()}
@@ -629,17 +696,36 @@ def run_gmm_descriptive(daily_df: pd.DataFrame,
 def write_bundle(results: dict, input_files: list[Path],
                  feature_file: Path, run_dir: Path) -> dict:
     """CFM-11 — research-only result bundle: every input and output
-    digest recorded so another worker can replay the run."""
-    import hashlib
+    digest recorded so another worker can replay the run.
 
+    P5-13 — the bundle carries a "run_manifest" aggregating digests
+    of every run-root artifact that could have influenced the run
+    (merged marker + merged/monthly/raw payloads, sidecars) and of
+    this stage's outputs (results, plots), alongside the existing
+    input/output digests."""
     # P5-11 — a bundle must never be written under a frozen surface.
     run_dir = _assert_safe_root(run_dir)
+    run_root = run_dir.parent
     results_file = run_dir / "gmm_results.json"
     bundle_file = run_dir / "bundle.json"
     units_file = feature_file.parent / UNITS_FILENAME
+    metadata_file = feature_file.parent / RUN_METADATA_FILENAME
+    merged_dir = run_root / "merged"
+    monthly_dir = run_root / "monthly"
+    raw_dir = run_root / "raw"
+    plots_dir = run_dir / "plots"
+    marker_file = merged_dir / MERGED_MARKER_NAME
 
     def _sha(p: Path) -> str:
         return hashlib.sha256(p.read_bytes()).hexdigest()
+
+    def _dir_digests(d: Path, pattern: str = "*") -> dict:
+        """name -> sha256 for every regular file matching pattern
+        under d; empty dict when the directory is absent."""
+        if not d.is_dir():
+            return {}
+        return {p.name: _sha(p) for p in sorted(d.glob(pattern))
+                if p.is_file()}
 
     # CFM-08 — UTC timestamp (local-time run ids are not replayable).
     run_id = (f"gmm_confirmation_"
@@ -663,6 +749,38 @@ def write_bundle(results: dict, input_files: list[Path],
                      f"but features were extracted at "
                      f"{list(actual_cell)}")
 
+    input_digests = {p.name: _sha(p) for p in input_files
+                     if p.is_file()}
+    feature_digest = (_sha(feature_file)
+                      if feature_file.is_file() else None)
+    units_digest = (_sha(units_file) if units_file.is_file()
+                    else None)
+    metadata_digest = (_sha(metadata_file)
+                       if metadata_file.is_file() else None)
+    marker_digest = (_sha(marker_file) if marker_file.is_file()
+                     else None)
+    results_digest = (_sha(results_file) if results_file.is_file()
+                      else None)
+
+    # P5-13 — run manifest: digests of every run-root artifact that
+    # could have influenced this run plus this stage's outputs,
+    # aggregated with the input/output digests above.  Missing
+    # directories contribute empty dicts; missing single files
+    # record None — absence is visible, not silent.
+    run_manifest = {
+        "run_root": str(run_root.resolve()),
+        "input_digests": input_digests,
+        "feature_digest": feature_digest,
+        "feature_units_digest": units_digest,
+        "run_metadata_digest": metadata_digest,
+        "merged_complete_marker_digest": marker_digest,
+        "merged_digests": _dir_digests(merged_dir, "*.nc"),
+        "monthly_digests": _dir_digests(monthly_dir),
+        "raw_digests": _dir_digests(raw_dir),
+        "results_digest": results_digest,
+        "plot_digests": _dir_digests(plots_dir),
+    }
+
     bundle = {
         "run_id": run_id,
         "run_root": str(run_dir.parent.resolve()),
@@ -684,15 +802,12 @@ def write_bundle(results: dict, input_files: list[Path],
         "note": cell_note,
         "status": results.get("status", "EXPLORATORY_DESCRIPTIVE_"
                                        "SINGLE_CELL"),
-        "input_digests": {p.name: _sha(p) for p in input_files
-                          if p.is_file()},
-        "feature_digest": _sha(feature_file)
-        if feature_file.is_file() else None,
+        "input_digests": input_digests,
+        "feature_digest": feature_digest,
         # P5-05 — the units sidecar is hashed into the bundle so the
         # recorded feature_units are auditable against the file that
         # produced them.
-        "feature_units_digest": _sha(units_file)
-        if units_file.is_file() else None,
+        "feature_units_digest": units_digest,
         "configuration": {
             "features": list(GMM_FEATURES), "k_range":
             list(GMM_K_RANGE), "covariance": GMM_COVARIANCE,
@@ -701,8 +816,9 @@ def write_bundle(results: dict, input_files: list[Path],
             "js_bootstrap_blocks": JS_BOOTSTRAP_BLOCKS,
             "js_block_days": JS_BLOCK_DAYS,
         },
-        "results_digest": _sha(results_file)
-        if results_file.is_file() else None,
+        "results_digest": results_digest,
+        # P5-13 — every run-root artifact digest in one place.
+        "run_manifest": run_manifest,
         "environment": {
             "python": sys.version.split()[0],
             "sklearn": __import__("sklearn").__version__,
@@ -781,17 +897,153 @@ class PreflightProblems(list):
         self.edge_censored_rows: int = 0
 
 
-def _edge_censored_mask(df: pd.DataFrame) -> np.ndarray:
-    """P5-04 — boolean mask of extractor-flagged edge-censored rows.
+def _edge_window_mask(index: pd.DatetimeIndex) -> np.ndarray:
+    """P5-09 — boolean mask: True where the date falls on June 1-6
+    of any year, the only positions where pdd_7day legitimately
+    needs a trailing 7-day window reaching outside the JJA run."""
+    return np.asarray((index.month == EDGE_CENSOR_MONTH) &
+                      (index.day <= EDGE_CENSOR_DAYS))
+
+
+def _edge_flag_mask(df: pd.DataFrame) -> np.ndarray:
+    """Boolean mask of rows carrying the extractor's edge_censored
+    flag, regardless of date.
 
     Accepts a bool dtype or string/numeric flags ("true"/"1"/"yes");
-    anything unrecognized counts as NOT edge-censored so a malformed
-    flag column can never smuggle NaN past the finiteness gate."""
+    anything unrecognized counts as NOT flagged so a malformed flag
+    column can never smuggle NaN past the finiteness gate.  Returns
+    all-False when the column is absent (fail closed)."""
+    if "edge_censored" not in df.columns:
+        return np.zeros(len(df), dtype=bool)
     ec = df["edge_censored"]
     if pd.api.types.is_bool_dtype(ec):
         return ec.fillna(False).to_numpy(dtype=bool)
     return (ec.astype(str).str.strip().str.lower()
               .isin({"true", "1", "yes"}).to_numpy(dtype=bool))
+
+
+def _edge_censored_mask(df: pd.DataFrame) -> np.ndarray:
+    """P5-04/P5-09 — legitimately edge-censored rows: flagged by the
+    extractor AND dated June 1-6.
+
+    A flag outside that window is NOT edge censoring; it is left in
+    the frame (and reported by _jja_universe_problems on the real
+    path) rather than silently absorbed here."""
+    flagged = _edge_flag_mask(df)
+    if not flagged.any():
+        return flagged
+    return flagged & _edge_window_mask(df.index)
+
+
+def _jja_universe_problems(daily_df: pd.DataFrame) -> list[str]:
+    """P5-09 — exact JJA-universe verification, shared by preflight()
+    and the fixture_ok=False boundary of run_gmm_descriptive().
+
+    The frame must contain EXACTLY the contracted JJA day set: for
+    each baseline year 2001-2025 exactly Jun 1..Aug 31 (92 dates);
+    for 2026 exactly Jun 1..Aug 25 (86 dates, ending before the
+    held-out event date).  Duplicates, non-JJA rows, rows on/after
+    the event cutoff, and missing/extra dates are all reported.
+
+    Edge-censor flags are calendar-bound: a row may carry
+    edge_censored=true ONLY on June 1-6 (the first 6 days of each
+    JJA run, where pdd_7day legitimately needs a prior week), and a
+    flagged row whose pdd_7day is not NaN carries a meaningless
+    flag.  Both are reported."""
+    problems: list[str] = []
+    idx = daily_df.index
+
+    # No duplicate dates anywhere in the frame.
+    dup_dates = idx[idx.duplicated()]
+    if len(dup_dates):
+        problems.append(
+            f"{len(dup_dates)} duplicate date rows "
+            f"(e.g. {[str(d.date()) for d in dup_dates[:5]]})")
+
+    # No non-JJA rows anywhere in the frame.
+    non_jja = daily_df[~idx.month.isin(JJA_MONTHS)]
+    if len(non_jja):
+        problems.append(
+            f"{len(non_jja)} non-JJA rows present — the feature "
+            "matrix must contain JJA days only (e.g. "
+            f"{[str(d.date()) for d in non_jja.index[:5]]})")
+
+    # Nothing on/after the held-out event cutoff.
+    post_cutoff = daily_df[idx >= pd.Timestamp(EVENT_DATE)]
+    if len(post_cutoff):
+        problems.append(
+            f"{len(post_cutoff)} rows on/after event cutoff "
+            f"{EVENT_DATE} — post-cutoff data must not be present")
+
+    # P5-09 calendar-specific edge censoring: the flag is only
+    # legitimate inside the Jun 1-6 window, and only where pdd_7day
+    # is actually NaN.
+    flag_mask = _edge_flag_mask(daily_df)
+    if flag_mask.any():
+        out_of_window = flag_mask & ~_edge_window_mask(idx)
+        if out_of_window.any():
+            bad = idx[out_of_window]
+            problems.append(
+                f"{int(out_of_window.sum())} edge_censored flag(s) "
+                "outside the Jun 1-6 window — edge censoring is "
+                "legitimate only on the first 6 days of each JJA "
+                "run, where pdd_7day needs a prior week (e.g. "
+                f"{[str(d.date()) for d in bad[:5]]})")
+        if "pdd_7day" in daily_df.columns:
+            pdd = pd.to_numeric(daily_df["pdd_7day"], errors="coerce")
+            finite_flagged = (flag_mask &
+                              np.isfinite(pdd.to_numpy(dtype=float)))
+            if finite_flagged.any():
+                bad = idx[finite_flagged]
+                problems.append(
+                    f"{int(finite_flagged.sum())} edge_censored "
+                    "row(s) with non-NaN pdd_7day — the flag is "
+                    "meaningless where no censoring occurred (e.g. "
+                    f"{[str(d.date()) for d in bad[:5]]})")
+
+    # Exact date sets: observed dates per year must equal the
+    # expected JJA calendar, not merely cover it.  Baseline years
+    # are the full Jun 1..Aug 31 (92 days); 2026 ends Aug 25 per
+    # contract.
+    for yr in range(2001, 2026):
+        expected = pd.date_range(f"{yr}-06-01", f"{yr}-08-31", freq="D")
+        observed = idx[idx.year == yr].unique()
+        missing_dates = expected.difference(observed)
+        extra_dates = observed.difference(expected)
+        msgs = []
+        if len(missing_dates):
+            msgs.append(
+                f"missing {len(missing_dates)} of 92 JJA dates "
+                f"(e.g. {[str(d.date()) for d in missing_dates[:3]]})")
+        if len(extra_dates):
+            msgs.append(
+                f"{len(extra_dates)} dates outside the expected "
+                "Jun1-Aug31 set (e.g. "
+                f"{[str(d.date()) for d in extra_dates[:3]]})")
+        if msgs:
+            problems.append(f"year {yr}: " + "; ".join(msgs))
+
+    # 2026 is partial by contract: Jun (30) + Jul (31) + Aug 1-25
+    # (25) = 86 days, ending before the held-out event date.
+    expected_2026 = pd.date_range(JJA_2026[0], JJA_2026[1], freq="D")
+    observed_2026 = idx[idx.year == 2026].unique()
+    missing_2026 = expected_2026.difference(observed_2026)
+    extra_2026 = observed_2026.difference(expected_2026)
+    msgs_2026 = []
+    if len(missing_2026):
+        msgs_2026.append(
+            f"missing {len(missing_2026)} of {len(expected_2026)} "
+            "pre-event JJA dates (e.g. "
+            f"{[str(d.date()) for d in missing_2026[:3]]})")
+    if len(extra_2026):
+        msgs_2026.append(
+            f"{len(extra_2026)} dates outside the expected "
+            f"{JJA_2026[0]}..{JJA_2026[1]} set (e.g. "
+            f"{[str(d.date()) for d in extra_2026[:3]]})")
+    if msgs_2026:
+        problems.append("year 2026: " + "; ".join(msgs_2026))
+
+    return problems
 
 
 def preflight(feature_file: Path,
@@ -812,6 +1064,13 @@ def preflight(feature_file: Path,
     allowed ONLY in pdd_7day and ONLY on flagged rows; if the column
     is absent every NaN is an error (fail closed).  The accepted
     count is carried on the returned list as .edge_censored_rows.
+
+    P5-09 — the flag itself is calendar-bound: a row may be
+    edge-censored ONLY on June 1-6 (the first 6 days of each JJA
+    run).  A flag outside that window, or a flagged row whose
+    pdd_7day is not NaN, is a problem.  A full frame yields 156
+    accepted rows (6 days x 26 years); the count is reported but no
+    exact count is required — a partial frame may flag fewer.
 
     P5-07 — the index must be monotonically increasing canonical
     daily dates (hour=0, minute=0); a shuffled or sub-daily index is
@@ -855,48 +1114,37 @@ def preflight(feature_file: Path,
             f"only {len(daily_df)} rows — the confirmation run "
             "requires the complete baseline, not a partial file")
 
-    # P5-09 — no duplicate dates anywhere in the frame.
-    dup_dates = daily_df.index[daily_df.index.duplicated()]
-    if len(dup_dates):
-        problems.append(
-            f"{len(dup_dates)} duplicate date rows "
-            f"(e.g. {[str(d.date()) for d in dup_dates[:5]]})")
-
-    # P5-09 — no non-JJA rows anywhere in the frame.
-    non_jja = daily_df[~daily_df.index.month.isin(JJA_MONTHS)]
-    if len(non_jja):
-        problems.append(
-            f"{len(non_jja)} non-JJA rows present — the feature "
-            "matrix must contain JJA days only (e.g. "
-            f"{[str(d.date()) for d in non_jja.index[:5]]})")
-
-    # P5-09 — nothing on/after the held-out event cutoff.
-    post_cutoff = daily_df[daily_df.index >= pd.Timestamp(EVENT_DATE)]
-    if len(post_cutoff):
-        problems.append(
-            f"{len(post_cutoff)} rows on/after event cutoff "
-            f"{EVENT_DATE} — post-cutoff data must not be present")
+    # P5-09 — exact JJA universe: no duplicate dates, no non-JJA
+    # rows, nothing on/after the held-out event cutoff, edge-censor
+    # flags bound to the Jun 1-6 calendar window with NaN pdd_7day,
+    # and the observed dates per year equal to the expected JJA
+    # calendar (not merely covering it).
+    problems.extend(_jja_universe_problems(daily_df))
 
     # P5-04/P5-09 — non-finite values in required feature columns.
     # Edge-censor acceptance: pdd_7day legitimately carries NaN on
     # June-edge days whose 7-day window reaches outside JJA, and the
     # extractor marks those rows via `edge_censored`.  NaN is
-    # allowed ONLY in pdd_7day and ONLY on flagged rows — every
-    # other NaN, and every NaN anywhere when the flag column is
-    # absent, is reported (fail closed).
+    # allowed ONLY in pdd_7day and ONLY on legitimately flagged rows
+    # (flagged AND inside Jun 1-6 — a flag outside the window does
+    # not excuse NaN).  Every other NaN, and every NaN anywhere when
+    # the flag column is absent, is reported (fail closed).
+    edge_mask = _edge_censored_mask(daily_df)
+    # The accepted count is reported (a full frame yields 156 = 6
+    # June-edge days x 26 years), but no exact count is required —
+    # a partial frame may legitimately flag fewer.  What IS
+    # required, and checked in _jja_universe_problems, is that every
+    # flagged row lies inside Jun 1-6 with NaN pdd_7day.
+    problems.edge_censored_rows = int(edge_mask.sum())
     present_cols = [c for c in GMM_FEATURES if c in daily_df.columns]
     if present_cols:
         has_edge_flag = "edge_censored" in daily_df.columns
-        edge_mask = (_edge_censored_mask(daily_df)
-                     if has_edge_flag
-                     else np.zeros(len(daily_df), dtype=bool))
-        problems.edge_censored_rows = int(edge_mask.sum())
         nonfinite = {}
         for c in present_cols:
             vals = pd.to_numeric(daily_df[c], errors="coerce")
             bad = ~np.isfinite(vals.to_numpy(dtype=float))
             if c == "pdd_7day" and has_edge_flag:
-                # Legitimate censoring only on flagged edge rows.
+                # Legitimate censoring only on in-window flagged rows.
                 bad = bad & ~edge_mask
             n_bad = int(bad.sum())
             if n_bad:
@@ -906,48 +1154,98 @@ def preflight(feature_file: Path,
                 "non-finite values in required feature columns: "
                 f"{nonfinite}")
 
-    # P5-09 — exact date sets: observed dates per year must equal the
-    # expected JJA calendar, not merely cover it.  Baseline years are
-    # the full Jun 1..Aug 31 (92 days); 2026 ends Aug 25 per contract.
-    idx = daily_df.index
-    for yr in range(2001, 2026):
-        expected = pd.date_range(f"{yr}-06-01", f"{yr}-08-31", freq="D")
-        observed = idx[idx.year == yr].unique()
-        missing_dates = expected.difference(observed)
-        extra_dates = observed.difference(expected)
-        msgs = []
-        if len(missing_dates):
-            msgs.append(
-                f"missing {len(missing_dates)} of 92 JJA dates "
-                f"(e.g. {[str(d.date()) for d in missing_dates[:3]]})")
-        if len(extra_dates):
-            msgs.append(
-                f"{len(extra_dates)} dates outside the expected "
-                "Jun1-Aug31 set (e.g. "
-                f"{[str(d.date()) for d in extra_dates[:3]]})")
-        if msgs:
-            problems.append(f"year {yr}: " + "; ".join(msgs))
+    return problems
 
-    # 2026 is partial by contract: Jun (30) + Jul (31) + Aug 1-25
-    # (25) = 86 days, ending before the held-out event date.
-    expected_2026 = pd.date_range(JJA_2026[0], JJA_2026[1], freq="D")
-    observed_2026 = idx[idx.year == 2026].unique()
-    missing_2026 = expected_2026.difference(observed_2026)
-    extra_2026 = observed_2026.difference(expected_2026)
-    msgs_2026 = []
-    if len(missing_2026):
-        msgs_2026.append(
-            f"missing {len(missing_2026)} of {len(expected_2026)} "
-            "pre-event JJA dates (e.g. "
-            f"{[str(d.date()) for d in missing_2026[:3]]})")
-    if len(extra_2026):
-        msgs_2026.append(
-            f"{len(extra_2026)} dates outside the expected "
-            f"{JJA_2026[0]}..{JJA_2026[1]} set (e.g. "
-            f"{[str(d.date()) for d in extra_2026[:3]]})")
-    if msgs_2026:
-        problems.append("year 2026: " + "; ".join(msgs_2026))
 
+def _merged_marker_problems(run_root: Path) -> list[str]:
+    """P5-08 — merged-marker provenance gate.
+
+    A merged file under run_root/merged/ is consumable only with the
+    extractor's validated complete.json marker whose recorded
+    merged_sha256 matches the file's actual sha256.  No merged file
+    at all means the run cannot be provenance-complete — a problem,
+    not a silent skip."""
+    problems: list[str] = []
+    merged_dir = run_root / "merged"
+    merged_files = (sorted(p for p in merged_dir.glob("*.nc")
+                           if p.is_file())
+                    if merged_dir.is_dir() else [])
+    if not merged_files:
+        problems.append(
+            f"merged file missing: no merged NetCDF under "
+            f"{merged_dir} — the run cannot be provenance-complete "
+            "without a validated merged ERA5 input")
+        return problems
+    marker = merged_dir / MERGED_MARKER_NAME
+    if not marker.is_file():
+        problems.append(
+            f"merged marker {marker} missing — "
+            f"{len(merged_files)} merged file(s) present but the "
+            "extractor's validated complete.json marker was not "
+            "written")
+        return problems
+    try:
+        marker_json = json.loads(marker.read_text())
+    except (json.JSONDecodeError, OSError) as e:
+        problems.append(
+            f"merged marker {marker} unparseable: {e}")
+        return problems
+    if not isinstance(marker_json, dict):
+        problems.append(
+            f"merged marker {marker} did not parse to a JSON object")
+        return problems
+    recorded = marker_json.get("merged_sha256")
+    if not recorded:
+        problems.append(
+            f"merged marker {marker} lacks 'merged_sha256'")
+        return problems
+    merged_ref = marker_json.get("merged_file")
+    if merged_ref:
+        target = merged_dir / Path(str(merged_ref)).name
+        if target not in merged_files:
+            problems.append(
+                f"merged marker references {merged_ref} which is "
+                f"not present under {merged_dir}")
+            return problems
+    elif len(merged_files) == 1:
+        target = merged_files[0]
+    else:
+        problems.append(
+            f"merged marker {marker} records no 'merged_file' and "
+            f"{len(merged_files)} merged candidates exist — cannot "
+            "bind the recorded sha256")
+        return problems
+    actual = hashlib.sha256(target.read_bytes()).hexdigest()
+    if recorded != actual:
+        problems.append(
+            f"merged sha256 mismatch: marker records {recorded} "
+            f"but {target.name} hashes to {actual} — the merged "
+            "file changed after validation (or was never "
+            "validated)")
+    return problems
+
+
+def _sidecar_gate_problems(features_dir: Path) -> list[str]:
+    """P5-11 — sidecar gate for the real path: the extractor's
+    feature_units.json and run_metadata.json must exist and parse.
+    The embedded-defaults fallback is reserved for fixtures
+    (run_gmm_descriptive), never for a real run."""
+    problems: list[str] = []
+    for name in (UNITS_FILENAME, RUN_METADATA_FILENAME):
+        p = features_dir / name
+        if not p.is_file():
+            problems.append(
+                f"required sidecar {p} missing — the real run path "
+                "must not fall back to embedded defaults")
+            continue
+        try:
+            parsed = json.loads(p.read_text())
+        except (json.JSONDecodeError, OSError) as e:
+            problems.append(f"sidecar {p} unparseable: {e}")
+            continue
+        if not isinstance(parsed, dict):
+            problems.append(
+                f"sidecar {p} did not parse to a JSON object")
     return problems
 
 
@@ -997,6 +1295,17 @@ def main() -> int:
     bundle_file = run_dir / "bundle.json"
 
     problems = preflight(feature_file)
+
+    # P5-08 — merged-marker provenance gate: a merged file without
+    # the extractor's validated complete.json (or with a stale
+    # recorded sha256) is not consumable, and no merged file at all
+    # means the run cannot be provenance-complete.
+    problems.extend(_merged_marker_problems(run_root))
+    # P5-11 — sidecar gate on the real path: feature_units.json and
+    # run_metadata.json must exist and parse; embedded defaults are
+    # reserved for fixtures.
+    problems.extend(_sidecar_gate_problems(features_dir))
+
     if problems:
         print("PREFLIGHT FAILED — no run executed:")
         for p in problems:
@@ -1005,10 +1314,13 @@ def main() -> int:
     if getattr(problems, "edge_censored_rows", 0):
         # P5-04 — surface the accepted edge-censor count so the
         # audit trail shows the pdd_7day June-edge NaN was expected,
-        # not overlooked.
+        # not overlooked.  A full frame yields 156 (6 June-edge
+        # days x 26 years); a partial frame may legitimately flag
+        # fewer.
         print(f"Preflight: {problems.edge_censored_rows} "
               "edge-censored rows accepted (pdd_7day June-edge "
-              "censoring; dropped before fitting)")
+              "censoring; full-frame expectation 156 = 6 days x "
+              "26 years; dropped before fitting)")
 
     print(f"Loading features from {feature_file}...")
     daily_df = pd.read_csv(feature_file, index_col=0, parse_dates=True)
@@ -1021,7 +1333,8 @@ def main() -> int:
 
     gmm_results = run_gmm_descriptive(
         daily_df, target_year=2026, provenance=provenance,
-        feature_units=feature_units, run_dir=run_dir)
+        feature_units=feature_units, run_dir=run_dir,
+        fixture_ok=False)
 
     # Bundle inputs: the features/ artifacts this stage consumed,
     # plus the merged ERA5 input under the run root if present.

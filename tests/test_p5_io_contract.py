@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import subprocess
 import sys
 import zipfile
 from pathlib import Path
@@ -517,3 +518,116 @@ class TestFullChain:
         assert acct["edge_censored_dropped"] == \
             int(daily["edge_censored"].sum())
         assert 0 < acct["rows_used"] <= len(daily)
+
+
+class TestAreaCellMarkerContract:
+    """AUD-02 / P5-07 / P5-08 / P5-12 — the request area is the
+    documented 1° x 1° box, the selected cell must lie inside it,
+    hourly NaNs reject the payload, edge flags are only legitimate at
+    June edges, and extraction is gated on the downloader's
+    complete.json marker."""
+
+    def test_area_is_one_by_one_degree(self):
+        # [North, West, South, East] — exactly the contract box.
+        assert dl.AREA == [29.0, 85.0, 28.0, 86.0]
+        aac = getattr(dl, "assert_area_contract", None)
+        if callable(aac):
+            aac()  # must not raise for the contract area
+
+    def test_hourly_nan_rejected(self, tmp_path):
+        # P5-07: one NaN anywhere in a required hourly variable
+        # rejects the payload outright — it must not normalize through.
+        ds = _hourly_ds(GOOD_VARS, times=_month_hours(2001, "06"))
+        t2m = ds["t2m"].values.copy()
+        t2m[7, 0, 0] = np.nan
+        ds["t2m"].data = t2m
+        payload = tmp_path / "era5_land_2001_06.nc"
+        ds.to_netcdf(payload)
+        with pytest.raises(ValueError, match="non-finite|NaN|finite"):
+            dl.normalize_payload(payload, tmp_path / "m",
+                                 year=2001, month="06")
+
+    def test_august_edge_flag_rejected(self, tmp_path):
+        # P5-04/P5-09: edge_censored is only legitimate at the June
+        # start of each JJA run (the first 6 days, whose 7-day PDD
+        # window reaches outside JJA). A 2005-08-10 edge flag is a
+        # contract violation and preflight must report it.
+        if not hasattr(gmm, "preflight"):
+            pytest.skip("gmm_descriptive.preflight absent")
+        dates: list[pd.Timestamp] = []
+        for y in range(2001, 2026):
+            dates.extend(pd.date_range(f"{y}-06-01", f"{y}-08-31",
+                                       freq="D"))
+        dates.extend(pd.date_range("2026-06-01", "2026-08-25",
+                                   freq="D"))
+        idx = pd.DatetimeIndex(dates)
+        rng = np.random.default_rng(0)
+        df = pd.DataFrame(
+            {c: rng.normal(size=len(idx)) for c in gmm.GMM_FEATURES},
+            index=idx)
+        df["edge_censored"] = False
+        bad_day = pd.Timestamp("2005-08-10")
+        df.loc[bad_day, "edge_censored"] = True
+        df.loc[bad_day, "pdd_7day"] = np.nan  # censored-row shape
+        csv = tmp_path / "features_aug_edge.csv"
+        df.to_csv(csv)
+        problems = gmm.preflight(csv)
+        assert problems, ("edge_censored=true on 2005-08-10 accepted "
+                          "by preflight")
+        assert any("august" in p.lower() or "edge" in p.lower()
+                   for p in problems), (
+            f"no preflight problem mentions August/edge: "
+            f"{list(problems)}")
+
+    def test_complete_marker_required_for_extraction(self, tmp_path):
+        # P5-08: a merged file without the downloader's complete.json
+        # marker is unvalidated input — the marker check must fail.
+        # Test the smallest callable surface (fe.main is heavy).
+        check = getattr(fe, "_verify_complete_marker", None)
+        if not callable(check):
+            pytest.skip("feature_extraction._verify_complete_marker "
+                        "absent")
+        merged_dir = tmp_path / "run_root" / "merged"
+        merged_dir.mkdir(parents=True)
+        merged = merged_dir / getattr(dl, "MERGED_NAME", MERGED_NAME)
+        _monthly_ds(2001, "06").to_netcdf(merged)
+        assert merged.is_file()
+        assert not (merged_dir / "complete.json").exists()
+        with pytest.raises((FileNotFoundError, ValueError,
+                            RuntimeError, SystemExit)):
+            check(merged)
+
+    def test_cell_inside_area(self):
+        # The deterministic selected cell (28.3, 85.5) is inside the
+        # requested AREA; a 27.5 latitude cell is outside (south of
+        # the south bound).
+        check = getattr(fe, "_assert_cell_in_area", None)
+        if callable(check):
+            assert check(28.3, 85.5) is True
+            with pytest.raises(ValueError):
+                check(27.5, 85.5)
+        else:
+            # No validity callable — assert the constants directly.
+            # AREA is [North, West, South, East].
+            north, west, south, east = (float(v) for v in dl.AREA)
+            assert south <= 28.3 <= north
+            assert west <= 85.5 <= east
+            assert not (south <= 27.5 <= north)
+
+    def test_dry_run_area_matches(self, tmp_path):
+        # The canonical dry-run banner/request JSON must carry the
+        # contract area [29.0, 85.0, 28.0, 86.0].
+        script = Path(dl.__file__).resolve()
+        proc = subprocess.run(
+            [sys.executable, str(script), "--dry-run",
+             "--year-range", "2001-2001",
+             "--run-root", str(tmp_path / "run")],
+            capture_output=True, text=True, timeout=120,
+            cwd=str(script.parent.parent))
+        assert proc.returncode == 0, proc.stderr[-2000:]
+        # Matches both the 'Area: [29.0, 85.0, 28.0, 86.0]' banner and
+        # a pretty-printed JSON "area" list (which spans lines).
+        compact = "".join(proc.stdout.split())
+        assert "[29.0,85.0,28.0,86.0]" in compact, (
+            "dry-run stdout does not carry area "
+            "[29.0, 85.0, 28.0, 86.0]")

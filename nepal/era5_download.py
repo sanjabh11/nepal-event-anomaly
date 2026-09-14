@@ -12,7 +12,8 @@ Strategy:
 - 7 variables only (pre-registered feature contract); snow is requested
   as snow_depth_water_equivalent so the payload carries 'sd' (SWE),
   not 'sde' (geometric depth)
-- Small area: 1° × 1° around the event point (28.25°N, 85.50°E)
+- Small area: 1° × 1° around the event point (28.25°N, 85.50°E);
+  enforced by assert_area_contract()
 - Sequential with retry (CDS queue can be slow)
 - All outputs under --run-root; the frozen data/ tree is never written
 
@@ -84,7 +85,27 @@ EVENT_CUTOFF_ISO = f"{EVENT_YEAR}-08-{EVENT_CUTOFF_DAY + 1:02d}T00:00"
 # Download area: small box around the event point
 # CDS area format: [North, West, South, East]
 # 1° × 1° box: ~111 km × ~98 km — covers the source and immediate context
-AREA = [29.0, 85.0, 27.0, 86.0]
+AREA = [29.0, 85.0, 28.0, 86.0]
+
+
+def assert_area_contract() -> None:
+    """AUD-02 area contract guard.
+
+    AREA is [North, West, South, East]; the documented contract is a
+    1° × 1° box. Verify the longitude width (east - west) and latitude
+    height (north - south) are each 1.0 within float tolerance.
+    Called in main() before any CDS request is built and referenced in
+    the dry-run output.
+    """
+    north, west, south, east = (float(v) for v in AREA)
+    width = east - west
+    height = north - south
+    tol = 1e-9
+    if abs(width - 1.0) > tol or abs(height - 1.0) > tol:
+        raise AssertionError(
+            f"AREA contract violated: expected a 1° × 1° box "
+            f"([North, West, South, East]); got {height}° lat × "
+            f"{width}° lon from AREA={AREA}")
 
 # JJA months
 JJA_MONTHS = ["06", "07", "08"]
@@ -292,6 +313,9 @@ def normalize_payload(path: Path | str,
       contiguous, count = days*24. Payloads with wrong-month,
       out-of-range, duplicate or post-cutoff (>= 2026-08-26T00:00Z)
       timestamps are rejected, not repaired.
+    - Require every required data variable (t2m, d2m, u10, v10, sd, sf,
+      tp) to be all-finite across the whole array (P5-07): a single
+      NaN or inf rejects the payload.
     - Write monthly_dir/era5_land_{year}_{month}.nc and return its path.
 
     If ledger_entry is given, payload_format and payload_sha256 (of the
@@ -392,6 +416,17 @@ def normalize_payload(path: Path | str,
                 f"(expected {expected.size} hours "
                 f"{expected[0]}..{expected[-1]}; "
                 f"got {times.size} hours {first}..{last})")
+
+        # P5-07 finite-value validation: every required data variable
+        # must be finite across the whole array — a single NaN or inf
+        # anywhere rejects the payload outright.
+        for var in REQUIRED_DATA_VARS:
+            values = np.asarray(ds[var].values)
+            bad = int(np.count_nonzero(~np.isfinite(values)))
+            if bad:
+                raise ValueError(
+                    f"{source}: required variable '{var}' has {bad} "
+                    f"non-finite value(s); rejecting payload")
 
         monthly_dir.mkdir(parents=True, exist_ok=True)
         out_path = monthly_dir / f"era5_land_{year}_{month}.nc"
@@ -587,7 +622,9 @@ def download_all(years: list[int], run_root: Path,
               f"({len(years)} years x JJA)")
         print(f"Dataset: {CDS_DATASET}")
         print(f"Variables: {CDS_VARIABLES}")
-        print(f"Area: {AREA}")
+        assert_area_contract()
+        print(f"Area: {AREA} (1° × 1° — verified by "
+              f"assert_area_contract)")
         print(f"Run root: {run_root}")
         print("Planned requests:")
         for y, m in planned:
@@ -837,6 +874,14 @@ def main(argv: list[str] | None = None) -> int:
                         help="Run the NetCDF backend smoke test "
                              "(xarray round-trip) and exit")
     args = parser.parse_args(argv)
+
+    # AUD-02: verify the request area is the documented 1° × 1° box
+    # before any CDS request is built (dry-run output included).
+    try:
+        assert_area_contract()
+    except AssertionError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
 
     if args.smoke:
         print("NetCDF backend smoke test...")

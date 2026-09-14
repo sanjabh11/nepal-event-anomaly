@@ -65,6 +65,19 @@ FORBIDDEN_RUN_ROOTS = (
     REPO_ROOT / "nepal" / "framework_v1",
 )
 
+# P5-08: the downloader's merge_monthly writes merged/complete.json
+# beside the merged file ONLY after the merge passes all validation;
+# main() requires the marker and verifies its recorded merged_sha256.
+COMPLETE_MARKER_NAME = "complete.json"
+
+# P5-12: the requested CDS area [North, West, South, East] the selected
+# ERA5-Land cell must lie inside, and the deterministic tie-break rule
+# applied by the downloader's select_cell (equidistant latitude ->
+# higher; equidistant longitude -> lower).
+REQUESTED_AREA = {"north": 29.0, "west": 85.0, "south": 28.0, "east": 86.0}
+CELL_TIE_RULE = ("equidistant latitude → higher; "
+                 "equidistant longitude → lower")
+
 # Elevation disclaimer (printed on every plot)
 ELEVATION_DISCLAIMER = (
     f"ERA5-Land model elevation: {EVENT['model_elevation_m']} m. "
@@ -122,6 +135,10 @@ def load_era5_land(filepath: Path) -> xr.Dataset:
     actual_lat = float(cell[lat_name].values)
     actual_lon = float(cell[lon_name].values)
     print(f"Nearest cell: {actual_lat:.2f}°N, {actual_lon:.2f}°E")
+
+    # P5-12: the selected cell must lie inside the requested area —
+    # raise immediately if it does not.
+    _assert_cell_in_area(actual_lat, actual_lon)
 
     # Get model elevation from orography if available
     model_elev = EVENT["model_elevation_m"]
@@ -475,6 +492,75 @@ def _check_not_frozen(path: Path, what: str = "Output") -> Path:
     return resolved
 
 
+def _assert_cell_in_area(lat: float, lon: float) -> bool:
+    """P5-12: require the selected cell to lie inside the requested area.
+
+    The requested CDS area is [North, West, South, East] =
+    [29.0, 85.0, 28.0, 86.0]; the selected cell's latitude must be
+    within south..north and its longitude within west..east (bounds
+    inclusive). Returns True when the cell is inside; raises
+    ValueError otherwise.
+    """
+    inside = (
+        REQUESTED_AREA["south"] <= lat <= REQUESTED_AREA["north"]
+        and REQUESTED_AREA["west"] <= lon <= REQUESTED_AREA["east"]
+    )
+    if not inside:
+        raise ValueError(
+            f"P5-12: selected cell ({lat}, {lon}) lies outside the "
+            f"requested area [N={REQUESTED_AREA['north']}, "
+            f"W={REQUESTED_AREA['west']}, S={REQUESTED_AREA['south']}, "
+            f"E={REQUESTED_AREA['east']}]; refusing to extract."
+        )
+    return True
+
+
+def _verify_complete_marker(era5_file: Path) -> str:
+    """P5-08: gate the merged ERA5 input on the downloader's marker.
+
+    The downloader's merge_monthly writes <merged_dir>/complete.json
+    only after the merged file passes all completeness validation, so a
+    missing marker means unvalidated (possibly quarantined) input and a
+    sha256 mismatch means the file changed since validation — both are
+    hard failures. The marker must carry the merged file's digest under
+    'merged_sha256' (the key the downloader writes; 'sha256' is accepted
+    as a fallback).
+
+    Returns the marker file's own SHA-256 digest.
+    """
+    if not era5_file.exists():
+        raise FileNotFoundError(
+            f"P5-08 completeness gate: merged ERA5 file {era5_file} "
+            "does not exist."
+        )
+    marker_file = era5_file.parent / COMPLETE_MARKER_NAME
+    if not marker_file.exists():
+        raise FileNotFoundError(
+            f"P5-08 completeness gate: {marker_file} not found. The "
+            "downloader writes complete.json beside the merged file "
+            "only after merge validation passes; refusing to extract "
+            "from an unvalidated merged file."
+        )
+    with open(marker_file) as f:
+        marker = json.load(f)
+    expected_sha = marker.get("merged_sha256") or marker.get("sha256")
+    if not expected_sha:
+        raise ValueError(
+            f"P5-08 completeness gate: {marker_file} contains no "
+            "'merged_sha256' (or 'sha256') key; cannot verify the "
+            "merged file's integrity."
+        )
+    actual_sha = _sha256(era5_file)
+    if actual_sha != expected_sha:
+        raise ValueError(
+            f"P5-08 completeness gate: sha256 mismatch — {marker_file} "
+            f"records merged_sha256={expected_sha} but {era5_file} "
+            f"hashes to {actual_sha}. The merged file changed since "
+            "validation; refusing to extract."
+        )
+    return _sha256(marker_file)
+
+
 def _resolve_run_root(run_root: str | None) -> Path:
     """Resolve the output run root and reject frozen contract surfaces."""
     root = Path(run_root).expanduser() if run_root else DEFAULT_RUN_ROOT
@@ -503,14 +589,23 @@ def write_run_metadata(
     """
     features_dir = _check_not_frozen(features_dir, what="Run metadata")
     ledger_file = run_root / "download_ledger.json"
+    marker_file = era5_file.parent / COMPLETE_MARKER_NAME
     metadata = {
         "requested_cell": list(EVENT["era5_cell"]),
         "selected_cell": [actual_lat, actual_lon],
+        # P5-12: _assert_cell_in_area raises if the selected cell is
+        # outside the requested area; reaching this line means it passed.
+        "cell_selection_valid": _assert_cell_in_area(actual_lat, actual_lon),
+        "tie_rule": CELL_TIE_RULE,
         "model_elevation_m": model_elev_m,
         "source_file": str(era5_file),
         "source_file_sha256": _sha256(era5_file),
         "extraction_utc": datetime.now(timezone.utc).isoformat(),
     }
+    if marker_file.exists():
+        # P5-08: the marker file's own digest (main()'s completeness
+        # gate already verified its contents against the merged file).
+        metadata["complete_marker_sha256"] = _sha256(marker_file)
     if ledger_file.exists():
         metadata["download_ledger_sha256"] = _sha256(ledger_file)
     metadata_file = features_dir / "run_metadata.json"
@@ -575,6 +670,13 @@ def main():
     print()
     print(f"Run root: {run_root}")
     print(f"ERA5 input: {era5_file}")
+
+    # P5-08 completeness gate: require the downloader's complete.json
+    # marker beside the merged file and verify its recorded
+    # merged_sha256 against the bytes on disk BEFORE any extraction.
+    complete_marker_sha256 = _verify_complete_marker(era5_file)
+    print(f"complete.json verified "
+          f"(marker sha256: {complete_marker_sha256[:12]}…)")
 
     # Load ERA5-Land data
     ds, actual_lat, actual_lon, model_elev = load_era5_land(era5_file)
@@ -646,6 +748,15 @@ def main():
         features_dir, run_root, era5_file, actual_lat, actual_lon, model_elev
     )
     print(f"Saved run metadata to {metadata_file}")
+
+    # P5-11: both sidecars must exist on disk after their writes — a
+    # missing sidecar is a hard failure, never a silent skip.
+    for sidecar in (units_file, metadata_file):
+        if not sidecar.exists():
+            raise RuntimeError(
+                f"P5-11: required sidecar {sidecar} is missing after "
+                "write."
+            )
 
     # GAP FIX: Also save hourly features for auditability
     print(f"Saving hourly feature matrix to {hourly_file}...")
