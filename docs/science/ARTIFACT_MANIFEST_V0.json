@@ -1,6 +1,6 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "81bf660e01d9e7adab05abbb5ca4fbe432045059",
+  "content_head": "04ee291a28899e0eb5cc3f6a326033acc27fcd74",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
@@ -29,8 +29,13 @@
     },
     {
       "relpath": "docs/science/P0_BASELINE_LEDGER.md",
-      "sha256": "9f72c98b048528e576ea94bb1476ece1b9dd98ee528ff510223d6397ad677b0b",
-      "size_bytes": 4348
+      "sha256": "0e3dabdcc4589e1d830517a3f8567466e8d849d4f47155f7d8517e6103ee97a5",
+      "size_bytes": 4505
+    },
+    {
+      "relpath": "docs/science/P3_ATTESTATION_TEMPLATE.md",
+      "sha256": "7f94b3c21a9c339a4a9cfbbdc9e05e343f81ea9d8d53a41480f71b298b1e166b",
+      "size_bytes": 3206
     },
     {
       "relpath": "docs/science/SOURCE_FEASIBILITY_RECORDS_V0.md",
@@ -98,7 +103,7 @@
   "scope": "governed science artifacts: docs/science, nepal/research_v0, research tests, CI workflow, README \u2014 non-science sources excluded by design",
   "self_excluded": true,
   "test_results": {
-    "full_suite_venv": "1246 passed, 5 skipped (rasterio-dependent), 0 failed",
+    "full_suite_venv": "1248 passed, 5 skipped (rasterio-dependent), 0 failed",
     "research_v0": "116 passed"
   }
 }
