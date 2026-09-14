@@ -26,7 +26,7 @@ The empty Git shell is never the implementation root.
 
 - `pytest tests/test_research_v0_*.py`: **77 passed** (2026-09-14,
   hardened contracts incl. adversarial A02–A17 cases).
-- Full suite `pytest tests/`: **1182 passed, 2 failed** — both
+- Full suite `pytest tests/`: **1212 passed, 2 failed** — both
   environmental baseline debt: (1) preflight expects an executable
   ending in `/python` while the active interpreter is `python3.14`;
   (2) `ruptures` declared but not installed in the active environment.
