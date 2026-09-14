@@ -48,22 +48,39 @@ jobs:
         if: github.event_name == 'push'
         run: |
           set -e
-          changed=$(git diff --name-only "${{ github.event.before }}..HEAD" -- \
+          before="${{ github.event.before }}"
+          # All-zero before-SHA means branch creation — fail closed on
+          # the fixed baseline instead (P0-03).
+          if [ "$before" = "0000000000000000000000000000000000000000" ]; then
+            before="5ef43c292ce41a93c9adec55185973caa7045285"
+          fi
+          changed=$(git diff --name-only "${before}..HEAD" -- \
             nepal/framework_v1/ preregistration.md pinned/ data/ || true)
           if [ -n "$changed" ]; then
             echo "Frozen paths modified: $changed"; exit 1
           fi
           echo "frozen-path diff empty"
 
+      - name: Frozen-boundary check vs fixed baseline
+        run: |
+          set -e
+          changed=$(git diff --name-only \
+            5ef43c292ce41a93c9adec55185973caa7045285..HEAD -- \
+            nepal/framework_v1/ preregistration.md pinned/ data/ || true)
+          if [ -n "$changed" ]; then
+            echo "Frozen paths differ from baseline: $changed"; exit 1
+          fi
+          echo "frozen paths identical to fixed baseline"
+
       - name: Research contract tests
         run: |
           PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
-            python -B -m pytest tests/test_research_v0_*.py -q
+            python -B -m pytest tests/test_research_v0_*.py -q -rs
 
-      - name: Claim lint over science artifacts
+      - name: Claim lint over governed artifacts
         run: |
           set -e
-          for f in docs/science/*; do
+          for f in docs/science/* README.md .github/workflows/*.yml; do
             PYTHONPATH=. python -B -m nepal.research_v0.cli claim-scan "$f"
           done
 

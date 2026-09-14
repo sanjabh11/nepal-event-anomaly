@@ -92,62 +92,176 @@ def _cmd_validate_envelope(args: argparse.Namespace) -> int:
         problems.append("record_digests must map names to 64-hex "
                         "digests")
 
-    # C07: execution-shaped statuses require the full real bundle —
-    # design-stage statuses are the only no-data validation mode.
-    from .records import EXECUTION_STATUSES
-    if envelope.get("status") in EXECUTION_STATUSES:
-        for flag in ("--matrix-path", "--policy-path",
-                     "--records-dir"):
-            if not getattr(args, flag[2:].replace("-", "_")):
-                problems.append(
-                    f"execution status {envelope.get('status')!r} "
-                    f"requires {flag} — no-bundle validation cannot "
-                    "verify an execution envelope")
-
-    # Bundle verification (B24): when real artifact paths are supplied,
-    # re-hash them and compare — a self-consistent fabricated envelope
-    # fails against actual bytes.
-    for flag, digest_field in (("--matrix-path", "matrix_sha256"),
-                               ("--policy-path", "policy_sha256")):
-        supplied = getattr(args, flag[2:].replace("-", "_"))
-        if supplied:
+    # E02/E15 — the envelope records the canonical artifact root and
+    # D1/D2 paths it was built against; CLI verification resolves to
+    # exactly those files — no caller-supplied alternative is trusted.
+    from pathlib import Path as _P
+    artifact_root_raw = envelope.get("artifact_root")
+    if not artifact_root_raw:
+        problems.append("artifact_root missing — envelope is not "
+                        "root-bound")
+        artifact_root = None
+    else:
+        artifact_root = _P(str(artifact_root_raw))
+        if not artifact_root.is_dir():
+            problems.append(
+                f"artifact_root {artifact_root} is not a directory")
+            artifact_root = None
+    for path_field, digest_field in (
+            ("matrix_path", "matrix_sha256"),
+            ("policy_path", "policy_sha256")):
+        recorded = envelope.get(path_field)
+        if not recorded:
+            problems.append(f"{path_field} missing from envelope")
+            continue
+        path = _P(str(recorded))
+        if artifact_root is not None:
             try:
-                actual = gates.sha256_file(supplied)
-            except ValueError as exc:
-                problems.append(f"{flag} {supplied}: {exc}")
-                continue
-            if actual != envelope.get(digest_field):
+                path.resolve().relative_to(artifact_root.resolve())
+            except ValueError:
                 problems.append(
-                    f"{flag} {supplied}: digest {actual[:16]}… does not "
-                    f"match envelope {digest_field}")
-    if args.records_dir:
-        from pathlib import Path as _P
+                    f"{path_field} {path} escapes artifact_root")
+                continue
+        if not path.is_file() or path.is_symlink():
+            problems.append(
+                f"{path_field} {path} is not a regular file")
+            continue
+        try:
+            actual = gates.sha256_file(path)
+        except ValueError as exc:
+            problems.append(f"{path_field} {path}: {exc}")
+            continue
+        if actual != envelope.get(digest_field):
+            problems.append(
+                f"{path_field} digest {actual[:16]}… does not match "
+                f"envelope {digest_field}")
+
+    # E01 — typed record reconstruction: every bound digest must map
+    # to a record file that deserializes to the declared type, passes
+    # record-level validation, and re-hashes identically.
+    status = str(envelope.get("status", ""))
+    bound = envelope.get("record_digests") or {}
+    record_types = envelope.get("record_types") or {}
+    if bound and not args.records_dir:
+        problems.append("envelope binds record digests but "
+                        "--records-dir was not supplied")
+    if bound and args.records_dir:
         records_dir = _P(args.records_dir)
         if not records_dir.is_dir():
             problems.append(f"--records-dir {records_dir} is not a "
                             "directory")
         else:
-            bound = envelope.get("record_digests") or {}
+            from .records import (deserialize_record,
+                                  STATUS_REQUIRED_ARTIFACT_TYPES,
+                                  STATUS_REQUIRED_RECORDS,
+                                  EXECUTION_STATUSES)
+            from .records import EvidenceArtifactV0, SourceRecordV0
+            records = {}
             for name, digest in bound.items():
                 rec_file = records_dir / f"{name}.json"
-                if not rec_file.is_file():
-                    problems.append(f"record {name!r}: expected file "
-                                    f"{rec_file} missing")
+                if not rec_file.is_file() or rec_file.is_symlink():
+                    problems.append(
+                        f"record {name!r}: expected regular file "
+                        f"{rec_file} missing")
                     continue
                 try:
                     payload = json.loads(
                         rec_file.read_text(encoding="utf-8"),
                         parse_constant=_reject_constant)
-                    actual = sha256_canonical(payload)
                 except (OSError, json.JSONDecodeError, ValueError,
                         TypeError) as exc:
-                    problems.append(f"record {name!r}: cannot load/"
-                                    f"hash: {exc}")
+                    problems.append(
+                        f"record {name!r}: cannot load: {exc}")
                     continue
-                if actual != digest:
+                if sha256_canonical(payload) != digest:
                     problems.append(
                         f"record {name!r}: payload digest does not "
                         "match bound digest")
+                    continue
+                try:
+                    record = deserialize_record(payload)
+                except ValueError as exc:
+                    problems.append(f"record {name!r}: {exc}")
+                    continue
+                declared_type = record_types.get(name)
+                if declared_type and \
+                        type(record).__name__ != declared_type:
+                    problems.append(
+                        f"record {name!r}: declared type "
+                        f"{declared_type} != payload type "
+                        f"{type(record).__name__}")
+                    continue
+                problems.extend(
+                    f"record {name!r}: {p}"
+                    for p in gates._validate_record(name, record))
+                records[name] = record
+            if not problems:
+                # Replay the same graph validation the builder runs.
+                problems.extend(
+                    gates._status_record_problems(status, records))
+                problems.extend(
+                    gates._cross_record_problems(records, status))
+                # Byte-bound evidence replay: sidecars, artifacts,
+                # vintage payloads under the recorded evidence_root.
+                ev_root = envelope.get("evidence_root")
+                needs_ev = (
+                    status in EXECUTION_STATUSES
+                    or any(type(r) is EvidenceArtifactV0
+                           for r in records.values())
+                    or any(getattr(r, "posture", "") ==
+                           "EVIDENCE_VERIFIED"
+                           for r in records.values()))
+                if needs_ev and not ev_root:
+                    problems.append(
+                        "execution/byte-bound envelope lacks "
+                        "evidence_root")
+                elif needs_ev and ev_root:
+                    ev = _P(str(ev_root))
+                    if not ev.is_dir():
+                        problems.append(
+                            f"evidence_root {ev} is not a directory")
+                    elif artifact_root is not None and \
+                            ev.resolve() != artifact_root.resolve():
+                        try:
+                            ev.resolve().relative_to(
+                                artifact_root.resolve())
+                        except ValueError:
+                            problems.append(
+                                "evidence_root escapes artifact_root")
+                    if not problems:
+                        from .records import ForecastVintageV0
+                        from ._hashing import hash_artifact
+                        for name, record in records.items():
+                            problems.extend(
+                                f"record {name!r}: {p}" for p in
+                                gates.source_evidence_problems(
+                                    record, evidence_root=ev_root))
+                            if type(record) is EvidenceArtifactV0:
+                                problems.extend(
+                                    f"record {name!r}: {p}" for p in
+                                    gates._evidence_artifact_problems(
+                                        record, ev_root))
+                            elif type(record) is ForecastVintageV0:
+                                for pf, df in (
+                                        ("archive_payload_path",
+                                         "archive_payload_sha256"),
+                                        ("retrieval_record_path",
+                                         "retrieval_record_sha256")):
+                                    try:
+                                        meta = hash_artifact(
+                                            gates._resolve_against(
+                                                getattr(record, pf),
+                                                ev), ev)
+                                    except ValueError as exc:
+                                        problems.append(
+                                            f"record {name!r}: {exc}")
+                                        continue
+                                    if meta["sha256"] != getattr(
+                                            record, df):
+                                        problems.append(
+                                            f"record {name!r}: {df} "
+                                            "does not match file "
+                                            "bytes")
     if problems:
         for problem in problems:
             print(f"BLOCKED: {problem}", file=sys.stderr)
@@ -223,18 +337,13 @@ def build_parser() -> argparse.ArgumentParser:
     env = sub.add_parser(
         "validate-envelope",
         help="re-verify an envelope's flags, status, digests, and "
-             "self-hash; optionally re-hash the real matrix/policy "
-             "files and record payloads")
+             "self-hash; re-hashes the canonical matrix/policy files "
+             "recorded in the envelope and replays full record "
+             "validation")
     env.add_argument("file")
-    env.add_argument("--matrix-path", default=None,
-                     help="re-hash this file and compare to "
-                          "matrix_sha256")
-    env.add_argument("--policy-path", default=None,
-                     help="re-hash this file and compare to "
-                          "policy_sha256")
     env.add_argument("--records-dir", default=None,
                      help="directory of <name>.json record payloads to "
-                          "re-hash against record_digests")
+                          "deserialize and re-validate")
     env.set_defaults(func=_cmd_validate_envelope)
 
     scan = sub.add_parser(

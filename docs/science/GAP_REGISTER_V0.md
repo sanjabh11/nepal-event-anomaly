@@ -182,6 +182,35 @@ truth).
 | D11 CI guard `origin/main` fragility | Medium | RESOLVED — push/PR split, `fetch-depth: 0`, `github.event.before` |
 | D12 name-keyed status graph | Info | ACCEPTED — names are display keys; identity enforced by `type(x) is cls` upstream |
 
+## Post-audit defect register, round 4 extended (E-series)
+
+| ID | Defect | Disposition |
+|---|---|---|
+| E01 CLI no typed reconstruction | Critical | RESOLVED — `deserialize_record` enforces exact type tags, declared fields, no extras; CLI replays `_validate_record` + status graph + cross-record + byte evidence |
+| E02 CLI paths unbound to envelope | Critical | RESOLVED — envelope carries canonical artifact_root/matrix_path/policy_path; CLI resolves those exact files, rejects supplied alternatives |
+| E03 forecast graph missing vertical spec | Critical | RESOLVED — `HazardVerticalSpecV0` required for FORECAST_EXPERIMENT_ONLY |
+| E04 artifact role confusion | Critical | RESOLVED — `ARTIFACT_ROLE_TYPES` + per-role artifact-type binding; `STATUS_REQUIRED_ARTIFACT_TYPES` coverage enforced |
+| E05 vintage digests not byte-bound | Critical | RESOLVED — `archive_payload_path`/`retrieval_record_path` required and byte-verified under evidence_root |
+| E06 sidecar bytes ≠ evidence content | Critical | RESOLVED — sidecar must be JSON binding source_id/version/license/reviewers/decision to the record |
+| E07 regex-only dates, loose types | High | RESOLVED — calendar-aware `_date` everywhere; bool/int/NaN exclusions |
+| E08 optional issue time / horizon | Critical | RESOLVED — vintage `issue_time` required; horizon must be admissible for every bound label's measured class; vintage↔cutoff linkage required |
+| E09 ghost holdout IDs | Critical | RESOLVED — `event_assignments` keys must equal the bound event universe exactly |
+| E10 cascade not enforced | Critical | RESOLVED — cascade groups derived from bound labels; `cascade_atomicity_problems` invoked during graph binding |
+| E11 caller-asserted control state | Critical | RESOLVED — declared state must equal `derive_control_state_typed` recomputation |
+| E12 duplicate record IDs | High | RESOLVED — per-type primary-ID uniqueness |
+| E13 unbound regions | High | RESOLVED — regions must be drawn from locked test groups |
+| E14 freeze-like statuses | Critical | RESOLVED — no status carries "ready/authorized/qualified"; `PILOT_GATE_PASSED` requires bound verified sources |
+| E15 envelope missing provenance | High | RESOLVED — envelope echoes canonical root, D1/D2 paths, record type tags, evidence_root |
+| E16 scanner misses deep forms | Critical | RESOLVED — unicode escapes, array members, `=` separators, numeric truthy, `yes/on` all detected |
+| E17 feature value inspection | Critical | GATED_ON_DATA — value-level matrix audit is an intake artifact; structural + byte binding now enforced |
+| E18 no output/metric artifacts | Critical | RESOLVED — FORECAST_EXPERIMENT_ONLY requires feature_matrix+forecast_output+power_report+uncertainty_report artifact types |
+| E19 regime provenance | High | RESOLVED — REANALYSIS-only data_class, ≥3 distinct nonneg seeds, `null_model_digest` bound to null_model artifact |
+| E20 cutoff unbound | High | RESOLVED — cutoff requires event_id+source_id when vintage-bound; every bound vintage must have a bound cutoff |
+| E21 cross-source targets | High | RESOLVED — typed target functions require label.source_id == opportunity.source_id |
+| E22 root races/symlinks | High | RESOLVED — symlink-before-resolution, canonical roots, filesystem-root rejection; TOCTOU documented out of authority path |
+| E23 code can't authenticate humans | Critical | POLICY_DEFINED — `human_approved` remains a human P3 property; code enforces structure only |
+| E24 string-only reviewer state | High | PARTIAL — reviewer IDs + sidecar reviewer_ids required; independence declaration is a human gate |
+
 ## Honest residual risks
 
 - **P3 human approval is still required** — no code substitutes for it.

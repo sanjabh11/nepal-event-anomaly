@@ -24,13 +24,13 @@ The empty Git shell is never the implementation root.
 
 ## Test results (exact, as run)
 
-- `pytest tests/test_research_v0_*.py`: **106 passed** (2026-09-14,
-  hardened contracts incl. adversarial A/B/C/D-series probes).
-- Full suite under pinned `.venv`: **1238 passed, 5 skipped,
+- `pytest tests/test_research_v0_*.py`: **114 passed** (2026-09-14,
+  hardened contracts incl. adversarial A/B/C/D/E-series probes).
+- Full suite under pinned `.venv`: **1246 passed, 5 skipped,
   0 failed** — fully green; both prior environmental failures
   resolved (interpreter now ends in `/python`; `ruptures` installed).
-- Content commit: `e19d0a7`; manifest V0.3 binds `content_head` in a
-  separate manifest-only commit `c02f784` (two-commit protocol).
+- Content commit: pending (round-4); manifest binds `content_head`
+  in a separate manifest-only commit (two-commit protocol).
 - CLI smoke: `validate-envelope` re-verifies flag/status/digest shape,
   self-hash, real matrix/policy bytes, and record payloads; execution
   statuses refuse no-bundle validation; `claim-scan` clean on all docs;

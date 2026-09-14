@@ -267,11 +267,15 @@ def _cross_record_problems(records: Mapping[str, Any],
     """Mandatory foreign-key consistency (C05): references must point
     at actually bound parents — an empty parent set rejects, not
     skips."""
-    from .records import (ControlWindowV0, EventLabelV0,
-                          EvidenceArtifactV0, ForecastExperimentV0,
-                          ForecastVintageV0, HazardVerticalSpecV0,
-                          HoldoutPlanV0, ObservationOpportunityV0,
-                          RegimeArtifactV0, SourceRecordV0)
+    from .records import (ControlWindowV0, CutoffRecordV0,
+                          EventLabelV0, EvidenceArtifactV0,
+                          ForecastExperimentV0, ForecastVintageV0,
+                          HazardVerticalSpecV0, HoldoutPlanV0,
+                          ObservationOpportunityV0, RegimeArtifactV0,
+                          SourceRecordV0)
+    from .policy import (assign_target_state_typed,
+                         derive_control_state_typed)
+    from .records import STATUS_REQUIRED_ARTIFACT_TYPES
     problems: list[str] = []
     sources = {r.source_id: r for r in _records_of(records,
                                                   SourceRecordV0)}
@@ -281,17 +285,87 @@ def _cross_record_problems(records: Mapping[str, Any],
         records, HazardVerticalSpecV0)}
     opportunities = {r.opportunity_id: r for r in _records_of(
         records, ObservationOpportunityV0)}
-    holdouts = {r.holdout_plan_id for r in _records_of(
+    holdouts = {r.holdout_plan_id: r for r in _records_of(
         records, HoldoutPlanV0)}
+    vintage_ids = {r.vintage_id for r in _records_of(
+        records, ForecastVintageV0)}
     vintages = {sha256_canonical(r.to_dict())
                 for r in _records_of(records, ForecastVintageV0)}
-    artifacts = {r.sha256 for r in _records_of(records,
-                                               EvidenceArtifactV0)}
+    artifact_records = _records_of(records, EvidenceArtifactV0)
+    artifacts = {r.sha256 for r in artifact_records}
+    artifacts_by_type: dict[str, set[str]] = {}
+    for a in artifact_records:
+        artifacts_by_type.setdefault(a.artifact_type, set()).add(
+            a.sha256)
     # Pre-collect the event universe so forward lineage references
     # don't depend on iteration order.
     all_event_ids = {r.event_id for r in _records_of(records,
                                                      EventLabelV0)}
     event_ids: set[str] = set()
+
+    # E12 — per-type primary-ID uniqueness across the bound set.
+    _id_fields = {
+        SourceRecordV0: "source_id",
+        HazardVerticalSpecV0: "vertical_id",
+        EventLabelV0: "event_id",
+        ObservationOpportunityV0: "opportunity_id",
+        ControlWindowV0: "control_id",
+        CutoffRecordV0: "cutoff_id",
+        HoldoutPlanV0: "holdout_plan_id",
+        ForecastVintageV0: "vintage_id",
+        RegimeArtifactV0: "regime_id",
+        ForecastExperimentV0: "experiment_id",
+        EvidenceArtifactV0: "artifact_id",
+    }
+    for cls, field_name in _id_fields.items():
+        ids = [getattr(r, field_name)
+               for r in _records_of(records, cls)]
+        if len(set(ids)) != len(ids):
+            problems.append(
+                f"duplicate {field_name} values among bound "
+                f"{cls.__name__} records")
+
+    # E09 — holdout assignment keys must equal the bound event
+    # universe exactly: no ghosts, no omissions.
+    labels = _records_of(records, EventLabelV0)
+    if labels:
+        for hp in holdouts.values():
+            if set(hp.event_assignments) != all_event_ids:
+                missing = all_event_ids - set(hp.event_assignments)
+                extra = set(hp.event_assignments) - all_event_ids
+                problems.append(
+                    f"holdout {hp.holdout_plan_id!r} event_assignments "
+                    f"do not equal the bound event universe "
+                    f"(missing={sorted(missing)}, "
+                    f"extra={sorted(extra)})")
+        # E10 — cascade atomicity, derived from bound labels.
+        cascades: dict[str, list[str]] = {}
+        for lbl in labels:
+            if lbl.cascade_group_id:
+                cascades.setdefault(lbl.cascade_group_id, []).append(
+                    lbl.event_id)
+        if cascades:
+            # event → split name via group membership
+            split_of_event: dict[str, str] = {}
+            for hp in holdouts.values():
+                for e, grp in hp.event_assignments.items():
+                    for split_name, groups in (
+                            ("train", hp.train_groups),
+                            ("validation", hp.validation_groups),
+                            ("test", hp.test_groups)):
+                        if grp in groups:
+                            split_of_event[e] = split_name
+            problems.extend(cascade_atomicity_problems(
+                split_of_event, cascades))
+
+    # E18 — role coverage: statuses require specific artifact types.
+    required_types = STATUS_REQUIRED_ARTIFACT_TYPES.get(status, set())
+    missing_types = required_types - set(artifacts_by_type)
+    if missing_types:
+        problems.append(
+            f"status {status!r} requires artifact types "
+            f"{sorted(missing_types)} — none bound")
+
     execution = status in EXECUTION_STATUSES
     for name, record in records.items():
         if type(record) is EventLabelV0:
@@ -350,6 +424,17 @@ def _cross_record_problems(records: Mapping[str, Any],
                 problems.append(
                     f"record {name!r}: opportunity_state disagrees "
                     "with the bound opportunity record")
+            else:
+                # E11 — derived state is authoritative: the declared
+                # control state must equal the recomputed state.
+                derived = derive_control_state_typed(
+                    record, opp, labels)
+                if derived.value != record.state:
+                    problems.append(
+                        f"record {name!r}: declared state "
+                        f"{record.state!r} != derived "
+                        f"{derived.value!r} — control states are "
+                        "computed, never asserted")
         elif type(record) is ObservationOpportunityV0:
             if record.source_id and record.source_id not in sources:
                 problems.append(
@@ -370,19 +455,34 @@ def _cross_record_problems(records: Mapping[str, Any],
                     problems.append(
                         f"record {name!r}: vintage_digest "
                         f"{digest[:16]}… not among bound vintages")
-            # Feature/power digests must reference bound artifacts
-            # (C19) — a format-valid 64-hex string is not evidence.
+            # Role-bound digests (E04): feature digests must reference
+            # feature_matrix artifacts, power must reference a
+            # power_report — role reuse across types is rejected.
             for digest in record.feature_digests:
-                if digest not in artifacts:
+                if digest not in artifacts_by_type.get(
+                        "feature_matrix", set()):
                     problems.append(
                         f"record {name!r}: feature_digest "
-                        f"{digest[:16]}… not among bound "
-                        "EvidenceArtifactV0 sha256 values")
-            if record.power_report_digest and \
-                    record.power_report_digest not in artifacts:
-                problems.append(
-                    f"record {name!r}: power_report_digest not among "
-                    "bound EvidenceArtifactV0 sha256 values")
+                        f"{digest[:16]}… is not a bound "
+                        "feature_matrix artifact")
+            if record.power_report_digest:
+                if record.power_report_digest not in \
+                        artifacts_by_type.get("power_report", set()):
+                    problems.append(
+                        f"record {name!r}: power_report_digest is not "
+                        "a bound power_report artifact")
+            # E08 — horizon must be admissible for every bound label's
+            # measured precision class (optimistic zero-latency bound).
+            from .policy import (EventTimeClass, _CLASS_HORIZON_ALLOWLIST,
+                                 classify_event_time)
+            for lbl in labels:
+                measured = classify_event_time(lbl.uncertainty_seconds)
+                if record.horizon not in \
+                        _CLASS_HORIZON_ALLOWLIST[measured]:
+                    problems.append(
+                        f"record {name!r}: horizon {record.horizon!r} "
+                        f"is inadmissible for event {lbl.event_id!r} "
+                        f"(class {measured.value})")
         elif type(record) is HazardVerticalSpecV0:
             if record.pilot_gate_status == "PILOT_GATE_PASSED":
                 for sid in record.candidate_source_ids:
@@ -392,24 +492,57 @@ def _cross_record_problems(records: Mapping[str, Any],
                             f"references {sid!r} which is not a bound "
                             "EVIDENCE_VERIFIED source")
         elif type(record) is RegimeArtifactV0:
-            # Stability/K/source digests must reference bound
-            # artifacts (C19).
-            for field_name in ("stability_report_digest",
-                               "k_selection_digest",
-                               "preprocessing_digest"):
+            # Role-bound regime digests (E04/E19): each digest must
+            # reference a bound artifact of the matching type.
+            role_map = {
+                "stability_report_digest": "stability_report",
+                "k_selection_digest": "k_selection",
+                "preprocessing_digest": "preprocessing",
+                "null_model_digest": "null_model",
+            }
+            for field_name, artifact_type in role_map.items():
                 digest = getattr(record, field_name)
                 if isinstance(digest, str) and SHA256_RE.match(digest) \
-                        and digest not in artifacts:
+                        and digest not in artifacts_by_type.get(
+                            artifact_type, set()):
                     problems.append(
                         f"record {name!r}: {field_name} "
-                        f"{digest[:16]}… not among bound "
-                        "EvidenceArtifactV0 sha256 values")
+                        f"{digest[:16]}… is not a bound "
+                        f"{artifact_type} artifact")
             for digest in record.source_digests:
                 if digest not in artifacts:
                     problems.append(
                         f"record {name!r}: source_digest "
                         f"{digest[:16]}… not among bound "
                         "EvidenceArtifactV0 sha256 values")
+        elif type(record) is CutoffRecordV0:
+            # E20 — a vintage-bound cutoff must reference a bound
+            # vintage, bound event, and bound source.
+            if record.forecast_vintage_id and \
+                    record.forecast_vintage_id not in vintage_ids:
+                problems.append(
+                    f"record {name!r}: forecast_vintage_id "
+                    f"{record.forecast_vintage_id!r} has no bound "
+                    "ForecastVintageV0")
+            if record.event_id and \
+                    record.event_id not in all_event_ids:
+                problems.append(
+                    f"record {name!r}: event_id {record.event_id!r} "
+                    "has no bound EventLabelV0")
+            if record.source_id and \
+                    record.source_id not in sources:
+                problems.append(
+                    f"record {name!r}: source_id {record.source_id!r} "
+                    "has no bound SourceRecordV0")
+    # E20 — every bound vintage must have a bound cutoff.
+    cutoff_vintages = {c.forecast_vintage_id
+                       for c in _records_of(records, CutoffRecordV0)
+                       if c.forecast_vintage_id}
+    for vid in vintage_ids:
+        if vid not in cutoff_vintages:
+            problems.append(
+                f"vintage {vid!r} has no bound CutoffRecordV0 — "
+                "issue-time availability is unproven")
     return problems
 
 
@@ -484,6 +617,7 @@ def build_claim_envelope(
                 problems.append(
                     "evidence_root must resolve inside artifact_root")
             else:
+                from .records import ForecastVintageV0
                 for name, record in records.items():
                     problems.extend(
                         f"record {name!r}: {p}" for p in
@@ -494,6 +628,30 @@ def build_claim_envelope(
                             f"record {name!r}: {p}" for p in
                             _evidence_artifact_problems(
                                 record, evidence_root))
+                    elif type(record) is ForecastVintageV0:
+                        # E05 — archive payload and retrieval record
+                        # are real files under evidence_root whose
+                        # bytes must match the declared digests.
+                        for path_field, digest_field in (
+                                ("archive_payload_path",
+                                 "archive_payload_sha256"),
+                                ("retrieval_record_path",
+                                 "retrieval_record_sha256")):
+                            fpath = _resolve_against(
+                                getattr(record, path_field),
+                                Path(str(evidence_root)))
+                            try:
+                                meta = hash_artifact(
+                                    fpath, Path(str(evidence_root)))
+                            except ValueError as exc:
+                                problems.append(
+                                    f"record {name!r}: {exc}")
+                                continue
+                            if meta["sha256"] != getattr(
+                                    record, digest_field):
+                                problems.append(
+                                    f"record {name!r}: {digest_field} "
+                                    "does not match file bytes")
     if problems:
         raise ValueError("; ".join(problems))
     digests: dict[str, str] = {}
@@ -513,9 +671,19 @@ def build_claim_envelope(
     out["approver_attestation"] = str(approval["approver_attestation"])
     out["approved_at"] = str(approval["approved_at"])
     out["approval_scope"] = str(approval["approval_scope"])
-    out["artifact_root"] = str(approval["artifact_root"])
+    out["artifact_root"] = str(
+        Path(str(approval["artifact_root"])).resolve())
+    # E15 — the envelope carries canonical paths to the artifacts it
+    # binds; CLI verification must resolve to these exact files.
+    out["matrix_path"] = str(Path(str(
+        approval["matrix_path"])).resolve())
+    out["policy_path"] = str(Path(str(
+        approval["policy_path"])).resolve())
+    out["record_types"] = {n: type(r).__name__
+                           for n, r in records.items()}
     if evidence_root:
-        out["evidence_root"] = str(evidence_root)
+        out["evidence_root"] = str(
+            Path(str(evidence_root)).resolve())
     out["source_review_date"] = str(approval["source_review_date"])
     out["selected_pilot_rule"] = str(approval["selected_pilot_rule"])
     out["unresolved_blockers"] = blockers
@@ -587,6 +755,42 @@ def source_evidence_problems(record: Any, *,
         problems.append(
             f"evidence sidecar digest mismatch: declared "
             f"{str(declared)[:16]}… != file bytes {actual[:16]}…")
+        return problems
+    # E06 — byte integrity alone is not evidence: the sidecar must be
+    # a JSON object binding this exact source/version with license,
+    # coverage, timing, reviewer, and decision fields.
+    import json as _json
+    try:
+        sidecar = _json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, _json.JSONDecodeError) as exc:
+        problems.append(f"evidence sidecar is not parseable JSON: {exc}")
+        return problems
+    if not isinstance(sidecar, dict):
+        problems.append("evidence sidecar must be a JSON object")
+        return problems
+    for key in ("source_id", "source_version", "license_id",
+                "coverage", "timing_review", "reviewer_ids",
+                "review_date", "decision"):
+        if key not in sidecar or sidecar[key] in (None, "", []):
+            problems.append(f"sidecar missing required field {key!r}")
+    if sidecar.get("source_id") and \
+            sidecar["source_id"] != getattr(record, "source_id", None):
+        problems.append("sidecar source_id does not match the record")
+    if sidecar.get("source_version") and \
+            sidecar["source_version"] != getattr(record, "version", None):
+        problems.append("sidecar source_version does not match the "
+                        "record version")
+    if sidecar.get("decision") not in (None, "VERIFIED"):
+        problems.append("sidecar decision must be VERIFIED for an "
+                        "EVIDENCE_VERIFIED source")
+    if sidecar.get("license_id") and \
+            sidecar["license_id"] != getattr(record, "license_id", ""):
+        problems.append("sidecar license_id does not match the record")
+    review_date = sidecar.get("review_date")
+    if isinstance(review_date, str) and not _valid_calendar_date(
+            review_date):
+        problems.append("sidecar review_date is not a real calendar "
+                        "date")
     return problems
 
 
@@ -598,16 +802,19 @@ def source_evidence_problems(record: Any, *,
 FORBIDDEN_STATUS_TOKENS = frozenset({
     "READY", "FMX_READY", "B_TO_C_READY", "WARNING_READY",
     "PRODUCTION_READY", "SCIENTIFICALLY_VALIDATED", "AUTHORITY_APPROVED",
-    "OPERATIONALLY_AUTHORIZED", "PILOT_READY", "FORECAST_READY"})
+    "OPERATIONALLY_AUTHORIZED", "PILOT_READY", "FORECAST_READY",
+    "PILOT_QUALIFIED", "ELIGIBLE", "APPROVED", "VALIDATED_OPERATIONALLY",
+    "PILOT_SELECTED", "PILOT_GATE_PASSED", "FORECAST_SKILL_DEMONSTRATED"})
 
 # Flag scan tolerates JSON double quotes, single quotes, escaped
-# quotes, YAML unquoted keys, `=` separators, and YAML booleans (C21).
+# quotes, YAML unquoted keys, `=` separators, YAML booleans, and
+# numeric truthy values (C21/E16).
 _AUTHORITY_FLAG_RE = re.compile(
     r"['\"\\]?"
     r"(?:warning[_\-\s]*path[_\-\s]*authorized|"
     r"production[_\-\s]*authorized|promotion[_\-\s]*eligible|"
     r"operationally[_\-\s]*authorized|authority[_\-\s]*approved)"
-    r"['\"\\]?\s*[:=]\s*['\"\\]*(?:true|yes|on)\b",
+    r"['\"\\]?\s*[:=]\s*['\"\\]*(?:true|yes|on|1)\b",
     re.IGNORECASE)
 
 _OPERATIONAL_PHRASE_RE = re.compile(
@@ -616,35 +823,52 @@ _OPERATIONAL_PHRASE_RE = re.compile(
     r"authority\W+approved|issue\W+a\W+warning|warning\W+issued)\b",
     re.IGNORECASE)
 
+# Captures the full raw value after a status-like key — quoted string,
+# bare word, or bracketed array (E16).
 _STATUS_FIELD_RE = re.compile(
     r"['\"\\]*(?:status|gate[_\-\s]*status|readiness)['\"\\]*"
-    r"\s*[:=]\s*[\[{]?\s*['\"\\]*([A-Za-z0-9_\- ]+?)"
-    r"(?=['\"\\,\]\}\n]|$)",
+    r"\s*[:=]\s*([^\n]{0,200})",
     re.IGNORECASE)
+
+_UNICODE_ESCAPE_RE = re.compile(r"\\u([0-9a-fA-F]{4})")
+_VALUE_TOKEN_RE = re.compile(r"[A-Za-z0-9_\-]+")
 
 
 def _normalize_token(text: str) -> str:
     return re.sub(r"[\s\-]+", "_", text.strip()).upper()
 
 
+def _decode_escapes(text: str) -> str:
+    """Decode \\uXXXX escapes and escaped quotes so obfuscated claim
+    text cannot slip past the scanner (E16)."""
+    decoded = _UNICODE_ESCAPE_RE.sub(
+        lambda m: chr(int(m.group(1), 16)), text)
+    return decoded.replace('\\"', '"').replace("\\'", "'")
+
+
 def scan_claims_text(text: str) -> list[str]:
     """Scan raw text/JSON/Markdown for forbidden claim content.
 
-    Casefolded and separator-normalized: ``fmx-ready``,
-    ``"warning path authorized": true`` and ``Operational Warning``
-    phrasing are all detected.  ``B_TO_C_BLOCKED`` (factual blocked
-    status) is allowed.  Returns findings; empty means clean.
+    Casefolded and separator-normalized; scans the raw text and a
+    unicode-unescaped variant; status keys accept quoted, bare, and
+    array values with every member checked; truthy authority flags
+    accept true/yes/on/1.  ``B_TO_C_BLOCKED`` (factual blocked status)
+    is allowed.  Returns findings; empty means clean.
     """
     findings: list[str] = []
-    for match in _STATUS_FIELD_RE.finditer(text):
-        token = _normalize_token(match.group(1))
-        if token in FORBIDDEN_STATUS_TOKENS:
-            findings.append(f"forbidden status value {token!r}")
-    for match in _AUTHORITY_FLAG_RE.finditer(text):
-        findings.append(f"truthy authority flag: {match.group(0)}")
-    for match in _OPERATIONAL_PHRASE_RE.finditer(text):
-        findings.append(f"operational phrase: {match.group(0)!r}")
-    return findings
+    for variant in (text, _decode_escapes(text)):
+        for match in _STATUS_FIELD_RE.finditer(variant):
+            for piece in _VALUE_TOKEN_RE.findall(match.group(1)):
+                if _normalize_token(piece) in FORBIDDEN_STATUS_TOKENS:
+                    findings.append(
+                        f"forbidden status value {piece!r}")
+        for match in _AUTHORITY_FLAG_RE.finditer(variant):
+            findings.append(
+                f"truthy authority flag: {match.group(0)}")
+        for match in _OPERATIONAL_PHRASE_RE.finditer(variant):
+            findings.append(
+                f"operational phrase: {match.group(0)!r}")
+    return sorted(set(findings))
 
 
 # ---------------------------------------------------------------------

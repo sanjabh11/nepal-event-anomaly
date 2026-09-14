@@ -103,9 +103,10 @@ class TestHoldoutUniverse:
         base = dict(
             holdout_plan_id="hp1", assignment_rule="basin",
             train_groups=("b1",), validation_groups=("b2",),
-            test_groups=("b3",), embargo_seconds=7 * 86400,
-            evaluation_region_names=("b1", "b2"),
-            event_assignments={"e1": "b1", "e2": "b2", "e3": "b3"})
+            test_groups=("b3", "b4"), embargo_seconds=7 * 86400,
+            evaluation_region_names=("b3", "b4"),
+            event_assignments={"e1": "b1", "e2": "b2", "e3": "b3",
+                               "e4": "b4"})
         base.update(kw)
         return HoldoutPlanV0(**base)
 
@@ -147,6 +148,8 @@ class TestVintageAndRegimeBinding:
             archive_availability="2020-01-01T00:00:00Z",
             archive_payload_sha256="a" * 64,
             retrieval_record_sha256="b" * 64,
+            archive_payload_path="archive/v1.bin",
+            retrieval_record_path="archive/v1_retrieval.json",
             model_version="gefs_v12", license_id="NOAA-PD",
             archive_mechanism="AWS")
         assert good.problems() == []
@@ -260,7 +263,11 @@ class TestRound3SemanticBinding:
         p = root / gates.EXPECTED_POLICY_NAME
         m.write_text("m"); p.write_text("p")
         sidecar = root / "ev.json"
-        sidecar.write_text("{}")
+        sidecar.write_text(
+            '{"source_id": "s", "source_version": "v1", '
+            '"license_id": "CC-BY-4.0", "coverage": "Nepal", '
+            '"timing_review": "ok", "reviewer_ids": ["r1", "r2"], '
+            '"review_date": "2026-09-14", "decision": "VERIFIED"}')
         approval = {
             "artifact_root": str(root), "matrix_path": str(m),
             "policy_path": str(p), "matrix_sha256": sha256_file(m),
@@ -455,8 +462,11 @@ class TestRound3SemanticBinding:
                       event_time_end="2020-01-01T01:00:00Z").problems()
 
     def test_c17_region_mapping(self):
-        assert any("not drawn from declared" in p for p in _holdout(
+        assert any("locked test groups" in p for p in _holdout(
             evaluation_region_names=("kosi", "mustang")).problems())
+        # regions drawn from train/validation groups also reject
+        assert any("locked test groups" in p for p in _holdout(
+            evaluation_region_names=("b1", "b2")).problems())
 
     def test_c19_regime_digests_must_bind_artifacts(self, tmp_path):
         root = tmp_path / "r"; root.mkdir()
@@ -648,9 +658,10 @@ def _holdout(**kw):
     base = dict(
         holdout_plan_id="hp1", assignment_rule="basin",
         train_groups=("b1",), validation_groups=("b2",),
-        test_groups=("b3",), embargo_seconds=7 * 86400,
-        evaluation_region_names=("b1", "b2"),
-        event_assignments={"e1": "b1", "e2": "b2", "e3": "b3"})
+        test_groups=("b3", "b4"), embargo_seconds=7 * 86400,
+        evaluation_region_names=("b3", "b4"),
+        event_assignments={"e1": "b1", "e2": "b2", "e3": "b3",
+                           "e4": "b4"})
     base.update(kw)
     return HoldoutPlanV0(**base)
 
@@ -665,18 +676,149 @@ def _vintage():
         archive_availability="2020-01-01T00:00:00Z",
         archive_payload_sha256="a" * 64,
         retrieval_record_sha256="b" * 64,
+        archive_payload_path="archive/v1.bin",
+        retrieval_record_path="archive/v1_retrieval.json",
         model_version="gefs_v12", license_id="NOAA-PD",
         archive_mechanism="AWS")
 
 
+class TestRound4ESeries:
+    """E-series: typed deserialization, role binding, replay."""
+
+    def _approval(self, tmp_path, **over):
+        root = tmp_path / "r"
+        root.mkdir(exist_ok=True)
+        m = root / gates.EXPECTED_MATRIX_NAME
+        p = root / gates.EXPECTED_POLICY_NAME
+        m.write_text("m"); p.write_text("p")
+        base = {
+            "artifact_root": str(root), "matrix_path": str(m),
+            "policy_path": str(p), "matrix_sha256": sha256_file(m),
+            "policy_sha256": sha256_file(p),
+            "source_review_date": "2026-09-14",
+            "selected_pilot_rule":
+                "FIRST_PASSING_ALL_GATES_ELSE_NO_QUALIFYING",
+            "approval_scope": "design_review_only",
+            "unresolved_blockers": [], "human_approved": True,
+            "approved_by": "pi", "approver_role": "approver",
+            "approver_attestation": gates.EXPECTED_ATTESTATION,
+            "approved_at": "2026-09-14T00:00:00Z"}
+        base.update(over)
+        return base, root
+
+    def test_e01_deserialize_exact(self):
+        from nepal.research_v0.records import deserialize_record
+        payload = SourceRecordV0(source_id="s", provider="p",
+                                 doi_or_url="u").to_dict()
+        rec = deserialize_record(payload)
+        assert type(rec) is SourceRecordV0
+        # unknown type tag rejects
+        with pytest.raises(ValueError):
+            deserialize_record({"record_type": "Evil", "x": 1})
+        # unknown field rejects
+        bad = dict(payload); bad["bogus"] = 1
+        with pytest.raises(ValueError):
+            deserialize_record(bad)
+
+    def test_e02_envelope_carries_canonical_paths(self, tmp_path):
+        approval, root = self._approval(tmp_path)
+        env = gates.build_claim_envelope(
+            "e", "DESIGN_DRAFT_COMPLETE", {}, approval)
+        assert env["matrix_path"].endswith(gates.EXPECTED_MATRIX_NAME)
+        assert env["policy_path"].endswith(gates.EXPECTED_POLICY_NAME)
+        assert env["artifact_root"] == str(root.resolve())
+
+    def test_e04_role_confusion_rejected(self, tmp_path):
+        # a power_report artifact cannot satisfy a feature_digest
+        approval, root = self._approval(tmp_path)
+        ev = root / "ev"; ev.mkdir()
+        f = ev / "power.json"; f.write_bytes(b"x")
+        meta = hash_artifact(f, ev)
+        art = EvidenceArtifactV0(
+            artifact_id="p1", artifact_type="power_report",
+            path="power.json", sha256=meta["sha256"],
+            size_bytes=1, as_of_date="2026-09-14")
+        approval["evidence_root"] = str(ev)
+        exp = ForecastExperimentV0(
+            experiment_id="x1", vertical_id="glof",
+            target="occurrence", horizon="30d", holdout_plan_id="hp1",
+            feature_digests=(meta["sha256"],),
+            vintage_digests=("a" * 64,),)
+        with pytest.raises(ValueError):
+            gates.build_claim_envelope(
+                "e", "FORECAST_EXPERIMENT_ONLY",
+                {"a": art, "exp": exp}, approval)
+
+    def test_e09_ghost_holdout_ids_rejected(self, tmp_path):
+        approval, root = self._approval(tmp_path)
+        src = _label_source()
+        label = _label()
+        hp = _holdout()  # assigns e1..e4 but only e1 is bound
+        with pytest.raises(ValueError):
+            gates.build_claim_envelope(
+                "e", "DESIGN_DRAFT_COMPLETE",
+                {"src": src, "lbl": label, "hp": hp}, approval)
+
+    def test_e11_asserted_control_state_rejected(self, tmp_path):
+        approval, root = self._approval(tmp_path)
+        src = _label_source()
+        opp = _opportunity()
+        # declared NEGATIVE but an overlapping adjudicated label exists
+        label = _label(
+            event_time_start="2020-01-01T06:00:00Z",
+            event_time_end="2020-01-01T10:00:00Z",
+            event_time_precision="day", uncertainty_seconds=4 * 3600,
+            adjudication_state="TWO_REVIEW_AGREE",
+            reviewer_ids=("r1", "r2"))
+        ctl = _control()  # state=NEGATIVE, opp OBSERVED_FULL
+        with pytest.raises(ValueError):
+            gates.build_claim_envelope(
+                "e", "DESIGN_DRAFT_COMPLETE",
+                {"src": src, "opp": opp, "ctl": ctl, "lbl": label},
+                approval)
+
+    def test_e12_duplicate_ids_rejected(self, tmp_path):
+        approval, root = self._approval(tmp_path)
+        s1 = _label_source()
+        s2 = _label_source()  # same source_id
+        with pytest.raises(ValueError):
+            gates.build_claim_envelope(
+                "e", "DESIGN_DRAFT_COMPLETE",
+                {"s1": s1, "s2": s2}, approval)
+
+    def test_e16_scanner_deep_forms(self):
+        # unicode escapes
+        assert gates.scan_claims_text(
+            '{\\u0073tatus: "ready"}')
+        # nested array members beyond the first
+        assert gates.scan_claims_text(
+            '{"status": ["ok", "fmx_ready"]}')
+        # numeric truthy
+        assert gates.scan_claims_text(
+            'warning_path_authorized = 1')
+        # still clean on legit blocked statuses
+        assert not gates.scan_claims_text(
+            '{"status": "B_TO_C_BLOCKED", "note": "pending"}')
+
+    def test_e20_vintage_needs_cutoff(self, tmp_path):
+        approval, root = self._approval(tmp_path)
+        v = _vintage()
+        with pytest.raises(ValueError):
+            gates.build_claim_envelope(
+                "e", "DESIGN_DRAFT_COMPLETE", {"v": v}, approval)
+
+
 class TestNarrativeLint:
     def test_b36_all_artifacts_pass_claim_scan(self):
-        # Artifacts under lint: Markdown, JSON, manifests.  Package
-        # sources are excluded — the scanner's own pattern literals
-        # would self-trip, which is not a claim.
+        # Artifacts under lint (O01): science docs, README, CI
+        # workflows, manifests.  Package sources are excluded — the
+        # scanner's own pattern literals would self-trip.
         repo = Path(__file__).resolve().parents[1]
         targets = list((repo / "docs" / "science").glob("*"))
-        assert targets, "no science artifacts found"
+        targets += [repo / "README.md"]
+        targets += list(
+            (repo / ".github" / "workflows").glob("*.yml"))
+        assert targets, "no governed artifacts found"
         for path in targets:
             findings = gates.scan_claims_text(
                 path.read_text(encoding="utf-8"))
@@ -722,28 +864,27 @@ class TestCLIBundle:
         env_file, matrix, policy_doc, recs = self._build(tmp_path)
         rc = cli.main([
             "validate-envelope", str(env_file),
-            "--matrix-path", str(matrix),
-            "--policy-path", str(policy_doc),
             "--records-dir", str(recs)])
         assert rc == 0
-        # Fabricated: same envelope file but wrong matrix bytes.
+        # Fabricated: same envelope file but wrong matrix bytes — the
+        # canonical path recorded in the envelope no longer hashes.
         matrix.write_text("tampered", encoding="utf-8")
         rc = cli.main([
             "validate-envelope", str(env_file),
-            "--matrix-path", str(matrix)])
+            "--records-dir", str(recs)])
         assert rc == 1
 
     def test_b24_fabricated_self_consistent_envelope_fails(self,
                                                          tmp_path):
-        env_file, matrix, _, _ = self._build(tmp_path)
+        env_file, matrix, _, recs = self._build(tmp_path)
         env = json.loads(env_file.read_text())
         # An attacker crafts a structurally valid envelope — but cannot
-        # satisfy real-byte verification against the wrong file.
+        # satisfy real-byte verification against the recorded paths.
         env["matrix_sha256"] = "f" * 64
         body = {k: v for k, v in env.items() if k != "envelope_sha256"}
         from nepal.research_v0._hashing import sha256_canonical
         env["envelope_sha256"] = sha256_canonical(body)
         env_file.write_text(json.dumps(env), encoding="utf-8")
         rc = cli.main(["validate-envelope", str(env_file),
-                       "--matrix-path", str(matrix)])
+                       "--records-dir", str(recs)])
         assert rc == 1

@@ -6,7 +6,7 @@ Langtang Lirung ice-rock avalanche.
 
 ## Status: RESEARCH ONLY
 
-- No operational warning
+- No use in any warning context
 - No prediction claim
 - No production deployment
 - No causal attribution

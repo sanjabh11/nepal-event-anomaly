@@ -20,8 +20,9 @@ operational claim.
 from __future__ import annotations
 
 import re
+from datetime import datetime as _dt
 from dataclasses import asdict, dataclass, field
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
 
 from .policy import (HORIZON_SECONDS, OPPORTUNITY_STATES, EventTimeClass,
                      ForecastDataClass, RegimeMode, TargetState,
@@ -95,7 +96,24 @@ EXPERIMENT_TARGETS = frozenset({"occurrence"})
 ARTIFACT_TYPES = frozenset({
     "feature_matrix", "power_report", "stability_report",
     "k_selection", "forecast_output", "evaluation_report",
-    "uncertainty_report", "source_evidence", "regime_model"})
+    "uncertainty_report", "source_evidence", "regime_model",
+    "preprocessing", "null_model"})
+
+# Which artifact type may satisfy which digest role (E04) — role
+# confusion between artifact classes is rejected.
+ARTIFACT_ROLE_TYPES = {
+    "feature": "feature_matrix",
+    "power": "power_report",
+    "uncertainty": "uncertainty_report",
+    "forecast_output": "forecast_output",
+    "evaluation": "evaluation_report",
+    "stability": "stability_report",
+    "k_selection": "k_selection",
+    "preprocessing": "preprocessing",
+    "null_model": "null_model",
+    "regime_model": "regime_model",
+    "source_evidence": "source_evidence",
+}
 
 # Neutral research statuses — the only statuses a claim envelope may
 # carry.  READY-shaped or authority-shaped statuses are absent by
@@ -155,7 +173,8 @@ STATUS_REQUIRED_RECORDS = {
     "FORECAST_EXPERIMENT_ONLY": (
         "ForecastExperimentV0", "ForecastVintageV0", "HoldoutPlanV0",
         "EventLabelV0", "ObservationOpportunityV0", "ControlWindowV0",
-        "SourceRecordV0", "EvidenceArtifactV0"),
+        "SourceRecordV0", "EvidenceArtifactV0", "HazardVerticalSpecV0",
+        "CutoffRecordV0"),
     "UNDERPOWERED_DESCRIPTIVE_ONLY": ("ForecastExperimentV0",),
 }
 
@@ -163,6 +182,21 @@ STATUS_REQUIRED_RECORDS = {
 # requires an evidence_root and verified artifact bytes.
 EXECUTION_STATUSES = frozenset(
     NEUTRAL_RESEARCH_STATUSES - BLOCKER_TOLERANT_STATUSES)
+
+# Status → required EvidenceArtifactV0 types (E04/E18): role-specific
+# artifacts only — a feature_matrix cannot satisfy a power_report slot.
+STATUS_REQUIRED_ARTIFACT_TYPES = {
+    "RESEARCH_FEATURE_MATRIX_FROZEN": {"feature_matrix"},
+    "DESCRIPTIVE_REGIME_ONLY": {"regime_model", "stability_report",
+                                "k_selection", "preprocessing",
+                                "null_model"},
+    "REGIME_ASSOCIATION_SUPPORTED": {"regime_model", "stability_report",
+                                     "k_selection", "evaluation_report",
+                                     "preprocessing", "null_model"},
+    "FORECAST_EXPERIMENT_ONLY": {"feature_matrix", "forecast_output",
+                                 "power_report", "uncertainty_report"},
+    "UNDERPOWERED_DESCRIPTIVE_ONLY": {"power_report"},
+}
 
 
 def _req(problems: list[str], name: str, value: Any) -> None:
@@ -189,6 +223,11 @@ def _date(problems: list[str], name: str, value: Any) -> None:
     if not isinstance(value, str) or \
             not re.match(r"^\d{4}-\d{2}-\d{2}$", value):
         problems.append(f"{name} must be an ISO YYYY-MM-DD date")
+        return
+    try:  # calendar-aware: 2026-99-99 and 2026-02-30 reject (E07)
+        _dt.strptime(value, "%Y-%m-%d")
+    except ValueError:
+        problems.append(f"{name} is not a real calendar date")
 
 
 @dataclass(frozen=True)
@@ -238,7 +277,9 @@ class HazardVerticalSpecV0:
         return problems
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        d["record_type"] = type(self).__name__
+        return d
 
 
 @dataclass(frozen=True)
@@ -310,7 +351,9 @@ class SourceRecordV0:
         return problems
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        d["record_type"] = type(self).__name__
+        return d
 
 
 @dataclass(frozen=True)
@@ -430,7 +473,9 @@ class EventLabelV0:
         return problems
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        d["record_type"] = type(self).__name__
+        return d
 
 
 @dataclass(frozen=True)
@@ -498,7 +543,9 @@ class ObservationOpportunityV0:
         return problems
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        d["record_type"] = type(self).__name__
+        return d
 
 
 @dataclass(frozen=True)
@@ -543,7 +590,9 @@ class ControlWindowV0:
         return problems
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        d["record_type"] = type(self).__name__
+        return d
 
 
 @dataclass(frozen=True)
@@ -569,6 +618,8 @@ class CutoffRecordV0:
     archive_availability: str = ""
     local_retrieval_time: str = ""
     forecast_vintage_id: str = ""
+    source_id: str = ""              # E20 lineage
+    event_id: str = ""               # E20 event-unit linkage
     event_time_start: Optional[str] = None
     event_time_end: Optional[str] = None
 
@@ -587,15 +638,20 @@ class CutoffRecordV0:
         ee = parse_strict_utc(self.event_time_end)
         if es is not None and ee is not None and ee < es:
             problems.append("event_time_end precedes event_time_start")
-        # A cutoff bound to a forecast vintage must associate an event.
+        # A cutoff bound to a forecast vintage must associate an event
+        # and its source lineage (E20).
         if self.forecast_vintage_id:
             if es is None or ee is None:
                 problems.append("a vintage-bound cutoff requires "
                                 "event_time_start/event_time_end")
+            _req(problems, "event_id", self.event_id)
+            _req(problems, "source_id", self.source_id)
         return problems
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        d["record_type"] = type(self).__name__
+        return d
 
 
 @dataclass(frozen=True)
@@ -654,17 +710,16 @@ class HoldoutPlanV0:
                             "evaluation regions are required; a bare "
                             "count and single-box validation are not "
                             "evidence")
-        # Regions must be drawn from the declared basin groups, and a
-        # single-box Langtang evaluation is explicitly rejected (C17).
+        # Regions must be drawn from the locked TEST groups — the
+        # evaluation set is where generalization is measured — and a
+        # single-box Langtang evaluation is explicitly rejected
+        # (C17/E13).
         if self.evaluation_region_names:
-            declared_regions = (set(self.train_groups) |
-                                set(self.validation_groups) |
-                                set(self.test_groups))
-            unmapped = named - declared_regions
+            unmapped = named - set(self.test_groups)
             if unmapped:
                 problems.append(
-                    f"evaluation regions not drawn from declared "
-                    f"groups: {sorted(unmapped)}")
+                    f"evaluation regions must be drawn from locked "
+                    f"test groups; unmapped: {sorted(unmapped)}")
             if named == {"langtang"}:
                 problems.append("Langtang-only evaluation is "
                                 "prohibited")
@@ -694,7 +749,9 @@ class HoldoutPlanV0:
         return problems
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        d["record_type"] = type(self).__name__
+        return d
 
 
 @dataclass(frozen=True)
@@ -712,6 +769,8 @@ class ForecastVintageV0:
     archive_availability: str = ""
     archive_payload_sha256: str = ""
     retrieval_record_sha256: str = ""
+    archive_payload_path: str = ""     # under evidence_root (E05)
+    retrieval_record_path: str = ""    # under evidence_root (E05)
     model_version: str = ""
     license_id: str = ""
     archive_mechanism: str = ""
@@ -737,6 +796,11 @@ class ForecastVintageV0:
              self.archive_payload_sha256)
         _sha(problems, "retrieval_record_sha256",
              self.retrieval_record_sha256)
+        # A vintage is archive evidence: both files must be declared
+        # and are byte-verified whenever an evidence_root is bound.
+        _req(problems, "archive_payload_path", self.archive_payload_path)
+        _req(problems, "retrieval_record_path",
+             self.retrieval_record_path)
         times = {
             "initialization_time": _ts(problems, "initialization_time",
                                        self.initialization_time),
@@ -763,7 +827,9 @@ class ForecastVintageV0:
         return problems
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        d["record_type"] = type(self).__name__
+        return d
 
 
 @dataclass(frozen=True)
@@ -779,7 +845,9 @@ class RegimeArtifactV0:
     preprocessing_digest: str
     k_selection_digest: str = ""
     stability_report_digest: str = ""
+    null_model_digest: str = ""      # K=1 null artifact (E19)
     source_digests: tuple[str, ...] = ()
+    data_class: str = "REANALYSIS"   # regimes fit on reanalysis only
     fitted_on: str = "TRAIN_ONLY"
     k: int = 1                       # K=1 null is mandatory
     seeds: tuple[int, ...] = ()
@@ -792,11 +860,22 @@ class RegimeArtifactV0:
             problems.append(f"mode {self.mode!r} invalid")
         if self.fitted_on != "TRAIN_ONLY":
             problems.append("regimes must be fit on training groups only")
-        if self.k < 1:
-            problems.append("k must be >= 1; K=1 null is required")
-        if len(set(self.seeds)) < 3:
-            problems.append("at least three independent seeds are "
+        if self.data_class != "REANALYSIS":
+            problems.append("regime discovery runs on retrospective "
+                            "reanalysis data only — never forecast "
+                            "archives or feeds")
+        if not isinstance(self.k, int) or isinstance(
+                self.k, bool) or self.k < 1:
+            problems.append("k must be an integer >= 1; K=1 null is "
                             "required")
+        if not self.seeds or len(set(self.seeds)) < 3:
+            problems.append("at least three distinct seeds are "
+                            "required")
+        elif any(not isinstance(s, int) or isinstance(s, bool)
+                 or s < 0 for s in self.seeds):
+            problems.append("seeds must be distinct non-negative "
+                            "integers")
+        _sha(problems, "null_model_digest", self.null_model_digest)
         if not self.label_blinding:
             problems.append("event labels are prohibited in regime "
                             "fitting, K selection, and interpretation")
@@ -812,7 +891,9 @@ class RegimeArtifactV0:
         return problems
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        d["record_type"] = type(self).__name__
+        return d
 
 
 @dataclass(frozen=True)
@@ -894,7 +975,9 @@ class ForecastExperimentV0:
         return problems
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        d["record_type"] = type(self).__name__
+        return d
 
 
 @dataclass(frozen=True)
@@ -952,7 +1035,9 @@ class ResearchClaimEnvelopeV0:
                              + "; ".join(violations))
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        d["record_type"] = type(self).__name__
+        return d
 
 
 @dataclass(frozen=True)
@@ -979,13 +1064,17 @@ class EvidenceArtifactV0:
                             f"in {sorted(ARTIFACT_TYPES)}")
         _sha(problems, "sha256", self.sha256)
         if self.size_bytes is None or not isinstance(
-                self.size_bytes, int) or self.size_bytes < 0:
-            problems.append("size_bytes must be a non-negative integer")
+                self.size_bytes, int) or isinstance(
+                self.size_bytes, bool) or self.size_bytes < 0:
+            problems.append("size_bytes must be a non-negative "
+                            "integer")
         _date(problems, "as_of_date", self.as_of_date)
         return problems
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        d["record_type"] = type(self).__name__
+        return d
 
 
 # Approved record classes that may be bound into an envelope — keyed by
@@ -1004,3 +1093,37 @@ RECORD_CLASSES = {
     "EvidenceArtifactV0": EvidenceArtifactV0,
 }
 RECORD_TYPES = frozenset(RECORD_CLASSES)
+
+
+def deserialize_record(payload: Mapping[str, Any]) -> Any:
+    """Exact typed deserialization (E01): the ``record_type`` tag must
+    name an approved class, every constructor field must be present,
+    and unknown fields reject — no partial or extra keys."""
+    if not isinstance(payload, Mapping):
+        raise ValueError("record payload must be a JSON object")
+    tag = payload.get("record_type")
+    cls = RECORD_CLASSES.get(tag) if isinstance(tag, str) else None
+    if cls is None:
+        raise ValueError(f"record_type {tag!r} is not an approved "
+                         f"record class")
+    import dataclasses
+    declared = {f.name for f in dataclasses.fields(cls)}
+    payload_keys = set(payload) - {"record_type"}
+    missing = declared - payload_keys
+    extra = payload_keys - declared
+    # Missing keys are allowed only when the field has a default.
+    defaulted = {f.name for f in dataclasses.fields(cls)
+                 if f.default is not dataclasses.MISSING
+                 or f.default_factory is not dataclasses.MISSING}
+    hard_missing = missing - defaulted
+    if hard_missing:
+        raise ValueError(f"{tag}: missing required fields "
+                         f"{sorted(hard_missing)}")
+    if extra:
+        raise ValueError(f"{tag}: unknown fields {sorted(extra)}")
+    kwargs = {k: payload[k] for k in payload_keys}
+    try:
+        return cls(**kwargs)
+    except TypeError as exc:
+        raise ValueError(f"{tag}: deserialization failed: {exc}") \
+            from exc

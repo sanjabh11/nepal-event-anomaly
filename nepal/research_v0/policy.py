@@ -284,6 +284,11 @@ def assign_target_state_typed(
     for label in event_labels:
         if type(label) is not EventLabelV0 or label.problems():
             return TargetState.CENSORED_OR_AMBIGUOUS
+        # E21: the label must come from the same source the
+        # opportunity observed — cross-source events do not count.
+        if opportunity.source_id and \
+                label.source_id != opportunity.source_id:
+            return TargetState.CENSORED_OR_AMBIGUOUS
         s = parse_strict_utc(label.event_time_start)
         e = parse_strict_utc(label.event_time_end)
         intervals.append({"start": s, "end": e,

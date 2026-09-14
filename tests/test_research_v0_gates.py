@@ -257,7 +257,12 @@ class TestSourceEvidenceBinding:
                                                 tmp_path):
         root, _, _ = doc_paths
         sidecar = root / "sidecar.json"
-        sidecar.write_text('{"evidence": true}', encoding="utf-8")
+        sidecar.write_text(
+            '{"source_id": "s", "source_version": "v1", '
+            '"license_id": "CC-BY-4.0", "coverage": "Nepal", '
+            '"timing_review": "ok", "reviewer_ids": ["r1", "r2"], '
+            '"review_date": "2026-09-14", "decision": "VERIFIED"}',
+            encoding="utf-8")
         good = SourceRecordV0(
             source_id="s", provider="p", doi_or_url="u",
             posture="EVIDENCE_VERIFIED", version="v1",
