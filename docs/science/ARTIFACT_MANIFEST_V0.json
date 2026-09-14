@@ -1,16 +1,16 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "e19d0a7b7f8d21e73a3007773f3f97829b81efeb",
+  "content_head": "20ea1ebc28531d642bdba789046c02fdf00fa898",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
-      "sha256": "8dbac53a8fbce4cfded28e6ec5789db4a2b37e1f0b9f889a75bfe595392fbb87",
-      "size_bytes": 1817
+      "sha256": "1b06fd84b67e98915c914e1edf95f87d4803d04061eb53c9ce9ac7e0b6ca2de9",
+      "size_bytes": 2396
     },
     {
       "relpath": "docs/science/GAP_REGISTER_V0.md",
-      "sha256": "33cb38ce7598f27492eda0f9f64dd926332c56ba93765bf3de5e10de20963ffa",
-      "size_bytes": 18162
+      "sha256": "de0826f5f60869a2c68aa18cc85b6ea9b571c6e344d1d3dffb6fd3281974319d",
+      "size_bytes": 19631
     },
     {
       "relpath": "docs/science/HAZARD_EVENT_INVENTORY_DECISION_MATRIX_V0.md",
@@ -24,8 +24,8 @@
     },
     {
       "relpath": "docs/science/P0_BASELINE_LEDGER.md",
-      "sha256": "dd8471a36966d549415177c7026fab72cf6a04abb5601f5e1eebecea1f8cb9de",
-      "size_bytes": 3288
+      "sha256": "7d7b989b94cc5bc93daf90f6f919a9e3ed2a03b991de345cb2c98d5f5bfed278",
+      "size_bytes": 3426
     },
     {
       "relpath": "docs/science/SOURCE_FEASIBILITY_RECORDS_V0.md",
@@ -49,8 +49,8 @@
     },
     {
       "relpath": "nepal/research_v0/gates.py",
-      "sha256": "e1227fb1bb906170cb25f7eee915fb9ba3a0c57a61286a57533f50dab12fa3dd",
-      "size_bytes": 34890
+      "sha256": "5cccfdb7b9c5c7e46a8bfff6bb9e52f328670815b282fa962e3f21a5a92baa94",
+      "size_bytes": 38048
     },
     {
       "relpath": "nepal/research_v0/policy.py",
@@ -59,13 +59,13 @@
     },
     {
       "relpath": "nepal/research_v0/records.py",
-      "sha256": "c1538838d0723ca502f3f4732e1774513b3814554fe6b9b8af1f02e46c28fade",
-      "size_bytes": 44606
+      "sha256": "0b8029c9ce8508ca60462625356394541070a75e01574b1d2b22bb27f9408d1a",
+      "size_bytes": 44759
     },
     {
       "relpath": "tests/test_research_v0_adversarial.py",
-      "sha256": "3f9fbfe7c0bd97bcecda3824c4978f66e52e3f0de3bc836274e91df0f1daf606",
-      "size_bytes": 28630
+      "sha256": "aab00d3760f24e025d745e76b6bb7782750976e0599203a79d5b054bf0cd96ee",
+      "size_bytes": 33261
     },
     {
       "relpath": "tests/test_research_v0_gates.py",
@@ -92,7 +92,7 @@
   "research_diagnostic_only": true,
   "self_excluded": true,
   "test_results": {
-    "full_suite_venv": "1229 passed, 5 skipped, 0 failed",
-    "research_v0": "97 passed"
+    "full_suite_venv": "1238 passed, 5 skipped, 0 failed",
+    "research_v0": "106 passed"
   }
 }
