@@ -1,6 +1,6 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "04ee291a28899e0eb5cc3f6a326033acc27fcd74",
+  "content_head": "b9f12cc30dc429ed748e1a3f4cc242ef58ae0ae5",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
@@ -14,8 +14,8 @@
     },
     {
       "relpath": "docs/science/GAP_REGISTER_V0.md",
-      "sha256": "261400744ce4019172d1dea81454c9173ca1c7b67e6084ac971b37f235d52571",
-      "size_bytes": 24150
+      "sha256": "768698ba8bb85d2da1830abd3fdb66212f220cd2eae1478735353f4c0c17cfe4",
+      "size_bytes": 26182
     },
     {
       "relpath": "docs/science/HAZARD_EVENT_INVENTORY_DECISION_MATRIX_V0.md",
@@ -41,6 +41,16 @@
       "relpath": "docs/science/SOURCE_FEASIBILITY_RECORDS_V0.md",
       "sha256": "91132c7114b662d32272b6d9a81f87fd269a9a932d8935afe4040f2d0802bc53",
       "size_bytes": 9566
+    },
+    {
+      "relpath": "nepal/feature_extraction.py",
+      "sha256": "c2a6372c2f0ed056247a3f122ec3edd94baa0fd10e1b0f22bea4c5790b44b378",
+      "size_bytes": 18378
+    },
+    {
+      "relpath": "nepal/gmm_descriptive.py",
+      "sha256": "69d9c54ade978f0928d864a05a0bbe82727c1a7af2232da712e92f6cac79163b",
+      "size_bytes": 23657
     },
     {
       "relpath": "nepal/research_v0/__init__.py",
@@ -103,7 +113,7 @@
   "scope": "governed science artifacts: docs/science, nepal/research_v0, research tests, CI workflow, README \u2014 non-science sources excluded by design",
   "self_excluded": true,
   "test_results": {
-    "full_suite_venv": "1248 passed, 5 skipped (rasterio-dependent), 0 failed",
+    "full_suite_venv": "1248 passed, 5 skipped (rasterio), 0 failed",
     "research_v0": "116 passed"
   }
 }
