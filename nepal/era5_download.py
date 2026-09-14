@@ -91,6 +91,9 @@ JJA_MONTHS = ["06", "07", "08"]
 
 # Years: 2001-2026 (25-year baseline + event year)
 YEAR_RANGE = list(range(2001, 2027))
+# Inclusive bounds enforced by the --year-range parser (P5-02)
+MIN_YEAR = YEAR_RANGE[0]
+MAX_YEAR = YEAR_RANGE[-1]
 
 # All 24 hours
 HOURS = [f"{h:02d}:00" for h in range(24)]
@@ -577,8 +580,12 @@ def download_all(years: list[int], run_root: Path,
     ledger["planned_months"] = len(planned)
 
     if dry_run:
+        # P5-05 canonical dry-run: print the deterministic CDS request
+        # JSON for every planned month. No files are created and the
+        # cdsapi client is never imported/constructed on this path.
         print(f"DRY RUN: {len(planned)} monthly requests "
               f"({len(years)} years x JJA)")
+        print(f"Dataset: {CDS_DATASET}")
         print(f"Variables: {CDS_VARIABLES}")
         print(f"Area: {AREA}")
         print(f"Run root: {run_root}")
@@ -589,6 +596,9 @@ def download_all(years: list[int], run_root: Path,
                   f"({days[0]}..{days[-1]}) x 24 hours")
             print(f"    raw        -> {run_root / 'raw' / f'era5_land_{y}_{m}.nc'}")
             print(f"    normalized -> {run_root / 'monthly' / f'era5_land_{y}_{m}.nc'}")
+            print(f"    CDS request ({CDS_DATASET}):")
+            print(json.dumps(build_request(y, m), indent=2,
+                             sort_keys=True))
         print(f"Merged output -> {run_root / 'merged' / MERGED_NAME}")
         print(f"Ledger        -> {run_root / LEDGER_NAME}")
         ledger["status"] = "dry_run"
@@ -766,6 +776,48 @@ def netcdf_smoke() -> bool:
                                         ds["v"].values)))
 
 
+def parse_year_range(spec: str) -> list[int]:
+    """P5-02 strict --year-range parser.
+
+    Requires the format ``START-END`` (a bare ``YYYY`` is accepted as
+    shorthand for ``YYYY-YYYY``) with
+    ``MIN_YEAR <= start <= end <= MAX_YEAR``. Raises ValueError with a
+    clear message on any violation; the caller prints it to stderr and
+    exits 1 BEFORE any cdsapi import or file creation. This replaces
+    the old loose parse that crashed IndexError on a reversed range,
+    accepted out-of-bounds years like 2000, and silently planned zero
+    requests for years after the event year.
+    """
+    parts = spec.strip().split("-")
+    if len(parts) == 1:
+        start_s = end_s = parts[0]
+    elif len(parts) == 2:
+        start_s, end_s = parts
+    else:
+        raise ValueError(
+            f"invalid --year-range {spec!r}: expected format START-END "
+            f"(e.g. {MIN_YEAR}-{MAX_YEAR})")
+    if not start_s.strip() or not end_s.strip():
+        raise ValueError(
+            f"invalid --year-range {spec!r}: expected format START-END "
+            f"(e.g. {MIN_YEAR}-{MAX_YEAR})")
+    try:
+        start, end = int(start_s), int(end_s)
+    except ValueError:
+        raise ValueError(
+            f"invalid --year-range {spec!r}: START and END must be "
+            f"integer years (e.g. {MIN_YEAR}-{MAX_YEAR})") from None
+    if start > end:
+        raise ValueError(
+            f"invalid --year-range {spec!r}: start year {start} is "
+            f"after end year {end}; require start <= end")
+    if start < MIN_YEAR or end > MAX_YEAR:
+        raise ValueError(
+            f"invalid --year-range {spec!r}: out of bounds; require "
+            f"{MIN_YEAR} <= start <= end <= {MAX_YEAR}")
+    return list(range(start, end + 1))
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Download ERA5-Land for Nepal event analysis")
@@ -779,7 +831,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="Overwrite an existing run root instead of "
                              "creating a new timestamped run dir")
     parser.add_argument("--year-range", type=str, default="2001-2026",
-                        help="Year range (e.g., 2001-2026)")
+                        help=f"Year range START-END, inclusive "
+                             f"({MIN_YEAR}-{MAX_YEAR}; e.g. 2001-2026)")
     parser.add_argument("--smoke", action="store_true",
                         help="Run the NetCDF backend smoke test "
                              "(xarray round-trip) and exit")
@@ -798,11 +851,13 @@ def main(argv: list[str] | None = None) -> int:
         print("NetCDF smoke test passed.")
         return 0
 
-    if "-" in args.year_range:
-        start, end = map(int, args.year_range.split("-"))
-        years = list(range(start, end + 1))
-    else:
-        years = [int(args.year_range)]
+    # P5-02: strict validation happens before run-root resolution, so
+    # an invalid range exits before any cdsapi import or file creation.
+    try:
+        years = parse_year_range(args.year_range)
+    except ValueError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
 
     try:
         run_root = resolve_run_root(args.run_root, force=args.force)

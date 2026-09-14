@@ -273,6 +273,22 @@ truth).
 | P5-16 env smoke | Medium | RESOLVED — `--smoke` NetCDF round-trip gate (CI + CLI) |
 | P5-C acquisition | Critical | BLOCKED_EXTERNAL — explicit network authorization required; `cdsapirc` exists but authorization ≠ credentials |
 
+## P5 chain-execution round (JJA universality + edge censoring)
+
+| ID | Defect | Disposition |
+|---|---|---|
+| AUD-01 command sequence | Medium | RESOLVED — README documents the 3-command chain with shared run root |
+| P5-01 merged-path mismatch | Critical | RESOLVED — GMM bundle scans `run_root/merged/` (no `era5/` nesting) |
+| P5-02 year-range parser | Critical | RESOLVED — `parse_year_range` enforces 2001≤start≤end≤2026, exits 1 before cdsapi import |
+| P5-03 non-JJA resample rows | Critical | RESOLVED — daily frame filtered to JJA before rolling; 6,831 gap rows eliminated; `non_jja_rows_dropped` reported |
+| P5-04 edge-censored rows | Critical | RESOLVED — `edge_censored` bool column; preflight accepts NaN only in `pdd_7day` on flagged rows; 156 rows classified, dropped pre-fit; `rows_used`/`edge_censored_dropped` in results |
+| P5-05 canonical dry-run JSON | High | RESOLVED — full request dict per month, no client construction |
+| P5-07 monotonic/canonical index | High | RESOLVED — preflight rejects non-monotonic and non-00:00 timestamps |
+| P5-08 full-chain integration test | High | RESOLVED — `TestFullChain`: merged NetCDF → extract → derive → thermal → GMM → bundle digest |
+| P5-14 ledger drift | High | RESOLVED — counts + commit refs rebound in manifest |
+| P5-15 skip disclosure | Medium | RESOLVED — CI P5 step runs `-rs`; skip comment added |
+| P5-16 README path clarity | Medium | RESOLVED — P5 confirmation-only diagnostic section added |
+
 ## Governance policies (O05)
 
 - Artifact retention: governed artifacts live only under `docs/science`,

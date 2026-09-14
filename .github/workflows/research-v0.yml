@@ -88,9 +88,13 @@ jobs:
             python -B -m pytest tests/test_research_v0_*.py -q -rs
 
       - name: P5 io-contract tests
+        # P5-15: -rs surfaces skip reasons in the CI log — skips (the
+        # 5 rasterio-gated environmental gates elsewhere in the suite
+        # and any optional-API gates here) must stay visible, not
+        # pass silently.
         run: |
           PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
-            python -B -m pytest tests/test_p5_io_contract.py -q
+            python -B -m pytest tests/test_p5_io_contract.py -q -rs
 
       - name: ERA5 download dry-run gate
         run: python -B nepal/era5_download.py --dry-run

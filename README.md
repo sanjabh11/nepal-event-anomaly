@@ -35,6 +35,37 @@ See `preregistration.md` (FROZEN — do not modify after data inspection)
 #   python nepal/run_nepal_test.py     # Phase-5 runner — LEGACY, non-pilot
 ```
 
+### P5 confirmation-only diagnostic path
+
+The three scripts below form one bounded, research-only diagnostic
+chain — they are NOT legacy quarantined surfaces, but they are NOT a
+pilot, forecast, or operational path either. They produce a
+single-cell descriptive regime check on retrospective ERA5-Land data
+only. Execution requires explicit network authorization (P5-C gate);
+the code is conformant but no download has been authorized or run.
+
+```bash
+RUN_ROOT=research_runs/gmm_confirmation_$(date +%Y%m%d)
+
+# 1. Bounded acquisition — 78 monthly ERA5-Land JJA requests,
+#    2026-08 capped at day 25, fails closed on any incomplete or
+#    post-cutoff payload. Requires cdsapi credentials.
+python nepal/era5_download.py --run-root "$RUN_ROOT" --year-range 2001-2026
+
+# 2. Feature extraction — reads merged/, writes features/ under the
+#    same run root. No post-event rows; edge-censored PDD rows flagged.
+python nepal/feature_extraction.py --run-root "$RUN_ROOT" \
+    --era5-file "$RUN_ROOT/merged/era5_land_nepal_jja_2001_2026.nc"
+
+# 3. Descriptive GMM — reads features/, writes gmm/ under the same
+#    run root. Status: EXPLORATORY_DESCRIPTIVE_SINGLE_CELL. K=1 null
+#    included; K=1..5; 3 seeds; converged-only BIC; no event labels.
+python nepal/gmm_descriptive.py --run-root "$RUN_ROOT"
+```
+
+All outputs land under `research_runs/` (gitignored) — never under
+`data/`, `pinned/`, `framework_v1/`, or `preregistration.md`.
+
 ## Science design (v0)
 
 See `docs/science/` for the hazard/event-inventory decision matrix, the

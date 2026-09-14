@@ -92,6 +92,7 @@ UNITS = {
     "pdd_daily": "degC*day",
     "pdd_7day": "degC*day",
     "freezing_height_m": "m",
+    "edge_censored": "bool",
 }
 
 
@@ -241,6 +242,22 @@ def compute_thermal_indices(df: pd.DataFrame, model_elev_m: float) -> pd.DataFra
 
     ERA5-Land accumulation note: tp and sf are per-hour accumulations.
     Daily total = sum of 24 hourly values, NOT mean.
+
+    P5-03: resample("D") materialises a CONTINUOUS daily index from the
+    first to the last timestamp. On JJA-only hourly input it fills each
+    Aug 31 -> Jun 1 inter-season gap with all-NaN rows (~6,831 spurious
+    rows over 2001-2026: 9,217 resampled vs the 2,386 JJA contract).
+    The daily frame is therefore filtered to JJA_MONTHS before the
+    rolling indices are computed; the dropped count is recorded in
+    daily_df.attrs["non_jja_rows_dropped"] and printed.
+
+    P5-04: after JJA filtering, the first 6 days of every June have no
+    complete 7-day PDD window (min_periods=7 at a run start), so
+    pdd_7day is legitimately NaN there — 6 x 26 = 156 rows over
+    2001-2026. These are edge-censored, not missing data: they are
+    flagged via the `edge_censored` bool column and left in place
+    (never filled, never dropped here). Every other column must be
+    complete after the JJA filter; any other NaN raises.
     """
     daily_df = pd.DataFrame()
 
@@ -279,6 +296,20 @@ def compute_thermal_indices(df: pd.DataFrame, model_elev_m: float) -> pd.DataFra
     if "relative_humidity" in df.columns:
         daily_df["rh_daily"] = df["relative_humidity"].resample("D").mean()
 
+    # --- P5-03: JJA-only contract surface ---
+    # resample("D") fills the Aug 31 -> Jun 1 inter-season gaps with
+    # all-NaN rows. Drop every non-JJA month BEFORE the rolling
+    # indices: on the JJA-only index each year's Jun 1 follows a
+    # ~274-day gap, so the run_id break below lands exactly on the
+    # season boundary and the 7-day PDD window cannot reach back
+    # across it (CFM-01).
+    n_resampled = len(daily_df)
+    daily_df = daily_df[daily_df.index.month.isin(JJA_MONTHS)]
+    non_jja_rows_dropped = n_resampled - len(daily_df)
+    daily_df.attrs["non_jja_rows_dropped"] = int(non_jja_rows_dropped)
+    print(f"JJA filter: kept {len(daily_df)} JJA daily rows, "
+          f"dropped {non_jja_rows_dropped} gap-filled non-JJA rows")
+
     # --- Thermal indices (computed, not counted as features) ---
     # Daily PDD: max(0, T_daily)
     if "t2m_daily" in daily_df.columns:
@@ -300,6 +331,28 @@ def compute_thermal_indices(df: pd.DataFrame, model_elev_m: float) -> pd.DataFra
         # 0 = T_model - 0.0065 * (z_freeze - z_model)
         # z_freeze = z_model + T_model / 0.0065
         daily_df["freezing_height_m"] = model_elev_m + daily_df["t2m_daily"] / 0.0065
+
+    # --- P5-04: edge censoring ---
+    # The first 6 days of each JJA run (every June 1-6) have no
+    # complete 7-day PDD window, so pdd_7day is NaN there by design.
+    # Flag them; do NOT forward-fill or drop — downstream consumers
+    # (e.g. the GMM dropna) exclude them via this flag.
+    if "pdd_7day" in daily_df.columns:
+        daily_df["edge_censored"] = daily_df["pdd_7day"].isna()
+
+    # Completeness gate: every column except pdd_7day must be fully
+    # observed after the JJA filter. A NaN anywhere else means a
+    # genuinely unobserved day inside the season — a data defect,
+    # not edge censoring — so fail loudly rather than emit it.
+    check_cols = [c for c in daily_df.columns if c != "pdd_7day"]
+    nan_counts = daily_df[check_cols].isna().sum()
+    nan_counts = nan_counts[nan_counts > 0]
+    if len(nan_counts):
+        raise ValueError(
+            "Incomplete daily features after JJA filter — NaN counts "
+            f"per column: {nan_counts.to_dict()}. Only pdd_7day may be "
+            "NaN (edge-censored June starts)."
+        )
 
     return daily_df
 
@@ -546,6 +599,16 @@ def main():
     print(f"Daily data: {len(daily_df)} rows")
     print(f"Columns: {list(daily_df.columns)}")
 
+    # P5-04: edge-censored rows (first 6 days of each June — no
+    # complete 7-day PDD window). They remain in the output flagged
+    # via edge_censored; usable rows exclude them.
+    edge_censored_count = int(daily_df["edge_censored"].sum()) \
+        if "edge_censored" in daily_df.columns else 0
+    usable_rows = len(daily_df) - edge_censored_count
+    print(f"Edge-censored rows (pdd_7day NaN at June starts): "
+          f"{edge_censored_count}")
+    print(f"Usable rows after edge-censoring: {usable_rows}")
+
     # Fail loudly if any feature row is on/after the held-out event
     # date — nothing on/after POST_EVENT_CUTOFF may be a feature.
     post_event_rows = daily_df.index >= pd.Timestamp(POST_EVENT_CUTOFF)
@@ -602,7 +665,14 @@ def main():
     print(f"Elevation gap: {EVENT['source_elevation_m'] - model_elev:.0f} m")
     print(f"Grid: {GRID_LAT_KM} × {GRID_LON_KM} km")
     print(f"Features: {total} (7 raw + 3 derived)")
-    print(f"Daily rows: {len(daily_df)}")
+    print(f"Daily rows: {len(daily_df)} "
+          f"(expected 2,386 JJA days; "
+          f"non-JJA dropped: "
+          f"{daily_df.attrs.get('non_jja_rows_dropped', 'n/a')})")
+    print(f"Edge-censored rows: {edge_censored_count} "
+          f"(expected 156 = 6 days x 26 years)")
+    print(f"Usable rows: {usable_rows} "
+          f"(expected 2,230 = 2,150 baseline + 80 target)")
     print(f"Date range: {daily_df.index[0]} to {daily_df.index[-1]}")
 
     # Pre-event window stats

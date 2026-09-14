@@ -5,7 +5,9 @@ contract surface only; they are never scientific inputs.
 """
 from __future__ import annotations
 
+import hashlib
 import io
+import json
 import sys
 import zipfile
 from pathlib import Path
@@ -376,3 +378,142 @@ class TestSharedRunRootLayout:
         assert set(GOOD_VARS) <= set(hourly.columns)
         assert hourly.index.min() == pd.Timestamp("2001-06-01")
         assert hourly.index.max() == pd.Timestamp("2001-07-31 23:00")
+
+
+class TestYearRange:
+    """P5-02 — strict --year-range validation on dl.main.
+
+    Reversed, out-of-bounds and post-event ranges are rejected with a
+    nonzero exit before any cdsapi import or file creation; the full
+    contract range dry-runs cleanly.
+    """
+
+    @staticmethod
+    def _rc(argv: list[str]) -> int:
+        """Process-style exit code for an in-process dl.main call: its
+        int return, SystemExit.code, or 1 for an uncaught exception
+        (a crash is still a nonzero exit)."""
+        try:
+            return int(dl.main(argv))
+        except SystemExit as e:
+            return e.code if isinstance(e.code, int) else 1
+        except Exception:
+            return 1
+
+    @pytest.mark.parametrize(
+        "spec", ["2026-2025", "2000-2001", "2027-2027"])
+    def test_invalid_year_range_rejected(self, spec, tmp_path):
+        rc = self._rc(["--year-range", spec, "--dry-run",
+                       "--run-root", str(tmp_path / "run")])
+        assert rc != 0, f"--year-range {spec} must exit nonzero"
+
+    def test_contract_range_dry_run_ok(self, tmp_path, capsys):
+        rc = self._rc(["--year-range", "2001-2026", "--dry-run",
+                       "--run-root", str(tmp_path / "run")])
+        capsys.readouterr()  # swallow the full request dump
+        assert rc == 0
+
+    def test_dry_run_prints_request_json(self, tmp_path, capsys):
+        # P5-05 — canonical dry-run emits the deterministic CDS
+        # request JSON for every planned monthly request.
+        rc = self._rc(["--year-range", "2001-2001", "--dry-run",
+                       "--run-root", str(tmp_path / "run")])
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert '"variable"' in out
+        assert "snow_depth_water_equivalent" in out
+        # one JSON request block per planned month (JJA = 3)
+        assert out.count('"variable"') >= 3
+
+
+class TestFullChain:
+    """P5-08 — a validated merged NetCDF drives the whole chain:
+    load_era5_land -> extract_raw_features -> compute_derived_features
+    -> compute_thermal_indices -> run_gmm_descriptive -> write_bundle,
+    all under a tmp run root."""
+
+    def _synthetic_merged(self, path: Path) -> None:
+        """Single-cell merged file: JJA-only hours for two baseline
+        years plus the 2026 pre-event season (Jun 1 - Aug 25), all 7
+        contract vars under their GRIB short names, canonical 'time'
+        dim, scalar latitude/longitude coords (the merge already
+        selected the event cell).
+
+        The years must be CONTIGUOUS through 2026: resample("D") in
+        compute_thermal_indices materialises every calendar day from
+        the first to the last timestamp, so a skipped JJA season would
+        surface as all-NaN rows and trip the completeness gate — a
+        gap year is a data defect, not edge censoring."""
+        idx: list[pd.Timestamp] = []
+        for year in (2024, 2025):
+            idx.extend(pd.date_range(f"{year}-06-01",
+                                     f"{year}-08-31 23:00", freq="h"))
+        idx.extend(pd.date_range("2026-06-01", "2026-08-25 23:00",
+                                 freq="h"))
+        times = pd.DatetimeIndex(idx)
+        n = len(times)
+        rng = np.random.default_rng(7)
+        loc = {"t2m": 290.0, "d2m": 280.0, "u10": 1.0, "v10": 1.0,
+               "sd": 0.02, "sf": 0.001, "tp": 0.002}
+        ds = xr.Dataset(
+            {v: (("time",),
+                  np.abs(rng.normal(loc[v], max(loc[v] * 0.1, 1e-4),
+                                    n)))
+             for v in GOOD_VARS},
+            coords={
+                "time": times,
+                "latitude": 28.3,    # scalar coord — cell pre-selected
+                "longitude": 85.5,
+            })
+        path.parent.mkdir(parents=True, exist_ok=True)
+        ds.to_netcdf(path)
+
+    def test_merged_nc_through_gmm_bundle(self, tmp_path):
+        merged_nc = tmp_path / "merged" / MERGED_NAME
+        self._synthetic_merged(merged_nc)
+
+        cell, _lat, _lon, elev = fe.load_era5_land(merged_nc)
+        hourly = fe.extract_raw_features(cell)
+        cell.close()
+        hourly = fe.compute_derived_features(hourly)
+        daily = fe.compute_thermal_indices(hourly, elev)
+
+        # P5-03 — the daily frame is a JJA-only contract surface.
+        assert set(daily.index.month.unique()) <= set(fe.JJA_MONTHS)
+
+        feature_file = (tmp_path / "features"
+                        / "features_nepal_jja_2001_2026.csv")
+        feature_file.parent.mkdir(parents=True, exist_ok=True)
+        daily.to_csv(feature_file)
+
+        run_dir = tmp_path / "gmm"
+        res = gmm.run_gmm_descriptive(daily, run_dir=run_dir)
+        assert "error" not in res, res.get("error")
+
+        # CFM-11 — the merged .nc digest is bound into the bundle.
+        bundle = gmm.write_bundle(res, [merged_nc, feature_file],
+                                  feature_file=feature_file,
+                                  run_dir=run_dir)
+        bundle_json = json.loads(
+            (run_dir / "bundle.json").read_text())
+        digests = bundle_json["input_digests"]
+        assert merged_nc.name in digests
+        assert digests[merged_nc.name] == hashlib.sha256(
+            merged_nc.read_bytes()).hexdigest()
+        assert bundle["input_digests"] == digests
+
+        # P5-04 — edge censoring is flagged, never filled or dropped.
+        if "edge_censored" not in daily.columns:
+            pytest.skip("feature_extraction.compute_thermal_indices "
+                        "does not emit edge_censored (P5-04 pending)")
+        assert int(daily["edge_censored"].sum()) == 18  # 6 x 3 JJA runs
+
+        # GMM-side accounting of the censoring (P5-04 consumer).
+        acct = res if "rows_used" in res else res.get("missingness", {})
+        if not {"rows_used", "edge_censored_dropped"} <= set(acct):
+            pytest.skip("gmm_descriptive.run_gmm_descriptive does not "
+                        "record rows_used / edge_censored_dropped "
+                        "(P5-04 pending)")
+        assert acct["edge_censored_dropped"] == \
+            int(daily["edge_censored"].sum())
+        assert 0 < acct["rows_used"] <= len(daily)

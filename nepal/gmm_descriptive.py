@@ -415,6 +415,18 @@ def run_gmm_descriptive(daily_df: pd.DataFrame,
     daily_df = daily_df[daily_df.index.month.isin(JJA_MONTHS)]
     non_jja_dropped = n_input - len(daily_df)
 
+    # P5-04 — drop extractor-flagged edge-censored rows BEFORE
+    # fitting.  These are exactly the pdd_7day-NaN rows (June-edge
+    # days whose 7-day window reaches outside JJA); keeping them
+    # would silently shrink the baseline by ~150 days.  Without the
+    # flag column nothing is dropped here — dropna() below still
+    # removes any residual NaN rows.
+    edge_censored_dropped = 0
+    if "edge_censored" in daily_df.columns:
+        edge_mask = _edge_censored_mask(daily_df)
+        edge_censored_dropped = int(edge_mask.sum())
+        daily_df = daily_df.loc[~edge_mask]
+
     feature_df = daily_df[GMM_FEATURES]
     n_raw = len(feature_df)
     # CFM-03 (audit): per-column NaN counts must be computed on the
@@ -425,6 +437,7 @@ def run_gmm_descriptive(daily_df: pd.DataFrame,
     missingness = {
         "input_rows": int(n_raw),
         "non_jja_rows_dropped": int(non_jja_dropped),
+        "edge_censored_rows_dropped": int(edge_censored_dropped),
         "rows_after_dropna": int(len(feature_df)),
         "rows_dropped": int(n_raw - len(feature_df)),
         "per_column_na": per_column_na,
@@ -437,9 +450,13 @@ def run_gmm_descriptive(daily_df: pd.DataFrame,
 
     if len(baseline) < 100:
         return {**status_meta, "missingness": missingness,
+                "rows_used": int(len(feature_df)),
+                "edge_censored_dropped": int(edge_censored_dropped),
                 "error": f"Insufficient baseline: {len(baseline)} rows"}
     if len(target_pre) < 5:
         return {**status_meta, "missingness": missingness,
+                "rows_used": int(len(feature_df)),
+                "edge_censored_dropped": int(edge_censored_dropped),
                 "error": f"Insufficient pre-event target: "
                          f"{len(target_pre)} rows"}
 
@@ -480,6 +497,8 @@ def run_gmm_descriptive(daily_df: pd.DataFrame,
 
     if gmm_results["best_model"] is None:
         return {**status_meta, "missingness": missingness,
+                "rows_used": int(len(feature_df)),
+                "edge_censored_dropped": int(edge_censored_dropped),
                 "scaling": scaling_record,
                 "error": "All GMM fits failed"}
 
@@ -554,6 +573,12 @@ def run_gmm_descriptive(daily_df: pd.DataFrame,
         "covariance_type": GMM_COVARIANCE,
         "features_used": list(GMM_FEATURES),
         "missingness": missingness,
+        # P5-04 — rows actually fitted (expected ~2,230: 2,150
+        # baseline + 80 target) and the edge-censored rows dropped
+        # before fitting (expected 156 = 6 June-edge days x 26 yrs).
+        "rows_used": int(len(feature_df)),
+        "edge_censored_rows": int(edge_censored_dropped),
+        "edge_censored_dropped": int(edge_censored_dropped),
         "scaling": scaling_record,
         # CFM audit: reference only — the units dict lives in
         # scaling.feature_units; do not duplicate it here.
@@ -747,7 +772,30 @@ def generate_gmm_plots(daily_df: pd.DataFrame, gmm_results: dict, output_dir: Pa
     print(f"GMM plots saved to {output_dir}/")
 
 
-def preflight(feature_file: Path, min_baseline_rows: int = 100) -> list[str]:
+class PreflightProblems(list):
+    """preflight() return type — a plain list of problem strings that
+    also carries input-audit metadata so the problems-free path can
+    record what it accepted (P5-04 edge-censored row count)."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.edge_censored_rows: int = 0
+
+
+def _edge_censored_mask(df: pd.DataFrame) -> np.ndarray:
+    """P5-04 — boolean mask of extractor-flagged edge-censored rows.
+
+    Accepts a bool dtype or string/numeric flags ("true"/"1"/"yes");
+    anything unrecognized counts as NOT edge-censored so a malformed
+    flag column can never smuggle NaN past the finiteness gate."""
+    ec = df["edge_censored"]
+    if pd.api.types.is_bool_dtype(ec):
+        return ec.fillna(False).to_numpy(dtype=bool)
+    return (ec.astype(str).str.strip().str.lower()
+              .isin({"true", "1", "yes"}).to_numpy(dtype=bool))
+
+
+def preflight(feature_file: Path,
+              min_baseline_rows: int = 100) -> PreflightProblems:
     """CFM-01/CFM-10 — input completeness gate. Returns problems; any
     problem means the confirmation run does not execute.
 
@@ -756,8 +804,19 @@ def preflight(feature_file: Path, min_baseline_rows: int = 100) -> list[str]:
     for 2026 exactly Jun 1..Aug 25 (86 dates, ending before the
     held-out event date).  Duplicates, non-JJA rows, non-finite
     values in required feature columns, and any row on/after the
-    event cutoff are all reported."""
-    problems: list[str] = []
+    event cutoff are all reported.
+
+    P5-04 — edge-censor acceptance: pdd_7day legitimately carries
+    NaN on June-edge days whose 7-day window reaches outside JJA;
+    the extractor flags those rows in `edge_censored`.  NaN is
+    allowed ONLY in pdd_7day and ONLY on flagged rows; if the column
+    is absent every NaN is an error (fail closed).  The accepted
+    count is carried on the returned list as .edge_censored_rows.
+
+    P5-07 — the index must be monotonically increasing canonical
+    daily dates (hour=0, minute=0); a shuffled or sub-daily index is
+    rejected."""
+    problems: PreflightProblems = PreflightProblems()
     if not feature_file.is_file():
         problems.append(f"feature matrix {feature_file} missing")
         return problems
@@ -771,6 +830,22 @@ def preflight(feature_file: Path, min_baseline_rows: int = 100) -> list[str]:
             return problems
     if daily_df.index.hasnans:
         problems.append("index contains unparseable/NaT dates")
+
+    # P5-07 — the index must be monotonically increasing canonical
+    # daily dates (00:00).  A shuffled frame can still pass the exact
+    # date-set check below while breaking every windowed diagnostic;
+    # sub-daily timestamps mean the input is not the daily JJA
+    # contract surface.
+    if not daily_df.index.is_monotonic_increasing:
+        problems.append("index is not monotonically increasing")
+    if len(daily_df.index):
+        non_midnight = daily_df.index[
+            (daily_df.index.hour != 0) | (daily_df.index.minute != 0)]
+        if len(non_midnight):
+            problems.append(
+                f"{len(non_midnight)} non-canonical timestamps "
+                "(hour/minute not 00:00 — canonical daily dates "
+                f"required, e.g. {[str(t) for t in non_midnight[:5]]})")
 
     missing = [c for c in GMM_FEATURES if c not in daily_df.columns]
     if missing:
@@ -802,14 +877,28 @@ def preflight(feature_file: Path, min_baseline_rows: int = 100) -> list[str]:
             f"{len(post_cutoff)} rows on/after event cutoff "
             f"{EVENT_DATE} — post-cutoff data must not be present")
 
-    # P5-09 — non-finite values in required feature columns.
+    # P5-04/P5-09 — non-finite values in required feature columns.
+    # Edge-censor acceptance: pdd_7day legitimately carries NaN on
+    # June-edge days whose 7-day window reaches outside JJA, and the
+    # extractor marks those rows via `edge_censored`.  NaN is
+    # allowed ONLY in pdd_7day and ONLY on flagged rows — every
+    # other NaN, and every NaN anywhere when the flag column is
+    # absent, is reported (fail closed).
     present_cols = [c for c in GMM_FEATURES if c in daily_df.columns]
     if present_cols:
+        has_edge_flag = "edge_censored" in daily_df.columns
+        edge_mask = (_edge_censored_mask(daily_df)
+                     if has_edge_flag
+                     else np.zeros(len(daily_df), dtype=bool))
+        problems.edge_censored_rows = int(edge_mask.sum())
         nonfinite = {}
         for c in present_cols:
             vals = pd.to_numeric(daily_df[c], errors="coerce")
-            n_bad = int((~np.isfinite(
-                vals.to_numpy(dtype=float))).sum())
+            bad = ~np.isfinite(vals.to_numpy(dtype=float))
+            if c == "pdd_7day" and has_edge_flag:
+                # Legitimate censoring only on flagged edge rows.
+                bad = bad & ~edge_mask
+            n_bad = int(bad.sum())
             if n_bad:
                 nonfinite[c] = n_bad
         if nonfinite:
@@ -913,6 +1002,13 @@ def main() -> int:
         for p in problems:
             print(f"  - {p}")
         return 1
+    if getattr(problems, "edge_censored_rows", 0):
+        # P5-04 — surface the accepted edge-censor count so the
+        # audit trail shows the pdd_7day June-edge NaN was expected,
+        # not overlooked.
+        print(f"Preflight: {problems.edge_censored_rows} "
+              "edge-censored rows accepted (pdd_7day June-edge "
+              "censoring; dropped before fitting)")
 
     print(f"Loading features from {feature_file}...")
     daily_df = pd.read_csv(feature_file, index_col=0, parse_dates=True)
@@ -929,11 +1025,14 @@ def main() -> int:
 
     # Bundle inputs: the features/ artifacts this stage consumed,
     # plus the merged ERA5 input under the run root if present.
+    # P5-01 — the downloader writes <run_root>/merged/ (no era5/
+    # nesting); features are CSV, already covered by the features/
+    # glob above.
     input_files = sorted(p for p in features_dir.glob("*")
                          if p.is_file())
-    era5_merged = run_root / "era5" / "merged"
-    if era5_merged.is_dir():
-        input_files += sorted(era5_merged.glob("*.nc"))
+    merged_dir = run_root / "merged"
+    if merged_dir.is_dir():
+        input_files += sorted(merged_dir.glob("*.nc"))
 
     run_dir.mkdir(parents=True, exist_ok=True)
     if "error" in gmm_results:
