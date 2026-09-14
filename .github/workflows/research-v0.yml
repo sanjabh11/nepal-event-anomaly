@@ -84,6 +84,19 @@ jobs:
             PYTHONPATH=. python -B -m nepal.research_v0.cli claim-scan "$f"
           done
 
+      - name: Manifest byte verification
+        run: |
+          PYTHONPATH=. python -B -m nepal.research_v0.cli \
+            verify-manifest docs/science/ARTIFACT_MANIFEST_V0.json
+
+      - name: Disk reserve guard
+        run: |
+          avail=$(df -k . | awk 'NR==2 {print $4}')
+          if [ "$avail" -lt 8388608 ]; then
+            echo "disk reserve below 8 GiB"; exit 1
+          fi
+          echo "disk reserve ok: ${avail} KiB free"
+
       - name: Disk reserve check (8 GiB)
         run: |
           avail_kb=$(df -k . | awk 'NR==2 {print $4}')

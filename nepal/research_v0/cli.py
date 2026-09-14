@@ -13,6 +13,7 @@ import argparse
 import json
 import math
 import sys
+from pathlib import Path
 from typing import Optional, Sequence
 
 from . import gates, policy
@@ -275,6 +276,65 @@ def _reject_constant(value: str) -> None:
     raise ValueError(f"non-finite JSON constant {value!r} rejected")
 
 
+def _cmd_verify_manifest(args: argparse.Namespace) -> int:
+    """P0-02/O01 — stdlib manifest verifier: every listed file must
+    exist with matching size and sha256, and the manifest must bind a
+    content_head.  Stdlib-only so it runs in any environment."""
+    import hashlib
+    path = Path(args.file)
+    try:
+        manifest = json.loads(path.read_text(encoding="utf-8"),
+                              parse_constant=_reject_constant)
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        print(f"manifest error: {exc}")
+        return 1
+    problems: list[str] = []
+    if not isinstance(manifest.get("content_head"), str) or \
+            len(manifest["content_head"]) != 40:
+        problems.append("content_head missing or not a 40-char SHA")
+    if not isinstance(manifest.get("baseline_head"), str) or \
+            len(manifest["baseline_head"]) != 40:
+        problems.append("baseline_head missing or not a 40-char SHA")
+    files = manifest.get("files")
+    if not isinstance(files, list) or not files:
+        problems.append("files list missing or empty")
+    else:
+        # Manifest paths are repo-root relative; derive the root from
+        # the manifest location (docs/science -> repo root).
+        root = path.resolve().parents[2]
+        seen: set[str] = set()
+        for entry in files:
+            rel = entry.get("relpath", "")
+            f = (root / rel)
+            try:
+                f.resolve().relative_to(root)
+            except ValueError:
+                problems.append(f"{rel}: escapes manifest root")
+                continue
+            if rel in seen:
+                problems.append(f"{rel}: duplicate entry")
+                continue
+            seen.add(rel)
+            if not f.is_file() or f.is_symlink():
+                problems.append(f"{rel}: missing or not a regular file")
+                continue
+            if f.stat().st_size != entry.get("size_bytes"):
+                problems.append(f"{rel}: size mismatch")
+                continue
+            if hashlib.sha256(f.read_bytes()).hexdigest() != \
+                    entry.get("sha256"):
+                problems.append(f"{rel}: sha256 mismatch")
+    tr = manifest.get("test_results")
+    if not isinstance(tr, dict) or not tr.get("research_v0"):
+        problems.append("test_results missing")
+    if problems:
+        for p in problems:
+            print(f"MANIFEST FINDING: {p}")
+        return 1
+    print(f"{path}: manifest verified ({len(seen)} files)")
+    return 0
+
+
 def _cmd_claim_scan(args: argparse.Namespace) -> int:
     try:
         with open(args.file, "r", encoding="utf-8") as handle:
@@ -345,6 +405,14 @@ def build_parser() -> argparse.ArgumentParser:
                      help="directory of <name>.json record payloads to "
                           "deserialize and re-validate")
     env.set_defaults(func=_cmd_validate_envelope)
+
+    man = sub.add_parser(
+        "verify-manifest",
+        help="stdlib verifier: every manifest-listed file must exist "
+             "with matching size and sha256; content/baseline heads "
+             "must be bound")
+    man.add_argument("file")
+    man.set_defaults(func=_cmd_verify_manifest)
 
     scan = sub.add_parser(
         "claim-scan",

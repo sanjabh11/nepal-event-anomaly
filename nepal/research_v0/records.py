@@ -1079,6 +1079,54 @@ class EvidenceArtifactV0:
 
 # Approved record classes that may be bound into an envelope — keyed by
 # class name for display, matched by exact identity at bind time (C04).
+@dataclass(frozen=True)
+class RunManifestV0:
+    """Provenance for one executed run (S13): worker identity,
+    environment, seed, and input/output byte digests — a run that
+    cannot name its exact inputs is not reproducible."""
+
+    run_id: str
+    worker_id: str = ""
+    created_at: str = ""
+    environment_digest: str = ""   # sha256 of locked env / requirements
+    seed: Optional[int] = None
+    input_digests: tuple[str, ...] = ()
+    output_digests: tuple[str, ...] = ()
+    checkpoint_policy: str = ""    # e.g. "atomic_publish_or_quarantine"
+    status: str = "PLANNED"        # PLANNED | COMPLETED | QUARANTINED
+
+    def problems(self) -> list[str]:
+        problems: list[str] = []
+        _req(problems, "run_id", self.run_id)
+        _req(problems, "worker_id", self.worker_id)
+        _ts(problems, "created_at", self.created_at)
+        _sha(problems, "environment_digest", self.environment_digest)
+        if self.seed is not None and (not isinstance(self.seed, int)
+                                      or isinstance(self.seed, bool)
+                                      or self.seed < 0):
+            problems.append("seed must be a non-negative integer")
+        if not self.input_digests:
+            problems.append("input_digests must be non-empty")
+        elif any(not SHA256_RE.match(str(d))
+                 for d in self.input_digests):
+            problems.append("every input_digest must be 64-hex sha256")
+        if any(not SHA256_RE.match(str(d))
+               for d in self.output_digests):
+            problems.append("every output_digest must be 64-hex "
+                            "sha256")
+        if self.status not in ("PLANNED", "COMPLETED", "QUARANTINED"):
+            problems.append(f"run status {self.status!r} invalid")
+        if self.status == "COMPLETED" and not self.output_digests:
+            problems.append("a completed run must name its output "
+                            "digests")
+        return problems
+
+    def to_dict(self) -> dict[str, Any]:
+        d = asdict(self)
+        d["record_type"] = type(self).__name__
+        return d
+
+
 RECORD_CLASSES = {
     "HazardVerticalSpecV0": HazardVerticalSpecV0,
     "SourceRecordV0": SourceRecordV0,
@@ -1091,6 +1139,7 @@ RECORD_CLASSES = {
     "RegimeArtifactV0": RegimeArtifactV0,
     "ForecastExperimentV0": ForecastExperimentV0,
     "EvidenceArtifactV0": EvidenceArtifactV0,
+    "RunManifestV0": RunManifestV0,
 }
 RECORD_TYPES = frozenset(RECORD_CLASSES)
 

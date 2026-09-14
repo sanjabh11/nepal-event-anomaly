@@ -211,6 +211,22 @@ truth).
 | E23 code can't authenticate humans | Critical | POLICY_DEFINED — `human_approved` remains a human P3 property; code enforces structure only |
 | E24 string-only reviewer state | High | PARTIAL — reviewer IDs + sidecar reviewer_ids required; independence declaration is a human gate |
 
+## Governance policies (O05)
+
+- Artifact retention: governed artifacts live only under `docs/science`,
+  `nepal/research_v0`, `tests/test_research_v0_*`, `.github/workflows`,
+  and `README.md` — the manifest scope. Intake artifacts (raw source
+  bytes) are excluded from this manifest and must carry their own
+  per-source license record before they may exist in the tree.
+- Privacy/redaction: reporter or observer-identifying fields are
+  prohibited in committed artifacts; source sidecars record license,
+  coverage, timing, and review metadata only.
+- Access: all authority-bearing fields (`human_approved`,
+  `approver_*`) are structural claims, not authentication; the P3
+  decision requires external, authenticated human attestation.
+- Deletion/quarantine: failed or fabricated artifacts are quarantined
+  (never silently dropped) and recorded with reason.
+
 ## Honest residual risks
 
 - **P3 human approval is still required** — no code substitutes for it.
