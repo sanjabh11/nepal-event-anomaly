@@ -229,6 +229,30 @@ truth).
 | CFM-12 overlay mistaken for detection | High | RESOLVED — fit and retrospective overlay separated; explicit note that event dates never touch fitting |
 | CFM-13–CFM-16 multi-basin, association, forecast, P3/licenses | Critical | GATED_ON_DATA/BLOCKED_EXTERNAL — no change |
 
+## P5 intake I/O contract (P5-A/B round)
+
+| ID | Defect | Disposition |
+|---|---|---|
+| P5-01 writes under frozen `data/` | Critical | RESOLVED — `--run-root` on downloader/extractor/GMM; default `research_runs/gmm_confirmation/`; frozen roots rejected |
+| P5-02 ZIP-wrapped CDS payload | Critical | RESOLVED — magic-byte detection (ZIP/HDF5/CDF); single-`.nc` safe unwrap; `valid_time`→`time` canonicalized |
+| P5-03 `snow_depth`→`sde` semantics | Critical | RESOLVED — request `snow_depth_water_equivalent`; `sde` explicitly rejected, never renamed to `sd` |
+| P5-04 merge hardcodes `time` | Critical | RESOLVED — canonicalized time axis, sorted/deduped, per-month hourly completeness recorded |
+| P5-05 lat tie at 28.25 | Medium | RESOLVED — deterministic tie rule (higher lat 28.3); requested vs selected cell recorded |
+| P5-06 missing vars → NaN | High | RESOLVED — `extract_raw_features` raises ValueError; sde-specific error |
+| P5-07 raw/derived interface | Medium | RESOLVED — 7 raw vars required in source; 12-col daily schema documented + `feature_units.json` sidecar |
+| P5-08 post-event rows | High | RESOLVED — 2026-08 request capped at day 25; extractor asserts no rows ≥ 2026-08-26 |
+| P5-09 invalid calendar days | Medium | RESOLVED — `calendar.monthrange` day generation |
+| P5-10 resume claims | Medium | RESOLVED — fresh-run roots only; `--force` or timestamped dir; no resume claim |
+| CFM rolling PDD across gaps | High | RESOLVED — rolling within contiguous-date runs only |
+| CFM post-dropna missingness | Medium | RESOLVED — per-column NaN computed pre-filter |
+| CFM non-converged BIC winner | High | RESOLVED — converged-only K eligibility; all-fail → error |
+| CFM preflight coverage | Medium | RESOLVED — ≥92 JJA rows/yr 2001-25; ≥86 pre-event rows 2026; post-cutoff rows rejected |
+| CFM bootstrap count clobber | Medium | RESOLVED — 200 replicates honored; `n_replicates` reported |
+| CFM modal-K tie | Medium | RESOLVED — `k_instability` reported when frequency < 1.0 |
+| CFM bundle run-root/UTC | Medium | RESOLVED — UTC run_id, run_root, requested/actual cell |
+| TEST-01 fixture tests | — | RESOLVED — `tests/test_p5_io_contract.py`, 15 tests |
+| P5-C/D/E acquisition | Critical | BLOCKED_EXTERNAL — needs explicit network authorization; everything pre-network is conformant |
+
 ## Governance policies (O05)
 
 - Artifact retention: governed artifacts live only under `docs/science`,

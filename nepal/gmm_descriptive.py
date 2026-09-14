@@ -28,7 +28,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from feature_contract import (
     EVENT, PRE_EVENT_WINDOW, EVENT_DATE,
-    GMM_K_RANGE, GMM_COVARIANCE,
+    GMM_K_RANGE, GMM_COVARIANCE, JJA_MONTHS,
 )
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -83,6 +83,7 @@ def fit_gmm_range(data: np.ndarray, k_range: tuple = GMM_K_RANGE,
         "best_k_per_seed": {},
         "modal_k": None,
         "modal_k_frequency": None,
+        "k_instability": None,
         "best_model": None,
         "best_seed": None,
     }
@@ -113,21 +114,37 @@ def fit_gmm_range(data: np.ndarray, k_range: tuple = GMM_K_RANGE,
                 results["bic_scores"][seed][k] = None
                 results["aic_scores"][seed][k] = None
                 results["converged"][seed][k] = False
+        # CFM-04 (audit): only converged fits are eligible for BIC
+        # selection — a non-converged model must not win best_k.
         valid = {k: v for k, v in results["bic_scores"][seed].items()
-                 if v is not None}
+                 if v is not None
+                 and results["converged"][seed].get(k, False)}
         if valid:
             results["best_k_per_seed"][seed] = min(
                 valid, key=valid.get)
+        # A seed with no converged fit contributes no best_k.
 
     if results["best_k_per_seed"]:
         from collections import Counter
         counts = Counter(results["best_k_per_seed"].values())
         modal_k, freq = counts.most_common(1)[0]
+        modal_freq = freq / len(results["best_k_per_seed"])
         results["modal_k"] = modal_k
-        results["modal_k_frequency"] = freq / len(
-            results["best_k_per_seed"])
+        results["modal_k_frequency"] = modal_freq
+        # CFM-07 — modal-K tie policy: frequency < 1.0 means the
+        # seeds disagree; record the instability explicitly.
+        if modal_freq < 1.0:
+            results["k_instability"] = {
+                "modal_k": modal_k,
+                "frequency": modal_freq,
+                "best_k_per_seed": dict(results["best_k_per_seed"]),
+            }
+        else:
+            results["k_instability"] = None
         # Representative model: the seed whose BIC-selected K equals
-        # the modal K, with the lowest BIC.
+        # the modal K, with the lowest BIC.  best_k_per_seed only
+        # contains converged fits, so the representative model is
+        # guaranteed converged.
         candidates = [(results["bic_scores"][s][modal_k], s)
                       for s, k in results["best_k_per_seed"].items()
                       if k == modal_k]
@@ -184,10 +201,13 @@ def js_uncertainty(baseline: np.ndarray, target: np.ndarray,
     tgt_occ = compute_cluster_occupancy(model, target)
     observed = compute_js_distance(base_occ, tgt_occ)
     n = len(baseline)
-    n_blocks = max(1, n // block_days)
+    # CFM-06 (audit): blocks_per_rep is the number of day-blocks drawn
+    # within each replicate; n_blocks stays the replicate count.
+    blocks_per_rep = max(1, n // block_days)
     boot = []
     for _ in range(n_blocks):
-        starts = rng.integers(0, n - block_days + 1, size=n_blocks)
+        starts = rng.integers(0, n - block_days + 1,
+                              size=blocks_per_rep)
         sample = np.concatenate(
             [baseline[s:s + block_days] for s in starts])
         occ = compute_cluster_occupancy(model, sample)
@@ -207,6 +227,8 @@ def js_uncertainty(baseline: np.ndarray, target: np.ndarray,
                  round(float(np.quantile(boot, 0.975)), 4)],
         "null_p95": round(float(np.quantile(null, 0.95)), 4),
         "exceeds_null": bool(observed > np.quantile(null, 0.95)),
+        "n_replicates": int(n_blocks),
+        "blocks_per_replicate": int(blocks_per_rep),
     }
 
 
@@ -235,13 +257,16 @@ def run_gmm_descriptive(daily_df: pd.DataFrame,
                 "error": f"required features missing: {missing_cols}"}
     feature_df = daily_df[GMM_FEATURES]
     n_raw = len(feature_df)
+    # CFM-03 (audit): per-column NaN counts must be computed on the
+    # PRE-filter frame — after dropna() they would always be zero.
+    per_column_na = {c: int(feature_df[c].isna().sum())
+                     for c in GMM_FEATURES}
     feature_df = feature_df.dropna()
     missingness = {
         "input_rows": int(n_raw),
         "rows_after_dropna": int(len(feature_df)),
         "rows_dropped": int(n_raw - len(feature_df)),
-        "per_column_na": {c: int(feature_df[c].isna().sum())
-                          for c in GMM_FEATURES},
+        "per_column_na": per_column_na,
     }
 
     baseline = feature_df[
@@ -335,6 +360,19 @@ def run_gmm_descriptive(daily_df: pd.DataFrame,
         **status_meta,
         "best_k": best_k,
         "modal_k_frequency": gmm_results["modal_k_frequency"],
+        # CFM-07 — k_instability is populated only when seeds
+        # disagree (modal_k_frequency < 1.0); None when unanimous.
+        "k_instability": (
+            {**gmm_results["k_instability"],
+             "best_k_per_seed": {
+                 str(s): k for s, k in
+                 gmm_results["k_instability"]
+                 ["best_k_per_seed"].items()}}
+            if gmm_results.get("k_instability") is not None
+            else None),
+        "k_selection_note": (
+            "modal K by BIC across declared seeds; frequency < 1.0 "
+            "means unstable K — treat as candidate only"),
         "best_k_per_seed": {str(s): k for s, k in
                             gmm_results["best_k_per_seed"].items()},
         "seeds": list(GMM_SEEDS),
@@ -348,6 +386,12 @@ def run_gmm_descriptive(daily_df: pd.DataFrame,
         "features_used": list(GMM_FEATURES),
         "missingness": missingness,
         "scaling": scaling_record,
+        # CFM audit: reference only — the units dict lives in
+        # scaling.feature_units; do not duplicate it here.
+        "units": "see scaling.feature_units",
+        # Extraction cell is known from the frozen contract; record
+        # it so the bundle can compare requested vs actual.
+        "actual_cell": list(EVENT["era5_cell"]),
         "baseline_occupancy": [round(float(o), 4)
                                for o in baseline_occupancy],
         "target_occupancy": [round(float(o), 4)
@@ -389,8 +433,28 @@ def write_bundle(results: dict, input_files: list[Path],
     def _sha(p: Path) -> str:
         return hashlib.sha256(p.read_bytes()).hexdigest()
 
+    # CFM-08 — UTC timestamp (local-time run ids are not replayable).
+    run_id = (f"gmm_confirmation_"
+              f"{pd.Timestamp.now(tz='UTC'):%Y%m%dT%H%M%S}Z")
+    requested_cell = [28.25, 85.5]
+    actual_cell = results.get("actual_cell")
+    if actual_cell is None:
+        cell_note = ("requested cell [28.25, 85.5]; actual "
+                     "extraction cell not recorded in results")
+    elif list(actual_cell) == requested_cell:
+        cell_note = ("requested cell matches actual extraction "
+                     f"cell {list(actual_cell)}")
+    else:
+        cell_note = (f"MISMATCH: requested cell {requested_cell} "
+                     f"but features were extracted at "
+                     f"{list(actual_cell)}")
+
     bundle = {
-        "run_id": f"gmm_confirmation_{pd.Timestamp.now():%Y%m%dT%H%M%S}",
+        "run_id": run_id,
+        "run_root": str(run_dir.resolve()),
+        "requested_cell": requested_cell,
+        "actual_cell": actual_cell,
+        "note": cell_note,
         "status": results.get("status", "EXPLORATORY_DESCRIPTIVE_"
                                        "SINGLE_CELL"),
         "input_digests": {p.name: _sha(p) for p in input_files
@@ -496,6 +560,34 @@ def preflight(feature_file: Path, min_baseline_rows: int = 100) -> list[str]:
         problems.append(
             f"only {len(daily_df)} rows — the confirmation run "
             "requires the complete baseline, not a partial file")
+
+    # CFM-05 — JJA-day coverage must be complete, not merely present.
+    # A full JJA season is 92 days (Jun 30 + Jul 31 + Aug 31).
+    jja = daily_df[daily_df.index.month.isin(JJA_MONTHS)]
+    short_years = {}
+    for yr in range(2001, 2026):
+        n_yr = int((jja.index.year == yr).sum())
+        if n_yr < 92:
+            short_years[yr] = n_yr
+    if short_years:
+        problems.append(
+            f"JJA coverage shortfall (expected 92 days per year): "
+            f"{short_years}")
+    # 2026 is partial by contract: Jun (30) + Jul (31) + Aug 1-25
+    # (25) = 86 days, ending at the pre-event cutoff.
+    expected_2026 = 30 + 31 + 25
+    jja_2026 = jja[(jja.index.year == 2026)
+                   & (jja.index < pd.Timestamp(EVENT_DATE))]
+    if len(jja_2026) < expected_2026:
+        problems.append(
+            f"2026 pre-event coverage shortfall: {len(jja_2026)} "
+            f"JJA rows through {EVENT_DATE}, expected "
+            f">= {expected_2026}")
+    post_cutoff = daily_df[daily_df.index >= pd.Timestamp(EVENT_DATE)]
+    if len(post_cutoff) > 0:
+        problems.append(
+            f"{len(post_cutoff)} rows on/after event date "
+            f"{EVENT_DATE} — post-cutoff data must not be present")
     return problems
 
 

@@ -9,29 +9,38 @@ feature contract) for JJA months only, for a small area around the event.
 
 Strategy:
 - Request JJA (June, July, August) for years 2001-2026
-- 7 variables only (pre-registered feature contract)
+- 7 variables only (pre-registered feature contract); snow is requested
+  as snow_depth_water_equivalent so the payload carries 'sd' (SWE),
+  not 'sde' (geometric depth)
 - Small area: 1° × 1° around the event point (28.25°N, 85.50°E)
-- Daily aggregation after download (reduce storage)
 - Sequential with retry (CDS queue can be slow)
+- All outputs under --run-root; the frozen data/ tree is never written
+
+Event cutoff: nothing on/after 2026-08-26 is requested. For 2026 only
+June, July and August 1-25 contain pre-cutoff dates.
 
 Usage:
     source .venv/bin/activate
-    python nepal/era5_download.py [--dry-run] [--year-range 2001-2026]
+    python nepal/era5_download.py [--dry-run] [--year-range 2001-2026] \
+        [--run-root research_runs/gmm_confirmation/era5] [--force]
 
-Output:
-    data/era5_land_nepal_jja_2001_2026.nc  (~200-500 MB)
-    data/era5_land_nepal_jja_2026_daily.csv (for quick verification)
+Output (under --run-root):
+    raw/era5_land_{year}_{month}.nc          raw CDS payloads (zip or netcdf)
+    monthly/era5_land_{year}_{month}.nc      normalized monthly files
+    merged/era5_land_nepal_jja_2001_2026.nc  merged event-cell time series
+    download_ledger.json                     provenance + completeness ledger
 """
 from __future__ import annotations
 
 import argparse
+import calendar
+import hashlib
 import json
 import sys
 import time
-from pathlib import Path
+import zipfile
 from datetime import datetime
-
-import cdsapi
+from pathlib import Path
 
 # --- Configuration (from feature_contract.py) ---
 
@@ -39,20 +48,34 @@ import cdsapi
 CDS_DATASET = "reanalysis-era5-land"
 
 # Pre-registered variables (7 raw ERA5-Land variables)
-# Using CDS long names (Astra correction: GRIB short names are NOT CDS request names)
+# Using CDS long names (Astra correction: GRIB short names are NOT CDS
+# request names). "snow_depth_water_equivalent" delivers 'sd' (SWE);
+# plain "snow_depth" would deliver 'sde' (geometric depth), which the
+# contract rejects.
 CDS_VARIABLES = [
     "2m_temperature",
     "2m_dewpoint_temperature",
     "10m_u_component_of_wind",
     "10m_v_component_of_wind",
-    "snow_depth",
+    "snow_depth_water_equivalent",
     "snowfall",
     "total_precipitation",
 ]
 
+# Required data variables in a normalized payload (GRIB short names)
+REQUIRED_DATA_VARS = ("t2m", "d2m", "u10", "v10", "sd", "sf", "tp")
+REQUIRED_DIMS = ("latitude", "longitude", "time")
+# 'sde' = geometric snow depth — a wrong-variable payload must be rejected
+FORBIDDEN_DATA_VARS = ("sde",)
+
 # Event location (Hausfather's nearest cell)
 EVENT_LAT = 28.25
 EVENT_LON = 85.50
+
+# Event cutoff: nothing on/after 2026-08-26 (pre-registration).
+# For the event year, August is truncated to days 1-25.
+EVENT_YEAR = 2026
+EVENT_CUTOFF_DAY = 25  # last requestable day of 2026-08
 
 # Download area: small box around the event point
 # CDS area format: [North, West, South, East]
@@ -68,13 +91,78 @@ YEAR_RANGE = list(range(2001, 2027))
 # All 24 hours
 HOURS = [f"{h:02d}:00" for h in range(24)]
 
-# Days per month
-DAYS = [f"{d:02d}" for d in range(1, 32)]
+# Output layout (under --run-root)
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_RUN_ROOT = REPO_ROOT / "research_runs" / "gmm_confirmation" / "era5"
+MERGED_NAME = "era5_land_nepal_jja_2001_2026.nc"
+LEDGER_NAME = "download_ledger.json"
 
-# Output paths
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-OUTPUT_FILE = DATA_DIR / "era5_land_nepal_jja_2001_2026.nc"
-LEDGER_FILE = DATA_DIR / "download_ledger.json"
+# Frozen paths — a run root may never resolve inside these
+FROZEN_DIRS = (
+    REPO_ROOT / "data",
+    REPO_ROOT / "pinned",
+    REPO_ROOT / "nepal" / "framework_v1",
+)
+FROZEN_FILES = (REPO_ROOT / "preregistration.md",)
+
+
+def resolve_run_root(arg: str | None, force: bool = False) -> Path:
+    """Resolve and validate the run root.
+
+    Rejects any path that resolves inside the frozen tree (data/,
+    pinned/, nepal/framework_v1/) or onto preregistration.md.
+
+    Fresh-run semantics: if the merged output already exists under the
+    run root, either --force reuses the directory (overwriting outputs)
+    or a new timestamped sibling directory is created. There is no
+    resume support.
+    """
+    run_root = Path(arg).expanduser().resolve() if arg else DEFAULT_RUN_ROOT
+
+    for frozen in FROZEN_DIRS:
+        if run_root == frozen or frozen in run_root.parents:
+            raise ValueError(
+                f"run_root {run_root} resolves inside frozen path {frozen}; "
+                f"choose a location outside data/, pinned/ and "
+                f"nepal/framework_v1/")
+    for frozen in FROZEN_FILES:
+        if run_root == frozen:
+            raise ValueError(
+                f"run_root {run_root} resolves onto frozen file {frozen}")
+
+    merged_out = run_root / "merged" / MERGED_NAME
+    if merged_out.exists() and not force:
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        fresh = run_root.parent / f"{run_root.name}-{stamp}"
+        print(f"Merged output already exists under {run_root}; "
+              f"using fresh run dir {fresh} (or pass --force to overwrite)")
+        run_root = fresh
+
+    return run_root
+
+
+def months_for_year(year: int) -> list[str]:
+    """JJA months with at least one requestable (pre-cutoff) day.
+
+    For the event year 2026 all three JJA months still qualify: June and
+    July are complete, August contributes days 1-25. Years after 2026
+    have no requestable dates.
+    """
+    if year > EVENT_YEAR:
+        return []
+    return list(JJA_MONTHS)
+
+
+def days_for_month(year: int, month: str) -> list[str]:
+    """Valid calendar days for (year, month) via calendar.monthrange.
+
+    For 2026-08 the list is capped at day 25 (event cutoff 2026-08-26 —
+    no event-day or post-event data).
+    """
+    n_days = calendar.monthrange(year, int(month))[1]
+    if year == EVENT_YEAR and month == "08":
+        n_days = min(n_days, EVENT_CUTOFF_DAY)
+    return [f"{d:02d}" for d in range(1, n_days + 1)]
 
 
 def build_request(year: int, month: str) -> dict:
@@ -83,14 +171,14 @@ def build_request(year: int, month: str) -> dict:
         "variable": CDS_VARIABLES,
         "year": str(year),
         "month": month,
-        "day": DAYS,
+        "day": days_for_month(year, month),
         "time": HOURS,
         "area": AREA,
         "data_format": "netcdf",
     }
 
 
-def download_month(client: cdsapi.Client, year: int, month: str,
+def download_month(client, year: int, month: str,
                    output_path: Path, max_retries: int = 3) -> bool:
     """Download one month of ERA5-Land data with retry."""
     request = build_request(year, month)
@@ -116,142 +204,375 @@ def download_month(client: cdsapi.Client, year: int, month: str,
     return False
 
 
-def download_all(years: list[int], dry_run: bool = False) -> dict:
+def detect_payload_format(path: Path) -> str:
+    """Classify a downloaded payload by magic bytes.
+
+    Returns "zip" (CDS zip wrapper, PK\x03\x04), "hdf5" (NetCDF-4,
+    \\x89HDF) or "netcdf_classic" (CDF). Raises ValueError otherwise.
+    """
+    with open(path, "rb") as f:
+        head = f.read(8)
+    if head[:4] == b"PK\x03\x04":
+        return "zip"
+    if head[:4] == b"\x89HDF":
+        return "hdf5"
+    if head[:3] == b"CDF":
+        return "netcdf_classic"
+    raise ValueError(
+        f"Unrecognized payload format for {path} (magic bytes {head!r})")
+
+
+def normalize_payload(path: Path | str,
+                      monthly_dir: Path | None = None,
+                      year: int | None = None,
+                      month: str | None = None,
+                      ledger_entry: dict | None = None) -> Path:
+    """Normalize a raw CDS payload into the canonical monthly layout.
+
+    - Detect the payload format by magic bytes. For zip payloads, require
+      exactly one *.nc member and extract only that member to
+      <name>.norm.nc beside the payload (never unzip blindly). Raw
+      NetCDF (classic or HDF5) payloads are used as-is.
+    - Canonicalize the time coordinate: rename valid_time -> time,
+      require dims (latitude, longitude, time), require the 7 contract
+      data variables (t2m, d2m, u10, v10, sd, sf, tp), and reject the
+      payload outright if 'sde' is present or 'sd' is missing.
+    - Sort the time axis and drop duplicate timestamps.
+    - Write monthly_dir/era5_land_{year}_{month}.nc and return its path.
+
+    If ledger_entry is given, payload_format and payload_sha256 (of the
+    raw payload) are recorded into it.
+    """
+    import xarray as xr
+
+    path = Path(path)
+    fmt = detect_payload_format(path)
+    payload_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+
+    if fmt == "zip":
+        with zipfile.ZipFile(path) as zf:
+            nc_members = [n for n in zf.namelist() if n.endswith(".nc")]
+            if len(nc_members) != 1:
+                raise ValueError(
+                    f"{path}: zip payload must contain exactly one .nc "
+                    f"member, found {len(nc_members)}: {nc_members}")
+            source = path.parent / f"{path.stem}.norm.nc"
+            source.write_bytes(zf.read(nc_members[0]))
+    else:
+        source = path
+
+    # Infer year/month from the era5_land_{year}_{month} filename if the
+    # caller did not pass them explicitly.
+    if year is None or month is None:
+        parts = path.stem.split("_")
+        if len(parts) >= 4 and parts[-2].isdigit():
+            year = year if year is not None else int(parts[-2])
+            month = month if month is not None else parts[-1]
+    if year is None or month is None:
+        raise ValueError(
+            f"{path}: cannot infer year/month from filename; "
+            f"pass them explicitly")
+    if monthly_dir is None:
+        monthly_dir = path.parent / "monthly"
+    monthly_dir = Path(monthly_dir)
+
+    ds = xr.open_dataset(source)
+    try:
+        # Canonicalize the time coordinate
+        if "valid_time" in ds.dims or "valid_time" in ds.coords:
+            ds = ds.rename({"valid_time": "time"})
+
+        missing_dims = set(REQUIRED_DIMS) - set(ds.dims)
+        if missing_dims:
+            raise ValueError(
+                f"{source}: missing required dims {sorted(missing_dims)}")
+
+        for bad in FORBIDDEN_DATA_VARS:
+            if bad in ds.data_vars:
+                raise ValueError(
+                    f"{source}: contains '{bad}' (geometric snow depth); "
+                    f"the contract requires 'sd' "
+                    f"(snow_depth_water_equivalent)")
+        missing_vars = set(REQUIRED_DATA_VARS) - set(ds.data_vars)
+        if missing_vars:
+            raise ValueError(
+                f"{source}: missing required data_vars "
+                f"{sorted(missing_vars)}")
+
+        # Sorted-unique time axis
+        ds = ds.sortby("time")
+        import numpy as np
+        _, unique_idx = np.unique(ds["time"].values, return_index=True)
+        if len(unique_idx) < ds.sizes["time"]:
+            ds = ds.isel(time=np.sort(unique_idx))
+
+        monthly_dir.mkdir(parents=True, exist_ok=True)
+        out_path = monthly_dir / f"era5_land_{year}_{month}.nc"
+        ds.to_netcdf(out_path)
+    finally:
+        ds.close()
+
+    if ledger_entry is not None:
+        ledger_entry["payload_format"] = fmt
+        ledger_entry["payload_sha256"] = payload_sha256
+        ledger_entry["normalized_file"] = str(out_path)
+
+    return out_path
+
+
+def select_cell(ds, target_lat: float = EVENT_LAT,
+                target_lon: float = EVENT_LON) -> tuple[float, float]:
+    """Deterministic nearest-cell selection with explicit tie-breaks.
+
+    Manual argmin — xarray's method='nearest' tie behavior is not relied
+    on. On equidistant latitude choose the HIGHER latitude (e.g. 28.3
+    over 28.2 for the requested 28.25 exact tie); on equidistant
+    longitude choose the LOWER longitude.
+    """
+    import numpy as np
+
+    lats = np.asarray(ds["latitude"].values, dtype=float)
+    lons = np.asarray(ds["longitude"].values, dtype=float)
+
+    lat_dist = np.abs(lats - target_lat)
+    lat_tied = np.flatnonzero(
+        np.isclose(lat_dist, lat_dist.min(), rtol=0, atol=1e-9))
+    lat_idx = max(lat_tied, key=lambda i: lats[i])  # higher lat wins ties
+
+    lon_dist = np.abs(lons - target_lon)
+    lon_tied = np.flatnonzero(
+        np.isclose(lon_dist, lon_dist.min(), rtol=0, atol=1e-9))
+    lon_idx = min(lon_tied, key=lambda i: lons[i])  # lower lon wins ties
+
+    return float(lats[lat_idx]), float(lons[lon_idx])
+
+
+def merge_monthly(run_root: Path, completed: list[dict],
+                  ledger: dict) -> Path | None:
+    """Merge normalized monthly files and select the event cell.
+
+    Concatenates along time, sorts, drops duplicated timestamps and
+    verifies per-month hourly completeness (expected hours = days*24).
+    Incomplete months are reported and recorded in the ledger.
+    """
+    import numpy as np
+    import xarray as xr
+
+    monthly_dir = run_root / "monthly"
+    merged_dir = run_root / "merged"
+    out_path = merged_dir / MERGED_NAME
+
+    datasets = []
+    for entry in completed:
+        f = monthly_dir / f"era5_land_{entry['year']}_{entry['month']}.nc"
+        if not f.exists():
+            continue
+        ds = xr.open_dataset(f)
+        if "valid_time" in ds.dims or "valid_time" in ds.coords:
+            ds = ds.rename({"valid_time": "time"})
+        datasets.append((entry, ds))
+
+    if not datasets:
+        return None
+
+    merged = xr.concat([ds for _, ds in datasets], dim="time")
+    merged = merged.sortby("time")
+    _, unique_idx = np.unique(merged["time"].values, return_index=True)
+    if len(unique_idx) < merged.sizes["time"]:
+        merged = merged.isel(time=np.sort(unique_idx))
+
+    # Per-month completeness: expected hours = days * 24
+    print("\nMonthly completeness (hours):")
+    incomplete = []
+    for entry, ds in datasets:
+        year, month = entry["year"], entry["month"]
+        expected = len(days_for_month(year, month)) * 24
+        actual = int(ds.sizes["time"])
+        entry["expected_hours"] = expected
+        entry["actual_hours"] = actual
+        entry["complete"] = actual == expected
+        if actual == expected:
+            print(f"  {year}-{month}: {actual}/{expected} hours")
+        else:
+            print(f"  {year}-{month}: INCOMPLETE {actual}/{expected} hours")
+            incomplete.append({
+                "year": year, "month": month,
+                "expected_hours": expected, "actual_hours": actual,
+            })
+    ledger["incomplete_months"] = incomplete
+
+    # Deterministic nearest-cell selection (see select_cell tie rules)
+    sel_lat, sel_lon = select_cell(merged)
+    ledger["requested_cell"] = {"latitude": EVENT_LAT, "longitude": EVENT_LON}
+    ledger["selected_cell"] = {"latitude": sel_lat, "longitude": sel_lon}
+    print(f"Requested cell: ({EVENT_LAT}, {EVENT_LON}) -> "
+          f"selected ({sel_lat}, {sel_lon})")
+
+    merged_dir.mkdir(parents=True, exist_ok=True)
+    cell = merged.sel(latitude=sel_lat, longitude=sel_lon)
+    cell.to_netcdf(out_path)
+
+    for _, ds in datasets:
+        ds.close()
+
+    return out_path
+
+
+def write_ledger(run_root: Path, ledger: dict) -> Path:
+    """Write the download ledger (checkpoint-safe)."""
+    ledger_path = run_root / LEDGER_NAME
+    with open(ledger_path, "w") as f:
+        json.dump(ledger, f, indent=2)
+    return ledger_path
+
+
+def download_all(years: list[int], run_root: Path,
+                 dry_run: bool = False) -> dict:
     """Download ERA5-Land JJA for all specified years.
 
-    Downloads month-by-month to keep individual CDS requests small
-    and allow partial retry on failure.
+    Downloads month-by-month to keep individual CDS requests small and
+    allow per-month retry on failure. Fresh-run only — no resume of a
+    partially populated run root is claimed.
     """
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-
     ledger = {
         "start_time": datetime.now().isoformat(),
         "dataset": CDS_DATASET,
         "variables": CDS_VARIABLES,
         "area": AREA,
-        "event_cell": (EVENT_LAT, EVENT_LON),
+        "requested_cell": {"latitude": EVENT_LAT, "longitude": EVENT_LON},
+        "run_root": str(run_root),
         "years": years,
         "months": JJA_MONTHS,
         "status": "started",
         "completed_months": [],
         "failed_months": [],
+        "incomplete_months": [],
         "total_size_mb": 0,
     }
 
+    planned = [(y, m) for y in years for m in months_for_year(y)]
+
     if dry_run:
-        total_months = len(years) * len(JJA_MONTHS)
-        print(f"DRY RUN: Would download {total_months} months "
-              f"({len(years)} years × {len(JJA_MONTHS)} months)")
+        print(f"DRY RUN: {len(planned)} monthly requests "
+              f"({len(years)} years x JJA)")
         print(f"Variables: {CDS_VARIABLES}")
         print(f"Area: {AREA}")
-        print(f"Output: {OUTPUT_FILE}")
+        print(f"Run root: {run_root}")
+        print("Planned requests:")
+        for y, m in planned:
+            days = days_for_month(y, m)
+            print(f"  {y}-{m}: {len(days)} days "
+                  f"({days[0]}..{days[-1]}) x 24 hours")
+            print(f"    raw        -> {run_root / 'raw' / f'era5_land_{y}_{m}.nc'}")
+            print(f"    normalized -> {run_root / 'monthly' / f'era5_land_{y}_{m}.nc'}")
+        print(f"Merged output -> {run_root / 'merged' / MERGED_NAME}")
+        print(f"Ledger        -> {run_root / LEDGER_NAME}")
         ledger["status"] = "dry_run"
         return ledger
 
-    # Initialize CDS client (uses ~/.cdsapirc automatically)
+    run_root.mkdir(parents=True, exist_ok=True)
+    raw_dir = run_root / "raw"
+    monthly_dir = run_root / "monthly"
+    raw_dir.mkdir(exist_ok=True)
+    monthly_dir.mkdir(exist_ok=True)
+
+    # Initialize CDS client (uses ~/.cdsapirc automatically).
+    # cdsapi is imported lazily so this module stays importable without
+    # network access or credentials.
+    import cdsapi
     print("Initializing CDS client...")
     client = cdsapi.Client(quiet=True)
     print("CDS client initialized.")
 
     # Download month by month
-    temp_dir = DATA_DIR / "temp"
-    temp_dir.mkdir(exist_ok=True)
+    for year, month in planned:
+        month_file = raw_dir / f"era5_land_{year}_{month}.nc"
 
-    for year in years:
-        for month in JJA_MONTHS:
-            month_file = temp_dir / f"era5_land_{year}_{month}.nc"
+        success = download_month(client, year, month, month_file)
+        if not success:
+            ledger["failed_months"].append({
+                "year": year,
+                "month": month,
+                "status": "failed",
+                "stage": "download",
+            })
+            write_ledger(run_root, ledger)
+            continue
 
-            if month_file.exists():
-                size_mb = month_file.stat().st_size / (1024 * 1024)
-                print(f"  {year}-{month}: already exists ({size_mb:.1f} MB), skipping")
-                ledger["completed_months"].append({
-                    "year": year,
-                    "month": month,
-                    "size_mb": round(size_mb, 1),
-                    "status": "skipped_existing",
-                })
-                ledger["total_size_mb"] += size_mb
-                continue
+        size_mb = month_file.stat().st_size / (1024 * 1024)
+        entry = {
+            "year": year,
+            "month": month,
+            "days": len(days_for_month(year, month)),
+            "size_mb": round(size_mb, 1),
+            "status": "downloaded",
+        }
+        try:
+            normalize_payload(month_file, monthly_dir,
+                              year=year, month=month,
+                              ledger_entry=entry)
+        except Exception as e:
+            print(f"  NORMALIZE FAILED {year}-{month}: {e}")
+            ledger["failed_months"].append({
+                "year": year,
+                "month": month,
+                "status": "failed",
+                "stage": "normalize",
+                "error": str(e),
+            })
+            write_ledger(run_root, ledger)
+            continue
 
-            success = download_month(client, year, month, month_file)
-            if success:
-                size_mb = month_file.stat().st_size / (1024 * 1024)
-                ledger["completed_months"].append({
-                    "year": year,
-                    "month": month,
-                    "size_mb": round(size_mb, 1),
-                    "status": "downloaded",
-                })
-                ledger["total_size_mb"] += size_mb
-            else:
-                ledger["failed_months"].append({
-                    "year": year,
-                    "month": month,
-                    "status": "failed",
-                })
+        ledger["completed_months"].append(entry)
+        ledger["total_size_mb"] += size_mb
 
-            # Save ledger after each month (checkpoint)
-            with open(LEDGER_FILE, "w") as f:
-                json.dump(ledger, f, indent=2)
+        # Save ledger after each month (checkpoint)
+        write_ledger(run_root, ledger)
 
-    # Merge all monthly files into one
+    # Merge all normalized monthly files into one
     if ledger["completed_months"]:
         print("\nMerging monthly files into single NetCDF...")
         try:
-            import xarray as xr
-            datasets = []
-            for entry in ledger["completed_months"]:
-                f = temp_dir / f"era5_land_{entry['year']}_{entry['month']}.nc"
-                if f.exists():
-                    ds = xr.open_dataset(f)
-                    datasets.append(ds)
-
-            if datasets:
-                merged = xr.concat(datasets, dim="time")
-                # Select nearest cell to event point
-                if "latitude" in merged.coords:
-                    cell = merged.sel(latitude=EVENT_LAT, longitude=EVENT_LON, method="nearest")
-                    cell.to_netcdf(OUTPUT_FILE)
-                elif "lat" in merged.coords:
-                    cell = merged.sel(lat=EVENT_LAT, lon=EVENT_LON, method="nearest")
-                    cell.to_netcdf(OUTPUT_FILE)
-
-                final_size_mb = OUTPUT_FILE.stat().st_size / (1024 * 1024)
-                print(f"Merged file: {OUTPUT_FILE} ({final_size_mb:.1f} MB)")
-                ledger["final_file"] = str(OUTPUT_FILE)
+            out_path = merge_monthly(run_root, ledger["completed_months"],
+                                     ledger)
+            if out_path is not None:
+                final_size_mb = out_path.stat().st_size / (1024 * 1024)
+                print(f"Merged file: {out_path} ({final_size_mb:.1f} MB)")
+                ledger["final_file"] = str(out_path)
                 ledger["final_size_mb"] = round(final_size_mb, 1)
-
-                # Clean up temp files
-                for ds in datasets:
-                    ds.close()
-                for f in temp_dir.glob("era5_land_*.nc"):
-                    f.unlink()
-                temp_dir.rmdir()
-
         except Exception as e:
             print(f"Merge error: {e}")
             ledger["merge_error"] = str(e)
 
     ledger["end_time"] = datetime.now().isoformat()
-    ledger["status"] = "completed" if not ledger["failed_months"] else "completed_with_failures"
+    ledger["status"] = ("completed" if not ledger["failed_months"]
+                        else "completed_with_failures")
 
-    with open(LEDGER_FILE, "w") as f:
-        json.dump(ledger, f, indent=2)
+    write_ledger(run_root, ledger)
 
     print(f"\nDownload complete: {len(ledger['completed_months'])} months, "
           f"{len(ledger['failed_months'])} failed, "
           f"{ledger['total_size_mb']:.1f} MB total")
-    print(f"Ledger: {LEDGER_FILE}")
+    print(f"Ledger: {run_root / LEDGER_NAME}")
 
     return ledger
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Download ERA5-Land for Nepal event analysis")
-    parser.add_argument("--dry-run", action="store_true", help="Print request without downloading")
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Download ERA5-Land for Nepal event analysis")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Print planned requests and output paths; "
+                             "create no files")
+    parser.add_argument("--run-root", type=str, default=None,
+                        help=f"Output run directory "
+                             f"(default: {DEFAULT_RUN_ROOT.relative_to(REPO_ROOT)})")
+    parser.add_argument("--force", action="store_true",
+                        help="Overwrite an existing run root instead of "
+                             "creating a new timestamped run dir")
     parser.add_argument("--year-range", type=str, default="2001-2026",
                         help="Year range (e.g., 2001-2026)")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if "-" in args.year_range:
         start, end = map(int, args.year_range.split("-"))
@@ -259,21 +580,29 @@ def main():
     else:
         years = [int(args.year_range)]
 
-    print(f"Nepal Event Anomaly — ERA5-Land Download")
+    try:
+        run_root = resolve_run_root(args.run_root, force=args.force)
+    except ValueError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+
+    print("Nepal Event Anomaly — ERA5-Land Download")
     print(f"Years: {years[0]}-{years[-1]} ({len(years)} years)")
     print(f"Months: JJA ({JJA_MONTHS})")
     print(f"Variables: {len(CDS_VARIABLES)}")
     print(f"Area: {AREA} (1° × 1° around event)")
     print(f"Event cell: ({EVENT_LAT}°N, {EVENT_LON}°E)")
+    print(f"Run root: {run_root}")
     print()
 
-    ledger = download_all(years, dry_run=args.dry_run)
+    ledger = download_all(years, run_root, dry_run=args.dry_run)
 
     if ledger["failed_months"]:
         print(f"\nWARNING: {len(ledger['failed_months'])} months failed. "
-              f"Re-run to retry failed months.")
-        sys.exit(1)
+              f"Re-run with a fresh run root or --force to retry.")
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

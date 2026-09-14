@@ -13,6 +13,7 @@ Usage:
 """
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 from datetime import datetime
@@ -37,13 +38,26 @@ from feature_contract import (
 )
 
 # Paths
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-PLOTS_DIR = Path(__file__).resolve().parent.parent / "plots"
-OUTPUT_DIR = Path(__file__).resolve().parent.parent / "data"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = REPO_ROOT / "data"
 
-ERA5_FILE = DATA_DIR / "era5_land_nepal_jja_2001_2026.nc"
-FEATURE_FILE = OUTPUT_DIR / "features_nepal_jja_2001_2026.csv"
-EDA_PLOT_DIR = PLOTS_DIR / "eda"
+ERA5_FILENAME = "era5_land_nepal_jja_2001_2026.nc"
+FEATURE_FILENAME = "features_nepal_jja_2001_2026.csv"
+HOURLY_FILENAME = "features_nepal_hourly_jja_2001_2026.csv"
+UNITS_FILENAME = "feature_units.json"
+
+# P5-01: data/ is a FROZEN contract surface — no output may be written
+# there. Outputs default to a research_runs/ run root (repo-root
+# relative). Reading inputs from data/ remains allowed (fallback below).
+DEFAULT_RUN_ROOT = REPO_ROOT / "research_runs" / "gmm_confirmation" / "features"
+ERA5_FALLBACK_FILE = DATA_DIR / ERA5_FILENAME  # input only, never output
+
+# Frozen surfaces that must never receive pipeline outputs.
+FORBIDDEN_RUN_ROOTS = (
+    DATA_DIR,
+    REPO_ROOT / "pinned",
+    REPO_ROOT / "nepal" / "framework_v1",
+)
 
 # Elevation disclaimer (printed on every plot)
 ELEVATION_DISCLAIMER = (
@@ -55,6 +69,24 @@ ELEVATION_DISCLAIMER = (
 
 # Lapse rate for elevation extrapolation (K/m)
 LAPSE_RATE = -0.0065  # Standard atmospheric lapse rate
+
+# CFM-02: units for every daily feature column written to the feature
+# CSV. Temperatures are converted K→°C and accumulations m→mm in
+# extract_raw_features; this dict is the sidecar contract.
+UNITS = {
+    "t2m_daily": "degC",
+    "d2m_daily": "degC",
+    "tp_daily": "mm",
+    "sf_daily": "mm",
+    "sd_daily": "mm",
+    "wind_speed_daily": "m/s",
+    "wind_dir_sin": "unitless",
+    "wind_dir_cos": "unitless",
+    "rh_daily": "percent",
+    "pdd_daily": "degC*day",
+    "pdd_7day": "degC*day",
+    "freezing_height_m": "m",
+}
 
 
 def load_era5_land(filepath: Path) -> xr.Dataset:
@@ -113,6 +145,7 @@ def extract_raw_features(ds: xr.Dataset) -> pd.DataFrame:
     }
 
     data = {"time": times}
+    missing = []
 
     for cds_name, nc_name in var_map.items():
         if nc_name in ds.data_vars:
@@ -128,8 +161,21 @@ def extract_raw_features(ds: xr.Dataset) -> pd.DataFrame:
                     found = True
                     break
             if not found:
-                print(f"WARNING: Variable {cds_name} (expected as {nc_name}) not found!")
-                data[nc_name] = np.nan
+                missing.append(f"{cds_name} (expected as {nc_name})")
+
+    # P5-06: fail closed — never substitute NaN for a required variable.
+    # sde is geometric snow depth, NOT the contract sd (snow-depth water
+    # equivalent); it must never be renamed to sd.
+    if "sd" not in data and "sde" in ds.data_vars:
+        raise ValueError(
+            "Dataset contains 'sde' (geometric snow depth) but not 'sd'. "
+            "sde is NOT the contract snow-depth water-equivalent (SWE) "
+            "variable; refusing to rename sde to sd."
+        )
+    if missing:
+        raise ValueError(
+            "Missing required ERA5-Land variables: " + ", ".join(missing)
+        )
 
     df = pd.DataFrame(data).set_index("time")
 
@@ -227,9 +273,14 @@ def compute_thermal_indices(df: pd.DataFrame, model_elev_m: float) -> pd.DataFra
         daily_df["pdd_daily"] = daily_df["t2m_daily"].clip(lower=0)
         # 7-day rolling PDD — full window required; partial sums at the
         # series edge are censored to NaN, not silently down-weighted
-        # (CFM-05).
-        daily_df["pdd_7day"] = daily_df["pdd_daily"].rolling(
-            window=7, min_periods=7).sum()
+        # (CFM-05). CFM-01: the daily frame holds JJA rows only, so a
+        # naive 7-day window silently spans the Aug31→Jun1 year boundary
+        # (and any other gap). Roll only within runs of consecutive
+        # calendar dates; edge days at run starts get NaN.
+        run_id = (daily_df.index.to_series().diff().dt.days != 1).cumsum()
+        daily_df["pdd_7day"] = daily_df["pdd_daily"].groupby(run_id).transform(
+            lambda s: s.rolling(window=7, min_periods=7).sum()
+        )
 
         # Freezing level height: z_freeze = z_model + T_model / 0.0065
         # lapse_rate = -0.0065 K/m = -0.0065 °C/m
@@ -331,15 +382,68 @@ def generate_eda_plots(
     print(f"EDA plots saved to {output_dir}/")
 
 
+def _resolve_run_root(run_root: str | None) -> Path:
+    """Resolve the output run root and reject frozen contract surfaces."""
+    root = Path(run_root).expanduser() if run_root else DEFAULT_RUN_ROOT
+    if not root.is_absolute():
+        root = REPO_ROOT / root
+    root = root.resolve()
+    for forbidden in FORBIDDEN_RUN_ROOTS:
+        frozen = forbidden.resolve()
+        if root == frozen or frozen in root.parents:
+            raise ValueError(
+                f"Run root {root} is inside frozen surface {frozen}; "
+                "refusing to write outputs there."
+            )
+    return root
+
+
 def main():
     """Main Phase 2 execution."""
+    parser = argparse.ArgumentParser(
+        description="Phase 2: Feature extraction + PDD + EDA "
+                    "(GMM confirmation run)."
+    )
+    parser.add_argument(
+        "--run-root",
+        default=None,
+        help=("Output run root. Default: research_runs/gmm_confirmation/"
+              "features/ relative to the repo root. Rejected if inside "
+              "data/, pinned/, or nepal/framework_v1/."),
+    )
+    parser.add_argument(
+        "--era5-file",
+        default=None,
+        help=("Input ERA5-Land NetCDF. Default: <run-root>/era5/merged/"
+              f"{ERA5_FILENAME} with fallback to data/{ERA5_FILENAME}."),
+    )
+    args = parser.parse_args()
+
+    run_root = _resolve_run_root(args.run_root)
+    run_root.mkdir(parents=True, exist_ok=True)
+    feature_file = run_root / FEATURE_FILENAME
+    hourly_file = run_root / HOURLY_FILENAME
+    units_file = run_root / UNITS_FILENAME
+    eda_plot_dir = run_root / "eda"
+
+    # Input ERA5 file: explicit --era5-file, else the run-root copy,
+    # else the frozen data/ fallback (reading from data/ is allowed).
+    if args.era5_file:
+        era5_file = Path(args.era5_file).expanduser().resolve()
+    else:
+        era5_file = run_root / "era5" / "merged" / ERA5_FILENAME
+        if not era5_file.exists():
+            era5_file = ERA5_FALLBACK_FILE
+
     print("=" * 60)
     print("Phase 2: Feature Extraction + PDD + EDA")
     print("=" * 60)
     print()
+    print(f"Run root: {run_root}")
+    print(f"ERA5 input: {era5_file}")
 
     # Load ERA5-Land data
-    ds, actual_lat, actual_lon, model_elev = load_era5_land(ERA5_FILE)
+    ds, actual_lat, actual_lon, model_elev = load_era5_land(era5_file)
     print(f"ELEVATION DISCLAIMER: {ELEVATION_DISCLAIMER}")
     print()
 
@@ -361,6 +465,15 @@ def main():
     print(f"Daily data: {len(daily_df)} rows")
     print(f"Columns: {list(daily_df.columns)}")
 
+    # Fail loudly if any feature row is on/after the held-out event
+    # date — nothing on/after POST_EVENT_CUTOFF may be a feature.
+    post_event_rows = daily_df.index >= pd.Timestamp(POST_EVENT_CUTOFF)
+    if post_event_rows.any():
+        raise ValueError(
+            f"Post-event leakage: {int(post_event_rows.sum())} feature "
+            f"rows on/after POST_EVENT_CUTOFF ({POST_EVENT_CUTOFF})."
+        )
+
     # Verify feature count
     raw_count = len(RAW_GRIB_SHORT_NAMES)
     derived_count = len(DERIVED_FEATURES)
@@ -369,19 +482,27 @@ def main():
     assert total == TOTAL_FEATURES, f"Feature count mismatch: {total} != {TOTAL_FEATURES}"
 
     # Save feature matrix
-    print(f"\nSaving daily feature matrix to {FEATURE_FILE}...")
-    daily_df.to_csv(FEATURE_FILE)
-    print(f"Saved {len(daily_df)} rows, {len(daily_df.columns)} columns to {FEATURE_FILE}")
+    print(f"\nSaving daily feature matrix to {feature_file}...")
+    daily_df.to_csv(feature_file)
+    print(f"Saved {len(daily_df)} rows, {len(daily_df.columns)} columns to {feature_file}")
+
+    # CFM-02: units sidecar next to the feature CSV. Fail closed if any
+    # output column lacks a unit entry.
+    missing_units = [c for c in daily_df.columns if c not in UNITS]
+    if missing_units:
+        raise ValueError(f"UNITS missing entries for columns: {missing_units}")
+    with open(units_file, "w") as f:
+        json.dump(UNITS, f, indent=2)
+    print(f"Saved units sidecar to {units_file}")
 
     # GAP FIX: Also save hourly features for auditability
-    hourly_file = OUTPUT_DIR / "features_nepal_hourly_jja_2001_2026.csv"
     print(f"Saving hourly feature matrix to {hourly_file}...")
     hourly_df.to_csv(hourly_file)
     print(f"Saved {len(hourly_df)} rows, {len(hourly_df.columns)} columns to {hourly_file}")
 
     # Generate EDA plots
     print("\nGenerating EDA plots...")
-    generate_eda_plots(hourly_df, daily_df, model_elev, EDA_PLOT_DIR)
+    generate_eda_plots(hourly_df, daily_df, model_elev, eda_plot_dir)
 
     # Summary statistics
     print("\n" + "=" * 60)
@@ -436,8 +557,8 @@ def main():
             print(f"  Hausfath comparison error: {e}")
 
     print("\nPhase 2 EXIT GATE: PASS")
-    print(f"Output: {FEATURE_FILE}")
-    print(f"Plots: {EDA_PLOT_DIR}/")
+    print(f"Output: {feature_file}")
+    print(f"Plots: {eda_plot_dir}/")
 
 
 if __name__ == "__main__":
