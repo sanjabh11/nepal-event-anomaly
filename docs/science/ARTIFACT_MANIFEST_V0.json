@@ -1,6 +1,6 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "a8fd6ddefe1611ac1ab7f0d901e231d01e361243",
+  "content_head": "81bf660e01d9e7adab05abbb5ca4fbe432045059",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
@@ -29,8 +29,8 @@
     },
     {
       "relpath": "docs/science/P0_BASELINE_LEDGER.md",
-      "sha256": "22f9e309c9b3d12b445d11d4a905d919fc7dd379e899a4c616029dfb84d30955",
-      "size_bytes": 3550
+      "sha256": "9f72c98b048528e576ea94bb1476ece1b9dd98ee528ff510223d6397ad677b0b",
+      "size_bytes": 4348
     },
     {
       "relpath": "docs/science/SOURCE_FEASIBILITY_RECORDS_V0.md",
