@@ -401,6 +401,18 @@ def _check(payload: Mapping[str, Any], problems: list[str],
                         "disagrees with the caller-asserted "
                         "references.b_reference.status or "
                         "inherited_state.b_status")
+            # PKG-11 follow-through: a bound doc that itself marks its
+            # ranked digests as digest-only informational evidence can
+            # never satisfy a strict assembly — informational B metadata
+            # is non-authorizing in every consumer, not just the package.
+            if strict and isinstance(b_doc.get("b_evidence_binding"),
+                                     str) and \
+                    b_doc["b_evidence_binding"] != "FILE_BOUND":
+                problems.append(
+                    "references.b_reference bound envelope declares "
+                    f"b_evidence_binding="
+                    f"{b_doc['b_evidence_binding']!r} — informational "
+                    "B digests cannot satisfy a strict scaffold")
 
         # T2S-08: an FMX_READY claim under T2_REAL_V1 is valid only
         # when backed by real freeze evidence — the verified bound FMX

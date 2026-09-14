@@ -630,7 +630,8 @@ def build_science_contract_package(
         forbidden_roots: Optional[list] = None,
         evidence_root: Optional[str | Path] = None,
         b_evidence_relative_path: Optional[str] = None,
-        residual_register: Optional[list] = None
+        residual_register: Optional[list] = None,
+        residual_register_relpath: Optional[str] = None
         ) -> dict[str, Any]:
     """Build the external research package.  Returns the package index.
 
@@ -657,6 +658,12 @@ def build_science_contract_package(
     research handoff with its canonical SHA-256; it must be a non-empty
     list of ``{id, status}`` mappings and remain residual-positive (not
     every status CLOSED).  Defaults to the open+deferred residual lists.
+    ``residual_register_relpath`` binds the register to a canonical JSON
+    file under ``evidence_root``: the file must parse to the exact
+    register list embedded in the handoff, and verify re-resolves it —
+    the register is then bound to known external content, not merely
+    any residual-positive list.  Supplying both ``residual_register``
+    and ``residual_register_relpath`` is rejected as ambiguous.
 
     Raises ``RuntimeError`` when the disk reserve is violated; the
     checkpoint is left ``INCOMPLETE`` if the build fails partway.
@@ -675,6 +682,42 @@ def build_science_contract_package(
             _CODE_REVISION_RE.fullmatch(code_revision):
         raise ValueError("code_revision must be lowercase hex matching "
                          "^[0-9a-f]{7,64}$")
+    if residual_register is not None and \
+            residual_register_relpath is not None:
+        raise ValueError("supply residual_register or "
+                         "residual_register_relpath, not both")
+    ev_root = Path(evidence_root) if evidence_root is not None else None
+    register_source_record: Optional[dict[str, str]] = None
+    if residual_register_relpath is not None:
+        if ev_root is None:
+            raise ValueError("evidence_root is required when "
+                             "residual_register_relpath is supplied")
+        reg_problems = []
+        reg_target = _resolve_under_root(
+            ev_root, residual_register_relpath,
+            "residual_register_relpath", reg_problems)
+        if reg_target is not None and not reg_target.is_file():
+            reg_problems.append("residual_register_relpath "
+                                f"{residual_register_relpath!r} is not "
+                                "a file under the evidence root")
+            reg_target = None
+        if reg_target is not None:
+            try:
+                parsed = json.loads(reg_target.read_text("utf-8"))
+            except (OSError, ValueError) as exc:
+                reg_problems.append("residual register file unreadable: "
+                                    f"{exc}")
+            else:
+                reg_problems.extend(_residual_register_problems(parsed))
+                if not reg_problems:
+                    residual_register = parsed
+                    register_source_record = {
+                        "relative_path": PurePosixPath(
+                            residual_register_relpath).as_posix(),
+                        "sha256": sha256_file(reg_target)}
+        if reg_problems:
+            raise ValueError("residual register binding is not valid: "
+                             + "; ".join(reg_problems))
     if residual_register is not None:
         reg_problems = _residual_register_problems(residual_register)
         if reg_problems:
@@ -685,7 +728,6 @@ def build_science_contract_package(
     pkg_dir.mkdir(parents=True, exist_ok=True)
     _check_disk_reserve(pkg_dir)
     checked_refs = _check_evidence_references(evidence_references)
-    ev_root = Path(evidence_root) if evidence_root is not None else None
     if checked_refs:
         if ev_root is None:
             raise ValueError("evidence_root is required when "
@@ -890,6 +932,8 @@ def build_science_contract_package(
             "deferred_residuals": deferred_resids,
             "residual_register": register,
             "residual_register_sha256": sha256_canonical(register),
+            **({"residual_register_source": register_source_record}
+               if register_source_record is not None else {}),
             "promotion_eligible": False,
             "production_authorized": False,
             "warning_path_authorized": False})
@@ -1287,6 +1331,49 @@ def verify_science_contract_package(
                     "research_contract_handoff.json: "
                     "residual_register_sha256 does not recompute from "
                     "the embedded register")
+        # HANDOFF-01: a declared register source must resolve to the
+        # canonical register file under the evidence root and parse to
+        # exactly the embedded register — the register is then bound to
+        # known external content, not any residual-positive list.
+        reg_src = ho_doc.get("residual_register_source")
+        if reg_src is not None:
+            if not isinstance(reg_src, Mapping) or \
+                    set(reg_src) != {"relative_path", "sha256"}:
+                problems.append("research_contract_handoff.json: "
+                                "residual_register_source must be "
+                                "{relative_path, sha256}")
+            elif evidence_root is None:
+                problems.append("research_contract_handoff.json: "
+                                "declares residual_register_source but "
+                                "no evidence_root was supplied — "
+                                "unverified")
+            else:
+                src_problems: list[str] = []
+                src_target = _resolve_under_root(
+                    Path(evidence_root), reg_src["relative_path"],
+                    "residual_register_source.relative_path",
+                    src_problems)
+                if src_target is None or not src_target.is_file():
+                    src_problems.append("residual_register_source file "
+                                        "missing under evidence root")
+                elif sha256_file(src_target) != reg_src["sha256"]:
+                    src_problems.append("residual_register_source file "
+                                        "digest does not match")
+                else:
+                    try:
+                        parsed = json.loads(
+                            src_target.read_text("utf-8"))
+                    except (OSError, ValueError) as exc:
+                        src_problems.append("residual_register_source "
+                                            f"file unparsable: {exc}")
+                    else:
+                        if parsed != register:
+                            src_problems.append(
+                                "residual_register_source content does "
+                                "not equal the embedded register")
+                problems.extend(
+                    f"research_contract_handoff.json: {p}"
+                    for p in src_problems)
 
     fmx_path = pkg_dir / "fmx_blocked.json"
     if fmx_path.is_file():

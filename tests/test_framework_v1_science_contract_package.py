@@ -9,22 +9,44 @@ import pytest
 from nepal.framework_v1 import science_contract_package as pkg
 
 
+_RANKED_DIGEST = ("a4e69e450cf87f46970ff38ceb74fc9d10036bd702d0e547a6"
+                  "e829a6ae058988")
+
+
+def _bound_b_evidence(ev_root: Path) -> None:
+    """Write a self-hashed B envelope fixture under the evidence root —
+    carries the ranked digest and a status consistent with
+    B_TO_C_BLOCKED, satisfying PKG-11 file-bound evidence."""
+    from nepal.framework_v1.provenance import bind_artifact_envelope
+    b_doc = bind_artifact_envelope({
+        "envelope_type": "B_SCREEN_V1",
+        "b_status": "B_TO_C_BLOCKED",
+        "gate_passed": False,
+        "ranked_array_canonical_sha256": _RANKED_DIGEST,
+        "disclaimer": "synthetic test B evidence — screening only"})
+    (ev_root / "b_screen.json").write_text(
+        json.dumps(b_doc, indent=1, sort_keys=True) + "\n")
+
+
 def _context(tmp_path):
+    ev_root = tmp_path / "test-run-root"
+    ev_root.mkdir(parents=True, exist_ok=True)
+    _bound_b_evidence(ev_root)
     return {
         "package_dir": tmp_path / "pkg",
         "run_root_name": "test-run-root",
         "code_revision": "ce2a926d6c9b806dd282ae1f329be6a6b5fba3b8",
         "candidate_generation_id":
             "d1-remediated-provenance-recovery-v2-f1-20260913",
-        "ranked_array_canonical_sha256":
-            "a4e69e450cf87f46970ff38ceb74fc9d10036bd702d0e547a6e829a6"
-            "ae058988",
+        "ranked_array_canonical_sha256": _RANKED_DIGEST,
         "ranked_payload_sha256":
             "d0561f07e2cbae545714ee690a9f9c5ca7e58e1af7ee60133240888f975"
             "2a0ec",
         "ranked_payload_sha256_domain_status":
             "HISTORICAL_ORPHAN_UNKNOWN_DOMAIN",
         "b_status": "B_TO_C_BLOCKED",
+        "b_evidence_relative_path": "b_screen.json",
+        "evidence_root": ev_root,
         "evidence_references": [],
         "forbidden_roots": [tmp_path / "protected"],
     }
@@ -35,7 +57,8 @@ def test_package_builds_and_verifies(tmp_path):
     result = pkg.build_science_contract_package(**ctx)
     assert result["package_status"] == \
         "SCIENCE_CONTRACT_SCAFFOLD_READY_WITH_FMX_BLOCKED"
-    ok, problems = pkg.verify_science_contract_package(ctx["package_dir"])
+    ok, problems = pkg.verify_science_contract_package(
+        ctx["package_dir"], evidence_root=ctx["evidence_root"])
     assert ok, problems
 
 
@@ -389,6 +412,8 @@ def test_evidence_refs_require_root(tmp_path):
     (ev_root / "ref.json").write_text('{"x": 1}')
     from nepal.framework_v1.provenance import sha256_file
     ctx = _context(tmp_path)
+    del ctx["evidence_root"]
+    del ctx["b_evidence_relative_path"]
     ctx["evidence_references"] = [
         {"role": "test", "relative_path": "ref.json",
          "sha256": sha256_file(ev_root / "ref.json")}]
@@ -453,7 +478,7 @@ def _evidence_ctx(tmp_path, n_refs=1):
     """Context whose evidence root carries the bound run-root name."""
     from nepal.framework_v1.provenance import sha256_file
     ev_root = tmp_path / "test-run-root"
-    ev_root.mkdir()
+    ev_root.mkdir(exist_ok=True)
     refs = []
     for i in range(n_refs):
         f = ev_root / f"ref{i}.json"
@@ -757,6 +782,7 @@ class TestBEvidenceBinding:
 
     def test_unbound_marker_written(self, tmp_path):
         ctx = _context(tmp_path)
+        del ctx["b_evidence_relative_path"]
         pkg.build_science_contract_package(**ctx)
         rc = json.loads(
             (ctx["package_dir"] / "run_context.json").read_text())
@@ -767,6 +793,7 @@ class TestBEvidenceBinding:
         """Ranked digests without a bound file require the exact
         UNBOUND_INFORMATIONAL marker."""
         ctx = _context(tmp_path)
+        del ctx["b_evidence_relative_path"]
         pkg.build_science_contract_package(**ctx)
         _edit_doc(ctx["package_dir"], "run_context.json",
                   lambda d: d.pop("b_evidence_binding"))
@@ -977,7 +1004,7 @@ class TestResidualRegister:
         from nepal.framework_v1.provenance import sha256_canonical
         assert ho["residual_register_sha256"] == sha256_canonical(reg)
         ok, problems = pkg.verify_science_contract_package(
-            ctx["package_dir"])
+            ctx["package_dir"], evidence_root=ctx["evidence_root"])
         assert ok, problems
 
     def test_default_register_is_residual_positive(self, tmp_path):
@@ -1067,3 +1094,108 @@ class TestResidualRegister:
         ok, problems = pkg.verify_science_contract_package(
             ctx["package_dir"])
         assert not ok and any("gaps" in p for p in problems)
+
+
+# ---------- N5 advisor-follow-up bindings ----------
+
+
+def test_residual_register_source_bound(tmp_path):
+    """HANDOFF-01b: register bound to a canonical file under the root —
+    content equality enforced, tamper rejects."""
+    ctx = _context(tmp_path)
+    ev_root = ctx["evidence_root"]
+    reg = [{"id": "FMX-01", "status": "BLOCKED"},
+           {"id": "R04", "status": "OPEN"}]
+    (ev_root / "residual-register-v1.json").write_text(json.dumps(reg))
+    ctx["residual_register_relpath"] = "residual-register-v1.json"
+    pkg.build_science_contract_package(**ctx)
+    ho = json.loads(
+        (ctx["package_dir"] / "research_contract_handoff.json")
+        .read_text())
+    assert ho["residual_register"] == reg
+    assert ho["residual_register_source"]["relative_path"] == \
+        "residual-register-v1.json"
+    ok, problems = pkg.verify_science_contract_package(
+        ctx["package_dir"], evidence_root=ev_root)
+    assert ok, problems
+    # tamper the source file
+    (ev_root / "residual-register-v1.json").write_text(
+        json.dumps(reg + [{"id": "X", "status": "OPEN"}]))
+    ok, problems = pkg.verify_science_contract_package(
+        ctx["package_dir"], evidence_root=ev_root)
+    assert not ok and any("residual_register_source" in p
+                          for p in problems)
+
+
+def test_register_source_and_inline_register_conflict(tmp_path):
+    ctx = _context(tmp_path)
+    ctx["residual_register"] = [{"id": "X", "status": "OPEN"}]
+    ctx["residual_register_relpath"] = "whatever.json"
+    with pytest.raises(ValueError):
+        pkg.build_science_contract_package(**ctx)
+
+
+def test_strict_scaffold_rejects_informational_b(tmp_path):
+    """Advisor catch: a bound B doc carrying UNBOUND_INFORMATIONAL
+    digests must not satisfy a strict scaffold."""
+    from nepal.framework_v1 import validation_scaffold as vs
+    from nepal.framework_v1.provenance import (bind_artifact_envelope,
+                                               sha256_file)
+    root = tmp_path / "root"
+    root.mkdir()
+    b_doc = bind_artifact_envelope({
+        "envelope_type": "B_SCREEN_V1",
+        "b_status": "B_TO_C_BLOCKED",
+        "ranked_array_canonical_sha256": _RANKED_DIGEST,
+        "b_evidence_binding": "UNBOUND_INFORMATIONAL",
+        "candidate_generation_id": "gen-x",
+        "code_revision": "abcdef1"})
+    (root / "b.json").write_text(json.dumps(b_doc))
+    mec_doc = bind_artifact_envelope({
+        "envelope_type": "MULTI_EVENT_CONTRACT_V1",
+        "candidate_generation_id": "gen-x",
+        "code_revision": "abcdef1"})
+    (root / "mec.json").write_text(json.dumps(mec_doc))
+    fmx_doc = bind_artifact_envelope({
+        "envelope_type": "FMX_V1",
+        "fmx_status": "FMX_BLOCKED_PENDING_EXPLICIT_FREEZE",
+        "candidate_generation_id": "gen-x",
+        "code_revision": "abcdef1"})
+    (root / "fmx.json").write_text(json.dumps(fmx_doc))
+    metrics = [{"metric_id": "m1", "class": "calibration"}]
+    from nepal.framework_v1.provenance import sha256_canonical
+    env = vs.build_scaffold_envelope({
+        "mode": "VALIDATION_SCAFFOLD_ONLY",
+        "research_diagnostic_only": True,
+        "promotion_eligible": False,
+        "candidate_generation_id": "gen-x",
+        "code_revision": "abcdef1",
+        "references": {
+            "mec_reference": {
+                "envelope_sha256": mec_doc["artifact_sha256"],
+                "envelope_type": "MULTI_EVENT_CONTRACT_V1",
+                "relative_path": "mec.json"},
+            "fmx_reference": {
+                "envelope_sha256": fmx_doc["artifact_sha256"],
+                "fmx_status": "FMX_BLOCKED_PENDING_EXPLICIT_FREEZE",
+                "relative_path": "fmx.json"},
+            "b_reference": {
+                "status": "B_TO_C_BLOCKED",
+                "ranked_array_canonical_sha256": _RANKED_DIGEST,
+                "envelope_sha256": b_doc["artifact_sha256"],
+                "relative_path": "b.json"}},
+        "split_spec": {"split_id": "S1",
+                       "temporal_embargo_days": 30,
+                       "geographic_holdout": {"min_separation_km": 50.0},
+                       "event_separation": {"group_disjoint": True}},
+        "metric_registry": metrics,
+        "metric_registry_sha256": sha256_canonical(metrics),
+        "inherited_state": {"b_status": "B_TO_C_BLOCKED",
+                            "e_status": "E_BLOCKED",
+                            "f_status": "F_BLOCKED",
+                            "ranking_rerun": False}},
+        reference_root=root)
+    ok, problems = vs.verify_scaffold_envelope(
+        env, reference_root=root, strict=True)
+    assert not ok and any("informational" in p.lower()
+                          for p in problems)
