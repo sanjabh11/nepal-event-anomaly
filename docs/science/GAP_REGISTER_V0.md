@@ -126,6 +126,41 @@ gated on P3/P5), `BLOCKED_EXTERNAL` (procurement/registration),
 | B41 output artifact binding | High | RESOLVED — experiment requires power/uncertainty artifacts; output manifest binding at execution |
 | B42 atomicity/resume | High | POLICY_DEFINED — atomic per-artifact commit + resumable manifest rule recorded |
 
+## Post-audit defect register, round 3 (C01–C30)
+
+| ID | Severity | Disposition |
+|---|---|---|
+| C01 free-text attestation | Critical | PARTIAL — `approver_role` + exact scope-statement attestation required; true identity authentication remains a human P3 property no code can fake |
+| C02 impossible dates | High | RESOLVED — calendar-aware `datetime.strptime` validation |
+| C03 sidecar not wired | Critical | RESOLVED — `evidence_root` required whenever verified sources/artifacts/execution statuses are bound; bytes re-hashed in `build_claim_envelope` |
+| C04 class-name allowlist | Critical | RESOLVED — exact `type(x) is cls` identity against `RECORD_CLASSES` |
+| C05 vacuous FKs | Critical | RESOLVED — parent references are unconditional; empty parent sets reject |
+| C06 thin forecast graph | Critical | RESOLVED — `FORECAST_EXPERIMENT_ONLY` requires experiment+vintage+holdout+labels+opportunities+controls+source+artifacts |
+| C07 optional CLI bundle | Critical | RESOLVED — execution statuses require `--matrix-path/--policy-path/--records-dir` |
+| C08 stale manifest/ledger | High | RESOLVED — manifest V0.2 schema + content-commit/manifest-commit protocol; ledger refreshed post-verify |
+| C09 no CI | High | RESOLVED — `.github/workflows/research-v0.yml` added (frozen-diff guard, contract tests, claim lint, disk reserve) |
+| C10 inside-root symlink | High | RESOLVED — `hash_artifact` rejects the symlink before resolution |
+| C11 ignored optional times | High | RESOLVED — optional cutoff event times validated; vintage-bound cutoffs require them |
+| C12 KeyError horizon class | Medium | RESOLVED — `as_event_class` total coercion; invalid input → no horizons |
+| C13 raw caller state | Critical | RESOLVED — `assign_target_state_typed`/`derive_control_state_typed` accept exact-typed records only |
+| C14 missing uncertainty | High | RESOLVED — `uncertainty_seconds` mandatory; `interval` precision must measure INTERVAL_LE_7D/8_30D |
+| C15 unverified label sources | Critical | RESOLVED — execution statuses require labels' sources to be bound AND EVIDENCE_VERIFIED |
+| C16 fabricated frames/controls | High | PARTIAL — control window must equal bound opportunity window and agree on state; frame-manifest byte binding arrives at intake |
+| C17 unmapped regions | High | RESOLVED — regions must be drawn from declared groups; Langtang-only explicitly rejected |
+| C18 unverified feature values | High | PARTIAL — `EvidenceArtifactV0` binds feature matrices to bytes; value-level semantic audit is intake-gated |
+| C19 format-only digests | Critical | RESOLVED — experiment/regime digests must equal bound `EvidenceArtifactV0` sha256s verified against real files |
+| C20 no feature-matrix record | Critical | RESOLVED — `EvidenceArtifactV0` added with type allowlist + byte binding |
+| C21 regex claim scan | Critical | RESOLVED — YAML/single-quote/`=`/escaped/array forms covered |
+| C22 fake verified posture | Critical | RESOLVED — verified posture now requires byte-bound sidecar + envelope-level evidence_root |
+| C23 unresolved licenses | Critical | BLOCKED_EXTERNAL — unchanged by design |
+| C24 ascertainment bias | High | POLICY_DEFINED — detection-opportunity/coverage/dedup rules recorded; measured at intake |
+| C25 unqualified verticals | Critical | UNCHANGED — no default pilot; `NO_QUALIFYING_PILOT_SOURCE` |
+| C26 no evaluators | Critical | GATED_ON_DATA — correct by design |
+| C27 no power results | Critical | GATED_ON_DATA — prospective computation at intake |
+| C28 drift untested | High | GATED_ON_DATA — policy recorded |
+| C29 atomicity untested | High | POLICY_DEFINED — atomic commit/resume rules documented; exercised at intake |
+| C30 worker provenance | High | POLICY_DEFINED — worker manifest protocol recorded |
+
 ## Honest residual risks
 
 - **P3 human approval is still required** — no code substitutes for it.

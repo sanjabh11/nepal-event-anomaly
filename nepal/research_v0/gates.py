@@ -25,13 +25,15 @@ A self-hash proves integrity, never external approval.
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
 
 from ._hashing import hash_artifact, sha256_canonical, sha256_file
 from .policy import (ForecastDataClass, parse_strict_utc,
                      require_finite_seconds)
-from .records import (BLOCKER_TOLERANT_STATUSES, NEUTRAL_RESEARCH_STATUSES,
+from .records import (BLOCKER_TOLERANT_STATUSES, EXECUTION_STATUSES,
+                      NEUTRAL_RESEARCH_STATUSES, RECORD_CLASSES,
                       RECORD_TYPES, STATUS_REQUIRED_RECORDS,
                       ResearchClaimEnvelopeV0)
 
@@ -62,9 +64,29 @@ APPROVAL_REQUIRED_FIELDS = (
     "unresolved_blockers",
     "human_approved",
     "approved_by",
+    "approver_role",
     "approver_attestation",
     "approved_at",
 )
+
+# Structured attestation floor (C01): code can require an explicit
+# scope statement and named role — it cannot authenticate identity;
+# that remains the human P3 gate.
+EXPECTED_ATTESTATION = (
+    "I reviewed only the design documents identified by their sha256 "
+    "digests; this approval authorizes no data intake, no forecast "
+    "execution, no warnings, and no production or authority action.")
+
+
+def _valid_calendar_date(value: Any) -> bool:
+    """Calendar-aware YYYY-MM-DD check — `2026-99-99` is rejected."""
+    if not isinstance(value, str) or not _DATE_RE.match(value):
+        return False
+    try:
+        datetime.strptime(value, "%Y-%m-%d")
+        return True
+    except ValueError:
+        return False
 
 
 class DesignApprovalError(RuntimeError):
@@ -142,9 +164,9 @@ def design_approval_problems(binding: Mapping[str, Any]) -> list[str]:
                 f"{declared_hex[:16]}… != file bytes {actual[:16]}…")
 
     review_date = binding.get("source_review_date")
-    if review_date is not None and not _DATE_RE.match(str(review_date)):
-        problems.append("source_review_date must be an ISO YYYY-MM-DD "
-                        "date")
+    if review_date is not None and not _valid_calendar_date(review_date):
+        problems.append("source_review_date must be a real ISO "
+                        "YYYY-MM-DD calendar date")
     if binding.get("approved_at") is not None and \
             parse_strict_utc(binding.get("approved_at")) is None:
         problems.append("approved_at must be an explicit-UTC timestamp")
@@ -160,10 +182,15 @@ def design_approval_problems(binding: Mapping[str, Any]) -> list[str]:
             f"token {sorted(ALLOWED_PILOT_RULES)}")
     if binding.get("human_approved") is not True:
         problems.append("human_approved must be an explicit true")
-    for name in ("approved_by", "approver_attestation"):
+    for name in ("approved_by", "approver_role"):
         value = binding.get(name)
         if value is not None and not str(value).strip():
             problems.append(f"{name} must be non-empty")
+    attestation = binding.get("approver_attestation")
+    if attestation is not None and attestation != EXPECTED_ATTESTATION:
+        problems.append("approver_attestation must be the exact "
+                        "design-scope statement — free-text "
+                        "attestations are not approval")
     blockers = binding.get("unresolved_blockers")
     if blockers is not None and not isinstance(blockers, (list, tuple)):
         problems.append("unresolved_blockers must be a list (possibly "
@@ -187,16 +214,12 @@ def _record_class_name(record: Any) -> str:
 
 
 def _validate_record(name: str, record: Any) -> list[str]:
-    """Every bound record must be an approved record class, implement
-    the protocol, and validate clean before hashing."""
+    """Every bound record must be an instance of an approved record
+    class — exact identity, not a name or duck-typed clone (C04)."""
+    if not any(type(record) is cls for cls in RECORD_CLASSES.values()):
+        return [f"record {name!r}: type {type(record).__name__!r} is "
+                f"not an approved record class {sorted(RECORD_TYPES)}"]
     problems: list[str] = []
-    cls = _record_class_name(record)
-    if cls not in RECORD_TYPES:
-        return [f"record {name!r}: type {cls!r} is not an approved "
-                f"record class {sorted(RECORD_TYPES)}"]
-    if not (hasattr(record, "problems") and hasattr(record, "to_dict")):
-        return [f"record {name!r} does not implement the record "
-                "protocol (problems()+to_dict())"]
     try:
         rec_problems = list(record.problems())
     except Exception as exc:  # validation must fail closed
@@ -209,29 +232,49 @@ def _validate_record(name: str, record: Any) -> list[str]:
     return problems
 
 
-def _cross_record_problems(records: Mapping[str, Any]) -> list[str]:
-    """Foreign-key consistency across the bound record set (B05)."""
+def _records_of(records: Mapping[str, Any], cls: type) -> list[Any]:
+    return [r for r in records.values() if type(r) is cls]
+
+
+def _cross_record_problems(records: Mapping[str, Any],
+                           status: str) -> list[str]:
+    """Mandatory foreign-key consistency (C05): references must point
+    at actually bound parents — an empty parent set rejects, not
+    skips."""
+    from .records import (ControlWindowV0, EventLabelV0,
+                          EvidenceArtifactV0, ForecastExperimentV0,
+                          ForecastVintageV0, HazardVerticalSpecV0,
+                          HoldoutPlanV0, ObservationOpportunityV0,
+                          RegimeArtifactV0, SourceRecordV0)
     problems: list[str] = []
-    sources = {r.source_id for r in records.values()
-               if _record_class_name(r) == "SourceRecordV0"}
-    verified = {r.source_id for r in records.values()
-                if _record_class_name(r) == "SourceRecordV0"
-                and r.posture == "EVIDENCE_VERIFIED"}
-    verticals = {r.vertical_id for r in records.values()
-                 if _record_class_name(r) == "HazardVerticalSpecV0"}
-    opportunities = {r.opportunity_id for r in records.values()
-                     if _record_class_name(r) ==
-                     "ObservationOpportunityV0"}
-    holdouts = {r.holdout_plan_id for r in records.values()
-                if _record_class_name(r) == "HoldoutPlanV0"}
+    sources = {r.source_id: r for r in _records_of(records,
+                                                  SourceRecordV0)}
+    verified = {sid for sid, r in sources.items()
+                if r.posture == "EVIDENCE_VERIFIED"}
+    verticals = {r.vertical_id for r in _records_of(
+        records, HazardVerticalSpecV0)}
+    opportunities = {r.opportunity_id: r for r in _records_of(
+        records, ObservationOpportunityV0)}
+    holdouts = {r.holdout_plan_id for r in _records_of(
+        records, HoldoutPlanV0)}
+    vintages = {sha256_canonical(r.to_dict())
+                for r in _records_of(records, ForecastVintageV0)}
+    artifacts = {r.sha256 for r in _records_of(records,
+                                               EvidenceArtifactV0)}
     event_ids: set[str] = set()
+    execution = status in EXECUTION_STATUSES
     for name, record in records.items():
-        cls = _record_class_name(record)
-        if cls == "EventLabelV0":
-            if sources and record.source_id not in sources:
+        if type(record) is EventLabelV0:
+            # Labels must reference a bound source — unconditionally.
+            if record.source_id not in sources:
                 problems.append(
-                    f"record {name!r}: source_id "
-                    f"{record.source_id!r} not among bound sources")
+                    f"record {name!r}: source_id {record.source_id!r} "
+                    "has no bound SourceRecordV0")
+            elif execution and record.source_id not in verified:
+                problems.append(
+                    f"record {name!r}: source {record.source_id!r} is "
+                    "bound but not EVIDENCE_VERIFIED — execution "
+                    "statuses require verified sources (C15)")
             if verticals and record.vertical_id not in verticals:
                 problems.append(
                     f"record {name!r}: vertical_id "
@@ -241,39 +284,56 @@ def _cross_record_problems(records: Mapping[str, Any]) -> list[str]:
                     f"record {name!r}: duplicate event_id "
                     f"{record.event_id!r}")
             event_ids.add(record.event_id)
-        elif cls == "ControlWindowV0":
-            if opportunities and \
-                    record.opportunity_id not in opportunities:
+        elif type(record) is ControlWindowV0:
+            opp = opportunities.get(record.opportunity_id)
+            if opp is None:
                 problems.append(
                     f"record {name!r}: opportunity_id "
-                    f"{record.opportunity_id!r} not among bound "
-                    "opportunities")
-        elif cls == "ObservationOpportunityV0":
-            if sources and record.source_id and \
-                    record.source_id not in sources:
+                    f"{record.opportunity_id!r} has no bound "
+                    "ObservationOpportunityV0")
+            elif (record.window_start != opp.window_start or
+                    record.window_end != opp.window_end):
                 problems.append(
-                    f"record {name!r}: source_id "
-                    f"{record.source_id!r} not among bound sources")
-        elif cls == "ForecastExperimentV0":
-            if holdouts and record.holdout_plan_id not in holdouts:
+                    f"record {name!r}: control window does not equal "
+                    "its opportunity window (C16)")
+            elif record.opportunity_state != opp.state:
+                problems.append(
+                    f"record {name!r}: opportunity_state disagrees "
+                    "with the bound opportunity record")
+        elif type(record) is ObservationOpportunityV0:
+            if record.source_id and record.source_id not in sources:
+                problems.append(
+                    f"record {name!r}: source_id {record.source_id!r} "
+                    "has no bound SourceRecordV0")
+        elif type(record) is ForecastExperimentV0:
+            if record.holdout_plan_id not in holdouts:
                 problems.append(
                     f"record {name!r}: holdout_plan_id "
-                    f"{record.holdout_plan_id!r} not among bound "
-                    "holdouts")
+                    f"{record.holdout_plan_id!r} has no bound "
+                    "HoldoutPlanV0")
             if verticals and record.vertical_id not in verticals:
                 problems.append(
                     f"record {name!r}: vertical_id "
                     f"{record.vertical_id!r} not among bound verticals")
-            bound_vintages = {
-                sha256_canonical(r.to_dict())
-                for r in records.values()
-                if _record_class_name(r) == "ForecastVintageV0"}
             for digest in record.vintage_digests:
-                if bound_vintages and digest not in bound_vintages:
+                if digest not in vintages:
                     problems.append(
                         f"record {name!r}: vintage_digest "
                         f"{digest[:16]}… not among bound vintages")
-        elif cls == "HazardVerticalSpecV0":
+            # Feature/power digests must reference bound artifacts
+            # (C19) — a format-valid 64-hex string is not evidence.
+            for digest in record.feature_digests:
+                if digest not in artifacts:
+                    problems.append(
+                        f"record {name!r}: feature_digest "
+                        f"{digest[:16]}… not among bound "
+                        "EvidenceArtifactV0 sha256 values")
+            if record.power_report_digest and \
+                    record.power_report_digest not in artifacts:
+                problems.append(
+                    f"record {name!r}: power_report_digest not among "
+                    "bound EvidenceArtifactV0 sha256 values")
+        elif type(record) is HazardVerticalSpecV0:
             if record.pilot_gate_status == "PILOT_GATE_PASSED":
                 for sid in record.candidate_source_ids:
                     if sid not in verified:
@@ -281,6 +341,25 @@ def _cross_record_problems(records: Mapping[str, Any]) -> list[str]:
                             f"record {name!r}: PILOT_GATE_PASSED "
                             f"references {sid!r} which is not a bound "
                             "EVIDENCE_VERIFIED source")
+        elif type(record) is RegimeArtifactV0:
+            # Stability/K/source digests must reference bound
+            # artifacts (C19).
+            for field_name in ("stability_report_digest",
+                               "k_selection_digest",
+                               "preprocessing_digest"):
+                digest = getattr(record, field_name)
+                if isinstance(digest, str) and SHA256_RE.match(digest) \
+                        and digest not in artifacts:
+                    problems.append(
+                        f"record {name!r}: {field_name} "
+                        f"{digest[:16]}… not among bound "
+                        "EvidenceArtifactV0 sha256 values")
+            for digest in record.source_digests:
+                if digest not in artifacts:
+                    problems.append(
+                        f"record {name!r}: source_digest "
+                        f"{digest[:16]}… not among bound "
+                        "EvidenceArtifactV0 sha256 values")
     return problems
 
 
@@ -327,7 +406,34 @@ def build_claim_envelope(
     problems.extend(_status_record_problems(status, records))
     for name, record in records.items():
         problems.extend(_validate_record(name, record))
-    problems.extend(_cross_record_problems(records))
+    problems.extend(_cross_record_problems(records, status))
+
+    # Byte-bound evidence (C03/C19): execution statuses, verified
+    # sources, and evidence artifacts all require a declared
+    # evidence_root whose referenced files re-hash correctly.
+    from .records import EvidenceArtifactV0
+    needs_evidence = (
+        status in EXECUTION_STATUSES
+        or any(getattr(r, "posture", None) == "EVIDENCE_VERIFIED"
+               for r in records.values())
+        or any(type(r) is EvidenceArtifactV0
+               for r in records.values()))
+    evidence_root = approval.get("evidence_root")
+    if needs_evidence:
+        if not evidence_root:
+            problems.append("execution statuses and byte-bound records "
+                            "require approval 'evidence_root'")
+        else:
+            for name, record in records.items():
+                problems.extend(
+                    f"record {name!r}: {p}" for p in
+                    source_evidence_problems(record,
+                                             evidence_root=evidence_root))
+                if type(record) is EvidenceArtifactV0:
+                    problems.extend(
+                        f"record {name!r}: {p}" for p in
+                        _evidence_artifact_problems(record,
+                                                    evidence_root))
     if problems:
         raise ValueError("; ".join(problems))
     digests: dict[str, str] = {}
@@ -343,14 +449,41 @@ def build_claim_envelope(
     out = envelope.to_dict()
     out["human_approved"] = True
     out["approved_by"] = str(approval["approved_by"])
+    out["approver_role"] = str(approval["approver_role"])
     out["approver_attestation"] = str(approval["approver_attestation"])
     out["approved_at"] = str(approval["approved_at"])
     out["approval_scope"] = str(approval["approval_scope"])
+    out["artifact_root"] = str(approval["artifact_root"])
     out["source_review_date"] = str(approval["source_review_date"])
     out["selected_pilot_rule"] = str(approval["selected_pilot_rule"])
     out["unresolved_blockers"] = blockers
     out["envelope_sha256"] = sha256_canonical(out)
     return out
+
+
+def _evidence_artifact_problems(record: Any, evidence_root: Any) -> list[str]:
+    """Verify an EvidenceArtifactV0 against actual bytes under
+    ``evidence_root`` — path containment, non-symlink, sha256 and
+    declared size must match."""
+    problems: list[str] = []
+    root = Path(str(evidence_root))
+    if not root.is_dir():
+        return [f"evidence_root {root} is not a directory"]
+    path = Path(str(record.path))
+    try:
+        meta = hash_artifact(path, root)
+    except ValueError as exc:
+        return [f"artifact {record.artifact_id!r}: {exc}"]
+    if meta["sha256"] != record.sha256:
+        problems.append(
+            f"artifact {record.artifact_id!r}: sha256 mismatch — "
+            f"declared {str(record.sha256)[:16]}… != file "
+            f"{meta['sha256'][:16]}…")
+    if meta["size_bytes"] != record.size_bytes:
+        problems.append(
+            f"artifact {record.artifact_id!r}: size_bytes {meta['size_bytes']}"
+            f" != declared {record.size_bytes}")
+    return problems
 
 
 # ---------------------------------------------------------------------
@@ -405,11 +538,15 @@ FORBIDDEN_STATUS_TOKENS = frozenset({
     "PRODUCTION_READY", "SCIENTIFICALLY_VALIDATED", "AUTHORITY_APPROVED",
     "OPERATIONALLY_AUTHORIZED", "PILOT_READY", "FORECAST_READY"})
 
+# Flag scan tolerates JSON double quotes, single quotes, escaped
+# quotes, YAML unquoted keys, `=` separators, and YAML booleans (C21).
 _AUTHORITY_FLAG_RE = re.compile(
-    r'"(?:warning[_\-\s]*path[_\-\s]*authorized|'
-    r'production[_\-\s]*authorized|promotion[_\-\s]*eligible|'
-    r'operationally[_\-\s]*authorized|authority[_\-\s]*approved)"'
-    r'\s*:\s*true', re.IGNORECASE)
+    r"['\"\\]?"
+    r"(?:warning[_\-\s]*path[_\-\s]*authorized|"
+    r"production[_\-\s]*authorized|promotion[_\-\s]*eligible|"
+    r"operationally[_\-\s]*authorized|authority[_\-\s]*approved)"
+    r"['\"\\]?\s*[:=]\s*['\"\\]*(?:true|yes|on)\b",
+    re.IGNORECASE)
 
 _OPERATIONAL_PHRASE_RE = re.compile(
     r"\b(operational\W+warning|evacuation|production\W+deploy"
@@ -418,7 +555,9 @@ _OPERATIONAL_PHRASE_RE = re.compile(
     re.IGNORECASE)
 
 _STATUS_FIELD_RE = re.compile(
-    r'"(?:status|gate[_\-\s]*status|readiness)"\s*:\s*"([^"]+)"',
+    r"['\"\\]*(?:status|gate[_\-\s]*status|readiness)['\"\\]*"
+    r"\s*[:=]\s*[\[{]?\s*['\"\\]*([A-Za-z0-9_\- ]+?)"
+    r"(?=['\"\\,\]\}\n]|$)",
     re.IGNORECASE)
 
 

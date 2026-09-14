@@ -92,6 +92,18 @@ def _cmd_validate_envelope(args: argparse.Namespace) -> int:
         problems.append("record_digests must map names to 64-hex "
                         "digests")
 
+    # C07: execution-shaped statuses require the full real bundle —
+    # design-stage statuses are the only no-data validation mode.
+    from .records import EXECUTION_STATUSES
+    if envelope.get("status") in EXECUTION_STATUSES:
+        for flag in ("--matrix-path", "--policy-path",
+                     "--records-dir"):
+            if not getattr(args, flag[2:].replace("-", "_")):
+                problems.append(
+                    f"execution status {envelope.get('status')!r} "
+                    f"requires {flag} — no-bundle validation cannot "
+                    "verify an execution envelope")
+
     # Bundle verification (B24): when real artifact paths are supplied,
     # re-hash them and compare — a self-consistent fabricated envelope
     # fails against actual bytes.

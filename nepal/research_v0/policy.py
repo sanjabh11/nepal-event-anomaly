@@ -145,25 +145,44 @@ _CLASS_HORIZON_ALLOWLIST = {
 }
 
 
+def as_event_class(value: Any) -> Optional[EventTimeClass]:
+    """Total coercion: return the enum for a valid value or name, else
+    ``None`` — callers fail closed instead of raising (C12)."""
+    if isinstance(value, EventTimeClass):
+        return value
+    if isinstance(value, str):
+        try:
+            return EventTimeClass(value)
+        except ValueError:
+            try:
+                return EventTimeClass[value]
+            except KeyError:
+                return None
+    return None
+
+
 def eligible_horizons(
-        event_class: EventTimeClass, *,
-        event_uncertainty_seconds: float,
+        event_class: Any, *,
+        event_uncertainty_seconds: Any,
         observation_latency_seconds: Optional[float],
         processing_latency_seconds: Optional[float]) -> list[str]:
     """Return the horizons admissible for this event-time class.
 
     A horizon is eligible only when its width is at least the event-time
     uncertainty plus verified observation and processing/availability
-    latency.  Missing, negative, NaN, or infinite components block every
-    horizon.
+    latency.  Missing, negative, NaN, infinite components — and any
+    unrecognised event class — block every horizon.
     """
+    klass = as_event_class(event_class)
+    if klass is None:
+        return []
     components = (require_finite_seconds(event_uncertainty_seconds),
                   require_finite_seconds(observation_latency_seconds),
                   require_finite_seconds(processing_latency_seconds))
     if any(c is None or c < 0 for c in components):
         return []
     required = sum(components)  # type: ignore[arg-type]
-    allowed = _CLASS_HORIZON_ALLOWLIST[event_class]
+    allowed = _CLASS_HORIZON_ALLOWLIST[klass]
     return [h for h in HORIZON_ORDER
             if h in allowed and HORIZON_SECONDS[h] >= required]
 
@@ -240,6 +259,73 @@ def derive_control_state(
     if state is TargetState.NEGATIVE:
         return TargetState.NEGATIVE
     return TargetState.CENSORED_OR_AMBIGUOUS
+
+
+def assign_target_state_typed(
+        opportunity: Any,
+        event_labels: Sequence[Any]) -> TargetState:
+    """Typed-only target assignment (C13).
+
+    Accepts an ``ObservationOpportunityV0`` and ``EventLabelV0``
+    records — never raw dicts or caller-asserted state.  Every input is
+    validated via ``problems()``; any invalid record censors the
+    window.  The window is taken from the opportunity record itself.
+    """
+    # Exact class identity, not name-matching (C04/C13) — a spoofed
+    # duck type cannot satisfy this check.
+    from .records import EventLabelV0, ObservationOpportunityV0
+    if type(opportunity) is not ObservationOpportunityV0:
+        return TargetState.CENSORED_OR_AMBIGUOUS
+    if opportunity.problems():
+        return TargetState.CENSORED_OR_AMBIGUOUS
+    ws = parse_strict_utc(opportunity.window_start)
+    we = parse_strict_utc(opportunity.window_end)
+    intervals: list[dict[str, Any]] = []
+    for label in event_labels:
+        if type(label) is not EventLabelV0 or label.problems():
+            return TargetState.CENSORED_OR_AMBIGUOUS
+        s = parse_strict_utc(label.event_time_start)
+        e = parse_strict_utc(label.event_time_end)
+        intervals.append({"start": s, "end": e,
+                          "adjudicated": label.adjudicated})
+    return assign_target_state(
+        ws, we, intervals,  # type: ignore[arg-type]
+        opportunity_state=opportunity.state)
+
+
+def derive_control_state_typed(
+        control: Any,
+        opportunity: Any,
+        event_labels: Sequence[Any]) -> TargetState:
+    """Typed control derivation (B12/C13): the control's window must
+    equal the linked opportunity's window; state is derived, never
+    caller-asserted."""
+    from .records import (ControlWindowV0, EventLabelV0,
+                          ObservationOpportunityV0)
+    if type(control) is not ControlWindowV0 or \
+            type(opportunity) is not ObservationOpportunityV0:
+        return TargetState.CENSORED_OR_AMBIGUOUS
+    if control.problems() or opportunity.problems():
+        return TargetState.CENSORED_OR_AMBIGUOUS
+    if control.opportunity_id != opportunity.opportunity_id:
+        return TargetState.CENSORED_OR_AMBIGUOUS
+    ws = parse_strict_utc(control.window_start)
+    we = parse_strict_utc(control.window_end)
+    ows = parse_strict_utc(opportunity.window_start)
+    owe = parse_strict_utc(opportunity.window_end)
+    if None in (ws, we, ows, owe) or (ws, we) != (ows, owe):
+        return TargetState.CENSORED_OR_AMBIGUOUS
+    intervals = []
+    for label in event_labels:
+        if type(label) is not EventLabelV0 or label.problems():
+            return TargetState.CENSORED_OR_AMBIGUOUS
+        intervals.append({
+            "start": parse_strict_utc(label.event_time_start),
+            "end": parse_strict_utc(label.event_time_end),
+            "adjudicated": label.adjudicated})
+    return derive_control_state(
+        ws, we, intervals,  # type: ignore[arg-type]
+        opportunity_state=opportunity.state)
 
 
 def embargo_seconds(*, max_horizon_seconds: Optional[float],

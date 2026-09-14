@@ -1,6 +1,6 @@
 # Source Feasibility Records — v0
 
-**Status:** `SOURCE_MATRIX_COMPLETE` (metadata-only lane audit). All
+**Status:** `METADATA_REVIEW_COMPLETE` (metadata-only lane audit). All
 sources are `CANDIDATE_ONLY` until license/version/geography/fields/
 timing are verified at intake. No data was downloaded. Compiled from
 four independent metadata-only review lanes on 2026-09-13.

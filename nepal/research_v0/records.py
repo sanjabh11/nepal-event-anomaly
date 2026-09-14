@@ -92,6 +92,10 @@ ASSIGNMENT_RULES = frozenset(
     {"basin", "catchment", "macroregion", "fixed_spatial"})
 SPLIT_NAMES = frozenset({"train", "validation", "test"})
 EXPERIMENT_TARGETS = frozenset({"occurrence"})
+ARTIFACT_TYPES = frozenset({
+    "feature_matrix", "power_report", "stability_report",
+    "k_selection", "forecast_output", "evaluation_report",
+    "uncertainty_report", "source_evidence", "regime_model"})
 
 # Neutral research statuses — the only statuses a claim envelope may
 # carry.  READY-shaped or authority-shaped statuses are absent by
@@ -124,28 +128,41 @@ BLOCKER_TOLERANT_STATUSES = frozenset({
     "RESEARCH_PATH_ISOLATED", "FMX_BLOCKED_CUTOFF",
     "UNDERPOWERED_DESCRIPTIVE_ONLY", "DEFERRED_NO_OPEN_TIMED_SOURCE"})
 
-# Status → required record classes (B04): an execution-shaped envelope
-# with no records, or missing the record types its status implies,
-# fails closed.
+# Status → required record classes (B04/C06): an execution-shaped
+# envelope with no records, or missing any record type its status
+# implies, fails closed.  Forecast statuses require the full upstream
+# chain — source, labels, opportunities, controls, holdout, vintages,
+# and a bound feature artifact.
 STATUS_REQUIRED_RECORDS = {
     "METADATA_REVIEW_COMPLETE": ("SourceRecordV0",),
     "EVENT_INTAKE_VALIDATED": ("EventLabelV0", "ObservationOpportunityV0",
-                               "ControlWindowV0", "HoldoutPlanV0"),
+                               "ControlWindowV0", "HoldoutPlanV0",
+                               "SourceRecordV0"),
     "INTAKE_COMPLETE": ("EventLabelV0", "ObservationOpportunityV0",
-                        "ControlWindowV0", "HoldoutPlanV0"),
+                        "ControlWindowV0", "HoldoutPlanV0",
+                        "SourceRecordV0"),
     "RESEARCH_FEATURE_MATRIX_FROZEN": ("CutoffRecordV0", "HoldoutPlanV0",
-                                       "EventLabelV0"),
+                                       "EventLabelV0",
+                                       "EvidenceArtifactV0"),
     "FMX_BLOCKED_CUTOFF": ("CutoffRecordV0",),
-    "DESCRIPTIVE_REGIME_ONLY": ("RegimeArtifactV0",),
+    "DESCRIPTIVE_REGIME_ONLY": ("RegimeArtifactV0", "EvidenceArtifactV0"),
     "UNSUPERVISED_STRUCTURE_NOT_STABLE": ("RegimeArtifactV0",),
     "REGIME_ASSOCIATION_SUPPORTED": ("RegimeArtifactV0", "HoldoutPlanV0",
-                                     "EventLabelV0"),
+                                     "EventLabelV0",
+                                     "EvidenceArtifactV0"),
     "UNSUPERVISED_PATH_NOT_SUPPORTED": ("RegimeArtifactV0",
                                         "HoldoutPlanV0"),
-    "FORECAST_EXPERIMENT_ONLY": ("ForecastExperimentV0",
-                                 "ForecastVintageV0", "HoldoutPlanV0"),
+    "FORECAST_EXPERIMENT_ONLY": (
+        "ForecastExperimentV0", "ForecastVintageV0", "HoldoutPlanV0",
+        "EventLabelV0", "ObservationOpportunityV0", "ControlWindowV0",
+        "SourceRecordV0", "EvidenceArtifactV0"),
     "UNDERPOWERED_DESCRIPTIVE_ONLY": ("ForecastExperimentV0",),
 }
+
+# Statuses that demand byte-bound evidence: any envelope carrying them
+# requires an evidence_root and verified artifact bytes.
+EXECUTION_STATUSES = frozenset(
+    NEUTRAL_RESEARCH_STATUSES - BLOCKER_TOLERANT_STATUSES)
 
 
 def _req(problems: list[str], name: str, value: Any) -> None:
@@ -357,10 +374,13 @@ class EventLabelV0:
             problems.append(
                 f"event_time_precision {self.event_time_precision!r} not "
                 f"in {sorted(PRECISION_TERMS)}")
+        # Explicit uncertainty is mandatory (C14): a label without a
+        # declared uncertainty cannot establish its precision class.
         unc = require_finite_seconds(self.uncertainty_seconds)
-        if self.uncertainty_seconds is not None and unc is None:
-            problems.append("uncertainty_seconds must be finite")
-        elif unc is not None and unc < 0:
+        if unc is None:
+            problems.append("uncertainty_seconds is required and must "
+                            "be finite")
+        elif unc < 0:
             problems.append("uncertainty_seconds must be non-negative")
         # Interval convention (B09): declared uncertainty must cover
         # the entire event interval — an interval is a bound on possible
@@ -375,7 +395,15 @@ class EventLabelV0:
                 _PRECISION_TO_CLASS:
             declared = _PRECISION_TO_CLASS[self.event_time_precision]
             measured = classify_event_time(unc)
-            if declared is not None and declared != measured:
+            if self.event_time_precision == "interval":
+                # "interval" must bind to a real interval class — it
+                # cannot smuggle sub-day or coarse uncertainty (C14).
+                if measured not in (EventTimeClass.INTERVAL_LE_7D,
+                                    EventTimeClass.INTERVAL_8_30D):
+                    problems.append(
+                        f"precision 'interval' requires uncertainty in "
+                        f"(1d, 30d]; measured class is {measured.value}")
+            elif declared is not None and declared != measured:
                 problems.append(
                     f"event_time_precision {self.event_time_precision!r} "
                     f"inconsistent with measured class {measured.value}")
@@ -546,6 +574,21 @@ class CutoffRecordV0:
         problems: list[str] = []
         _req(problems, "cutoff_id", self.cutoff_id)
         problems.extend(cutoff_order_problems(asdict(self)))
+        # Optional event association fields are validated when present
+        # (C11) — malformed optional times must not pass silently.
+        for name in ("event_time_start", "event_time_end"):
+            value = getattr(self, name)
+            if value is not None:
+                _ts(problems, name, value)
+        es = parse_strict_utc(self.event_time_start)
+        ee = parse_strict_utc(self.event_time_end)
+        if es is not None and ee is not None and ee < es:
+            problems.append("event_time_end precedes event_time_start")
+        # A cutoff bound to a forecast vintage must associate an event.
+        if self.forecast_vintage_id:
+            if es is None or ee is None:
+                problems.append("a vintage-bound cutoff requires "
+                                "event_time_start/event_time_end")
         return problems
 
     def to_dict(self) -> dict[str, Any]:
@@ -608,6 +651,20 @@ class HoldoutPlanV0:
                             "evaluation regions are required; a bare "
                             "count and single-box validation are not "
                             "evidence")
+        # Regions must be drawn from the declared basin groups, and a
+        # single-box Langtang evaluation is explicitly rejected (C17).
+        if self.evaluation_region_names:
+            declared_regions = (set(self.train_groups) |
+                                set(self.validation_groups) |
+                                set(self.test_groups))
+            unmapped = named - declared_regions
+            if unmapped:
+                problems.append(
+                    f"evaluation regions not drawn from declared "
+                    f"groups: {sorted(unmapped)}")
+            if named == {"langtang"}:
+                problems.append("Langtang-only evaluation is "
+                                "prohibited")
         overlap = (set(self.train_groups) & set(self.validation_groups)
                    | set(self.train_groups) & set(self.test_groups)
                    | set(self.validation_groups) & set(self.test_groups))
@@ -895,9 +952,52 @@ class ResearchClaimEnvelopeV0:
         return asdict(self)
 
 
-# Approved record classes that may be bound into an envelope (B05).
-RECORD_TYPES = frozenset({
-    "HazardVerticalSpecV0", "SourceRecordV0", "EventLabelV0",
-    "ObservationOpportunityV0", "ControlWindowV0", "CutoffRecordV0",
-    "HoldoutPlanV0", "ForecastVintageV0", "RegimeArtifactV0",
-    "ForecastExperimentV0"})
+@dataclass(frozen=True)
+class EvidenceArtifactV0:
+    """A byte-bound reference to a real artifact (C19/C20): feature
+    matrix, power report, stability report, K-selection record,
+    forecast output, evaluation report, source evidence.  Digests are
+    verified against actual files under an evidence root at envelope
+    build time — a fabricated 64-hex string cannot bind."""
+
+    artifact_id: str
+    artifact_type: str               # ARTIFACT_TYPES
+    path: str                        # path under evidence root
+    sha256: str = ""
+    size_bytes: Optional[int] = None
+    as_of_date: str = ""
+
+    def problems(self) -> list[str]:
+        problems: list[str] = []
+        _req(problems, "artifact_id", self.artifact_id)
+        _req(problems, "path", self.path)
+        if self.artifact_type not in ARTIFACT_TYPES:
+            problems.append(f"artifact_type {self.artifact_type!r} not "
+                            f"in {sorted(ARTIFACT_TYPES)}")
+        _sha(problems, "sha256", self.sha256)
+        if self.size_bytes is None or not isinstance(
+                self.size_bytes, int) or self.size_bytes < 0:
+            problems.append("size_bytes must be a non-negative integer")
+        _date(problems, "as_of_date", self.as_of_date)
+        return problems
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+# Approved record classes that may be bound into an envelope — keyed by
+# class name for display, matched by exact identity at bind time (C04).
+RECORD_CLASSES = {
+    "HazardVerticalSpecV0": HazardVerticalSpecV0,
+    "SourceRecordV0": SourceRecordV0,
+    "EventLabelV0": EventLabelV0,
+    "ObservationOpportunityV0": ObservationOpportunityV0,
+    "ControlWindowV0": ControlWindowV0,
+    "CutoffRecordV0": CutoffRecordV0,
+    "HoldoutPlanV0": HoldoutPlanV0,
+    "ForecastVintageV0": ForecastVintageV0,
+    "RegimeArtifactV0": RegimeArtifactV0,
+    "ForecastExperimentV0": ForecastExperimentV0,
+    "EvidenceArtifactV0": EvidenceArtifactV0,
+}
+RECORD_TYPES = frozenset(RECORD_CLASSES)

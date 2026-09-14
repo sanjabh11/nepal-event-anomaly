@@ -51,7 +51,8 @@ def _approval(doc_paths, _matrix_sha256=None, _policy_sha256=None,
         "unresolved_blockers": [],
         "human_approved": True,
         "approved_by": "principal-investigator",
-        "approver_attestation": "I reviewed the design artifacts only",
+        "approver_role": "science-design-approver",
+        "approver_attestation": gates.EXPECTED_ATTESTATION,
         "approved_at": "2026-09-14T00:00:00Z",
     }
     binding.update(overrides)
@@ -111,6 +112,10 @@ class TestDesignApproval:
         assert design_approval_problems(_approval(
             doc_paths, source_review_date="Sept 14"))
         assert design_approval_problems(_approval(
+            doc_paths, source_review_date="2026-99-99"))  # C02
+        assert design_approval_problems(_approval(
+            doc_paths, source_review_date="2026-02-30"))
+        assert design_approval_problems(_approval(
             doc_paths, approved_at="2026-09-14 00:00"))
         assert design_approval_problems(_approval(
             doc_paths, approval_scope="full_authorization"))
@@ -118,6 +123,10 @@ class TestDesignApproval:
             doc_paths, selected_pilot_rule="glof_is_the_pilot"))
         assert design_approval_problems(_approval(
             doc_paths, approver_attestation=""))
+        assert design_approval_problems(_approval(
+            doc_paths, approver_attestation="looks good to me"))
+        assert design_approval_problems(_approval(
+            doc_paths, approver_role=""))
 
     def test_no_approval_no_envelope(self):
         with pytest.raises(DesignApprovalError):

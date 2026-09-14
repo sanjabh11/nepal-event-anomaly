@@ -52,6 +52,10 @@ def hash_artifact(path: str | Path,
     """
     p = Path(path)
     root = Path(allowed_root)
+    # Reject the symlink itself before resolution: an inside-root
+    # symlink's target is not the artifact the caller named (C10).
+    if p.is_symlink():
+        raise ValueError(f"refusing to hash symlink: {p}")
     try:
         resolved = p.resolve()
         root_resolved = root.resolve()

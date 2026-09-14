@@ -1,0 +1,60 @@
+# Research-v0 contract checks — additive CI for the research-only
+# namespace.  This workflow validates contracts and boundaries only;
+# it performs no data intake, downloads, clustering, or execution.
+name: research-v0-contracts
+
+on:
+  push:
+    paths:
+      - "nepal/research_v0/**"
+      - "tests/test_research_v0_*.py"
+      - "docs/science/**"
+      - ".github/workflows/research-v0.yml"
+  pull_request:
+    paths:
+      - "nepal/research_v0/**"
+      - "tests/test_research_v0_*.py"
+      - "docs/science/**"
+      - ".github/workflows/research-v0.yml"
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test runner
+        run: python -m pip install pytest
+
+      - name: Frozen-boundary diff check
+        run: |
+          set -e
+          changed=$(git diff --name-only origin/${{ github.base_ref || 'main' }}...HEAD -- \
+            nepal/framework_v1/ preregistration.md pinned/ data/ || true)
+          if [ -n "$changed" ]; then
+            echo "Frozen paths modified: $changed"; exit 1
+          fi
+          echo "frozen-path diff empty"
+
+      - name: Research contract tests
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
+            python -B -m pytest tests/test_research_v0_*.py -q
+
+      - name: Claim lint over science artifacts
+        run: |
+          set -e
+          for f in docs/science/*; do
+            PYTHONPATH=. python -B -m nepal.research_v0.cli claim-scan "$f"
+          done
+
+      - name: Disk reserve check (8 GiB)
+        run: |
+          avail_kb=$(df -k . | awk 'NR==2 {print $4}')
+          avail_gib=$((avail_kb / 1024 / 1024))
+          echo "free: ${avail_gib} GiB"
+          [ "$avail_gib" -ge 8 ]
