@@ -105,7 +105,11 @@ jobs:
       - name: Claim lint over governed artifacts
         run: |
           set -e
-          for f in docs/science/* README.md .github/workflows/*.yml; do
+          # claim-scan accepts files or directories (recursive,
+          # deterministic) — local and CI file selection are identical.
+          PYTHONPATH=. python -B -m nepal.research_v0.cli claim-scan docs/science
+          PYTHONPATH=. python -B -m nepal.research_v0.cli claim-scan README.md
+          for f in .github/workflows/*.yml; do
             PYTHONPATH=. python -B -m nepal.research_v0.cli claim-scan "$f"
           done
 

@@ -37,7 +37,7 @@ import argparse
 import hashlib
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from nepal.era5_download import (
@@ -82,8 +82,36 @@ NAME_MAP = {
     "total_precipitation": "tp",
 }
 
-ALL_DAYS = [f"{d:02d}" for d in range(1, 32)]
 ALL_HOURS = [f"{h:02d}:00" for h in range(24)]
+
+
+def utc_now_iso() -> str:
+    """Explicit-UTC RFC3339 timestamp (Z-suffixed)."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _dir_bytes(path: Path) -> int:
+    """Total bytes of regular files under a directory (0 if absent)."""
+    if not path.is_dir():
+        return 0
+    return sum(p.stat().st_size for p in path.rglob("*") if p.is_file())
+
+
+def stage_size_accounting(run_root: Path) -> dict:
+    """Byte-accurate size accounting per pipeline stage (H06).
+
+    Totals are measured from actual files on disk at ledger-close
+    time — never caller-supplied numbers.
+    """
+    parts = {stage: _dir_bytes(run_root / stage)
+             for stage in ("raw", "monthly", "merged")}
+    parts["total_bytes"] = sum(parts.values())
+    return {
+        "definition": ("sum of file bytes under run_root/{raw,monthly,"
+                       "merged} measured at ledger close"),
+        **{f"{k}_bytes": v for k, v in parts.items()},
+        "total_size_mb": round(parts["total_bytes"] / (1024 * 1024), 2),
+    }
 
 # Requesting the exact grid node (28.3, 85.5) makes the endpoint's
 # nearest-point selection return the same cell the deterministic tie
@@ -100,20 +128,38 @@ POINT_AREA = [SELECTED_CELL["latitude"], SELECTED_CELL["longitude"],
 CHUNK_YEARS = 5
 
 
+def _month_day_groups(grp_years: list[int]) -> list[tuple]:
+    """Group JJA months by identical valid-day sets.
+
+    A CDS request is a year x month x day cross product: the `day`
+    list applies to EVERY month in the request, so a shared list must
+    be valid for all of them (June has no 31st).  Months are grouped
+    only when their valid-day sets are identical across every year in
+    the group, and `days_for_month` supplies the true calendar days —
+    including the 2026-08 cutoff at day 25.
+    """
+    by_days: dict[tuple, list[str]] = {}
+    for m in JJA_MONTHS:
+        days = tuple(sorted({d for y in grp_years
+                             for d in days_for_month(y, m)}))
+        by_days.setdefault(days, []).append(m)
+    return list(by_days.items())
+
+
 def sd_sf_chunks(years: list[int]) -> list[dict]:
     chunks = []
     normal = [y for y in years if y < EVENT_YEAR]
     for i in range(0, len(normal), CHUNK_YEARS):
         grp = normal[i:i + CHUNK_YEARS]
-        chunks.append({"years": grp, "months": JJA_MONTHS,
-                       "days": ALL_DAYS,
-                       "tag": f"{grp[0]}_{grp[-1]}"})
+        for days, months in _month_day_groups(grp):
+            chunks.append({"years": grp, "months": months,
+                           "days": list(days),
+                           "tag": f"{grp[0]}_{grp[-1]}_{''.join(months)}"})
     if EVENT_YEAR in years:
-        chunks.append({"years": [EVENT_YEAR], "months": ["06", "07"],
-                       "days": ALL_DAYS, "tag": f"{EVENT_YEAR}_junjul"})
-        chunks.append({"years": [EVENT_YEAR], "months": ["08"],
-                       "days": [f"{d:02d}" for d in range(1, 26)],
-                       "tag": f"{EVENT_YEAR}_aug"})
+        for days, months in _month_day_groups([EVENT_YEAR]):
+            chunks.append({"years": [EVENT_YEAR], "months": months,
+                           "days": list(days),
+                           "tag": f"{EVENT_YEAR}_{''.join(months)}"})
     return chunks
 
 
@@ -254,6 +300,34 @@ def _canonical_names(ds):
     return ds
 
 
+def _assert_jja_only(merged_path: Path) -> bool:
+    """Post-merge used-window proof (H04): the merged file must contain
+    JJA timestamps only, and none on/after the pre-event cutoff.
+
+    Reads the merged NetCDF and asserts; raises SystemExit on any
+    violation — a non-JJA row reaching the merged product is a defect,
+    not a filterable detail.
+    """
+    import numpy as np
+    import xarray as xr
+
+    with xr.open_dataset(merged_path) as ds:
+        times = np.asarray(ds["time"].values, dtype="datetime64[h]")
+    months = np.unique(times.astype("datetime64[M]")
+                       .astype(int) % 12 + 1)
+    if not set(months.tolist()) <= {6, 7, 8}:
+        raise SystemExit(
+            f"merged file contains non-JJA months {sorted(months)}: "
+            f"{merged_path}")
+    cutoff = np.datetime64(EVENT_CUTOFF_ISO)
+    late = times[times >= cutoff]
+    if late.size:
+        raise SystemExit(
+            f"merged file contains {late.size} timestamps on/after "
+            f"{EVENT_CUTOFF_ISO}: {merged_path}")
+    return True
+
+
 def cmd_assemble(run_root: Path, years: list[int]) -> dict:
     """Join ARCO + sd/sf sources, emit validated monthly files, merge."""
     import numpy as np
@@ -373,7 +447,7 @@ def cmd_assemble(run_root: Path, years: list[int]) -> dict:
                 ds_.coords[c] = np.float64(val)
 
     ledger = {
-        "start_time": datetime.now().isoformat(),
+        "start_time": utc_now_iso(),
         "dataset": CDS_DATASET,
         "retrieval_paths": {
             "t2m,d2m,u10,v10,tp": TIMESERIES_DATASET,
@@ -381,6 +455,18 @@ def cmd_assemble(run_root: Path, years: list[int]) -> dict:
                                  "reanalysis-era5-land",
             "sd,sf (2026)": CDS_DATASET,
         },
+        # H04 — raw-vs-used window honesty: the ARCO timeseries
+        # endpoint takes one contiguous date range, so the raw request
+        # necessarily spans non-JJA months.  The used window is the
+        # JJA universe only; non-JJA rows are sliced away before the
+        # monthly files are written and asserted absent post-merge.
+        "requested_window": {
+            "arco": ARCO_DATE_RANGE,
+            "sd_sf": "JJA months only, per-chunk valid-day lists",
+        },
+        "used_window": ("JJA months 2001-2025 plus 2026 JJA truncated "
+                        f"at day 25 ({EVENT_CUTOFF_ISO} exclusive)"),
+        "used_window_verified": False,
         "variables": ["t2m", "d2m", "u10", "v10", "sd", "sf", "tp"],
         "area": AREA,
         "run_root": str(run_root),
@@ -444,6 +530,8 @@ def cmd_assemble(run_root: Path, years: list[int]) -> dict:
                 ledger["final_file"] = str(out)
                 ledger["final_size_mb"] = round(
                     out.stat().st_size / (1024 * 1024), 1)
+                ledger["used_window_verified"] = \
+                    _assert_jja_only(out)
     merged_ok = (bool(ledger.get("final_file"))
                  and ledger.get("merged_status") == "validated"
                  and not ledger["incomplete_months"])
@@ -451,7 +539,9 @@ def cmd_assemble(run_root: Path, years: list[int]) -> dict:
                         if ready and merged_ok
                         and not ledger["failed_months"]
                         else "incomplete")
-    ledger["end_time"] = datetime.now().isoformat()
+    ledger["size_accounting"] = stage_size_accounting(run_root)
+    ledger["total_size_mb"] = ledger["size_accounting"]["total_size_mb"]
+    ledger["end_time"] = utc_now_iso()
     write_ledger(run_root, ledger)
     print(f"Assemble finished: {len(ledger['completed_months'])}"
           f"/{len(planned)} months, status={ledger['status']}")

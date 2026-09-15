@@ -335,20 +335,37 @@ def _cmd_verify_manifest(args: argparse.Namespace) -> int:
     return 0
 
 
+def _iter_claim_scan_paths(target: str) -> list[Path]:
+    """Files to scan: the file itself, or every regular file under a
+    directory (sorted, deterministic).  Directories must not reach
+    ``open()`` — a directory arg used to fail the whole CI lint."""
+    p = Path(target)
+    if p.is_dir():
+        return sorted(f for f in p.rglob("*") if f.is_file())
+    return [p]
+
+
 def _cmd_claim_scan(args: argparse.Namespace) -> int:
-    try:
-        with open(args.file, "r", encoding="utf-8") as handle:
-            text = handle.read()
-    except OSError as exc:
-        print(f"BLOCKED: cannot read {args.file}: {exc}",
-              file=sys.stderr)
+    any_findings = False
+    scanned = 0
+    for path in _iter_claim_scan_paths(args.file):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            print(f"BLOCKED: cannot read {path}: {exc}",
+                  file=sys.stderr)
+            any_findings = True
+            continue
+        findings = gates.scan_claims_text(text)
+        scanned += 1
+        if findings:
+            any_findings = True
+            for finding in findings:
+                print(f"FINDING: {path}: {finding}", file=sys.stderr)
+    if any_findings:
         return 1
-    findings = gates.scan_claims_text(text)
-    if findings:
-        for finding in findings:
-            print(f"FINDING: {finding}", file=sys.stderr)
-        return 1
-    print(f"{args.file}: no forbidden claim content")
+    print(f"{args.file}: no forbidden claim content"
+          + (f" ({scanned} files)" if scanned > 1 else ""))
     return 0
 
 

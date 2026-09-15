@@ -41,8 +41,14 @@ The three scripts below form one bounded, research-only diagnostic
 chain — they are NOT legacy quarantined surfaces, but they are NOT a
 pilot, forecast, or operational path either. They produce a
 single-cell descriptive regime check on retrospective ERA5-Land data
-only. Execution requires explicit network authorization (P5-C gate);
-the code is conformant but no download has been authorized or run.
+only. Execution required explicit network authorization (P5-C gate);
+**Run A executed under it on 2026-09-15** as a hybrid-route
+acquisition (ARCO timeseries + EarthDataHub DestinE mirror +
+CDS/MARS — see `docs/science/run_a/HYBRID_ROUTE_RECONCILIATION_V0.md`
+for the authorized-vs-actual record and open disposition) followed by
+feature extraction and the descriptive GMM. The completed result is
+`EXPLORATORY_DESCRIPTIVE_SINGLE_CELL` — implementation-confirmation
+scope only; see `docs/science/run_a/RUN_A_EVIDENCE_SUMMARY_V0.md`.
 
 ```bash
 RUN_ROOT=research_runs/gmm_confirmation_$(date +%Y%m%d)
@@ -50,17 +56,21 @@ RUN_ROOT=research_runs/gmm_confirmation_$(date +%Y%m%d)
 # 1. Bounded acquisition — 78 monthly ERA5-Land JJA requests,
 #    2026-08 capped at day 25, fails closed on any incomplete or
 #    post-cutoff payload. Requires cdsapi credentials.
-python nepal/era5_download.py --run-root "$RUN_ROOT" --year-range 2001-2026
+#    (Run A instead used nepal/era5_hybrid_fetch.py — arco / sd-sf /
+#    assemble subcommands plus an EarthDataHub mirror file; the
+#    canonical pure-route command is kept here for reference.)
+.venv/bin/python nepal/era5_download.py --run-root "$RUN_ROOT" \
+    --year-range 2001-2026
 
 # 2. Feature extraction — reads merged/, writes features/ under the
 #    same run root. No post-event rows; edge-censored PDD rows flagged.
-python nepal/feature_extraction.py --run-root "$RUN_ROOT" \
+.venv/bin/python nepal/feature_extraction.py --run-root "$RUN_ROOT" \
     --era5-file "$RUN_ROOT/merged/era5_land_nepal_jja_2001_2026.nc"
 
 # 3. Descriptive GMM — reads features/, writes gmm/ under the same
 #    run root. Status: EXPLORATORY_DESCRIPTIVE_SINGLE_CELL. K=1 null
 #    included; K=1..5; 3 seeds; converged-only BIC; no event labels.
-python nepal/gmm_descriptive.py --run-root "$RUN_ROOT"
+.venv/bin/python nepal/gmm_descriptive.py --run-root "$RUN_ROOT"
 ```
 
 All outputs land under `research_runs/` (gitignored) — never under
@@ -71,10 +81,28 @@ All outputs land under `research_runs/` (gitignored) — never under
 See `docs/science/` for the hazard/event-inventory decision matrix, the
 information-cutoff and target policy, source feasibility records, and
 the gap register. Research-only code lives in `nepal/research_v0/`
-(validation CLI: `python -m nepal.research_v0.cli --help`). No hazard
-vertical is pre-selected; the current pilot outcome is
+(validation CLI: `.venv/bin/python -m nepal.research_v0.cli --help`).
+No hazard vertical is pre-selected; the current pilot outcome is
 `NO_QUALIFYING_PILOT_SOURCE` pending the evidence items in
 `docs/science/SOURCE_FEASIBILITY_RECORDS_V0.md`.
+
+Run status:
+
+- **Run A** — completed bounded diagnostic (single cell, hybrid
+  route): `docs/science/run_a/` holds the evidence summary, route
+  reconciliation, and scope overlay. Result status
+  `EXPLORATORY_DESCRIPTIVE_SINGLE_CELL`; descriptive reanalysis only.
+- **Runs B and C** — `SPECIFICATION_COMPLETE` with real data pending:
+  `docs/science/run_b/` and `docs/science/run_c/` contain protocol
+  documents and synthetic fixtures only — no intake, fitting, or
+  evaluation on real data has run under them.
+
+Test-suite honesty: the full suite under the pinned `.venv` last
+recorded 1282 passed / 5 skipped / 0 failed
+(`P0_BASELINE_LEDGER.md`). The 5 skips are `rasterio`-dependent
+optional-dependency gates in frozen-package tests — disclosed, not
+waived — and the suite emits warnings that are not treated as
+failures.
 
 ## Structure
 

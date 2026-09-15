@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 from pathlib import Path
 
 import numpy as np
@@ -49,6 +50,47 @@ RESULTS_FILE = RUN_DIR / "gmm_results.json"
 BUNDLE_FILE = RUN_DIR / "bundle.json"
 
 FEATURE_FILENAME = "features_nepal_jja_2001_2026.csv"
+
+
+def _round_nested(value):
+    """Round nested array-like values to 8 decimals, shape-agnostic."""
+    if isinstance(value, np.ndarray):
+        value = value.tolist()
+    if isinstance(value, (list, tuple)):
+        return [_round_nested(v) for v in value]
+    return round(float(value), 8)
+
+
+def _to_jsonable(obj):
+    """H09 — canonical JSON conversion: explicit, no silent str().
+
+    numpy scalars/arrays, sets, and non-string dict keys are converted
+    explicitly; anything else raises TypeError rather than being
+    stringified (which would hide type drift)."""
+    if isinstance(obj, dict):
+        return {str(k): _to_jsonable(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple, set)):
+        return [_to_jsonable(v) for v in obj]
+    if isinstance(obj, np.ndarray):
+        return [_to_jsonable(v) for v in obj.tolist()]
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    if isinstance(obj, np.integer):
+        return int(obj)
+    if isinstance(obj, np.floating):
+        f = float(obj)
+        if not math.isfinite(f):
+            raise TypeError(f"non-finite float in JSON payload: {obj!r}")
+        return f
+    if isinstance(obj, float) and not math.isfinite(obj):
+        raise TypeError(f"non-finite float in JSON payload: {obj!r}")
+    return obj
+
+
+def _dump_canonical(obj, fh) -> None:
+    """Canonical JSON write: sorted keys, strict natives, no NaN."""
+    json.dump(_to_jsonable(obj), fh, indent=2, sort_keys=True,
+              allow_nan=False)
 UNITS_FILENAME = "feature_units.json"
 RUN_METADATA_FILENAME = "run_metadata.json"
 # P5-08 — the extractor writes this marker beside the merged file
@@ -525,6 +567,16 @@ def run_gmm_descriptive(daily_df: pd.DataFrame,
         "feature_units": recorded_units,
         "units_source": units_source,
         "units_missing_features": units_missing,
+        # H09 — replay completeness: feature order plus the exact
+        # fitted scaler parameters, so another environment can
+        # reproduce the scaling without refitting.
+        "feature_order": list(GMM_FEATURES),
+        "scaler_mean": {f: round(float(m), 8) for f, m in
+                        zip(GMM_FEATURES, scaler.mean_)},
+        "scaler_var": {f: round(float(v), 8) for f, v in
+                       zip(GMM_FEATURES, scaler.var_)},
+        "scaler_scale": {f: round(float(s), 8) for f, s in
+                         zip(GMM_FEATURES, scaler.scale_)},
     }
 
     print(f"\nFitting GMM K={list(GMM_K_RANGE)} with "
@@ -638,6 +690,29 @@ def run_gmm_descriptive(daily_df: pd.DataFrame,
         "converged": {str(s): {str(k): v for k, v in d.items()}
                       for s, d in gmm_results["converged"].items()},
         "covariance_type": GMM_COVARIANCE,
+        # H09 — full estimator configuration and fitted parameters for
+        # the representative model, so the descriptive bundle can be
+        # replayed exactly elsewhere.
+        "gmm_config": {
+            "n_components": int(best_k),
+            "covariance_type": GMM_COVARIANCE,
+            "max_iter": 200,
+            "n_init": (1 if best_k == 1 else 3),
+            "tol": 1e-3,
+            "reg_covar": 1e-6,
+            "random_state": int(gmm_results["best_seed"]),
+        },
+        "best_model_params": {
+            "seed": int(gmm_results["best_seed"]),
+            "weights": _round_nested(best_model.weights_),
+            "means": _round_nested(best_model.means_),
+            # covariances_ shape depends on covariance_type
+            # (full: K x D x D; diag: K x D; tied: D x D;
+            # spherical: K) — round recursively, not by shape.
+            "covariances": _round_nested(best_model.covariances_),
+            "converged": bool(best_model.converged_),
+            "n_iter": int(best_model.n_iter_),
+        },
         "features_used": list(GMM_FEATURES),
         "missingness": missingness,
         # P5-04 — rows actually fitted (expected ~2,230: 2,150
@@ -831,7 +906,7 @@ def write_bundle(results: dict, input_files: list[Path],
     }
     run_dir.mkdir(parents=True, exist_ok=True)
     with open(bundle_file, "w") as f:
-        json.dump(bundle, f, indent=2, default=str)
+        _dump_canonical(bundle, f)
     return bundle
 
 
@@ -1350,7 +1425,7 @@ def main() -> int:
     run_dir.mkdir(parents=True, exist_ok=True)
     if "error" in gmm_results:
         with open(results_file, "w") as f:
-            json.dump(gmm_results, f, indent=2, default=str)
+            _dump_canonical(gmm_results, f)
         write_bundle(gmm_results, input_files, feature_file, run_dir)
         print(f"RUN FAILED: {gmm_results['error']}")
         print("Results/bundle recorded under the run root as "
@@ -1361,7 +1436,7 @@ def main() -> int:
     generate_gmm_plots(daily_df, gmm_results, plot_dir)
 
     with open(results_file, "w") as f:
-        json.dump(gmm_results, f, indent=2, default=str)
+        _dump_canonical(gmm_results, f)
     print(f"\nResults saved to {results_file}")
 
     bundle = write_bundle(gmm_results, input_files, feature_file,
