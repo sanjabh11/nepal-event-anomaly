@@ -232,6 +232,7 @@ class ObservationOpportunity:
     window_start: str
     window_end: str
     coverage_class: str   # OBSERVED_FULL / OBSERVED_PARTIAL
+    opportunity_id: str = ""   # digest-derived when empty
 
 
 @dataclass(frozen=True)
@@ -242,6 +243,8 @@ class ControlWindow:
     window_start: str
     window_end: str
     control_digest: str = ""
+    opportunity_id: str = ""   # covering opportunity, carried through
+    unit_id: str = ""          # consuming-side unit axis (== basin here)
 
 
 def build_controls(source_id: str, basin: str,
@@ -259,19 +262,25 @@ def build_controls(source_id: str, basin: str,
     controls = []
     for w0, w1 in candidate_windows:
         s, e = _parse(w0), _parse(w1)
-        covered = any(_parse(o.window_start) <= s and
-                      e <= _parse(o.window_end) for o in opps)
-        if not covered:
+        covering = next(
+            (o for o in opps
+             if _parse(o.window_start) <= s
+             and e <= _parse(o.window_end)), None)
+        if covering is None:
             continue  # no opportunity => cannot be a control
         overlaps_event = any(
             _parse(ev.interval_start) < e and s < _parse(ev.interval_end)
             for ev in evs)
         if overlaps_event:
             continue
+        opp_id = covering.opportunity_id or _sha(
+            f"opp|{covering.source_id}|{covering.basin}|"
+            f"{covering.window_start}|{covering.window_end}")
         controls.append(ControlWindow(
             source_id=source_id, basin=basin,
             window_start=_iso(s), window_end=_iso(e),
-            control_digest=_sha(f"{source_id}|{basin}|{w0}|{w1}")))
+            control_digest=_sha(f"{source_id}|{basin}|{w0}|{w1}"),
+            opportunity_id=opp_id, unit_id=basin))
     return controls
 
 
@@ -285,6 +294,7 @@ class HoldoutAssignment:
     basin_groups: dict          # group -> frozenset of basins
     evaluation_regions: tuple
     embargo_seconds: int
+    split_of_group: dict = field(default_factory=dict)  # group -> split
 
 
 def assign_holdouts(events: list[EventIdentity],
@@ -371,4 +381,5 @@ def assign_holdouts(events: list[EventIdentity],
         basin_groups={g: frozenset(b) for g, b in basin_groups.items()},
         evaluation_regions=tuple(sorted(evaluation_regions)),
         embargo_seconds=embargo_seconds,
+        split_of_group=dict(split_of_group),
     )

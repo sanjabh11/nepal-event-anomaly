@@ -150,6 +150,8 @@ class RegimeRunConfig:
     era_col: str | None = "era"
     label_blinding: bool = True
     fitted_on: str = "TRAIN_ONLY"
+    unit_col: str | None = None    # emit (unit,date,regime) assignments
+    date_col: str | None = None    # when both columns are present
 
 
 def run_regimes(df: pd.DataFrame, feature_cols: list[str],
@@ -328,11 +330,27 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
     else:
         status = "CANDIDATE_ONLY"
 
+    # Per-unit-day assignments — the only downstream-consumable form
+    # (association harness binds (unit_id, date, regime_id) triples).
+    # Emitted for ALL rows (train + held-out), label-blind, BEFORE the
+    # artifact digest is bound so they are part of the frozen evidence.
+    assignments = None
+    if (config.unit_col and config.date_col
+            and config.unit_col in df.columns
+            and config.date_col in df.columns):
+        labels_all = model.predict(X_all)
+        dates = pd.to_datetime(df[config.date_col])
+        assignments = tuple(sorted(
+            (str(u), d.strftime("%Y-%m-%d"), f"regime_{int(l)}")
+            for u, d, l in zip(df[config.unit_col], dates, labels_all)))
+
     artifact = {
         "mode": "RETROSPECTIVE_REGIME",
         "data_class": "REANALYSIS",
         "fitted_on": "TRAIN_ONLY",
         "label_blinding": True,
+        "assignments_emitted": assignments is not None,
+        "assignments": list(assignments) if assignments else [],
         "k": modal_k,
         "seeds": sorted(set(int(s) for s in config.seeds)),
         "per_seed_best_k": {str(s): int(k)
