@@ -68,7 +68,7 @@ all of the following can be produced:
 |---|---|
 | `data_class` | `ARCHIVED_OPERATIONAL` (ensemble) |
 | Access mode | ECDS (CDS-API) or MARS TIGGE catalogue after registration + licence acceptance; CMA portal mirror; NCAR RDA mirror (TIGGE collection — verify identifier at intake). ECDS migration completed 2026-05-27. |
-| Licence/terms | ECMWF contribution: **CC BY-NC 4.0**. Non-ECMWF contributions: "freely for research only; commercial use not allowed" (per ECMWF TIGGE licence page). Per-centre licence review is mandatory at intake. Research-only use is compatible. |
+| Licence/terms | TIGGE licence (rev. 2), per-provider — verified 2026-09-15 (`run_b/SOURCE_EVIDENCE_ADDENDUM_V0.md`): **CC BY 4.0** for DWD, ECCC, ECMWF, KMA, NCEP, UKMO; **CC BY-NC 4.0** for BoM, CMA, CPTEC, IMD, JMA, MF, NCMRWF; ECMWF TIGGE data additionally governed by ECMWF Terms of Use. Licence id must be recorded per centre per vintage; the CMA-portal path is CC BY-NC (non-commercial). Research-only use is compatible. |
 | issue/init/valid/vintage fields | init cycle + step in GRIB keys / MARS keys; valid = init + step. No provider issue-time field → conservative margin rule (§1 gate 4). |
 | Public-availability delay | **48 h after initialization** (TIGGE usage licence; verified). |
 | Cycle completeness | Unverified — spot-check required per cycle/centre at intake. |
@@ -83,9 +83,9 @@ all of the following can be produced:
 |---|---|
 | `data_class` | `REFORECAST` + `ARCHIVED_OPERATIONAL` (real-time legs) — keep legs as separate vintage records |
 | Access mode | ECDS (CDS-API) or MARS S2S catalogue after registration + S2S licence acceptance; ECDS migration completed 2026-05-27. |
-| Licence/terms | Per-centre: **CC BY 4.0** or **CC BY-NC 4.0** (S2S licence rev. 5; verified). Licence id must be recorded per centre per vintage. |
+| Licence/terms | Per-provider — verified 2026-09-15 (`run_b/SOURCE_EVIDENCE_ADDENDUM_V0.md`): **CC BY 4.0** for ECCC, ECMWF, KMA, NCEP, HMCR, UKMO; **CC BY-NC 4.0** for BoM, CMA, CNR-ISAC, CNRM, CPTEC, IAP-CAS, JMA. Licence id must be recorded per centre per vintage. |
 | issue/init/valid/vintage fields | init + step in keys; valid = init + step; reforecast legs carry fixed model-version dates. No provider issue-time field → conservative margin rule. |
-| Public-availability delay | Real-time legs: **48 h** for CMA, CNR-ISAC, CPTEC, ECCC, ECMWF, HMCR, IAP-CAS, JMA, KMA, NCEP; **1 week** for BoM, CNRM, UKMO (verified). **Reforecasts unrestricted** (no delay). |
+| Public-availability delay | Real-time legs: **48 h** for CMA, CNR-ISAC, CPTEC, ECCC, ECMWF, HMCR, IAP-CAS, JMA, KMA, NCEP; **1 week** for BoM, CNRM, UKMO (verified 2026-09-15, addendum). **Reforecasts unrestricted** — licence text: "The reforecasts can be accessed without any restrictions." |
 | Cycle completeness | Real-time legs since ~Jan 2015, centre-dependent; unverified — spot-check at intake. Reforecast cadence varies by centre (fixed schedules, e.g. monthly 4–6 inits). |
 | Member counts | Centre-dependent, **4–101** real-time; reforecast sizes smaller (e.g. 7+1 to 32+1). Verify per centre at intake. |
 | Spatial coverage over Nepal | Common 1.5° lat/lon archive grid — complete but very coarse over Himalayan terrain. |
@@ -113,7 +113,7 @@ all of the following can be produced:
 |---|---|
 | `data_class` | `ARCHIVED_OPERATIONAL` (deterministic) |
 | Access mode | Free NCAR RDA web/HTTPS after registration; subset services available. |
-| Licence/terms | **CC BY 4.0** (verified). |
+| Licence/terms | **CC BY 4.0** (verified 2026-09-15, `run_b/SOURCE_EVIDENCE_ADDENDUM_V0.md`). |
 | issue/init/valid/vintage fields | 00/06/12/18Z cycles, init + forecast hour in filename/keys; valid = init + step. No issue-time field → conservative margin rule. |
 | Public-availability delay | No declared delay; retrieval latency margin still required (§1 gate 4). |
 | Cycle completeness | **Bounded archive: 2015-01-15 → 2025-05-28** (per official RDA page; verified). Cycle-level completeness spot-check required at intake. |
@@ -190,8 +190,8 @@ Himalayan domain is the admissible substitute.
 | Provider | data_class | Access friction | Licence gate | Issue-time evidence | Completeness | Ensemble | Nepal coverage | Composite verdict |
 |---|---|---|---|---|---|---|---|---|
 | GEFSv12 reforecast | REFORECAST | none (anonymous) | open | notional only | mechanically checkable | 5 daily / 11 weekly | ~0.5° | **Closest to passing all gates** (reforecast lane) |
-| TIGGE (ECDS/MARS) | ARCHIVED_OPERATIONAL | registration | per-centre, incl. CC BY-NC | margin rule | spot-check needed | 4–51 multi-centre | 0.25°–1.5° | Strongest ensemble archive; pending intake checks |
-| S2S | REFORECAST + ARCHIVED_OPERATIONAL | registration | per-centre CC BY / CC BY-NC | margin rule | spot-check needed | 4–101 | 1.5° | Best subseasonal lane; coarse grid |
+| TIGGE (ECDS/MARS) | ARCHIVED_OPERATIONAL | registration | verified per-centre CC BY 4.0 / CC BY-NC 4.0 | margin rule | spot-check needed | 4–51 multi-centre | 0.25°–1.5° | Strongest ensemble archive; pending intake checks |
+| S2S | REFORECAST + ARCHIVED_OPERATIONAL | registration | verified per-centre CC BY 4.0 / CC BY-NC 4.0 | margin rule | spot-check needed | 4–101 | 1.5° | Best subseasonal lane; coarse grid |
 | NCAR ds084001 | ARCHIVED_OPERATIONAL | registration | CC BY 4.0 | margin rule | bounded span, spot-check | 1 (deterministic) | 0.25° | Strongest deterministic archive |
 | NCEI NOMADS | ARCHIVED_OPERATIONAL | none | open | margin rule | spot-check needed | ~21 | 0.5°–1° | Secondary archive; version drift declared |
 | C3S seasonal | ARCHIVED_OPERATIONAL | registration | permissive | margin rule | spot-check needed | ~10–50 | ~1° | Seasonal context only |
@@ -228,6 +228,12 @@ Every retrieved vintage must produce, under `evidence_root`:
   multi-centre) and **NCAR ds084001** (deterministic, 0.25°), both
   pending registration, licence capture, completeness spot-checks, and
   issue-time margin declaration at intake.
+- Licence evidence is now metadata-verified for TIGGE, S2S, and
+  ds084001 (`run_b/SOURCE_EVIDENCE_ADDENDUM_V0.md`, retrieved
+  2026-09-15). This lifts the licence-evidence item only:
+  registration, per-centre licence binding to the actual centre used,
+  cycle completeness, per-cycle issue-time retrievability, and
+  historical availability remain unresolved and intake-gated.
 - No provider currently satisfies all gates from metadata alone; every
   row remains `CANDIDATE_ONLY`.
 - Nothing in this document authorizes downloads, scoring, or any

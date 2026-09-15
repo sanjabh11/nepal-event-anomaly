@@ -90,6 +90,14 @@ before relabeling, exact contract-cell coordinate assignment
 break `join="exact"`), disjointness assertion across the two snow
 sources, and the unchanged `normalize_payload` gate per month.
 
+Window note: the raw ARCO request span (2001-01-01 → 2026-08-25)
+covers non-JJA months, but the assembled and used window is JJA-only —
+the assembler asserts the 78-month JJA set and no non-JJA rows enter
+the monthly payloads. The 2026-08 `sd`/`sf` segment additionally
+carries `expver=0005` (preliminary, ERA5T-class): recorded as
+preliminary, acceptable for method-only use, and flagged for an
+exclusion sensitivity check under any future evidentiary use.
+
 ## 4. Local numeric comparison (no download — existing files only)
 
 The earlier pure-CDS attempt (`research_runs/gmm_confirmation_20260915T020537Z/`,
@@ -137,9 +145,11 @@ the Run A feature set; it does not alter the acquisition or merge
 layers, which carried the values faithfully.
 
 **What could not be compared locally:** the 73 months with no
-pure-route counterpart, and the EarthDataHub mirror's generation
-provenance (no EDH fetcher exists in `nepal/`; the mirror is asserted
-by ledger label + payload digest only).
+pure-route counterpart — numeric equivalence is demonstrated only for
+the 5 overlap months and all untested months remain UNVERIFIED — and
+the EarthDataHub mirror's generation provenance (no EDH fetcher exists
+in `nepal/`; the mirror is asserted by ledger label + payload digest
+only).
 
 ## 5. Conclusion recorded (not decided)
 
@@ -149,6 +159,8 @@ bitwise identity only for u10/v10 on 5 of 78 months, rounding-level
 agreement for t2m/d2m/sd/sf, and a construction-level (semantic, not
 noise) difference for tp, alongside a verified `sf_daily` feature
 defect. Pending the owner decision in §2, **Run A is retained as
-implementation-confirmation only**. Equivalence, if ever claimed,
-would require either owner acceptance of the quantified bounds above
-or a controlled rerun under the literal request plan.
+method-only implementation-confirmation** — it is not
+P5-C-authorized scientific evidence and may not be cited as such.
+Equivalence, if ever claimed, would require either owner acceptance
+of the quantified bounds above or a controlled rerun under the
+literal request plan.

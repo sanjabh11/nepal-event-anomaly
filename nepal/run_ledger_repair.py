@@ -117,16 +117,36 @@ def repair_ledger(run_root: Path) -> dict:
 
     # H07 — naive originals preserved; *_utc fields added with the
     # interpretation documented.
+    # Idempotent: notes keyed by field, not appended per run.
     notes = ledger.setdefault("timestamp_notes", [])
+    classified_legacy = False
     for field in ("start_time", "end_time"):
         raw = ledger.get(field)
-        if isinstance(raw, str) and not raw.endswith("Z") \
-                and "+" not in raw:
+        if not isinstance(raw, str):
+            continue
+        try:
+            dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            ledger[f"{field}_utc"] = "UNPARSEABLE"
+            continue
+        if dt.tzinfo is None:
             utc = _naive_to_utc(raw)
             ledger[f"{field}_utc"] = utc or "UNPARSEABLE"
-            notes.append(
-                f"{field}: original value was naive local time; "
-                f"{field}_utc interprets it as system-local")
+            note = (f"{field}: original value was naive local time; "
+                    f"{field}_utc interprets it as system-local")
+            classified_legacy = True
+        else:
+            ledger[f"{field}_utc"] = dt.astimezone(
+                timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            note = (f"{field}: original value was tz-aware; "
+                    f"{field}_utc normalizes to UTC")
+        if note not in notes:
+            notes.append(note)
+    if classified_legacy:
+        ledger["timestamp_classification"] = (
+            "legacy_naive_local_with_utc_normalization")
+    else:
+        ledger["timestamp_classification"] = "utc_bound"
     ledger["repaired_at_utc"] = utc_now_iso()
 
     ledger_path.write_text(json.dumps(ledger, indent=2, sort_keys=True)
@@ -208,21 +228,96 @@ def write_provenance_receipts(run_root: Path) -> Path:
     return out
 
 
+def rehash_report(run_root: Path) -> Path:
+    """RA-09 — independent read-only rehash of every artifact in the
+    run root, compared against any digest already recorded in the
+    bundle/ledger/marker.  Writes ``rehash_report.json``."""
+    run_root = Path(run_root)
+    report = {"run_root": str(run_root),
+              "generated_utc": utc_now_iso(),
+              "files": [],
+              "digest_cross_checks": []}
+    for p in sorted(run_root.rglob("*")):
+        if not p.is_file() or p.name in ("rehash_report.json",):
+            continue
+        rel = str(p.relative_to(run_root))
+        report["files"].append({"relpath": rel,
+                                "sha256": sha256_file(p),
+                                "size_bytes": p.stat().st_size})
+    by_rel = {f["relpath"]: f["sha256"] for f in report["files"]}
+
+    # Cross-check digests the bundle/ledger/marker already recorded.
+    bundle = run_root / "gmm" / "bundle.json"
+    if bundle.is_file():
+        b = json.loads(bundle.read_text())
+        for label, recorded in (
+                ("results_digest", b.get("results_digest")),
+                ("feature_digest", b.get("feature_digest")),
+                ("feature_units_digest",
+                 b.get("feature_units_digest"))):
+            target = {"results_digest": "gmm/gmm_results.json",
+                      "feature_digest":
+                          "features/features_nepal_jja_2001_2026.csv",
+                      "feature_units_digest":
+                          "features/feature_units.json"}.get(label)
+            if recorded and target in by_rel:
+                report["digest_cross_checks"].append({
+                    "digest": label, "file": target,
+                    "recorded": recorded,
+                    "recomputed": by_rel[target],
+                    "match": by_rel[target] == recorded})
+        for rel, dig in (b.get("input_digests") or {}).items():
+            key = str(rel)
+            if key in by_rel:
+                report["digest_cross_checks"].append({
+                    "digest": "input_digests", "file": key,
+                    "recorded": dig,
+                    "recomputed": by_rel[key],
+                    "match": by_rel[key] == dig})
+    marker = run_root / "merged" / "complete.json"
+    if marker.is_file():
+        mk = json.loads(marker.read_text())
+        recorded = mk.get("merged_sha256")
+        merged = "merged/era5_land_nepal_jja_2001_2026.nc"
+        if recorded and merged in by_rel:
+            report["digest_cross_checks"].append({
+                "digest": "marker.merged_sha256", "file": merged,
+                "recorded": recorded,
+                "recomputed": by_rel[merged],
+                "match": by_rel[merged] == recorded})
+    report["all_cross_checks_match"] = all(
+        c["match"] for c in report["digest_cross_checks"]) \
+        if report["digest_cross_checks"] else None
+    out = run_root / "rehash_report.json"
+    out.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n",
+                   encoding="utf-8")
+    return out
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--run-root", required=True)
+    p.add_argument("--rehash-only", action="store_true",
+                   help="only write rehash_report.json (no ledger "
+                        "repair or receipts)")
     args = p.parse_args(argv)
     run_root = Path(args.run_root)
     if not (run_root / "download_ledger.json").is_file():
         print(f"no download_ledger.json under {run_root}",
               file=sys.stderr)
         return 1
+    if args.rehash_only:
+        report = rehash_report(run_root)
+        print(f"rehash report: {report}")
+        return 0
     ledger = repair_ledger(run_root)
     receipts = write_provenance_receipts(run_root)
+    report = rehash_report(run_root)
     print(f"repaired ledger: total_size_mb="
           f"{ledger['total_size_mb']} "
           f"(independent of caller numbers)")
     print(f"receipts: {receipts}")
+    print(f"rehash report: {report}")
     return 0
 
 

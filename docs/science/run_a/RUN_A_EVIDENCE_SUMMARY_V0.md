@@ -36,6 +36,11 @@ through the unchanged `normalize_payload` gate from
 `nepal/era5_download.py` (exact variable set, exact UTC hourly
 timestamp sets, all-finite, `sde` absent, no post-cutoff rows).
 
+Note on windows: the raw ARCO request span (2001-01-01 → 2026-08-25)
+covers non-JJA months, but the assembled and used window is JJA-only —
+the assembler asserts the planned month set, and no non-JJA rows enter
+the monthly payloads, the merged file, or the feature matrix.
+
 ## 3. Input digests (sha256, recomputed by this lane)
 
 | Artifact | sha256 | Cross-check |
@@ -118,12 +123,16 @@ not repeated by this lane — the bundle's own digest map is bound above).
   `HYBRID_ROUTE_RECONCILIATION_V0.md` §4. Any reuse of Run A features
   must carry this caveat.
 - `sd`/`sf` for 2026-08 came from the preliminary-era `expver=0005`
-  segment (ERA5T-class) of `reanalysis-era5-land` — subject to later
-  consolidation by the provider.
+  segment (ERA5T-class) of `reanalysis-era5-land` — recorded as
+  preliminary, subject to later consolidation by the provider;
+  acceptable for method-only use and flagged for an exclusion
+  sensitivity check under any future evidentiary use.
 - The retrieval route deviated from the literal P5-C request shape
   (78 monthly area-box requests). Disposition options are recorded in
-  `HYBRID_ROUTE_RECONCILIATION_V0.md` §2; pending an owner decision,
-  Run A is retained as **implementation-confirmation only**.
+  `HYBRID_ROUTE_RECONCILIATION_V0.md` §2; pending owner ratification,
+  Run A is retained as **method-only implementation-confirmation** —
+  it is not P5-C-authorized scientific evidence and may not be cited
+  as such.
 
 ## 7. What remains UNVERIFIED by this record
 
@@ -135,7 +144,8 @@ not repeated by this lane — the bundle's own digest map is bound above).
   `nepal/`; the mirror file's provenance is asserted by the ledger
   route label and its payload digest only).
 - Bitwise or near-exact equivalence of the hybrid payloads to the
-  authorized pure-route payloads for the 73 months with no pure-route
-  counterpart (local comparison covers 5 months — see reconciliation
-  doc).
+  authorized pure-route payloads: numeric equivalence is demonstrated
+  only for the 5 overlap months (with the `tp` stamping-semantics
+  difference noted in the reconciliation doc); the remaining 73
+  months have no pure-route counterpart and are UNVERIFIED.
 - Any value not traceable to the digests in §3 is UNVERIFIED.

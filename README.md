@@ -97,12 +97,13 @@ Run status:
   documents and synthetic fixtures only — no intake, fitting, or
   evaluation on real data has run under them.
 
-Test-suite honesty: the full suite under the pinned `.venv` last
-recorded 1282 passed / 5 skipped / 0 failed
-(`P0_BASELINE_LEDGER.md`). The 5 skips are `rasterio`-dependent
-optional-dependency gates in frozen-package tests — disclosed, not
-waived — and the suite emits warnings that are not treated as
-failures.
+Test-suite honesty: the full suite under the pinned `.venv` recorded
+1282 passed / 5 skipped / 0 failed at the time of
+`P0_BASELINE_LEDGER.md`. Current verification (re-run at HEAD
+`d3d9238`+round-2): **1306 passed / 5 skipped / 0 failed**. The 5 skips are
+`rasterio`-dependent optional-dependency gates in frozen-package tests
+— disclosed, not waived — and the suite emits warnings that are not
+treated as failures.
 
 ## Structure
 

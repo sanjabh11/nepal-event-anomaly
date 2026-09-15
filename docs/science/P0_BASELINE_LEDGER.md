@@ -38,8 +38,26 @@ The empty Git shell is never the implementation root.
   `test_framework_v1_adapters.py:80`, `:92`, `:109`, `:128`,
   `test_framework_v1_screen.py:123`.
 - Content commit: bound via `content_head` in the manifest
-  (last bound `e940cbf`; superseded by the commit containing this
-  line and rebound in the manifest-only commit that follows).
+  (bound head is the manifest's own field — see
+  `ARTIFACT_MANIFEST_V0.json` for the current value).
+
+## Current verification snapshot (2026-09-15, round 2)
+
+- HEAD: `d3d9238`-series (see git log for current tip).
+- Full suite under pinned `.venv`: **1306 passed, 5 skipped
+  (rasterio), 0 failed** — 22 Run-A-reconciliation tests added
+  (calendar validity, claim-scan recursion, ledger repair, canonical
+  JSON, accumulation semantics).
+- Run A corrected derivative: `research_runs/
+  gmm_hybrid_corrected_20260915/` — sf running-accumulation defect
+  (RA-01) corrected via closing-value aggregation; modal K=5
+  recomputed (not inherited); JS 0.2702 [0.2505, 0.2944];
+  status `EXPLORATORY_DESCRIPTIVE_SINGLE_CELL`, method-only pending
+  owner ratification of the hybrid route.
+- Independent rehash: `rehash_report.json` in each run root; all
+  recorded digests match recomputed bytes (183 + 16 files).
+- Run ledger: `size_accounting` measured from bytes; timestamps carry
+  `*_utc` normalization with explicit `timestamp_classification`.
 - Run A reconciliation (2026-09-15, `run-a/reconciliation` lane):
   valid-day request chunking (no June-31-class cross products),
   UTC `Z` ledger timestamps, byte-measured size accounting

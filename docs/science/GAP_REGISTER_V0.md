@@ -335,6 +335,31 @@ addendum (license metadata), integrator ledger/register updates.
 |---|---|---|
 | RA-01 `sf_daily` inflation | High | CONFIRMED — CDS/MARS `sf` arrives as a running daily accumulation while ARCO `tp` is per-hour; the extractor summed the accumulated field, inflating `sf_daily` ~5.7x (e.g., 41.0 mm vs 4.04 mm closing value). Affects `features/` output of Run A only; fix = deaccumulate or take closing value. Recorded, NOT reprocessed — Run A stays method-only pending owner decision on rerun |
 
+## Reconciliation round 2 (RA/RUN series, 2026-09-15)
+
+Post-audit round-2 dispositions.  Corrected Run A derivative produced
+from existing raw bytes — no new download, original preserved as
+immutable evidence.
+
+| ID | Disposition |
+|---|---|
+| RA-01 sf_daily inflation | RESOLVED — running-accumulation detected per-series; closing-value aggregation (00:00 stamp closes prior day; last in-day value + partial flag at boundary). 26 boundary-partial days: 25 x Aug-31 (closing stamp Sep-1 00:00 outside JJA) + 2026-08-25 (last pre-cutoff day lacks its Aug-26 close). Corrected derivative `gmm_hybrid_corrected_20260915` (run_id `gmm_confirmation_20260915T111937Z`): K=5 recomputed, JS 0.2702, all digests regenerated. Mean sf_daily 13.3 -> 1.06 mm. Auditor-found latent defect (sparse-snow reset dilution) fixed + regression-tested. |
+| RA-02 naive timestamps | RESOLVED — repaired ledger keeps naive originals verbatim + `*_utc` fields + `timestamp_classification: legacy_naive_local_with_utc_normalization` |
+| RA-03 stale counts/heads | RESOLVED — P0 current-verification snapshot updated (1300 passed); content-head deferred to manifest field |
+| RA-04 receipt gaps | RESOLVED-BOUNDED — UNVERIFIED preserved for job IDs/request digests; per-route payload attribution fixed |
+| RA-05 route authorization | DOCUMENTED — method-only pending owner ratification (reconciliation doc presents both options) |
+| RA-06 harmonization | PARTIAL — 5-month overlap quantified; untested months marked unverified; tp semantics documented |
+| RA-07 non-JJA request window | RESOLVED — requested-vs-used windows + JJA-only merged assertion |
+| RA-08 expver=0005 | DOCUMENTED — preliminary 2026-08 sd/sf disclosed in derivation ledger; accepted for method-only use |
+| RA-09 artifact rehash | RESOLVED — `rehash_report.json` per run root; 183 + 16 files hashed; all recorded digests match |
+| RA-10 governed summary | RESOLVED — evidence summary + derivation ledger audit the result without vendoring raw bytes |
+| RUN-01 spec-vs-data | RESOLVED — Run B/C remain `SPECIFICATION_COMPLETE; REAL_DATA_PENDING` |
+
+| SRC-01..08 | PARTIAL — license evidence resolved via metadata APIs (see addendum); Nepal counts, schemas, extent splits, registration, and cycle completeness remain `GATED_ON_DATA`/`BLOCKED_EXTERNAL` at intake |
+| DATA-01..05, FMX-01..02, REG-01..03, ASSOC-01, FCST-01..02 | GATED_ON_DATA — protocols exist (run_b/run_c specs); no real intake authorized |
+| OPEN-01 | RESOLVED — `OPEN_DISTRIBUTION_NOTE_V0.md` scopes publishable vs external-restricted bytes |
+| OPS-01 | DEFERRED — explicit deferral; no prospective/authority path |
+
 ## License-evidence resolution (S-series partial)
 
 `run_b/SOURCE_EVIDENCE_ADDENDUM_V0.md` resolved license tags via

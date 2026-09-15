@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from nepal.era5_hybrid_fetch import (sd_sf_chunks, stage_size_accounting,
@@ -166,6 +167,88 @@ class TestLedgerRepair:
         # the generic raw.nc does not match any route pattern
         assert [p["file"] for p in receipts["unattributed"]] == \
             ["raw.nc"]
+
+
+class TestAccumulationSemantics:
+    """RA-01 — running-accumulation vs hourly-increment detection and
+    closing-value daily totals for ERA5-Land sf/tp."""
+
+    def _running_series(self) -> "pd.Series":
+        import pandas as pd
+        # 3 days: day1 accumulates to 0.070, day2 to 0.002,
+        # day3 partial (no 00:00 close) — 00:00 stamp closes prior day.
+        idx = pd.date_range("2012-02-08 01:00", "2012-02-10 23:00",
+                            freq="h")
+        vals = []
+        base = 0.0
+        for i, _ in enumerate(idx):
+            day = i // 24
+            target = [0.070, 0.002, 0.010][day]
+            vals.append(base + (i % 24 + 1) / 24 * target)
+            if i % 24 == 23:
+                base = 0.0
+        # 00:00-02-09 holds day-1's close (0.070 + tiny step)
+        s = pd.Series(vals, index=idx)
+        return s
+
+    def test_detects_running_accumulation(self):
+        from nepal.feature_extraction import _is_running_accumulation
+        s = self._running_series()
+        assert _is_running_accumulation(s)
+
+    def test_increments_not_running(self):
+        import pandas as pd
+        from nepal.feature_extraction import _is_running_accumulation
+        idx = pd.date_range("2024-06-01 00:00", "2024-06-04 23:00",
+                            freq="h")
+        rng = np.random.default_rng(0)
+        s = pd.Series(rng.random(len(idx)) * 0.001, index=idx)
+        assert not _is_running_accumulation(s)
+
+    def test_closing_value_attribution(self):
+        from nepal.feature_extraction import (
+            _accumulation_day, _daily_accumulation_total)
+        s = self._running_series()
+        days = _accumulation_day(s.index)
+        # the 00:00-02-09 stamp belongs to 2012-02-08
+        assert days[23] == pd.Timestamp("2012-02-08")
+        totals, partial = _daily_accumulation_total(s)
+        assert totals.loc[pd.Timestamp("2012-02-08")] == \
+            pytest.approx(0.070, abs=1e-3)
+        # last day lacks a 00:00 close -> flagged partial
+        assert bool(partial.loc[pd.Timestamp("2012-02-10")])
+
+    def test_daily_total_equals_final_step_not_sum(self):
+        from nepal.feature_extraction import _daily_accumulation_total
+        s = self._running_series()
+        totals, _ = _daily_accumulation_total(s)
+        # buggy sum would be ~0.85 (sum of the ramp); closing value is 0.070
+        assert totals.loc[pd.Timestamp("2012-02-08")] < 0.1
+
+    def test_sparse_snow_still_detected(self):
+        """Regression: zero-close days must not dilute the reset
+        fraction below threshold (auditor-found latent defect)."""
+        from nepal.feature_extraction import _is_running_accumulation
+        idx = pd.date_range("2024-06-01 01:00", "2024-06-21 00:00",
+                            freq="h")
+        vals = np.zeros(len(idx))
+        # only 2 of 20 days accumulate; the rest are all-zero
+        for day_start in (5, 12):
+            lo = day_start * 24
+            vals[lo:lo + 24] = np.linspace(0.001, 0.05, 24)
+        s = pd.Series(vals, index=idx)
+        assert _is_running_accumulation(s)
+
+    def test_nan_closing_stamp_flags_partial(self):
+        from nepal.feature_extraction import (
+            _daily_accumulation_total)
+        idx = pd.date_range("2024-06-01 01:00", "2024-06-02 00:00",
+                            freq="h")
+        vals = np.linspace(0.001, 0.02, len(idx))
+        vals[-1] = np.nan  # NaN closing stamp
+        s = pd.Series(vals, index=idx)
+        _, partial = _daily_accumulation_total(s)
+        assert bool(partial.iloc[0])
 
 
 class TestCanonicalJson:

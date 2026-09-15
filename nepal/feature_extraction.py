@@ -247,6 +247,80 @@ def compute_derived_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _accumulation_day(index: pd.DatetimeIndex) -> pd.DatetimeIndex:
+    """Assign each hourly timestamp to its accumulation day.
+
+    ERA5-Land accumulated variables are step-END values: the 00:00
+    stamp carries the closing total of the PRIOR calendar day (the
+    accumulation window runs 00:00-exclusive to 00:00-inclusive of the
+    next day).  Hour 00:00 therefore maps to date-1; every other hour
+    maps to its own date.
+    """
+    d = index.normalize()
+    offset = pd.to_timedelta((index.hour == 0).astype("int64"),
+                            unit="D")
+    return d - offset
+
+
+def _is_running_accumulation(s: pd.Series) -> bool:
+    """Detect running-accumulation semantics vs hourly increments.
+
+    A running daily accumulation tends to be non-decreasing within
+    each accumulation day and resets at the day start (the first
+    in-day step drops far below the prior day's closing stamp).
+    Per-hour increment series show neither pattern.  Classification
+    requires >=90% of days closing at/above open AND >=50% of
+    nonzero closes followed by a reset — tolerating small within-day
+    decreases (melt/adjustment noise) that a strict-monotonic rule
+    would reject.
+    """
+    days = _accumulation_day(s.index)
+    checked = closes_ge = 0
+    prev_close = None
+    nonzero_closes = resets = 0
+    for _, g in s.groupby(days):
+        v = g.to_numpy(dtype=float)
+        v = v[~np.isnan(v)]
+        if len(v) < 2:
+            continue
+        checked += 1
+        if v[-1] >= v[0] - 1e-12:
+            closes_ge += 1
+        # Only nonzero closes can exhibit a reset — zero closes would
+        # dilute the reset fraction on sparse-snow series and evade
+        # detection (auditor-confirmed latent defect).
+        if prev_close is not None and prev_close > 1e-12:
+            nonzero_closes += 1
+            if v[0] < 0.5 * prev_close:
+                resets += 1
+        prev_close = v[-1]
+    if checked < 3 or not nonzero_closes:
+        return False
+    return (closes_ge / checked >= 0.9
+            and resets / nonzero_closes >= 0.5)
+
+
+def _daily_accumulation_total(s: pd.Series) -> tuple:
+    """Daily totals for a running-accumulation hourly series.
+
+    Day D's total is its closing stamp — the value at the last
+    accumulation step (00:00 of D+1 when present; otherwise the last
+    in-day value, flagged partial since the final 23:00->00:00 step
+    is missing).  Returns (totals, partial_mask) indexed by calendar
+    day.
+    """
+    days = _accumulation_day(s.index)
+    totals = s.groupby(days).last()
+    # A day is fully closed only when the next-day 00:00 stamp exists
+    # AND is non-NaN — a NaN closing stamp must flag partial, not
+    # silently take the 23:00 value.
+    has_close = s.groupby(days).apply(
+        lambda g: g.index[-1].hour == 0
+        and not np.isnan(g.iloc[-1]))
+    partial = ~has_close
+    return totals, partial
+
+
 def compute_thermal_indices(df: pd.DataFrame, model_elev_m: float) -> pd.DataFrame:
     """Compute daily feature matrix with ALL 10 features + thermal indices.
 
@@ -284,18 +358,43 @@ def compute_thermal_indices(df: pd.DataFrame, model_elev_m: float) -> pd.DataFra
     if "d2m" in df.columns:
         daily_df["d2m_daily"] = df["d2m"].resample("D").mean()
 
-    # --- Accumulation variables: daily SUM (mm) ---
-    # GAP FIX: ERA5-Land tp/sf are per-hour accumulations.
-    # resample("D").mean() gives hourly mean rate, NOT daily total.
-    # Must use .sum() for daily total precipitation/snowfall.
-    if "tp" in df.columns:
-        daily_df["tp_daily"] = df["tp"].resample("D").sum()
-    if "sf" in df.columns:
-        daily_df["sf_daily"] = df["sf"].resample("D").sum()
+    # --- Accumulation variables: daily totals (mm) ---
+    # RA-01: accumulation semantics differ by retrieval route.  ARCO
+    # delivers per-hour increments (sum is correct); CDS/MARS and the
+    # EDH mirror deliver a running daily accumulation whose 00:00
+    # stamp closes the PRIOR day (summing it inflates totals ~24x on
+    # active days).  Semantics are detected per series, never assumed.
+    accum_semantics = {}
+    for acc in ("tp", "sf"):
+        col = f"{acc}_daily"
+        if acc not in df.columns:
+            continue
+        s = df[acc]
+        if _is_running_accumulation(s):
+            totals, partial = _daily_accumulation_total(s)
+            daily_df[col] = totals
+            accum_semantics[acc] = {
+                "type": "running_daily_accumulation",
+                "aggregation": "closing_value (00:00 stamp of next "
+                               "day; last in-day value when the "
+                               "closing stamp is absent)",
+                "boundary_partial_days": int(partial.sum()),
+            }
+        else:
+            daily_df[col] = s.resample("D").sum()
+            accum_semantics[acc] = {
+                "type": "hourly_increments",
+                "aggregation": "daily sum",
+                "boundary_partial_days": 0,
+            }
+    daily_df.attrs["accumulation_semantics"] = accum_semantics
 
     # --- Instantaneous variables: daily MEAN ---
     if "sd" in df.columns:
-        daily_df["sd_daily"] = df["sd"].resample("D").mean()
+        # Float noise can yield tiny negative SWE (~1e-22 mm);
+        # snow water equivalent cannot be negative.
+        daily_df["sd_daily"] = df["sd"].resample("D").mean() \
+            .clip(lower=0)
 
     # --- Wind: daily MEAN speed, sin/cos encoded direction ---
     if "wind_speed" in df.columns:
@@ -576,6 +675,7 @@ def write_run_metadata(
     actual_lat: float,
     actual_lon: float,
     model_elev_m: float,
+    accumulation_semantics: dict | None = None,
 ) -> Path:
     """P5-05: write the run_metadata.json provenance sidecar.
 
@@ -601,6 +701,10 @@ def write_run_metadata(
         "source_file": str(era5_file),
         "source_file_sha256": _sha256(era5_file),
         "extraction_utc": datetime.now(timezone.utc).isoformat(),
+        # RA-01: per-variable accumulation semantics detected at
+        # extraction (running accumulation vs hourly increments) —
+        # the daily aggregation rule depends on it.
+        "accumulation_semantics": accumulation_semantics or {},
     }
     if marker_file.exists():
         # P5-08: the marker file's own digest (main()'s completeness
@@ -745,7 +849,10 @@ def main():
     # elevation, source-file and download-ledger SHA-256 digests, and
     # the extraction UTC timestamp.
     metadata_file = write_run_metadata(
-        features_dir, run_root, era5_file, actual_lat, actual_lon, model_elev
+        features_dir, run_root, era5_file, actual_lat, actual_lon,
+        model_elev,
+        accumulation_semantics=daily_df.attrs.get(
+            "accumulation_semantics"),
     )
     print(f"Saved run metadata to {metadata_file}")
 

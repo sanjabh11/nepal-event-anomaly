@@ -35,6 +35,19 @@ single-lane review; independent second review and third-party
 adjudication remain intake-stage requirements (D2 §9). `confidence`
 describes confidence in the *decision*, not in the source.
 
+**License-evidence distinction (binding).** A resolved metadata license
+tag is *not* redistribution permission and *not* event-source
+qualification: metadata license resolution ≠ redistribution permission
+≠ event-source qualification. License evidence records the terms that
+would govern bytes *if obtained* — file access may still be
+request-gated or login-gated (e.g. `zhong_2024_ria_inventory`
+carries a CC BY 4.0 tag but `access_right=restricted` on the record).
+Where a record's `license_evidence`/`redistribution_terms` fields use
+informal terms like "open" or "free", they describe a metadata-level
+license class only — never a grant of access by themselves — and
+`QUALIFIES` still requires every named evidence field cleared for the
+declared role.
+
 ## Snow avalanche vertical
 
 ```yaml
@@ -209,8 +222,8 @@ describes confidence in the *decision*, not in the source.
 - source_id: zhong_2024_ria_inventory
   exact_version: "zenodo.10080068; Geomorphology 109048 (2024)"
   doi_or_url: "10.5281/zenodo.10080068"
-  license_evidence: "verify on record"
-  redistribution_terms: "unverified"
+  license_evidence: "CC BY 4.0 tag on record (addendum) — but access_right=restricted: files are request-gated despite the open tag"
+  redistribution_terms: "request-gated pending access grant; CC BY 4.0 governs obtained bytes"
   nepal_coverage: "60 large HMA rock-ice avalanches; Nepal subset count unstated"
   event_count_if_known: "60 events; >=1366 fatalities"
   timing_class: "event dates in inventory — per-event precision unverified"
@@ -219,7 +232,7 @@ describes confidence in the *decision*, not in the source.
   non_event_feasibility: "infeasible alone"
   reviewer: "RunB metadata review"
   decision: CANDIDATE
-  blocker: "license field; Nepal subset; reporting bias pre-2010"
+  blocker: "restricted file access (external grant required); Nepal subset; reporting bias pre-2010"
   confidence: "medium"
 
 - source_id: kaab_2021_detachments
@@ -261,8 +274,8 @@ describes confidence in the *decision*, not in the source.
 - source_id: burrows_timed_monsoon_landslides
   exact_version: "zenodo.7970874; NHESS 22:2637 (2022)"
   doi_or_url: "10.5281/zenodo.7970874"
-  license_evidence: "CANDIDATE — expected CC BY, unverified on record"
-  redistribution_terms: "unverified"
+  license_evidence: "CC BY 4.0 (verified on record — addendum)"
+  redistribution_terms: "attribution"
   nepal_coverage: "Nepal incl. western extension; 2015/17/18/19 monsoons"
   event_count_if_known: "per record; ~30% of mapped slides carry S1-constrained timing"
   timing_class: "INTERVAL_8_30D — ~12-day window on ~30% of slides; remaining ~70% untimed"
@@ -433,8 +446,8 @@ describes confidence in the *decision*, not in the source.
 - source_id: borealis_dam_failure_db
   exact_version: "10.5683/SP2/E7Z09B"
   doi_or_url: "10.5683/SP2/E7Z09B"
-  license_evidence: "open Dataverse"
-  redistribution_terms: "open"
+  license_evidence: "CC0 base + record-specific citation terms (Dataverse API, addendum)"
+  redistribution_terms: "CC0 with mandatory citation of dataset + its underlying references"
   nepal_coverage: "3,861 cases; Nepal engineered count unverified (expected <=2)"
   event_count_if_known: "3,861 cases"
   timing_class: "unverified"
@@ -447,9 +460,9 @@ describes confidence in the *decision*, not in the source.
   confidence: "medium"
 
 - source_id: grand_v1_3_gdw
-  exact_version: "figshare.25988293; GRanD v1.3 / GDW"
+  exact_version: "figshare.25988293 v1 (2024-07-25); product = Global Dam Watch (GDW) database version 1.0 — NOT GRanD v1.3. The earlier 'GRanD v1.3 / GDW' label conflated two distinct products; the figshare record is the GDW v1.0 deposit (title verified on record, addendum). source_id retained unchanged for record/addendum continuity."
   doi_or_url: "10.6084/m9.figshare.25988293"
-  license_evidence: "CC BY"
+  license_evidence: "CC BY 4.0 (verified on figshare record — addendum)"
   redistribution_terms: "attribution"
   nepal_coverage: "dam locations incl. Kulekhani — attributes, not failures"
   event_count_if_known: "not an event inventory"
@@ -459,7 +472,7 @@ describes confidence in the *decision*, not in the source.
   non_event_feasibility: "n/a"
   reviewer: "RunB metadata review"
   decision: BLOCKED
-  blocker: "not an event source — candidate exposure/context layer for a separately declared impact analysis only"
+  blocker: "not an event source — GDW v1.0 is a dam-attribute layer; candidate exposure/context layer for a separately declared impact analysis only"
   confidence: "high"
 
 - source_id: nepal_engineered_breach_reports
@@ -656,7 +669,7 @@ conservative issue+dissemination latency margin (D2 §1).
 |---|---|
 | `QUALIFIES` (role-scoped) | `usgs_gorkha_2015_landslides` (coseismic labels/controls), `usgs_ofr_91_239_landslide_dams` (historical context) |
 | `CANDIDATE` | HiAVAL, Kneib S1, SAFE-HMA, DesInventar (both), HMAGLOFDB (+recurrence), essd-2026-481, Zhong RIA, Science China, Burrows, Jones, ICIMOD RDS LS, NASA COOLR, Gnyawali–Adhikari, Jiang LDOF, Borealis, ds084001 GFS, NCEI NOMADS, GEFSv12, S2S, C3S, dynamical.org/Open-Meteo |
-| `BLOCKED` | Nepal DRR Portal, EM-DAT, AvalCD, Kääb 2021, ICOLD, GRanD/GDW (as event source), TIGGE, ECMWF MARS, ERA5/ERA5-Land/IMDAA (forecast-evidence role), CURRENT_FEED sources |
+| `BLOCKED` | Nepal DRR Portal, EM-DAT, AvalCD, Kääb 2021, ICOLD, GDW v1.0 (`grand_v1_3_gdw`, as event source), TIGGE, ECMWF MARS, ERA5/ERA5-Land/IMDAA (forecast-evidence role), CURRENT_FEED sources |
 | `DEFERRED` | `dam_breach_engineered` — `DEFERRED_NO_OPEN_TIMED_SOURCE` stands |
 
 No source is pre-nominated for a pilot. The pilot-selection outcome
