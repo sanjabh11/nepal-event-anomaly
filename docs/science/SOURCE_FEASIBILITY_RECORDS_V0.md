@@ -2,8 +2,19 @@
 
 **Status:** `METADATA_REVIEW_COMPLETE` (metadata-only lane audit). All
 sources are `CANDIDATE_ONLY` until license/version/geography/fields/
-timing are verified at intake. No data was downloaded. Compiled from
+timing are verified at intake. Compiled from
 four independent metadata-only review lanes on 2026-09-13.
+
+**Scope label (clarified 2026-09-15):** this record is a dated
+metadata-only snapshot. No candidate-source payload bytes were fetched
+for this record — "no data was downloaded" applies to this
+metadata-review lane only. It does not assert that no data exists
+anywhere in the project: the ERA5-Land bytes used by Run A
+(`gmm_confirmation_20260915T052240Z`) are a separate,
+previously-acquired dataset under the distinct P5-C
+bounded-acquisition authorization, documented in
+`run_a/RUN_A_EVIDENCE_SUMMARY_V0.md` and
+`run_a/HYBRID_ROUTE_RECONCILIATION_V0.md`.
 
 ## Snow avalanche
 

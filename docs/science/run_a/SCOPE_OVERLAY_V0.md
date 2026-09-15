@@ -21,8 +21,13 @@ They are disjoint; none implies another.
 
 ## 2. P5-C — bounded retrospective diagnostic authorization (executed)
 
-- Recorded in the same P3 record (§"P5-C bounded-acquisition
-  authorization"): exactly 78 monthly ERA5-Land JJA requests,
+- Recorded in the same P3 record file (§"P5-C bounded-acquisition
+  authorization") — a **distinct** bounded acquisition authorization
+  co-located with, but not part of, the P3 `design_review_only`
+  attestation scope. The co-location is editorial; the P3 design
+  approval does not itself grant acquisition, and the P5-C
+  authorization confers no design approval: exactly 78 monthly
+  ERA5-Land JJA requests,
   2001–2025 full JJA + 2026 through August 25; the seven
   pre-registered variables; a timestamped `research_runs/` run root;
   ≥8 GiB disk floor; purpose `EXPLORATORY_DESCRIPTIVE_SINGLE_CELL`.

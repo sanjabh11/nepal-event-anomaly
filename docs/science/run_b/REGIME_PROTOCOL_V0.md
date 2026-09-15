@@ -5,9 +5,13 @@ fitting authorized by this document.
 **Lane:** Run B (`run-b/source-qual`, base `33dbad4`).
 **Scope:** the predeclared protocol for unsupervised regime discovery
 on retrospective (reanalysis-class) feature matrices across ≥3
-geographic groups. It extends the single-cell P5-C confirmation
-diagnostic (`EXPLORATORY_DESCRIPTIVE_SINGLE_CELL`) to the multi-region
-design required before any regime–event association is contemplated.
+geographic groups. It extends the *method* of the single-cell P5-C
+confirmation diagnostic (`EXPLORATORY_DESCRIPTIVE_SINGLE_CELL`) to the
+multi-region design required before any regime–event association is
+contemplated — no fitted K, JS distance, occupancy value, or other
+Run A result transfers; the P5-C diagnostic remains method-only
+pending owner ratification and every artifact here is refit from
+bound inputs.
 Mode is `RETROSPECTIVE_REGIME` — disjoint from `FORECAST_REGIME`
 (D2 §10).
 
