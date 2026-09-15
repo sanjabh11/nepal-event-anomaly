@@ -9,8 +9,9 @@ from __future__ import annotations
 import pytest
 
 from nepal.experiment_v0.adapters import (
-    event_label_from_identity, holdout_plan_from_assignment,
-    vintage_from_request)
+    control_from_science, event_label_from_identity,
+    holdout_plan_from_assignment, opportunity_from_science,
+    regime_assignment_from_artifact, vintage_from_request)
 from nepal.experiment_v0.vintages import VintageRequest
 from nepal.research_v0.gates import scan_claims_text
 from nepal.research_v0.records import EventLabelV0, HoldoutPlanV0
@@ -250,3 +251,144 @@ def test_module_source_claim_scan_clean():
     src = pathlib.Path(
         __file__).parents[1] / "nepal" / "experiment_v0" / "adapters.py"
     assert scan_claims_text(src.read_text()) == []
+
+
+# ------------------------------------------------- regime artifacts
+
+
+def _canon(obj):
+    import hashlib, json
+    return hashlib.sha256(json.dumps(
+        obj, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def _frozen_regime_payload(**overrides):
+    """A frozen science_v0 regime-artifact payload with REAL digests —
+    tamper tests mutate fields and expect digest verification to fail."""
+    assignments = [("u1", "2020-06-01", 0), ("u1", "2020-06-02", 1),
+                   ("u2", "2020-06-01", 0)]
+    art = {
+        "mode": "RETROSPECTIVE_REGIME",
+        "fitted_on": "TRAIN_ONLY",
+        "label_blinding": True,
+        "k": 2,
+        "seeds": [7, 42, 2024],
+        "assignments": assignments,
+        "assignment_digest": _canon(assignments),
+        "occupancy": [0.6, 0.4],
+        "status": "DESCRIPTIVE_REGIME_ONLY",
+        "disclaimer": "synthetic",
+    }
+    art["regime_artifact_digest"] = _canon(art)
+    # freeze_digest covers the PRE-freeze surface (producer semantics:
+    # frozen flag is added after the digest is computed)
+    art["freeze_digest"] = _canon(dict(art))
+    art["frozen"] = True
+    art.update(overrides)
+    return art
+
+
+def test_regime_artifact_adapts_cleanly():
+    rec = regime_assignment_from_artifact(
+        _frozen_regime_payload(), artifact_id="ra-0")
+    assert rec.problems() == []
+    assert rec.assignments[1] == ("u1", "2020-06-02", "1")
+    assert rec.label_blinding is True
+
+
+def test_regime_digest_parity_with_producer():
+    """The local canonical digest must match science_v0._digest."""
+    from nepal.science_v0.regimes import _digest as prod
+    obj = {"b": [1, "x", None], "a": {"y": 2.5}}
+    assert _canon(obj) == prod(obj)
+
+
+def test_regime_forged_digest_rejected():
+    p = _frozen_regime_payload(freeze_digest="a" * 64)
+    with pytest.raises(ValueError, match="freeze_digest"):
+        regime_assignment_from_artifact(p, artifact_id="x")
+
+
+def test_regime_tampered_assignment_rejected():
+    p = _frozen_regime_payload()
+    p["assignments"][0] = ("u1", "2020-06-01", 9)
+    with pytest.raises(ValueError, match="assignment_digest"):
+        regime_assignment_from_artifact(p, artifact_id="x")
+
+
+def test_regime_unfrozen_rejected():
+    p = _frozen_regime_payload()
+    p["frozen"] = False
+    with pytest.raises(ValueError, match="frozen"):
+        regime_assignment_from_artifact(p, artifact_id="x")
+
+
+def test_regime_caller_claims_do_not_override():
+    """Payload claiming label_blinding=False / fitted_on=ALL_DATA /
+    mode=FORECAST must reject, not be silently corrected."""
+    for field, bad in (("label_blinding", False),
+                       ("fitted_on", "ALL_DATA"),
+                       ("mode", "FORECAST")):
+        p = _frozen_regime_payload()
+        p[field] = bad
+        # repair digests so ONLY the provenance claim is wrong
+        p["regime_artifact_digest"] = _canon(
+            {k: v for k, v in p.items()
+             if k not in ("regime_artifact_digest", "freeze_digest",
+                          "frozen")})
+        p["freeze_digest"] = _canon(
+            {k: v for k, v in p.items()
+             if k not in ("freeze_digest", "frozen")})
+        with pytest.raises(ValueError, match=field):
+            regime_assignment_from_artifact(p, artifact_id="x")
+
+
+def test_regime_provenance_field_missing_rejected():
+    p = _frozen_regime_payload()
+    del p["fitted_on"]
+    with pytest.raises(ValueError, match="fitted_on"):
+        regime_assignment_from_artifact(p, artifact_id="x")
+
+
+def test_regime_nonstring_identity_rejected():
+    p = _frozen_regime_payload()
+    p["assignments"] = [(7, "2020-06-01", 0)]
+    p["assignment_digest"] = _canon(p["assignments"])
+    p["regime_artifact_digest"] = _canon(
+        {k: v for k, v in p.items()
+         if k not in ("regime_artifact_digest", "freeze_digest",
+                      "frozen")})
+    p["freeze_digest"] = _canon(
+        {k: v for k, v in p.items()
+         if k not in ("freeze_digest", "frozen")})
+    with pytest.raises(ValueError, match="strings"):
+        regime_assignment_from_artifact(p, artifact_id="x")
+
+
+def test_regime_bad_regime_id_type_rejected():
+    p = _frozen_regime_payload()
+    p["assignments"] = [("u1", "2020-06-01", 0.5)]
+    p["assignment_digest"] = _canon(p["assignments"])
+    p["regime_artifact_digest"] = _canon(
+        {k: v for k, v in p.items()
+         if k not in ("regime_artifact_digest", "freeze_digest",
+                      "frozen")})
+    p["freeze_digest"] = _canon(
+        {k: v for k, v in p.items()
+         if k not in ("freeze_digest", "frozen")})
+    with pytest.raises(ValueError, match="regime_id"):
+        regime_assignment_from_artifact(p, artifact_id="x")
+
+
+def test_regime_post_freeze_nested_mutation_detected():
+    p = _frozen_regime_payload()
+    p["occupancy"] = [0.5, 0.5]   # mutate a nested field post-freeze
+    with pytest.raises(ValueError, match="digest"):
+        regime_assignment_from_artifact(p, artifact_id="x")
+
+
+def test_regime_summary_only_rejected():
+    with pytest.raises(ValueError, match="assignment"):
+        regime_assignment_from_artifact(
+            {"regime_artifact_digest": "a" * 64, "assignments": []},
+            artifact_id="x")

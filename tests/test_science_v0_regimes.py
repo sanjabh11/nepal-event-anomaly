@@ -17,6 +17,17 @@ from nepal.science_v0.regimes import (
 FEATURES = ["f1", "f2", "f3"]
 
 
+def _cfg(**kw):
+    """Declared holdout membership: grp0+grp1 train, grp2 held out."""
+    return RegimeRunConfig(train_groups=("grp0", "grp1"),
+                           heldout_groups=("grp2",), **kw)
+
+
+def _mask(df):
+    """Train rows = grp0/grp1; grp2 rows are held out."""
+    return (df["basin_group"] != "grp2").to_numpy()
+
+
 def _fixture(n_per=120, n_groups=3, structured=True, seed=0):
     """3+ geographic groups, planted cluster structure when
     structured=True. Every row carries explicit unit_id + ISO date."""
@@ -92,11 +103,57 @@ class TestRunner:
         assert len(art["regime_artifact_digest"]) == 64
 
     def test_single_group_rejected(self):
-        df = _fixture(n_groups=1)
-        art = run_regimes(df, FEATURES, np.ones(len(df), bool),
-                          RegimeRunConfig())
+        df = _fixture(n_groups=2)
+        mask = (df["basin_group"] == "grp0").to_numpy()
+        cfg = RegimeRunConfig(train_groups=("grp0",),
+                              heldout_groups=("grp1",))
+        art = run_regimes(df, FEATURES, mask, cfg)
         assert art["status"] == "RUN_ERROR"
         assert "geographic groups" in art["reason"]
+
+    def test_undeclared_holdout_rejected(self):
+        df = _fixture()
+        art = run_regimes(df, FEATURES, _mask(df), RegimeRunConfig())
+        assert art["status"] == "RUN_ERROR"
+        assert "non-empty" in art["reason"]
+
+    def test_mask_group_membership_enforced(self):
+        df = _fixture()
+        # held-out rows (grp2) are not in the declared heldout set
+        bad_cfg = RegimeRunConfig(train_groups=("grp0", "grp1"),
+                                  heldout_groups=("grp9",))
+        art = run_regimes(df, FEATURES, _mask(df), bad_cfg)
+        assert art["status"] == "RUN_ERROR"
+        assert "undeclared groups" in art["reason"]
+
+    def test_mask_length_and_dtype_validated(self):
+        df = _fixture()
+        art = run_regimes(df, FEATURES, _mask(df)[:-1], _cfg())
+        assert art["status"] == "RUN_ERROR"
+        assert "length" in art["reason"]
+        art = run_regimes(df, FEATURES,
+                          _mask(df).astype(np.int8), _cfg())
+        assert art["status"] == "RUN_ERROR"
+        assert "boolean" in art["reason"]
+
+    def test_modal_k_tie_break_deterministic(self):
+        from nepal.science_v0.regimes import _modal_k
+        # 2 and 3 tie at frequency 2 — smallest K wins, order-free
+        assert _modal_k([2, 3, 2, 3]) == 2
+        assert _modal_k([3, 2, 3, 2]) == 2
+        assert _modal_k([4, 4, 1]) == 4
+
+    def test_freeze_isolates_nested_mutation(self):
+        df = _fixture()
+        art = run_regimes(df, FEATURES, _mask(df), _cfg())
+        frozen = freeze_regime_artifact(art)
+        # mutating the source's nested payload must not reach the
+        # frozen copy
+        art["assignments"][0] = ("x", "x", 99)
+        assert frozen["assignments"][0] != ("x", "x", 99)
+        # mutating the frozen nested payload must not reach the source
+        frozen["stability"]["seed_ari_min"] = -1
+        assert art["stability"]["seed_ari_min"] != -1
 
     def test_missing_column_fails_closed(self):
         df = _fixture().drop(columns=["f3"])

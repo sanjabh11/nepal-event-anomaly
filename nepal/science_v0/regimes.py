@@ -14,6 +14,8 @@ precursor language, and never tunes on locked test basins.
 
 from __future__ import annotations
 
+import copy
+import dataclasses
 import hashlib
 import json
 from dataclasses import dataclass, field
@@ -163,6 +165,19 @@ class RegimeRunConfig:
     date_col: str = "date"
     label_blinding: bool = True
     fitted_on: str = "TRAIN_ONLY"
+    # Explicit holdout membership: the declared train groups the fit
+    # may see and the declared held-out groups it may never fit on.
+    # Both must be non-empty and disjoint; the mask must honour them.
+    train_groups: tuple = ()
+    heldout_groups: tuple = ()
+
+
+def _modal_k(ks: list[int]) -> int:
+    """Deterministic modal K: on a frequency tie the SMALLEST K wins —
+    declared tie-break, never set-order dependent."""
+    counts = {k: ks.count(k) for k in set(ks)}
+    top = max(counts.values())
+    return min(k for k, c in counts.items() if c == top)
 
 
 def run_regimes(df: pd.DataFrame, feature_cols: list[str],
@@ -185,6 +200,42 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
     if len(set(config.seeds)) < MIN_SEEDS:
         return {"status": "RUN_ERROR",
                 "reason": f"need >= {MIN_SEEDS} distinct seeds"}
+    # Holdout binding (I-07): the mask is meaningless unless it is
+    # tied to declared, disjoint train/held-out group membership.
+    train_groups = set(config.train_groups)
+    heldout_groups = set(config.heldout_groups)
+    if not train_groups or not heldout_groups:
+        return {"status": "RUN_ERROR",
+                "reason": "train_groups and heldout_groups must both "
+                          "be non-empty — an undeclared holdout cannot "
+                          "produce a terminal regime status"}
+    if train_groups & heldout_groups:
+        return {"status": "RUN_ERROR",
+                "reason": f"train/heldout groups overlap: "
+                          f"{sorted(train_groups & heldout_groups)}"}
+    mask = np.asarray(train_mask)
+    if mask.shape[0] != len(df):
+        return {"status": "RUN_ERROR",
+                "reason": f"train_mask length {mask.shape[0]} != "
+                          f"frame rows {len(df)}"}
+    if mask.dtype != bool:
+        return {"status": "RUN_ERROR",
+                "reason": "train_mask must be a boolean array"}
+    if not mask.any() or mask.all():
+        return {"status": "RUN_ERROR",
+                "reason": "train_mask must mark a non-empty train set "
+                          "and a non-empty held-out set"}
+    mask_groups = set(df.loc[mask, config.group_col])
+    held_mask_groups = set(df.loc[~mask, config.group_col])
+    if not mask_groups <= train_groups:
+        return {"status": "RUN_ERROR",
+                "reason": f"train rows contain undeclared groups: "
+                          f"{sorted(mask_groups - train_groups)}"}
+    if not held_mask_groups <= heldout_groups:
+        return {"status": "RUN_ERROR",
+                "reason": f"held-out rows contain undeclared groups: "
+                          f"{sorted(held_mask_groups - heldout_groups)}"}
+    train_mask = mask
     groups = df[config.group_col].unique()
     if len(groups) < MIN_GEO_GROUPS:
         return {"status": "RUN_ERROR",
@@ -250,7 +301,7 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
         return {"status": "RUN_ERROR",
                 "reason": "no seed produced a converged fit"}
     ks = list(per_seed_best.values())
-    modal_k = max(set(ks), key=ks.count)
+    modal_k = _modal_k(ks)   # deterministic: smallest K on a tie
     k_freq = ks.count(modal_k) / len(ks)
 
     best = min([f for f in converged if f["k"] == modal_k],
@@ -377,6 +428,18 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
         "data_class": "REANALYSIS",
         "fitted_on": "TRAIN_ONLY",
         "label_blinding": True,
+        # provenance binding (I-05): feature order, frame digest,
+        # configuration, fit/held-out membership, and the exact mask
+        # are all bound into the artifact before freezing.
+        "feature_cols": list(feature_cols),
+        "feature_matrix_digest": _digest(
+            df[feature_cols].round(6).to_numpy().tolist()),
+        "config_digest": _digest(dataclasses.asdict(config)),
+        "fit_groups": sorted(mask_groups),
+        "heldout_groups_declared": sorted(heldout_groups),
+        "n_train_rows": int(mask.sum()),
+        "n_rows": int(len(df)),
+        "train_mask_digest": _digest(mask.tolist()),
         "k": modal_k,
         "seeds": sorted(set(int(s) for s in config.seeds)),
         "per_seed_best_k": {str(s): int(k)
@@ -417,7 +480,11 @@ def freeze_regime_artifact(artifact: dict) -> dict:
     if not artifact.get("assignments"):
         raise ValueError("cannot freeze an artifact without the "
                          "assignment sidecar")
-    frozen = dict(artifact)
+    # Deep copy (I-06): a shallow dict() leaves nested payloads shared —
+    # mutating the source artifact's nested lists/dicts would silently
+    # change the "frozen" surface.  Digest verification at the adapter
+    # boundary additionally makes any post-freeze mutation detectable.
+    frozen = copy.deepcopy(artifact)
     frozen["frozen"] = True
     frozen["freeze_digest"] = _digest(
         {k: v for k, v in artifact.items() if k != "freeze_digest"})

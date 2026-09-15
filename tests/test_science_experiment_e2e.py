@@ -112,7 +112,9 @@ def _feature_frame():
 def _regime_artifact(df):
     train_mask = df["basin_group"].isin(
         ["grp_east", "grp_central"]).to_numpy()
-    cfg = RegimeRunConfig()
+    cfg = RegimeRunConfig(
+        train_groups=("grp_east", "grp_central"),
+        heldout_groups=("grp_west", "grp_farwest"))
     art = run_regimes(df, ["f1", "f2"], train_mask, cfg)
     assert art.get("status") != "RUN_ERROR", art.get("reason")
     assert art["assignments"]

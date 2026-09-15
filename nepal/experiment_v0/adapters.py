@@ -34,6 +34,18 @@ from nepal.research_v0.records import (
 from .association import RegimeAssignmentArtifact
 from .vintages import VintageRequest, build_vintage
 
+
+def _regime_digest(obj: Any) -> str:
+    """Canonical digest — identical construction to
+    ``science_v0.regimes._digest`` (sha256 over JSON with sorted keys
+    and ``default=str``).  Defined locally so experiment_v0 stays
+    importable without the producer's heavy dependencies; parity is
+    pinned by the tamper-verification tests."""
+    import hashlib
+    import json
+    return hashlib.sha256(json.dumps(
+        obj, sort_keys=True, default=str).encode()).hexdigest()
+
 # science_v0 timing classes -> EventLabelV0 precision terms (PRECISION_TERMS).
 _TIMING_CLASS_TO_PRECISION = {
     "EXACT_TIMESTAMP": "exact_timestamp",
@@ -395,57 +407,104 @@ def control_from_science(payload: Any, *,
 
 def regime_assignment_from_artifact(
         payload: Any, *,
-        artifact_id: str,
-        fitted_on: str = "TRAIN_ONLY",
-        mode: str = "RETROSPECTIVE_REGIME"
-        ) -> RegimeAssignmentArtifact:
-    """Map a serialized science_v0 frozen regime artifact dict to
+        artifact_id: str) -> RegimeAssignmentArtifact:
+    """Map a serialized science_v0 FROZEN regime artifact dict to
     RegimeAssignmentArtifact.
 
-    ``payload`` must be a mapping carrying at least ``assignments``
-    (``(unit_id, date, regime_id)`` triples emitted by
-    ``science_v0.run_regimes``) and ``regime_artifact_digest`` (or
-    ``freeze_digest`` once ``freeze_regime_artifact`` has run — the
-    freeze digest is preferred because it covers the frozen surface).
+    The payload must be the exact dict produced by
+    ``science_v0.run_regimes`` plus ``freeze_regime_artifact``
+    (``frozen: true`` + ``freeze_digest``).  This adapter is a
+    verification boundary, not a trust boundary:
+
+    - ``assignment_digest`` is recomputed over the payload's raw
+      ``assignments`` and must match;
+    - ``regime_artifact_digest`` is recomputed over the payload minus
+      ``{regime_artifact_digest, freeze_digest, frozen}`` and must
+      match;
+    - ``freeze_digest`` is recomputed over the payload minus
+      ``{freeze_digest, frozen}`` and must match;
+    - ``label_blinding``/``fitted_on``/``mode`` are read from the
+      payload and must equal the contract values — caller-supplied
+      overrides are not accepted;
+    - ``unit_id``/``date`` fields must already be strings; an integer
+      ``regime_id`` is the single permitted primitive conversion
+      (the producer emits raw GMM labels), everything else rejects.
+
     A summary-only artifact without the assignment sidecar is
     rejected; assignments are never re-derived here, because
     re-prediction would violate freeze semantics.
-
-    ``fitted_on`` and ``mode`` are explicit provenance assertions by
-    the caller — the contract requires ``TRAIN_ONLY`` fitting and
-    ``RETROSPECTIVE_REGIME`` mode; the produced record's ``problems()``
-    enforces them.
     """
     p = _payload(payload, "regime artifact")
-    if not isinstance(p.get("assignments"), (list, tuple)) or \
-            not p["assignments"]:
+    raw = p["assignments"] if isinstance(p.get("assignments"),
+                                         (list, tuple)) else None
+    if not raw:
         raise ValueError("regime artifact carries no assignment "
                          "sidecar — summary-only artifacts cannot "
                          "bind to association")
-    regime_digest = p.get("freeze_digest") or \
-        p.get("regime_artifact_digest")
-    if not isinstance(regime_digest, str) or not regime_digest:
-        raise ValueError("regime artifact lacks "
-                         "freeze_digest/regime_artifact_digest")
-    seeds = p.get("seeds", ())
-    if not isinstance(seeds, (list, tuple)):
-        raise ValueError("regime artifact seeds: expected a sequence")
-    # Serialized assignments may carry regime ids as ints (the producer
-    # emits raw GMM labels); the contract requires (str, str, str)
-    # triples — normalize deterministically, never re-derive.
+    if p.get("frozen") is not True:
+        raise ValueError("regime artifact must be frozen "
+                         "(frozen: true) — unfrozen surfaces cannot "
+                         "bind to association")
+    for field in ("label_blinding", "fitted_on", "mode"):
+        if field not in p:
+            raise ValueError(f"regime artifact missing provenance "
+                             f"field {field!r}")
+    if p["label_blinding"] is not True:
+        raise ValueError("regime artifact label_blinding must be "
+                         "true — payloads claiming otherwise cannot "
+                         "bind to association")
+    if p["fitted_on"] != "TRAIN_ONLY":
+        raise ValueError(f"regime artifact fitted_on "
+                         f"{p['fitted_on']!r} != 'TRAIN_ONLY'")
+    if p["mode"] != "RETROSPECTIVE_REGIME":
+        raise ValueError(f"regime artifact mode {p['mode']!r} != "
+                         f"'RETROSPECTIVE_REGIME'")
+
+    # --- digest recomputation (I-01): never trust a carried digest ---
+    if _regime_digest(raw) != p.get("assignment_digest"):
+        raise ValueError("assignment_digest does not match the "
+                         "payload's assignment sidecar — tampered or "
+                         "mislabeled artifact")
+    pre_freeze = {k: v for k, v in p.items()
+                  if k not in ("freeze_digest", "frozen")}
+    if _regime_digest({k: v for k, v in pre_freeze.items()
+                       if k != "regime_artifact_digest"}
+                      ) != p.get("regime_artifact_digest"):
+        raise ValueError("regime_artifact_digest does not recompute "
+                         "from the payload — tampered or truncated "
+                         "artifact")
+    if _regime_digest(pre_freeze) != p.get("freeze_digest"):
+        raise ValueError("freeze_digest does not recompute from the "
+                         "payload — post-freeze mutation or "
+                         "mislabeled artifact")
+
     triples = []
-    for row in p["assignments"]:
+    for row in raw:
         if not isinstance(row, (list, tuple)) or len(row) != 3:
             raise ValueError("regime assignment rows must be "
                              "(unit_id, date, regime_id) triples")
-        triples.append([str(row[0]), str(row[1]), str(row[2])])
+        unit_id, day, regime_id = row
+        if not isinstance(unit_id, str) or not isinstance(day, str):
+            raise ValueError("regime assignment unit_id/date must be "
+                             "strings in the payload — no coercion "
+                             "across the boundary")
+        if isinstance(regime_id, bool) or \
+                not isinstance(regime_id, (int, str)):
+            raise ValueError("regime assignment regime_id must be "
+                             "int or str — other primitive types "
+                             "reject")
+        triples.append([unit_id, day, str(regime_id)])
+
+    seeds = p.get("seeds", ())
+    if not isinstance(seeds, (list, tuple)):
+        raise ValueError("regime artifact seeds: expected a sequence")
     record = RegimeAssignmentArtifact.from_dict({
         "artifact_id": artifact_id,
-        "regime_digest": regime_digest,
+        "regime_digest": p["freeze_digest"],
         "assignments": triples,
-        "fitted_on": fitted_on,
-        "label_blinding": True,
+        "fitted_on": p["fitted_on"],
+        "label_blinding": p["label_blinding"],
         "seeds": list(seeds),
-        "mode": mode,
+        "mode": p["mode"],
     })
     return record
