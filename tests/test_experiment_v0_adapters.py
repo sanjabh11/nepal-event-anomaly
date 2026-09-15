@@ -41,15 +41,21 @@ def _identity_payload(**overrides):
     return p
 
 
-def _assignment_payload(**overrides):
-    """A science_v0.HoldoutAssignment-shaped serialized mapping.
+_SPLIT_OF_GROUP = {"g_train": "train", "g_val": "val",
+                   "g_test_a": "test", "g_test_b": "test"}
 
-    Three groups across four basins; every group has >=1 event; two
+
+def _assignment_payload(**overrides):
+    """A science_v0.HoldoutAssignment-shaped serialized mapping —
+    ``assignments`` carry event -> geographic GROUP, matching the
+    producer's ``assign_holdouts`` output.
+
+    Four groups across four basins; every group has >=1 event; two
     test groups supply the named evaluation regions.
     """
     p = {
-        "assignments": {"e-train": "train", "e-val": "val",
-                        "e-test-a": "test", "e-test-b": "test"},
+        "assignments": {"e-train": "g_train", "e-val": "g_val",
+                        "e-test-a": "g_test_a", "e-test-b": "g_test_b"},
         "basin_of_event": {"e-train": "koshi", "e-val": "gandaki",
                            "e-test-a": "karnali", "e-test-b": "bagmati"},
         "basin_groups": {"g_train": ("koshi",), "g_val": ("gandaki",),
@@ -123,7 +129,8 @@ def test_identity_adjudicated_needs_reviewers():
 
 def test_assignment_adapts_to_problem_free_plan():
     plan = holdout_plan_from_assignment(
-        _assignment_payload(), holdout_plan_id="holdout-adapter-0")
+        _assignment_payload(), holdout_plan_id="holdout-adapter-0",
+        split_of_group=_SPLIT_OF_GROUP)
     assert isinstance(plan, HoldoutPlanV0)
     assert plan.problems() == []
     assert plan.train_groups == ("g_train",)
@@ -136,7 +143,8 @@ def test_assignment_adapts_to_problem_free_plan():
 
 def test_assignment_region_group_names_accepted():
     p = _assignment_payload(evaluation_regions=("g_test_a", "g_test_b"))
-    plan = holdout_plan_from_assignment(p, holdout_plan_id="h0")
+    plan = holdout_plan_from_assignment(p, holdout_plan_id="h0",
+                                        split_of_group=_SPLIT_OF_GROUP)
     assert plan.problems() == []
 
 
@@ -146,50 +154,74 @@ def test_assignment_basin_in_two_groups_rejects():
                          "g_test_a": ("karnali", "bagmati"),
                          "g_test_b": ("bagmati",)}
     with pytest.raises(ValueError, match="multiple groups"):
-        holdout_plan_from_assignment(p, holdout_plan_id="h0")
+        holdout_plan_from_assignment(p, holdout_plan_id="h0",
+                                     split_of_group=_SPLIT_OF_GROUP)
 
 
 def test_assignment_event_without_basin_rejects():
     p = _assignment_payload()
     del p["basin_of_event"]["e-test-a"]
     with pytest.raises(ValueError, match="basin"):
-        holdout_plan_from_assignment(p, holdout_plan_id="h0")
+        holdout_plan_from_assignment(p, holdout_plan_id="h0",
+                                     split_of_group=_SPLIT_OF_GROUP)
 
 
-def test_assignment_eventless_group_rejects():
+def test_assignment_event_basin_not_in_group_rejects():
+    p = _assignment_payload()
+    # e-test-a claims g_test_b but its basin (karnali) lives in
+    # g_test_a — group membership is verified, not trusted.
+    p["assignments"]["e-test-a"] = "g_test_b"
+    with pytest.raises(ValueError, match="not a member"):
+        holdout_plan_from_assignment(p, holdout_plan_id="h0",
+                                     split_of_group=_SPLIT_OF_GROUP)
+
+
+def test_assignment_undeclared_group_rejects():
+    p = _assignment_payload()
+    p["assignments"]["e-train"] = "g_ghost"
+    with pytest.raises(ValueError, match="undeclared"):
+        holdout_plan_from_assignment(p, holdout_plan_id="h0",
+                                     split_of_group=_SPLIT_OF_GROUP)
+
+
+def test_assignment_eventless_group_surfaces_problems():
     p = _assignment_payload()
     p["basin_groups"]["g_empty"] = ("mahakali",)
-    with pytest.raises(ValueError, match="no member events"):
-        holdout_plan_from_assignment(p, holdout_plan_id="h0")
+    splits = dict(_SPLIT_OF_GROUP, g_empty="test")
+    with pytest.raises(ValueError, match="problems"):
+        holdout_plan_from_assignment(p, holdout_plan_id="h0",
+                                     split_of_group=splits)
 
 
-def test_assignment_split_disagreement_rejects():
-    p = _assignment_payload()
-    # Two member events of one group claim different splits.
-    p["basin_groups"]["g_test_a"] = ("karnali", "bagmati")
-    p["basin_groups"].pop("g_test_b")
-    p["assignments"]["e-test-b"] = "val"
-    with pytest.raises(ValueError, match="disagree"):
-        holdout_plan_from_assignment(p, holdout_plan_id="h0")
+def test_assignment_missing_split_rejects():
+    splits = dict(_SPLIT_OF_GROUP)
+    del splits["g_test_b"]
+    with pytest.raises(ValueError, match="lack a split"):
+        holdout_plan_from_assignment(
+            _assignment_payload(), holdout_plan_id="h0",
+            split_of_group=splits)
 
 
 def test_assignment_invalid_split_rejects():
-    p = _assignment_payload()
-    p["assignments"]["e-train"] = "holdout"
-    with pytest.raises(ValueError, match="invalid splits"):
-        holdout_plan_from_assignment(p, holdout_plan_id="h0")
+    splits = dict(_SPLIT_OF_GROUP, g_train="holdout")
+    with pytest.raises(ValueError, match="not in"):
+        holdout_plan_from_assignment(
+            _assignment_payload(), holdout_plan_id="h0",
+            split_of_group=splits)
 
 
 def test_assignment_eval_region_outside_test_surfaces_problems():
     p = _assignment_payload(evaluation_regions=("karnali", "koshi"))
     with pytest.raises(ValueError, match="problems"):
-        holdout_plan_from_assignment(p, holdout_plan_id="h0")
+        holdout_plan_from_assignment(p, holdout_plan_id="h0",
+                                     split_of_group=_SPLIT_OF_GROUP)
 
 
 def test_assignment_nonfinite_embargo_rejects():
     p = _assignment_payload(embargo_seconds="false")
     with pytest.raises(ValueError, match="embargo_seconds"):
-        holdout_plan_from_assignment(p, holdout_plan_id="h0")
+        holdout_plan_from_assignment(p, holdout_plan_id="h0",
+                                     split_of_group=_SPLIT_OF_GROUP)
 
 
 # ---------------------------------------------------------- vintages

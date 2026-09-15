@@ -15,6 +15,12 @@ Boundaries:
   payload -> HoldoutPlanV0.
 - ``vintage_from_request`` — VintageRequest (or its serialized mapping)
   -> ForecastVintageV0.
+- ``opportunity_from_science`` — science_v0.ObservationOpportunity
+  payload -> ObservationOpportunityV0.
+- ``control_from_science`` — science_v0.ControlWindow payload ->
+  ControlWindowV0.
+- ``regime_assignment_from_artifact`` — science_v0 frozen regime
+  artifact dict -> RegimeAssignmentArtifact.
 """
 from __future__ import annotations
 
@@ -22,8 +28,10 @@ from dataclasses import asdict, is_dataclass
 from typing import Any, Mapping, Optional, Sequence
 
 from nepal.research_v0.records import (
-    EventLabelV0, HoldoutPlanV0, ForecastVintageV0)
+    ControlWindowV0, EventLabelV0, ForecastVintageV0, HoldoutPlanV0,
+    ObservationOpportunityV0)
 
+from .association import RegimeAssignmentArtifact
 from .vintages import VintageRequest, build_vintage
 
 # science_v0 timing classes -> EventLabelV0 precision terms (PRECISION_TERMS).
@@ -152,19 +160,30 @@ def event_label_from_identity(
 def holdout_plan_from_assignment(
         payload: Any, *,
         holdout_plan_id: str,
+        split_of_group: Mapping[str, str],
+        assignment_rule: str = "basin",
         test_locked: bool = True) -> HoldoutPlanV0:
     """Map a serialized science_v0.HoldoutAssignment to HoldoutPlanV0.
 
-    ``payload`` must contain exactly the HoldoutAssignment fields:
-    ``assignments`` (event_id -> "train"/"val"/"test"),
+    ``payload`` must contain exactly the HoldoutAssignment fields as
+    produced by ``science_v0.assign_holdouts``: ``assignments``
+    (event_id -> geographic GROUP — the producer assigns each event to
+    its basin's group; the split role lives on the group lists),
     ``basin_of_event`` (event_id -> basin), ``basin_groups``
     (group -> basins), ``evaluation_regions``, ``embargo_seconds``.
-    The per-group split is *derived* from member events; a group whose
-    events disagree, or a group with no events, is rejected — split
-    attribution is never guessed.
+
+    ``split_of_group`` is an explicit adapter parameter — the group ->
+    split map the producer used — never derived from or guessed at.
+    Every declared group must have a split, every event's assigned
+    group must be declared in ``basin_groups``, and the event's basin
+    must be a member of that group.
     """
     p = _payload(payload, "HoldoutAssignment")
     _require_exact_keys(p, _ASSIGNMENT_KEYS, "HoldoutAssignment")
+    if assignment_rule not in ("basin", "catchment", "macroregion",
+                               "fixed_spatial"):
+        raise ValueError(f"assignment_rule {assignment_rule!r} "
+                         "not in contract vocabulary")
     assignments = p["assignments"]
     basin_of_event = p["basin_of_event"]
     basin_groups = p["basin_groups"]
@@ -182,10 +201,21 @@ def holdout_plan_from_assignment(
             not isinstance(embargo, (int, float)):
         raise ValueError("HoldoutAssignment.embargo_seconds: expected "
                          "a finite number")
-    bad_splits = {e for e, s in assignments.items()
-                  if s not in _VALID_SPLITS}
-    if bad_splits:
-        raise ValueError(f"events map to invalid splits: {sorted(bad_splits)}")
+    if not isinstance(split_of_group, Mapping):
+        raise ValueError("split_of_group: expected group -> split map")
+    normalized: dict[str, str] = {}
+    for g, s in split_of_group.items():
+        if not isinstance(g, str) or not isinstance(s, str):
+            raise ValueError("split_of_group: expected str -> str")
+        s = "val" if s == "validation" else s
+        if s not in _VALID_SPLITS:
+            raise ValueError(f"split_of_group[{g!r}] = {s!r} "
+                             f"not in {sorted(_VALID_SPLITS)}")
+        normalized[g] = s
+    missing = set(basin_groups) - set(normalized)
+    if missing:
+        raise ValueError(f"declared groups lack a split: "
+                         f"{sorted(missing)}")
 
     # basin -> group inversion (fail on a basin claimed by two groups).
     basin_to_group: dict[str, str] = {}
@@ -200,28 +230,19 @@ def holdout_plan_from_assignment(
                                  f"groups")
             basin_to_group[basin] = group
 
-    # event -> group via its basin; group -> split via member events.
+    # assignments are already event -> group; verify basin membership.
     event_to_group: dict[str, str] = {}
-    group_splits: dict[str, set] = {g: set() for g in basin_groups}
-    for event_id, split in assignments.items():
+    for event_id, group in assignments.items():
+        if group not in basin_groups:
+            raise ValueError(f"event {event_id!r} maps to undeclared "
+                             f"group {group!r}")
         basin = basin_of_event.get(event_id)
         if not isinstance(basin, str):
             raise ValueError(f"event {event_id!r} has no basin binding")
-        group = basin_to_group.get(basin)
-        if group is None:
-            raise ValueError(f"event {event_id!r} basin {basin!r} is in "
-                             f"no declared group")
+        if basin not in basin_groups[group]:
+            raise ValueError(f"event {event_id!r} basin {basin!r} is "
+                             f"not a member of assigned group {group!r}")
         event_to_group[event_id] = group
-        group_splits[group].add(split)
-    split_of_group: dict[str, str] = {}
-    for group, splits in group_splits.items():
-        if not splits:
-            raise ValueError(f"group {group!r} has no member events — "
-                             f"cannot derive its split")
-        if len(splits) > 1:
-            raise ValueError(f"group {group!r} events disagree on "
-                             f"split: {sorted(splits)}")
-        split_of_group[group] = splits.pop()
 
     # Evaluation regions arrive as basin names (science_v0) or group
     # names; HoldoutPlanV0 names locked test GROUPS — map basins
@@ -231,7 +252,7 @@ def holdout_plan_from_assignment(
         if not isinstance(r, str):
             raise ValueError("HoldoutAssignment.evaluation_regions: "
                              "expected string names")
-        if r in split_of_group:
+        if r in normalized:
             region_names.append(r)
         elif r in basin_to_group:
             region_names.append(basin_to_group[r])
@@ -241,13 +262,13 @@ def holdout_plan_from_assignment(
 
     record = HoldoutPlanV0(
         holdout_plan_id=holdout_plan_id,
-        assignment_rule="basin",
+        assignment_rule=assignment_rule,
         train_groups=tuple(sorted(
-            g for g, s in split_of_group.items() if s == "train")),
+            g for g, s in normalized.items() if s == "train")),
         validation_groups=tuple(sorted(
-            g for g, s in split_of_group.items() if s == "val")),
+            g for g, s in normalized.items() if s == "val")),
         test_groups=tuple(sorted(
-            g for g, s in split_of_group.items() if s == "test")),
+            g for g, s in normalized.items() if s == "test")),
         event_assignments=dict(event_to_group),
         evaluation_region_names=tuple(dict.fromkeys(region_names)),
         assigned_before_filtering=True,
@@ -270,3 +291,161 @@ def vintage_from_request(payload: Any, *,
     else:
         req = VintageRequest.from_dict(_payload(payload, "VintageRequest"))
     return build_vintage(req, vintage_id)
+
+
+_OPPORTUNITY_KEYS = frozenset({
+    "opportunity_id", "unit_id", "source_id", "basin",
+    "window_start", "window_end", "state", "platform",
+    "coverage_fraction", "coverage_quality", "detection_threshold",
+    "source_as_of", "frame_ids"})
+
+_CONTROL_KEYS = frozenset({
+    "control_id", "unit_id", "source_id", "basin",
+    "window_start", "window_end", "opportunity_id",
+    "opportunity_state", "state", "covering_opportunity_ids",
+    "control_digest"})
+
+
+def opportunity_from_science(payload: Any) -> ObservationOpportunityV0:
+    """Map a serialized science_v0.ObservationOpportunity payload to
+    ObservationOpportunityV0.
+
+    ``payload`` must contain exactly the ObservationOpportunity
+    fields.  ``basin`` is science-axis metadata and is dropped — the
+    V0 record binds the opportunity to ``unit_id``; the unit -> basin
+    map is carried separately by ``unit_basins``.  OBSERVED_FULL still
+    requires coverage ~1.0 and real frame_ids — enforced by
+    ``problems()``, never relaxed here.
+    """
+    p = _payload(payload, "ObservationOpportunity")
+    _require_exact_keys(p, _OPPORTUNITY_KEYS, "ObservationOpportunity")
+    coverage = p["coverage_fraction"]
+    if coverage is not None and (isinstance(coverage, bool)
+                                 or not isinstance(coverage,
+                                                   (int, float))):
+        raise ValueError("ObservationOpportunity.coverage_fraction: "
+                         "expected a finite number or null")
+    frames = p["frame_ids"]
+    if not isinstance(frames, (list, tuple)) or \
+            any(not isinstance(f, str) for f in frames):
+        raise ValueError("ObservationOpportunity.frame_ids: expected "
+                         "a sequence of strings")
+    record = ObservationOpportunityV0(
+        opportunity_id=_req_str(p, "opportunity_id",
+                                "ObservationOpportunity"),
+        unit_id=_req_str(p, "unit_id", "ObservationOpportunity"),
+        platform=_req_str(p, "platform", "ObservationOpportunity"),
+        window_start=_req_str(p, "window_start",
+                              "ObservationOpportunity"),
+        window_end=_req_str(p, "window_end", "ObservationOpportunity"),
+        coverage_fraction=(None if coverage is None
+                           else float(coverage)),
+        coverage_quality=_opt_str(p, "coverage_quality",
+                                  "ObservationOpportunity"),
+        detection_threshold=_opt_str(p, "detection_threshold",
+                                     "ObservationOpportunity"),
+        state=_req_str(p, "state", "ObservationOpportunity"),
+        source_id=_opt_str(p, "source_id", "ObservationOpportunity"),
+        source_as_of=_opt_str(p, "source_as_of",
+                              "ObservationOpportunity"),
+        frame_ids=tuple(frames),
+    )
+    problems = record.problems()
+    if problems:
+        raise ValueError("adapted ObservationOpportunityV0 has "
+                         "problems: " + "; ".join(problems))
+    return record
+
+
+def control_from_science(payload: Any, *,
+                         matched_covariates: Sequence[str] = (),
+                         cascade_group_id: str = ""
+                         ) -> ControlWindowV0:
+    """Map a serialized science_v0.ControlWindow payload to
+    ControlWindowV0.
+
+    ``payload`` must contain exactly the ControlWindow fields.  The
+    producer already derived ``state`` from the linked opportunity
+    (NEGATIVE only on OBSERVED_FULL); the adapter validates the record
+    but never re-derives or overrides state.  ``basin`` and
+    ``covering_opportunity_ids`` are producer lineage metadata not
+    carried by the V0 record — the link that matters is
+    ``opportunity_id`` + ``opportunity_state``.
+    """
+    p = _payload(payload, "ControlWindow")
+    _require_exact_keys(p, _CONTROL_KEYS, "ControlWindow")
+    record = ControlWindowV0(
+        control_id=_req_str(p, "control_id", "ControlWindow"),
+        unit_id=_req_str(p, "unit_id", "ControlWindow"),
+        window_start=_req_str(p, "window_start", "ControlWindow"),
+        window_end=_req_str(p, "window_end", "ControlWindow"),
+        opportunity_id=_req_str(p, "opportunity_id", "ControlWindow"),
+        opportunity_state=_req_str(p, "opportunity_state",
+                                   "ControlWindow"),
+        state=_req_str(p, "state", "ControlWindow"),
+        matched_covariates=tuple(matched_covariates),
+        cascade_group_id=cascade_group_id,
+    )
+    problems = record.problems()
+    if problems:
+        raise ValueError("adapted ControlWindowV0 has problems: "
+                         + "; ".join(problems))
+    return record
+
+
+def regime_assignment_from_artifact(
+        payload: Any, *,
+        artifact_id: str,
+        fitted_on: str = "TRAIN_ONLY",
+        mode: str = "RETROSPECTIVE_REGIME"
+        ) -> RegimeAssignmentArtifact:
+    """Map a serialized science_v0 frozen regime artifact dict to
+    RegimeAssignmentArtifact.
+
+    ``payload`` must be a mapping carrying at least ``assignments``
+    (``(unit_id, date, regime_id)`` triples emitted by
+    ``science_v0.run_regimes``) and ``regime_artifact_digest`` (or
+    ``freeze_digest`` once ``freeze_regime_artifact`` has run — the
+    freeze digest is preferred because it covers the frozen surface).
+    A summary-only artifact without the assignment sidecar is
+    rejected; assignments are never re-derived here, because
+    re-prediction would violate freeze semantics.
+
+    ``fitted_on`` and ``mode`` are explicit provenance assertions by
+    the caller — the contract requires ``TRAIN_ONLY`` fitting and
+    ``RETROSPECTIVE_REGIME`` mode; the produced record's ``problems()``
+    enforces them.
+    """
+    p = _payload(payload, "regime artifact")
+    if not isinstance(p.get("assignments"), (list, tuple)) or \
+            not p["assignments"]:
+        raise ValueError("regime artifact carries no assignment "
+                         "sidecar — summary-only artifacts cannot "
+                         "bind to association")
+    regime_digest = p.get("freeze_digest") or \
+        p.get("regime_artifact_digest")
+    if not isinstance(regime_digest, str) or not regime_digest:
+        raise ValueError("regime artifact lacks "
+                         "freeze_digest/regime_artifact_digest")
+    seeds = p.get("seeds", ())
+    if not isinstance(seeds, (list, tuple)):
+        raise ValueError("regime artifact seeds: expected a sequence")
+    # Serialized assignments may carry regime ids as ints (the producer
+    # emits raw GMM labels); the contract requires (str, str, str)
+    # triples — normalize deterministically, never re-derive.
+    triples = []
+    for row in p["assignments"]:
+        if not isinstance(row, (list, tuple)) or len(row) != 3:
+            raise ValueError("regime assignment rows must be "
+                             "(unit_id, date, regime_id) triples")
+        triples.append([str(row[0]), str(row[1]), str(row[2])])
+    record = RegimeAssignmentArtifact.from_dict({
+        "artifact_id": artifact_id,
+        "regime_digest": regime_digest,
+        "assignments": triples,
+        "fitted_on": fitted_on,
+        "label_blinding": True,
+        "seeds": list(seeds),
+        "mode": mode,
+    })
+    return record
