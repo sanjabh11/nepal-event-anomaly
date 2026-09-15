@@ -215,7 +215,7 @@ truth).
 
 | ID | Defect | Disposition |
 |---|---|---|
-| CFM-01 complete input absent | Critical | BLOCKED_EXTERNAL — only `data/temp/era5_land_2001_06.nc` exists; merged file + feature CSV absent; preflight fails closed (exit 1, no artifacts). No synthesis permitted. |
+| CFM-01 complete input absent | Critical | RESOLVED (superseded by Run A completion) — merged file + feature CSV now exist under `research_runs/gmm_hybrid_20260915/`; see "Run A result" in P0_BASELINE_LEDGER and `run_a/RUN_A_EVIDENCE_SUMMARY_V0.md` |
 | CFM-02 single-cell hard-coding | High | RESOLVED — outputs labelled `EXPLORATORY_DESCRIPTIVE_SINGLE_CELL`; scope note limits inference to the cell/period |
 | CFM-03 silent feature reduction | High | RESOLVED — declared `GMM_FEATURES` required; missing columns fail the run; missingness reported |
 | CFM-04 mixed units | High | RESOLVED — baseline-fitted StandardScaler + recorded feature units; scaler never sees target rows |
@@ -271,7 +271,7 @@ truth).
 | P5-14 register drift | High | RESOLVED — this round's table reflects verified live code |
 | P5-15 `research_runs/` ignore | Medium | RESOLVED — added to `.gitignore` |
 | P5-16 env smoke | Medium | RESOLVED — `--smoke` NetCDF round-trip gate (CI + CLI) |
-| P5-C acquisition | Critical | BLOCKED_EXTERNAL — explicit network authorization required; `cdsapirc` exists but authorization ≠ credentials |
+| P5-C acquisition | Critical | RESOLVED (completed) — bounded Run A executed 2026-09-15 via hybrid ARCO/EDH/MARS route under P5-C authorization; route-vs-authorization reconciliation recorded in `run_a/HYBRID_ROUTE_RECONCILIATION_V0.md` (H01: owner-ratified amendment or method-only retention — owner decision) |
 
 ## P5 chain-execution round (JJA universality + edge censoring)
 
@@ -305,11 +305,60 @@ truth).
 - Deletion/quarantine: failed or fabricated artifacts are quarantined
   (never silently dropped) and recorded with reason.
 
+## Run A reconciliation round (H01–H15, 2026-09-15)
+
+Post-completion audit of the hybrid Run A against its authorization
+and ledger.  Lanes: `run-a/reconciliation` (code+docs), Run B evidence
+addendum (license metadata), integrator ledger/register updates.
+
+| ID | Disposition |
+|---|---|
+| H01 route vs authorization | DOCUMENTED — hybrid ARCO/EDH/MARS route recorded in `run_a/HYBRID_ROUTE_RECONCILIATION_V0.md`; owner decision pending (amend authorization or retain as method-only) |
+| H02 provenance receipts | RESOLVED (bounded) — `provenance_receipts.json` binds endpoint, payload digests, sizes, mtime-derived retrieval UTC, license URLs; unrecoverable fields (job IDs, request digests) marked `UNVERIFIED` |
+| H03 route harmonization | PARTIAL — local numeric comparison over 5 overlap months: u10/v10 bitwise-identical, t2m/d2m <=2.4e-4 K, sd/sf <=3.6e-6 m; tp is a semantics difference (running accumulation vs per-hour increment); full equivalence NOT demonstrated → Run A retained as implementation-confirmation |
+| H04 non-JJA request scope | RESOLVED — ledger records requested vs used windows; merged output asserted JJA-only + pre-cutoff (`used_window_verified`) |
+| H05 invalid calendar days | RESOLVED — request chunks built from `days_for_month`; month/day cross-products always valid; regression tests incl. leap-Feb and Aug-25 cutoff |
+| H06 ledger totals zero | RESOLVED — `size_accounting` measured from bytes at close; existing ledger repaired (40.19 MB) |
+| H07 naive timestamps | RESOLVED — UTC `Z` emission; legacy naive values preserved + `*_utc` normalization in repair tool |
+| H08 auditable summary | RESOLVED — `run_a/RUN_A_EVIDENCE_SUMMARY_V0.md` binds run id, digests, counts, limitations |
+| H09 replay completeness | RESOLVED — scaler params (mean/var/scale + feature order), full GMM config, best-model weights/means/covariances persisted; canonical JSON (sorted keys, strict natives, no `default=str`) |
+| H10 CI claim-scan | RESOLVED — `claim-scan` recurses directories; CI uses identical file selection; nested-forbidden-token regression test added |
+| H11 stale README | RESOLVED — Run A narrative corrected; `.venv/bin/python` consistent |
+| H12 stale ledger/register | RESOLVED — P0 rebound to current content head; CFM-01 and P5-C rows corrected; this section added |
+| H13 scope clarity | RESOLVED — `run_a/SCOPE_OVERLAY_V0.md` separates P3 design review, P5 diagnostic authorization, and future source-qualification/intake gates |
+| H14 env disclosure | RESOLVED — rasterio skips + warnings disclosed in README; suite not claimed dependency-complete |
+| H15 spec-vs-data status | RESOLVED — Run B/C labeled `SPECIFICATION_COMPLETE` with real data pending; no synthetic result presented as science |
+
+## Newly discovered defect (audit-adjacent)
+
+| ID | Severity | Disposition |
+|---|---|---|
+| RA-01 `sf_daily` inflation | High | CONFIRMED — CDS/MARS `sf` arrives as a running daily accumulation while ARCO `tp` is per-hour; the extractor summed the accumulated field, inflating `sf_daily` ~5.7x (e.g., 41.0 mm vs 4.04 mm closing value). Affects `features/` output of Run A only; fix = deaccumulate or take closing value. Recorded, NOT reprocessed — Run A stays method-only pending owner decision on rerun |
+
+## License-evidence resolution (S-series partial)
+
+`run_b/SOURCE_EVIDENCE_ADDENDUM_V0.md` resolved license tags via
+public metadata APIs (2026-09-15): HiAVAL v1.3.0 = CC0 (v1.1.0 was
+CC BY 4.0 — conservative term CC BY 4.0 governs); HMAGLOFDB = CC BY
+4.0 on canonical RDS (Zenodo mirror CC0); Kneib S1 = CC BY 4.0;
+Burrows = CC BY 4.0; Jiang LDOF = CC BY 4.0; essd-2026-481 = CC BY
+4.0 (canonical versioned DOI zenodo.19477908); SAFE-HMA = CC BY 4.0;
+ds084001 GFS = CC BY 4.0; TIGGE/S2S per-centre CC BY/CC BY-NC split
+documented.  **Adverse/new:** Zhong RIA `access_right=restricted`
+(request-gated despite CC BY tag); Gnyawali-Adhikari record has no
+license field and non-USGS originators (public-domain presumption
+rejected); figshare.25988293 is GDW v1.0, not GRanD v1.3.  Remaining
+intake-gated items: Nepal subset counts, file schemas, extent splits,
+NGDC 166966 license.  These resolve G05/B27/C23 license sub-items
+only — `EVIDENCE_VERIFIED` posture still requires byte-bound sidecar
++ independent review at intake.
+
 ## Honest residual risks
 
 - **P3 human approval is still required** — no code substitutes for it.
-- License items (HiAVAL, HMAGLOFDB, zenodo.10895011/7970874/166966)
-  are `BLOCKED_EXTERNAL` — sources stay `CANDIDATE_ONLY`.
+- Nepal-coverage counts and per-record intake verification remain
+  `GATED_ON_DATA`; NGDC 166966 license is `BLOCKED_EXTERNAL`;
+  sources stay `CANDIDATE_ONLY` until intake sidecars verify.
 - ECMWF MARS is procurement-gated (non-member, fee waiver) —
   `BLOCKED_EXTERNAL`.
 - Publication-time ≠ issue-time is mitigated by preregistered latency

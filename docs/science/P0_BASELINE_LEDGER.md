@@ -38,8 +38,17 @@ The empty Git shell is never the implementation root.
   `test_framework_v1_adapters.py:80`, `:92`, `:109`, `:128`,
   `test_framework_v1_screen.py:123`.
 - Content commit: bound via `content_head` in the manifest
-  (last bound `8a870d8`; superseded by the commit containing this
+  (last bound `e940cbf`; superseded by the commit containing this
   line and rebound in the manifest-only commit that follows).
+- Run A reconciliation (2026-09-15, `run-a/reconciliation` lane):
+  valid-day request chunking (no June-31-class cross products),
+  UTC `Z` ledger timestamps, byte-measured size accounting
+  (run ledger now reports ~40.19 MB across raw/monthly/merged),
+  request-vs-used window fields + JJA-only merged assertion,
+  recursive `claim-scan` (CI glob defect closed), canonical-JSON
+  result persistence with scaler/GMM parameters, and a
+  `provenance_receipts.json` binding recoverable route evidence
+  (unrecoverable fields recorded as UNVERIFIED, never fabricated).
 - CLI smoke: `validate-envelope` re-verifies flag/status/digest shape,
   self-hash, real matrix/policy bytes, and record payloads; execution
   statuses refuse no-bundle validation; `claim-scan` clean on all docs;
