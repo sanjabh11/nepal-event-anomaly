@@ -102,31 +102,74 @@ class TestDedupCascade:
 
 
 class TestControls:
-    def _opp(self, basin="koshi"):
+    def _opp(self, oid="opp1", basin="koshi", unit="cell0",
+             state="OBSERVED_FULL", cov=1.0, frames=("f1",),
+             w0="2020-01-01T00:00:00Z", w1="2020-12-31T00:00:00Z"):
         return ObservationOpportunity(
-            source_id="synthetic_inventory_v0", basin=basin,
-            window_start="2020-01-01T00:00:00Z",
-            window_end="2020-12-31T00:00:00Z",
-            coverage_class="OBSERVED_FULL")
+            opportunity_id=oid, unit_id=unit, source_id="syn_inv",
+            basin=basin, window_start=w0, window_end=w1,
+            state=state, platform="synthetic",
+            coverage_fraction=cov,
+            source_as_of="2021-01-01",
+            frame_ids=frames)
 
-    def test_control_requires_opportunity(self):
+    def test_no_opportunity_no_control(self):
         windows = [("2020-03-01T00:00:00Z", "2020-03-08T00:00:00Z")]
-        # no opportunity -> no control (missing coverage != negative)
-        assert build_controls("synthetic_inventory_v0", "gandaki",
+        assert build_controls("cell0", "syn_inv", "gandaki",
                               windows, [self._opp()], []) == []
 
-    def test_control_rejected_when_event_overlaps(self):
+    def test_missing_opportunity_id_rejected(self):
+        bad = self._opp(oid="")
+        with pytest.raises(ValueError, match="opportunity_id"):
+            build_controls("cell0", "syn_inv", "koshi",
+                           [("2020-03-01T00:00:00Z",
+                             "2020-03-08T00:00:00Z")],
+                           [bad], [])
+
+    def test_full_opportunity_negative(self):
+        windows = [("2020-03-01T00:00:00Z", "2020-03-08T00:00:00Z")]
+        out = build_controls("cell0", "syn_inv", "koshi",
+                             windows, [self._opp()], [])
+        assert len(out) == 1
+        assert out[0].state == "NEGATIVE"
+        assert out[0].opportunity_id == "opp1"
+        assert out[0].opportunity_state == "OBSERVED_FULL"
+
+    def test_partial_opportunity_censored(self):
+        windows = [("2020-03-01T00:00:00Z", "2020-03-08T00:00:00Z")]
+        out = build_controls(
+            "cell0", "syn_inv", "koshi", windows,
+            [self._opp(state="OBSERVED_PARTIAL", cov=0.5)], [])
+        assert out[0].state == "CENSORED_OR_AMBIGUOUS"
+
+    def test_unknown_opportunity_never_negative(self):
+        windows = [("2020-03-01T00:00:00Z", "2020-03-08T00:00:00Z")]
+        out = build_controls(
+            "cell0", "syn_inv", "koshi", windows,
+            [self._opp(state="UNKNOWN", cov=None, frames=())], [])
+        assert out[0].state == "CENSORED_OR_AMBIGUOUS"
+
+    def test_overlapping_event_censors(self):
         ev = normalize_event(_row())
         windows = [("2020-06-01T00:00:00Z", "2020-06-10T00:00:00Z")]
-        assert build_controls("synthetic_inventory_v0", "koshi",
-                              windows, [self._opp()], [ev]) == []
-
-    def test_clean_control_emitted(self):
-        ev = normalize_event(_row())
-        windows = [("2020-03-01T00:00:00Z", "2020-03-08T00:00:00Z")]
-        out = build_controls("synthetic_inventory_v0", "koshi",
+        out = build_controls("cell0", "syn_inv", "koshi",
                              windows, [self._opp()], [ev])
-        assert len(out) == 1 and out[0].control_digest
+        assert out[0].state == "CENSORED_OR_AMBIGUOUS"
+
+    def test_deterministic_multi_opportunity_linkage(self):
+        # two covering opportunities; selection is deterministic and
+        # all covering ids are preserved in lineage
+        opps = [self._opp(oid="opp_b"),
+                self._opp(oid="opp_a", state="OBSERVED_PARTIAL",
+                          cov=0.5)]
+        windows = [("2020-03-01T00:00:00Z", "2020-03-08T00:00:00Z")]
+        a = build_controls("cell0", "syn_inv", "koshi", windows,
+                           opps, [])
+        b = build_controls("cell0", "syn_inv", "koshi", windows,
+                           list(reversed(opps)), [])
+        assert a == b  # order-independent
+        assert a[0].opportunity_id == "opp_b"  # OBSERVED_FULL wins
+        assert a[0].covering_opportunity_ids == ("opp_a", "opp_b")
 
 
 class TestHoldouts:
@@ -149,7 +192,8 @@ class TestHoldouts:
         out = assign_holdouts(self._events(), self._basin_group(),
                               self._split(),
                               ("gandaki", "mahakali"), 86400 * 7)
-        assert set(out.assignments.values()) == {"train", "test"}
+        assert set(out.assignments.values()) == \
+            {"grp_east", "grp_central", "grp_west"}
         assert len(out.assignments) == 4
         assert out.basin_groups["grp_west"] == {"karnali", "mahakali"}
 
@@ -196,3 +240,63 @@ class TestHoldouts:
         with pytest.raises(ValueError, match="split"):
             assign_holdouts(self._events(), self._basin_group(), s,
                             ("gandaki", "mahakali"), 1)
+
+    def test_unknown_split_label_rejected(self):
+        s = {"grp_east": "train", "grp_central": "staging",
+             "grp_west": "test"}
+        with pytest.raises(ValueError, match="split"):
+            assign_holdouts(self._events(), self._basin_group(), s,
+                            ("gandaki", "mahakali"), 1)
+
+
+class TestAdapters:
+    def _plan(self):
+        evs = [normalize_event(_row(key=f"e{i}", basin=b))
+               for i, b in enumerate(
+                   ["koshi", "gandaki", "karnali", "mahakali",
+                    "bagmati"])]
+        groups = {"koshi": "grp_east", "gandaki": "grp_central",
+                  "bagmati": "grp_central", "karnali": "grp_west",
+                  "mahakali": "grp_farwest"}
+        splits = {"grp_east": "train", "grp_central": "validation",
+                  "grp_west": "test", "grp_farwest": "test"}
+        a = assign_holdouts(evs, groups, splits,
+                            ("karnali", "mahakali"), 86400 * 7)
+        return a, groups, splits
+
+    def test_to_holdout_plan_shape(self):
+        from nepal.science_v0.events import to_holdout_plan
+        a, groups, splits = self._plan()
+        p = to_holdout_plan(a, group_of_basin=groups,
+                            holdout_plan_id="plan_v0",
+                            split_of_group=splits)
+        assert p["record_type"] == "HoldoutPlanV0"
+        assert p["train_groups"] == ("grp_east",)
+        assert p["validation_groups"] == ("grp_central",)
+        assert p["test_groups"] == ("grp_farwest", "grp_west")
+        assert p["assigned_before_filtering"] is True
+        assert p["test_locked"] is True
+        assert p["embargo_seconds"] == 86400 * 7
+        # every event assigned, values inside declared groups
+        declared = set(p["train_groups"] + p["validation_groups"]
+                       + p["test_groups"])
+        assert set(p["event_assignments"].values()) <= declared
+        assert len(p["event_assignments"]) == 5
+
+    def test_to_event_label_requires_explicit_adjudication(self):
+        from nepal.science_v0.events import to_event_label
+        ev = normalize_event(_row())
+        # positive adjudication without reviewers -> refused
+        with pytest.raises(ValueError, match="reviewer"):
+            to_event_label(ev, vertical_id="snow_avalanche",
+                           geometry_role="deposit_polygon",
+                           event_time_basis="report",
+                           adjudication_state="TWO_REVIEW_AGREE",
+                           reviewer_ids=("r1",))
+        # unadjudicated emits cleanly and stays UNADJUDICATED
+        p = to_event_label(ev, vertical_id="snow_avalanche",
+                           geometry_role="deposit_polygon",
+                           event_time_basis="report",
+                           adjudication_state="UNADJUDICATED")
+        assert p["adjudication_state"] == "UNADJUDICATED"
+        assert p["event_time_precision"] == "day"

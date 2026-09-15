@@ -224,54 +224,139 @@ def validate_cascade_graph(events: list[EventIdentity]) -> None:
 
 # ------------------------------------------------------- opportunities
 
+# Opportunity states and control target states mirror the frozen
+# contract vocabulary (policy.OPPORTUNITY_STATES / TargetState).
+OPPORTUNITY_STATES = (
+    "OBSERVED_FULL", "OBSERVED_PARTIAL", "UNOBSERVED", "UNKNOWN")
+CONTROL_STATES = ("NEGATIVE", "CENSORED_OR_AMBIGUOUS")
+
+_OPP_RANK = {"OBSERVED_FULL": 0, "OBSERVED_PARTIAL": 1,
+             "UNOBSERVED": 2, "UNKNOWN": 3}
+
+
 @dataclass(frozen=True)
 class ObservationOpportunity:
-    """A window in which a source could have observed an event."""
+    """A window in which a source could have observed an event.
+
+    Mirrors ObservationOpportunityV0: identity, platform, window,
+    coverage fraction, frame binding, and a controlled state.
+    """
+    opportunity_id: str
+    unit_id: str
     source_id: str
     basin: str
     window_start: str
     window_end: str
-    coverage_class: str   # OBSERVED_FULL / OBSERVED_PARTIAL
+    state: str = "UNKNOWN"          # OPPORTUNITY_STATES member
+    platform: str = ""
+    coverage_fraction: float | None = None
+    coverage_quality: str = ""
+    detection_threshold: str = ""
+    source_as_of: str = ""
+    frame_ids: tuple = ()
+
+    def problems(self) -> list[str]:
+        probs = []
+        for f in ("opportunity_id", "unit_id", "source_id",
+                  "window_start", "window_end"):
+            if not getattr(self, f):
+                probs.append(f"{f} is required")
+        if self.state not in OPPORTUNITY_STATES:
+            probs.append(f"state {self.state!r} not in "
+                         f"{list(OPPORTUNITY_STATES)}")
+        if self.state == "OBSERVED_FULL" and (
+                self.coverage_fraction is None or
+                self.coverage_fraction < 0.999 or
+                not self.frame_ids):
+            probs.append("OBSERVED_FULL requires coverage ~1.0 and "
+                         "frame_ids")
+        return probs
 
 
 @dataclass(frozen=True)
 class ControlWindow:
-    """A non-event window — only valid where opportunity exists."""
+    """A non-event window bound to a real opportunity record.
+
+    ``state`` is derived, never caller-asserted: NEGATIVE only when the
+    linked opportunity is OBSERVED_FULL and no event overlaps. All
+    covering opportunity ids are preserved for lineage.
+    """
+    control_id: str
+    unit_id: str
     source_id: str
     basin: str
     window_start: str
     window_end: str
+    opportunity_id: str
+    opportunity_state: str
+    state: str                       # CONTROL_STATES member
+    covering_opportunity_ids: tuple = ()
     control_digest: str = ""
 
 
-def build_controls(source_id: str, basin: str,
+def _select_opportunity(
+        covering: list[ObservationOpportunity]
+        ) -> ObservationOpportunity:
+    """Deterministic selection when several opportunities cover a
+    window: best state rank, then smallest opportunity_id — stable and
+    reproducible. Other covering ids are retained in lineage."""
+    return sorted(covering,
+                  key=lambda o: (_OPP_RANK[o.state],
+                                 o.opportunity_id))[0]
+
+
+def build_controls(unit_id: str, source_id: str, basin: str,
                    candidate_windows: list[tuple[str, str]],
                    opportunities: list[ObservationOpportunity],
                    events: list[EventIdentity]) -> list[ControlWindow]:
-    """Control = window with opportunity coverage AND no event overlap.
+    """Control = window bound to an opportunity record, state derived.
 
-    Missing coverage or absence of a report never yields a negative.
+    - every emitted control carries a linked opportunity_id and the
+      opportunity's state;
+    - NEGATIVE only when the selected opportunity is OBSERVED_FULL and
+      no event interval overlaps;
+    - missing/partial/unknown/unobserved coverage never yields
+      NEGATIVE — the control is CENSORED_OR_AMBIGUOUS;
+    - multiple covering opportunities: deterministic selection, all
+      covering ids preserved;
+    - a window with zero covering opportunities yields no control.
     """
     opps = [o for o in opportunities
-            if o.source_id == source_id and o.basin == basin]
-    evs = [e for e in events
-           if e.basin == basin]
+            if o.unit_id == unit_id and o.source_id == source_id
+            and o.basin == basin]
+    for o in opps:
+        if o.problems():
+            raise ValueError(
+                f"invalid opportunity {o.opportunity_id!r}: "
+                f"{o.problems()}")
+    evs = [e for e in events if e.basin == basin]
     controls = []
     for w0, w1 in candidate_windows:
         s, e = _parse(w0), _parse(w1)
-        covered = any(_parse(o.window_start) <= s and
-                      e <= _parse(o.window_end) for o in opps)
-        if not covered:
-            continue  # no opportunity => cannot be a control
+        covering = [o for o in opps
+                    if _parse(o.window_start) <= s and
+                    e <= _parse(o.window_end)]
+        if not covering:
+            continue  # no opportunity => no control at all
+        opp = _select_opportunity(covering)
         overlaps_event = any(
             _parse(ev.interval_start) < e and s < _parse(ev.interval_end)
             for ev in evs)
-        if overlaps_event:
-            continue
+        state = ("NEGATIVE"
+                 if opp.state == "OBSERVED_FULL" and not overlaps_event
+                 else "CENSORED_OR_AMBIGUOUS")
         controls.append(ControlWindow(
-            source_id=source_id, basin=basin,
+            control_id=f"ctl:{unit_id}:{w0}",
+            unit_id=unit_id, source_id=source_id, basin=basin,
             window_start=_iso(s), window_end=_iso(e),
-            control_digest=_sha(f"{source_id}|{basin}|{w0}|{w1}")))
+            opportunity_id=opp.opportunity_id,
+            opportunity_state=opp.state,
+            state=state,
+            covering_opportunity_ids=tuple(
+                sorted(o.opportunity_id for o in covering)),
+            control_digest=_sha(
+                f"{unit_id}|{source_id}|{basin}|{w0}|{w1}|"
+                f"{opp.opportunity_id}")))
     return controls
 
 
@@ -321,7 +406,7 @@ def assign_holdouts(events: list[EventIdentity],
         raise ValueError("embargo_seconds must be non-negative")
     if not events:
         raise ValueError("empty event universe")
-    valid_splits = {"train", "val", "test"}
+    valid_splits = {"train", "val", "validation", "test"}
     bad = set(split_of_group.values()) - valid_splits
     if bad:
         raise ValueError(f"unknown split labels: {sorted(bad)}")
@@ -359,8 +444,10 @@ def assign_holdouts(events: list[EventIdentity],
     if len(set(evaluation_regions)) < _MIN_EVAL_REGIONS:
         raise ValueError(">=2 independent evaluation regions required")
 
-    assignments = {e.event_id: split_of_group[group_of_basin[e.basin]]
-                   for e in events}
+    # assignments carry the GEOGRAPHIC group id per event — the
+    # HoldoutPlanV0 contract requires event -> declared group, with the
+    # split role carried by the group lists.
+    assignments = {e.event_id: group_of_basin[e.basin] for e in events}
     basin_of_event = {e.event_id: e.basin for e in events}
     basin_groups: dict[str, set] = {}
     for basin, grp in group_of_basin.items():
@@ -372,3 +459,117 @@ def assign_holdouts(events: list[EventIdentity],
         evaluation_regions=tuple(sorted(evaluation_regions)),
         embargo_seconds=embargo_seconds,
     )
+
+
+# --------------------------------------------------------- adapters
+
+_ADJUDICATION_STATES = (
+    "UNADJUDICATED", "TWO_REVIEW_AGREE", "THIRD_PARTY_ADJUDICATED",
+    "DISAGREEMENT_RETAINED")
+_POSITIVE_ADJUDICATION = {"TWO_REVIEW_AGREE", "THIRD_PARTY_ADJUDICATED"}
+
+# Timing class -> contract event_time_precision term.
+_TIMING_TO_PRECISION = {
+    "EXACT_TIMESTAMP": "exact_timestamp",
+    "EXACT_DAY": "day",
+    "INTERVAL_LE_7D": "interval",
+    "INTERVAL_8_30D": "interval",
+    "COARSE_OR_UNRESOLVED": "unresolved",
+}
+
+
+def to_event_label(identity: EventIdentity, *,
+                   vertical_id: str,
+                   geometry_role: str,
+                   event_time_basis: str,
+                   adjudication_state: str,
+                   reviewer_ids: tuple = (),
+                   adjudication_notes: str = "",
+                   latitude: float | None = None,
+                   longitude: float | None = None) -> dict:
+    """Serialize an EventIdentity into an EventLabelV0-shaped payload.
+
+    Adjudication is NEVER fabricated: ``adjudication_state`` must be
+    passed explicitly, and a positive-admissible state
+    (TWO_REVIEW_AGREE / THIRD_PARTY_ADJUDICATED) requires >=2 unique
+    reviewer identities — matching the contract validator.
+    """
+    if adjudication_state not in _ADJUDICATION_STATES:
+        raise ValueError(f"adjudication_state {adjudication_state!r} "
+                         f"not in {list(_ADJUDICATION_STATES)}")
+    if adjudication_state in _POSITIVE_ADJUDICATION:
+        if len(set(reviewer_ids)) < 2:
+            raise ValueError(
+                "positive adjudication requires >=2 unique "
+                "reviewer_ids — adjudication is never fabricated")
+    return {
+        "record_type": "EventLabelV0",
+        "event_id": identity.event_id,
+        "vertical_id": vertical_id,
+        "source_id": identity.source_id,
+        "source_version": identity.source_version,
+        "event_time_start": identity.interval_start,
+        "event_time_end": identity.interval_end,
+        "uncertainty_seconds": identity.uncertainty_seconds,
+        "event_time_precision":
+            _TIMING_TO_PRECISION[identity.timing_class],
+        "event_time_basis": event_time_basis,
+        "geometry_role": geometry_role,
+        "latitude": latitude,
+        "longitude": longitude,
+        "basin_id": identity.basin,
+        "cascade_group_id": identity.cascade_group_id,
+        "parent_event_id": identity.parent_event_id or "",
+        "duplicate_of": identity.duplicate_of or "",
+        "adjudication_state": adjudication_state,
+        "adjudication_notes": adjudication_notes,
+        "reviewer_ids": tuple(reviewer_ids),
+    }
+
+
+def to_holdout_plan(assignment: HoldoutAssignment, *,
+                    group_of_basin: dict[str, str],
+                    holdout_plan_id: str,
+                    assignment_rule: str = "basin",
+                    split_of_group: dict[str, str],
+                    test_locked: bool = True) -> dict:
+    """Serialize a HoldoutAssignment into a HoldoutPlanV0-shaped
+    payload. Preserves assignment-before-filtering, named evaluation
+    regions, test_locked, embargo, and complete event assignments."""
+    if assignment_rule not in ("basin", "catchment", "macroregion",
+                               "fixed_spatial"):
+        raise ValueError(f"assignment_rule {assignment_rule!r} "
+                         "not in contract vocabulary")
+    groups = set(assignment.basin_groups)
+    if groups - set(split_of_group):
+        raise ValueError("every geographic group must have a split")
+    splits = {g: split_of_group[g] for g in groups}
+    # Contract vocabulary: evaluation_region_names are drawn from the
+    # locked TEST groups. Engine-level regions name basins — translate
+    # each to its geographic group; distinct regions that collapse onto
+    # one group fail the >=2 unique-name requirement at the contract.
+    named = tuple(sorted({
+        group_of_basin[b] for b in assignment.evaluation_regions}))
+    if len(named) < 2:
+        raise ValueError("evaluation regions must map to >=2 distinct "
+                         "geographic groups")
+    payload = {
+        "record_type": "HoldoutPlanV0",
+        "holdout_plan_id": holdout_plan_id,
+        "assignment_rule": assignment_rule,
+        "train_groups": tuple(sorted(
+            g for g, s in splits.items() if s == "train")),
+        "validation_groups": tuple(sorted(
+            g for g, s in splits.items() if s in ("val",
+                                                  "validation"))),
+        "test_groups": tuple(sorted(
+            g for g, s in splits.items() if s == "test")),
+        # event -> group (not split): contract requires values inside
+        # the declared group names
+        "event_assignments": dict(assignment.assignments),
+        "evaluation_region_names": named,
+        "assigned_before_filtering": True,
+        "test_locked": test_locked,
+        "embargo_seconds": assignment.embargo_seconds,
+    }
+    return payload

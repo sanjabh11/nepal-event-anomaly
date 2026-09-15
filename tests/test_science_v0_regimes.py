@@ -19,7 +19,8 @@ FEATURES = ["f1", "f2", "f3"]
 
 def _fixture(n_per=120, n_groups=3, structured=True, seed=0):
     """3+ geographic groups, planted cluster structure when
-    structured=True."""
+    structured=True. Every row carries explicit unit_id + ISO date."""
+    from datetime import date, timedelta
     rng = np.random.default_rng(seed)
     rows = []
     centers = [(0, 0, 0), (5, 5, 0), (0, 5, 5)] if structured \
@@ -28,6 +29,8 @@ def _fixture(n_per=120, n_groups=3, structured=True, seed=0):
         for i in range(n_per):
             c = centers[i % len(centers)]
             rows.append({
+                "unit_id": f"cell{gi}",
+                "date": str(date(2020, 6, 1) + timedelta(days=i)),
                 "basin_group": g,
                 "season": "JJA" if i % 2 == 0 else "DJF",
                 "era": "e1" if i < n_per // 2 else "e2",
@@ -133,6 +136,64 @@ class TestRunner:
     def test_freeze_run_error_rejected(self):
         with pytest.raises(ValueError):
             freeze_regime_artifact({"status": "RUN_ERROR"})
+
+    def test_freeze_rejects_assignmentless_artifact(self):
+        with pytest.raises(ValueError, match="assignment"):
+            freeze_regime_artifact({"status": "CANDIDATE_ONLY"})
+
+
+class TestAssignmentSidecar:
+    def test_one_assignment_per_unit_day(self):
+        df = _fixture()
+        art = run_regimes(df, FEATURES, np.ones(len(df), bool),
+                          RegimeRunConfig())
+        assert art["status"] != "RUN_ERROR"
+        keys = [(u, d) for u, d, _ in art["assignments"]]
+        assert len(keys) == len(df)
+        assert len(set(keys)) == len(keys)
+        assert all(isinstance(r, int) for _, _, r in art["assignments"])
+
+    def test_missing_identity_column_rejected(self):
+        df = _fixture().drop(columns=["unit_id"])
+        art = run_regimes(df, FEATURES, np.ones(len(df), bool),
+                          RegimeRunConfig())
+        assert art["status"] == "RUN_ERROR"
+        assert "unit_id" in art["reason"]
+
+    def test_non_iso_date_rejected(self):
+        df = _fixture()
+        df.loc[0, "date"] = "June 1 2020"
+        art = run_regimes(df, FEATURES, np.ones(len(df), bool),
+                          RegimeRunConfig())
+        assert art["status"] == "RUN_ERROR"
+
+    def test_duplicate_unit_day_rejected(self):
+        df = _fixture()
+        df.loc[1, "date"] = df.loc[0, "date"]
+        df.loc[1, "unit_id"] = df.loc[0, "unit_id"]
+        art = run_regimes(df, FEATURES, np.ones(len(df), bool),
+                          RegimeRunConfig())
+        assert art["status"] == "RUN_ERROR"
+        assert "duplicate" in art["reason"]
+
+    def test_canonical_assignment_order(self):
+        df = _fixture()
+        art = run_regimes(df, FEATURES, np.ones(len(df), bool),
+                          RegimeRunConfig())
+        keys = [(u, d) for u, d, _ in art["assignments"]]
+        assert keys == sorted(keys)
+
+    def test_digest_binds_regime_labels(self):
+        df = _fixture()
+        a1 = run_regimes(df, FEATURES, np.ones(len(df), bool),
+                         RegimeRunConfig())
+        tampered = dict(a1)
+        tampered["assignments"] = [
+            (u, d, (r + 1) % max(1, a1["k"]))
+            for u, d, r in a1["assignments"]]
+        from nepal.science_v0.regimes import _digest
+        assert _digest(tampered["assignments"]) != \
+            a1["assignment_digest"]
 
     def test_unstructured_data_not_claimed_stable(self):
         # Pure noise (no planted structure) must not emit
