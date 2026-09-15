@@ -231,7 +231,8 @@ class TestAdapterBoundary:
             events, group_of_basin, split_of_group,
             ("karnali", "bagmati"), embargo_seconds=2592000)
         plan = holdout_plan_from_assignment(
-            assignment, holdout_plan_id="holdout-b4-adapter")
+            assignment, holdout_plan_id="holdout-b4-adapter",
+            split_of_group=split_of_group)
         assert plan.problems() == []
         assert set(plan.evaluation_region_names) <= \
             set(plan.test_groups)
