@@ -1,6 +1,6 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "304987c35d0e229756319fcf939e642b5e696be6",
+  "content_head": "8c38a3f6c1e3b8173e942e0aa5170522e7dfd7d6",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
@@ -123,6 +123,41 @@
       "size_bytes": 23872
     },
     {
+      "relpath": "nepal/experiment_v0/__init__.py",
+      "sha256": "c61d2b7557fa0317e3174e90e180211237e2ea2d3885bf370cb58af716319909",
+      "size_bytes": 547
+    },
+    {
+      "relpath": "nepal/experiment_v0/adapters.py",
+      "sha256": "12393f8446ac8c866c5f53f50b1afbcadd999c6feb2d1a07d153e74eff498c32",
+      "size_bytes": 9406
+    },
+    {
+      "relpath": "nepal/experiment_v0/association.py",
+      "sha256": "f1e93f461c09bdc71cb187ecef34203e4dd6103f4bc50330b3f9a65833282d99",
+      "size_bytes": 60960
+    },
+    {
+      "relpath": "nepal/experiment_v0/baselines.py",
+      "sha256": "426e638401e68ab642bcc37b72b1dcf7bed7e2e59775e21cdc5319484e04f1b7",
+      "size_bytes": 7808
+    },
+    {
+      "relpath": "nepal/experiment_v0/evaluation.py",
+      "sha256": "15fe654fde2c6bc0dc66921807486ff8d3d316fa43663152d5d6af94b536ce3f",
+      "size_bytes": 29092
+    },
+    {
+      "relpath": "nepal/experiment_v0/metrics.py",
+      "sha256": "e2a72d769267d56ea9c6b78465f70cc0d562eb5aa258a92a5105065098cb629b",
+      "size_bytes": 8349
+    },
+    {
+      "relpath": "nepal/experiment_v0/vintages.py",
+      "sha256": "e5a76144d7afd34fdec322e71a8ae9e2e089ccd9f1664ac113f9649cd62e76c8",
+      "size_bytes": 20515
+    },
+    {
       "relpath": "nepal/feature_extraction.py",
       "sha256": "6b101d629e3b6949a15095dd6b372c0540efea877fd40daef4ca66ce1a6257f5",
       "size_bytes": 40531
@@ -168,6 +203,26 @@
       "size_bytes": 13080
     },
     {
+      "relpath": "nepal/science_v0/__init__.py",
+      "sha256": "b90fbad8a8efdd48c439acd9bc6c44d5456b3e944115c1b05a2dc0bc6d0b3680",
+      "size_bytes": 677
+    },
+    {
+      "relpath": "nepal/science_v0/events.py",
+      "sha256": "d9a5cb11003ab3b336e8099d2a8e743dbfe95d31b7836523bc52ca31e76908ea",
+      "size_bytes": 14957
+    },
+    {
+      "relpath": "nepal/science_v0/fmx_audit.py",
+      "sha256": "6fa47c5789ca7ec8a6e7864043b6a1128fa9a2e422a5d970906559f798815add",
+      "size_bytes": 13154
+    },
+    {
+      "relpath": "nepal/science_v0/regimes.py",
+      "sha256": "09e2dd941aa7b03dd4542cb1c2a77a7f3320a1dae83067ecf2dc36e04bfa403d",
+      "size_bytes": 15386
+    },
+    {
       "relpath": "tests/fixtures/__init__.py",
       "sha256": "554e2961161d47e79350cb29bbaef5ef1aec830ad01405caf89a7c286a1d0084",
       "size_bytes": 334
@@ -176,6 +231,36 @@
       "relpath": "tests/fixtures/synthetic.py",
       "sha256": "f58049cba16fbe1c56957a06cb2a8fc5f75343c3d624997cd2af3edc80cec33b",
       "size_bytes": 11367
+    },
+    {
+      "relpath": "tests/fixtures/synthetic_exp_b2.py",
+      "sha256": "d3ea6df6abd4cf15683152926f44e459d7008e93dca1128d0be6fde03ceb9a1e",
+      "size_bytes": 2387
+    },
+    {
+      "relpath": "tests/fixtures/synthetic_exp_b3.py",
+      "sha256": "e3e1e95c43e373123d5557f7dbce2e7c89c0bba962277296146facf05e866740",
+      "size_bytes": 10963
+    },
+    {
+      "relpath": "tests/test_experiment_v0_b1_association.py",
+      "sha256": "ac9dc199aa8d793270d519f2dcfd0fd124b2644b839ea18a539a82234cd98a1b",
+      "size_bytes": 29780
+    },
+    {
+      "relpath": "tests/test_experiment_v0_b2_vintages.py",
+      "sha256": "b73dc917ed2a63962c23f00ba93c329757f3661761bd9d161e54fca96a74d48b",
+      "size_bytes": 15877
+    },
+    {
+      "relpath": "tests/test_experiment_v0_b3_evaluation.py",
+      "sha256": "1a4e8d90e1a02c764351a43df98c3214516ffdd44e5a949563d61fdf24421612",
+      "size_bytes": 26167
+    },
+    {
+      "relpath": "tests/test_experiment_v0_b3_vintage_timing.py",
+      "sha256": "099b8ca777f947c403b4897a6ead07ec0ae4cfd7dac3e2575501ecbd7f92fc19",
+      "size_bytes": 7426
     },
     {
       "relpath": "tests/test_p5_io_contract.py",
@@ -206,6 +291,26 @@
       "relpath": "tests/test_run_a_reconciliation.py",
       "sha256": "da4d29f60fc2c4d05732f79708c7be5d8ff957b67fe54daf77e0213d86728b7e",
       "size_bytes": 10806
+    },
+    {
+      "relpath": "tests/test_science_experiment_e2e.py",
+      "sha256": "39c973b727b46624da67e4879de194b3d671194f6eb73d873552e8410b68e2cc",
+      "size_bytes": 9877
+    },
+    {
+      "relpath": "tests/test_science_v0_events.py",
+      "sha256": "41b74936427fd1316fb1db814ac570de71ad21e8d8a31aa039d56d6df71ddde9",
+      "size_bytes": 8287
+    },
+    {
+      "relpath": "tests/test_science_v0_fmx.py",
+      "sha256": "149702d1e4ee7a65999fd69d692a804a91ece05f5344dcf4fded5f16257bef56",
+      "size_bytes": 6944
+    },
+    {
+      "relpath": "tests/test_science_v0_regimes.py",
+      "sha256": "de5f182e74bb78311a37f4891f5d5a131510f6cdbecc1bfbe5c44c8a4797b659",
+      "size_bytes": 5500
     }
   ],
   "generated": "2026-09-15",
@@ -218,7 +323,7 @@
   "scope": "governed science artifacts: docs/science, nepal/research_v0, research tests, CI workflow, README \u2014 non-science sources excluded by design",
   "self_excluded": true,
   "test_results": {
-    "full_suite_venv": "1306 passed, 5 skipped (rasterio), 0 failed",
+    "full_suite_venv": "1546 passed, 5 skipped (rasterio), 0 failed",
     "p5_io_contract": "34 passed",
     "research_v0": "116 passed",
     "run_a_reconciliation": "24 passed"
