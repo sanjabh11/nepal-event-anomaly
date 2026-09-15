@@ -1,6 +1,6 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "92e3f80cd3544c461c6fc38b5ba1a73029a8ec9b",
+  "content_head": "3d93e44db6e11a0f520963294968c8dd22da79b9",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
@@ -143,6 +143,11 @@
       "size_bytes": 60960
     },
     {
+      "relpath": "nepal/experiment_v0/audit.py",
+      "sha256": "ec4ee9b6ed2cd523592a8cb372db17ff65f696925763817bd7df65db3b041e3c",
+      "size_bytes": 37802
+    },
+    {
       "relpath": "nepal/experiment_v0/baselines.py",
       "sha256": "426e638401e68ab642bcc37b72b1dcf7bed7e2e59775e21cdc5319484e04f1b7",
       "size_bytes": 7808
@@ -248,6 +253,11 @@
       "size_bytes": 10963
     },
     {
+      "relpath": "tests/fixtures/synthetic_exp_b4.py",
+      "sha256": "753f6d8cc225cbf7cbe14e6fcda9789b747ba995de72bc292cf28c07ff74d4e3",
+      "size_bytes": 14115
+    },
+    {
       "relpath": "tests/test_experiment_v0_adapters.py",
       "sha256": "509f99318d252beb21ddb5eff11ca63b688e83988f8d65d92b66eafcb9a6ff88",
       "size_bytes": 9716
@@ -271,6 +281,16 @@
       "relpath": "tests/test_experiment_v0_b3_vintage_timing.py",
       "sha256": "099b8ca777f947c403b4897a6ead07ec0ae4cfd7dac3e2575501ecbd7f92fc19",
       "size_bytes": 7426
+    },
+    {
+      "relpath": "tests/test_experiment_v0_b4_audit.py",
+      "sha256": "0b31fee4bc8d91e3f60b6682902631165dd745ba8eb2ec0a3bc76d7d1315e0d4",
+      "size_bytes": 17620
+    },
+    {
+      "relpath": "tests/test_experiment_v0_replay.py",
+      "sha256": "979b7a7a10a1e61d9ab50696960d70960842e5534da63664157e30ae4ae06a8c",
+      "size_bytes": 10636
     },
     {
       "relpath": "tests/test_p5_io_contract.py",
@@ -333,8 +353,8 @@
   "scope": "governed science artifacts: docs/science, nepal/research_v0, research tests, CI workflow, README \u2014 non-science sources excluded by design",
   "self_excluded": true,
   "test_results": {
-    "full_suite_venv": "1582 passed, 5 skipped (rasterio), 0 failed",
-    "swarm_focused": "276 passed (science_v0 + experiment_v0 + adapters + e2e)",
+    "full_suite_venv": "1641 passed, 5 skipped (rasterio), 0 failed",
+    "swarm_focused": "335 passed (science_v0 + experiment_v0 + adapters + e2e + b4)",
     "p5_io_contract": "34 passed",
     "research_v0": "116 passed",
     "run_a_reconciliation": "24 passed"
