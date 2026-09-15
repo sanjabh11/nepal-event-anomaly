@@ -1,6 +1,6 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "3d9e85c673bbbe393cfe5318aef30db254380cf3",
+  "content_head": "ddb184f2707f223fe258ebcb83499b36cfe5bd66",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
@@ -53,6 +53,41 @@
       "size_bytes": 9566
     },
     {
+      "relpath": "docs/science/run_b/EVENT_PACKAGE_SPEC_V0.md",
+      "sha256": "686d79b09f05bbc731cc1463e6a27565ccaf59d05fcdf62e60f5188bd32958af",
+      "size_bytes": 9779
+    },
+    {
+      "relpath": "docs/science/run_b/FMX_AUDIT_RUBRIC_V0.md",
+      "sha256": "230796f5e05c43e09721f741dd9b9350f2659e87c282e23e04758f60d75d273f",
+      "size_bytes": 7651
+    },
+    {
+      "relpath": "docs/science/run_b/REGIME_PROTOCOL_V0.md",
+      "sha256": "c381512843c8685429c3d70c88a0962811ec6ae2a5dffd211273c46be286b9e8",
+      "size_bytes": 6675
+    },
+    {
+      "relpath": "docs/science/run_b/SOURCE_QUALIFICATION_RECORDS_V0.md",
+      "sha256": "f7be468e94f3074d60b0484d45619726efd72dbe217a70abf73ca615a957e511",
+      "size_bytes": 29774
+    },
+    {
+      "relpath": "docs/science/run_c/ASSOCIATION_PROTOCOL_V0.md",
+      "sha256": "179c5c0ca56c7e500fa18080f146a3f9bc880e0fde8dec89d0ada886d82e907b",
+      "size_bytes": 9987
+    },
+    {
+      "relpath": "docs/science/run_c/FORECAST_ARCHIVE_MATRIX_V0.md",
+      "sha256": "4903be5c1cba7e3a582d0b4ac7ee2d4b03318001eaf0f0334981b5a7a92dc372",
+      "size_bytes": 16957
+    },
+    {
+      "relpath": "docs/science/run_c/FORECAST_EVAL_SCAFFOLD_V0.md",
+      "sha256": "025e40663da5989367da8a5905f7f128e5230263c67527adcc4f76b4700083f5",
+      "size_bytes": 9912
+    },
+    {
       "relpath": "nepal/era5_download.py",
       "sha256": "d563a66e907adbcfb20528f179047c82e7878f590f31bf411854d651d3280a2f",
       "size_bytes": 36438
@@ -98,6 +133,16 @@
       "size_bytes": 52365
     },
     {
+      "relpath": "tests/fixtures/__init__.py",
+      "sha256": "554e2961161d47e79350cb29bbaef5ef1aec830ad01405caf89a7c286a1d0084",
+      "size_bytes": 334
+    },
+    {
+      "relpath": "tests/fixtures/synthetic.py",
+      "sha256": "f58049cba16fbe1c56957a06cb2a8fc5f75343c3d624997cd2af3edc80cec33b",
+      "size_bytes": 11367
+    },
+    {
       "relpath": "tests/test_p5_io_contract.py",
       "sha256": "6bbc2f4186c5a48711721ad63446ce998b6c4bca9bbe3117e8586599e0f6ad09",
       "size_bytes": 27405
@@ -123,7 +168,7 @@
       "size_bytes": 9933
     }
   ],
-  "generated": "2026-09-14",
+  "generated": "2026-09-15",
   "interpreter": ".venv/bin/python",
   "manifest_commit": "manifest-only commit follows content_head",
   "manifest_version": "ARTIFACT_MANIFEST_V0.3",
