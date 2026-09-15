@@ -1,6 +1,6 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "23a7ae37eb4f781c0b191dc2c76b58bca288fa7f",
+  "content_head": "b3446f36819d61683a5fe598675ec09825ca11d2",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
@@ -14,13 +14,13 @@
     },
     {
       "relpath": "README.md",
-      "sha256": "fa395d931d6cf15665b09ee38eb4c8e401751c493656a6ffe824ec0cd61272ca",
-      "size_bytes": 5375
+      "sha256": "fc27784fd34a65c56fd7c64d0a934eb74628eb93e4c5ac2355217619fc37e45f",
+      "size_bytes": 5480
     },
     {
       "relpath": "docs/science/GAP_REGISTER_V0.md",
-      "sha256": "8c112adbcaae55de9b1dcedcc80f284f52e541903199d26901f7859bcc473ce8",
-      "size_bytes": 36935
+      "sha256": "4ccbe7aa2325ef14b1e9138b9bf94a30e15224c2b91aa277edf7430c6263d3a6",
+      "size_bytes": 39597
     },
     {
       "relpath": "docs/science/HAZARD_EVENT_INVENTORY_DECISION_MATRIX_V0.md",
@@ -33,9 +33,14 @@
       "size_bytes": 9062
     },
     {
+      "relpath": "docs/science/OPEN_DISTRIBUTION_NOTE_V0.md",
+      "sha256": "361706d99fcbf65360bd320417dd5b252f66f39e7b4429a4da36a7269f347334",
+      "size_bytes": 6732
+    },
+    {
       "relpath": "docs/science/P0_BASELINE_LEDGER.md",
-      "sha256": "c8c2843344ce7425c67f5fac1ecedb3470b1c5d8531a4c9a26ffcea949fa06a6",
-      "size_bytes": 6826
+      "sha256": "922e1f72a9aee615f46094538f925e5ce7b318332b274b6fabd07454d8506fde",
+      "size_bytes": 7747
     },
     {
       "relpath": "docs/science/P3_ATTESTATION_RECORD_V0.md",
@@ -54,13 +59,13 @@
     },
     {
       "relpath": "docs/science/run_a/HYBRID_ROUTE_RECONCILIATION_V0.md",
-      "sha256": "93ef90b6521ca577b02fae4de1dba51f104fb6261b2a22dcdd245631dccae6ab",
-      "size_bytes": 9605
+      "sha256": "fd3fe6bcf62f6f5e362143824e7d9000445668c6a050ca70ec79087c7c2bc734",
+      "size_bytes": 10269
     },
     {
       "relpath": "docs/science/run_a/RUN_A_EVIDENCE_SUMMARY_V0.md",
-      "sha256": "13572cf1dd5b9ac3876ecbb16fedf86c9627188f7a2d00b51183f10b606220c7",
-      "size_bytes": 9040
+      "sha256": "9435f12a989e825e7ea89f4fcd78ab5c269243bb6720f2107c5d62bc420604b4",
+      "size_bytes": 9661
     },
     {
       "relpath": "docs/science/run_a/SCOPE_OVERLAY_V0.md",
@@ -89,8 +94,8 @@
     },
     {
       "relpath": "docs/science/run_b/SOURCE_QUALIFICATION_RECORDS_V0.md",
-      "sha256": "f7be468e94f3074d60b0484d45619726efd72dbe217a70abf73ca615a957e511",
-      "size_bytes": 29774
+      "sha256": "21645ce9f6eaf03ee6d0a7bf7fd622675a89edd30c38dda3480d12afcab028db",
+      "size_bytes": 31224
     },
     {
       "relpath": "docs/science/run_c/ASSOCIATION_PROTOCOL_V0.md",
@@ -99,8 +104,8 @@
     },
     {
       "relpath": "docs/science/run_c/FORECAST_ARCHIVE_MATRIX_V0.md",
-      "sha256": "4903be5c1cba7e3a582d0b4ac7ee2d4b03318001eaf0f0334981b5a7a92dc372",
-      "size_bytes": 16957
+      "sha256": "65f5b6584a5e806e7c8930db8caa8377b7401de2dd6b5d590fdff5b2f4655684",
+      "size_bytes": 17812
     },
     {
       "relpath": "docs/science/run_c/FORECAST_EVAL_SCAFFOLD_V0.md",
@@ -119,8 +124,8 @@
     },
     {
       "relpath": "nepal/feature_extraction.py",
-      "sha256": "db469f815e04067dd39a1eb30cafd59f1b19a1a4599082377335af8e087a2c2f",
-      "size_bytes": 35668
+      "sha256": "de66be4339a2285c229bdf1273f243199cd2fbb7c22571e8eca11f16a0b6038b",
+      "size_bytes": 40058
     },
     {
       "relpath": "nepal/gmm_descriptive.py",
@@ -159,8 +164,8 @@
     },
     {
       "relpath": "nepal/run_ledger_repair.py",
-      "sha256": "8385c4c0b718a9efe619df473d3b7112f3d11d604a12cab2e66e72d90a59936d",
-      "size_bytes": 8854
+      "sha256": "87c3599440dcd7f0cad7dc959688adbcc274ef410f4c8d5d9b625f6b05981038",
+      "size_bytes": 13080
     },
     {
       "relpath": "tests/fixtures/__init__.py",
@@ -199,8 +204,8 @@
     },
     {
       "relpath": "tests/test_run_a_reconciliation.py",
-      "sha256": "fc60414cae61fa1cf34d6a72a0928345e0024ce8170e5a73021c5229285e2413",
-      "size_bytes": 7242
+      "sha256": "da4d29f60fc2c4d05732f79708c7be5d8ff957b67fe54daf77e0213d86728b7e",
+      "size_bytes": 10806
     }
   ],
   "generated": "2026-09-15",
@@ -213,9 +218,9 @@
   "scope": "governed science artifacts: docs/science, nepal/research_v0, research tests, CI workflow, README \u2014 non-science sources excluded by design",
   "self_excluded": true,
   "test_results": {
-    "full_suite_venv": "1300 passed, 5 skipped (rasterio), 0 failed",
+    "full_suite_venv": "1306 passed, 5 skipped (rasterio), 0 failed",
     "p5_io_contract": "34 passed",
     "research_v0": "116 passed",
-    "run_a_reconciliation": "18 passed"
+    "run_a_reconciliation": "24 passed"
   }
 }
