@@ -1,6 +1,6 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "8a870d8ca571714bd7a420704f618084813daa67",
+  "content_head": "5b09b548c7839ac48d5a39ca07cd068eee7835e7",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
@@ -34,8 +34,8 @@
     },
     {
       "relpath": "docs/science/P0_BASELINE_LEDGER.md",
-      "sha256": "7f89cb400baff5162ab751971767c4d6a2d30fa5736ca30a02e32dc5ffbc7bff",
-      "size_bytes": 4702
+      "sha256": "19a9894fd4b00f3262bb3673a33b10f29181982b9dafde74c4d3f5f348c3870b",
+      "size_bytes": 4729
     },
     {
       "relpath": "docs/science/P3_ATTESTATION_TEMPLATE.md",
