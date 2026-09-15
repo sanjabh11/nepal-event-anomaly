@@ -21,6 +21,7 @@ available.
 """
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import asdict, dataclass, fields
 from typing import Any, Mapping, Optional, Sequence
@@ -99,6 +100,15 @@ class VintageRequest:
 
     @classmethod
     def from_dict(cls, d: Mapping) -> "VintageRequest":
+        """Strict reconstruction of a serialized request.
+
+        Every declared field must be present (a serialized request
+        always carries all fields), every string field must actually be
+        a ``str``, and ``declared_delay_seconds`` must be a finite
+        ``int``/``float`` — never a bool or a string like ``"false"``.
+        Unknown keys, missing fields, and wrong primitive types all
+        raise ``ValueError``; nothing is silently coerced.
+        """
         if not isinstance(d, Mapping):
             raise ValueError("VintageRequest payload must be a mapping")
         payload = dict(d)
@@ -111,12 +121,25 @@ class VintageRequest:
         if extra:
             raise ValueError(f"VintageRequest: unknown fields "
                              f"{sorted(extra)}")
-        # Missing non-defaulted fields (provider) surface as TypeError.
-        try:
-            return cls(**payload)
-        except TypeError as exc:
-            raise ValueError(f"VintageRequest: construction failed: "
-                             f"{exc}") from exc
+        missing = declared - set(payload)
+        if missing:
+            raise ValueError(f"VintageRequest: missing fields "
+                             f"{sorted(missing)}")
+        for name in declared:
+            value = payload[name]
+            if name == "declared_delay_seconds":
+                if isinstance(value, bool) or \
+                        not isinstance(value, (int, float)) or \
+                        not math.isfinite(float(value)):
+                    raise ValueError(
+                        "declared_delay_seconds must be a finite "
+                        "int/float — not a bool, str, or non-finite "
+                        "number")
+            elif not isinstance(value, str):
+                raise ValueError(
+                    f"{name} must be a str, got "
+                    f"{type(value).__name__!r}")
+        return cls(**payload)
 
 
 @dataclass(frozen=True)

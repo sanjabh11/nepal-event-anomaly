@@ -68,6 +68,58 @@ def test_request_from_dict_rejects_unknown_fields() -> None:
         VintageRequest.from_dict(payload)
 
 
+@pytest.mark.parametrize("field_name",
+                         ["provider", "issue_time",
+                          "archive_availability",
+                          "declared_delay_seconds"])
+def test_request_from_dict_rejects_missing_fields(
+        field_name: str) -> None:
+    payload = synthetic_vintage_request()
+    del payload[field_name]
+    with pytest.raises(ValueError):
+        VintageRequest.from_dict(payload)
+
+
+def test_request_from_dict_rejects_bare_provider_only() -> None:
+    with pytest.raises(ValueError):
+        VintageRequest.from_dict({"provider": "tigge"})
+
+
+@pytest.mark.parametrize("field_name,bad_value", [
+    ("provider", 7),
+    ("issue_time", 1590976800),
+    ("valid_start", None),
+    ("cycle", True),
+    ("archive_payload_sha256", ["a" * 64]),
+    ("archive_payload_path", 3.14),
+])
+def test_request_from_dict_rejects_wrong_str_types(
+        field_name: str, bad_value: object) -> None:
+    payload = synthetic_vintage_request()
+    payload[field_name] = bad_value
+    with pytest.raises((ValueError, TypeError)):
+        VintageRequest.from_dict(payload)
+
+
+@pytest.mark.parametrize("bad_value",
+                         ["false", "3600", "1.5", True, False, None,
+                          float("nan"), float("inf"), [86400]])
+def test_request_from_dict_rejects_bad_declared_delay(
+        bad_value: object) -> None:
+    payload = synthetic_vintage_request()
+    payload["declared_delay_seconds"] = bad_value
+    with pytest.raises((ValueError, TypeError)):
+        VintageRequest.from_dict(payload)
+
+
+def test_request_from_dict_accepts_int_declared_delay() -> None:
+    payload = synthetic_vintage_request()
+    payload["declared_delay_seconds"] = 3600
+    req = VintageRequest.from_dict(payload)
+    assert req.declared_delay_seconds == 3600
+    assert VintageRequest.from_dict(req.to_dict()) == req
+
+
 # ---------------------------------------------------------------------
 # 2. Early archive availability rejects (issue, and issue + floor)
 # ---------------------------------------------------------------------
