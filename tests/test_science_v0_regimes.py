@@ -90,8 +90,8 @@ class TestNulls:
 class TestRunner:
     def test_structured_synthetic_emits_terminal_status(self):
         df = _fixture()
-        mask = np.ones(len(df), bool)
-        art = run_regimes(df, FEATURES, mask, RegimeRunConfig())
+        mask = _mask(df)
+        art = run_regimes(df, FEATURES, mask, _cfg())
         assert art["status"] in (
             "DESCRIPTIVE_REGIME_ONLY", "CANDIDATE_ONLY",
             "UNSUPERVISED_STRUCTURE_NOT_STABLE")
@@ -157,8 +157,7 @@ class TestRunner:
 
     def test_missing_column_fails_closed(self):
         df = _fixture().drop(columns=["f3"])
-        art = run_regimes(df, FEATURES, np.ones(len(df), bool),
-                          RegimeRunConfig())
+        art = run_regimes(df, FEATURES, _mask(df), _cfg())
         assert art["status"] == "RUN_ERROR"
 
     def test_label_blinding_mandatory(self):
@@ -175,8 +174,7 @@ class TestRunner:
 
     def test_k1_null_mandatory_and_bound(self):
         df = _fixture()
-        art = run_regimes(df, FEATURES, np.ones(len(df), bool),
-                          RegimeRunConfig())
+        art = run_regimes(df, FEATURES, _mask(df), _cfg())
         assert art["null_model_digest"]
         assert "k1_bic"  # null model digest bound
         # K=1 must appear in the sweep results
@@ -184,8 +182,7 @@ class TestRunner:
 
     def test_freeze_and_immutability_marker(self):
         df = _fixture()
-        art = run_regimes(df, FEATURES, np.ones(len(df), bool),
-                          RegimeRunConfig())
+        art = run_regimes(df, FEATURES, _mask(df), _cfg())
         frozen = freeze_regime_artifact(art)
         assert frozen["frozen"] is True
         assert len(frozen["freeze_digest"]) == 64
@@ -202,8 +199,7 @@ class TestRunner:
 class TestAssignmentSidecar:
     def test_one_assignment_per_unit_day(self):
         df = _fixture()
-        art = run_regimes(df, FEATURES, np.ones(len(df), bool),
-                          RegimeRunConfig())
+        art = run_regimes(df, FEATURES, _mask(df), _cfg())
         assert art["status"] != "RUN_ERROR"
         keys = [(u, d) for u, d, _ in art["assignments"]]
         assert len(keys) == len(df)
@@ -212,38 +208,33 @@ class TestAssignmentSidecar:
 
     def test_missing_identity_column_rejected(self):
         df = _fixture().drop(columns=["unit_id"])
-        art = run_regimes(df, FEATURES, np.ones(len(df), bool),
-                          RegimeRunConfig())
+        art = run_regimes(df, FEATURES, _mask(df), _cfg())
         assert art["status"] == "RUN_ERROR"
         assert "unit_id" in art["reason"]
 
     def test_non_iso_date_rejected(self):
         df = _fixture()
         df.loc[0, "date"] = "June 1 2020"
-        art = run_regimes(df, FEATURES, np.ones(len(df), bool),
-                          RegimeRunConfig())
+        art = run_regimes(df, FEATURES, _mask(df), _cfg())
         assert art["status"] == "RUN_ERROR"
 
     def test_duplicate_unit_day_rejected(self):
         df = _fixture()
         df.loc[1, "date"] = df.loc[0, "date"]
         df.loc[1, "unit_id"] = df.loc[0, "unit_id"]
-        art = run_regimes(df, FEATURES, np.ones(len(df), bool),
-                          RegimeRunConfig())
+        art = run_regimes(df, FEATURES, _mask(df), _cfg())
         assert art["status"] == "RUN_ERROR"
         assert "duplicate" in art["reason"]
 
     def test_canonical_assignment_order(self):
         df = _fixture()
-        art = run_regimes(df, FEATURES, np.ones(len(df), bool),
-                          RegimeRunConfig())
+        art = run_regimes(df, FEATURES, _mask(df), _cfg())
         keys = [(u, d) for u, d, _ in art["assignments"]]
         assert keys == sorted(keys)
 
     def test_digest_binds_regime_labels(self):
         df = _fixture()
-        a1 = run_regimes(df, FEATURES, np.ones(len(df), bool),
-                         RegimeRunConfig())
+        a1 = run_regimes(df, FEATURES, _mask(df), _cfg())
         tampered = dict(a1)
         tampered["assignments"] = [
             (u, d, (r + 1) % max(1, a1["k"]))
@@ -257,7 +248,6 @@ class TestAssignmentSidecar:
         # DESCRIPTIVE_REGIME_ONLY with a fabricated K claim; CANDIDATE
         # or NOT_STABLE is honest.
         df = _fixture(structured=False)
-        art = run_regimes(df, FEATURES, np.ones(len(df), bool),
-                          RegimeRunConfig())
+        art = run_regimes(df, FEATURES, _mask(df), _cfg())
         if art["status"] == "DESCRIPTIVE_REGIME_ONLY":
             assert art["k"] == 1  # only the null K may claim stable

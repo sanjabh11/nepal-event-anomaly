@@ -44,11 +44,14 @@ The empty Git shell is never the implementation root.
 ## Current verification snapshot (2026-09-15, round 2)
 
 - HEAD: `d3d9238`-series (see git log for current tip).
-- Full suite under pinned `.venv`: **1306 passed, 5 skipped
-  (rasterio), 0 failed** — authoritative census: `pytest --collect-only`
-  reports 1311 nodes (1306 + 5), so every collected node is accounted
-  for. An external audit observed 1300 in an earlier environment; the
-  manifest's 1306 is verified correct at this HEAD. 24
+- Full suite under pinned `.venv` (round-2 snapshot): **1306 passed,
+  5 skipped (rasterio), 0 failed** — `pytest --collect-only` reported
+  1311 nodes (1306 + 5). An external audit observed 1300 in an earlier
+  environment; the manifest's 1306 was verified correct at that HEAD.
+- Post-swarm snapshots: **1641** after the first science_v0 +
+  experiment_v0 integration; **1671 passed, 5 skipped (rasterio), 0
+  failed** at the swarm-C convergence head (`03ccf67`-series, current).
+  Earlier counts are retained as dated history. 24
   Run-A-reconciliation tests (calendar validity, claim-scan recursion,
   ledger repair, canonical JSON, accumulation semantics).
 - Warnings: all 56 are xarray/netCDF4 `DeprecationWarning`s in

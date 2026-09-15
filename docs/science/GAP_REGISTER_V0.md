@@ -390,9 +390,35 @@ NGDC 166966 license.  These resolve G05/B27/C23 license sub-items
 only — `EVIDENCE_VERIFIED` posture still requires byte-bound sidecar
 + independent review at intake.
 
+## Swarm-C convergence dispositions (2026-09-15)
+
+| ID | Disposition |
+|---|---|
+| I-01 forged digests | RESOLVED — adapter recomputes assignment/regime/freeze digests from the payload; tamper tests reject forged values |
+| I-02 caller-overridden provenance | RESOLVED — label_blinding/fitted_on/mode read from payload; missing/false/mismatched reject |
+| I-03 primitive coercion | RESOLVED — str unit_id/date required; only int regime_id converts |
+| I-04 modal-K tie | RESOLVED — `_modal_k` picks smallest K on ties; unit-tested |
+| I-05 artifact provenance | RESOLVED — feature order, FMX digest, config digest, fit/heldout groups, mask digest bound |
+| I-06 shallow freeze | RESOLVED — deep copy; post-freeze nested mutation detected by digest verification |
+| I-07 unbound train_mask | RESOLVED — length/dtype/nonempty-both-sides + declared group membership enforced |
+| I-08 unverified control lineage | RESOLVED — `run_association` requires an opportunity registry; existence/unit/window/state verified; NEGATIVE requires OBSERVED_FULL |
+| I-09 case lineage | RESOLVED — ForecastCase carries opportunity_id/outcome_source_id/cutoff_time; evaluate() fails closed when empty |
+| I-10 order-sensitive digest | RESOLVED — canonical (case_id, opportunity_id) sort + baseline realignment before hashing; permutation-invariance tested |
+| I-11 audit scope | RESOLVED — B4 audit labeled experiment-layer; replay bundles now carry the opportunity registry |
+| DOC-01 count drift | RESOLVED — README/P0 record 1282/1306/1641 as dated history; 1671 current at swarm-C head |
+| DOC-02 metadata-only scope | RESOLVED — SOURCE_FEASIBILITY_RECORDS_V0 labeled dated metadata-only snapshot |
+| GOV-01/02 | RESOLVED — P3 design-only vs P5-C acquisition separated; see STATUS_SCOPE_RECONCILIATION_NOTE_20260915 |
+| H01/H03 | RESOLVED (wording) — Run A docs state hybrid route, method-only, bounded 5-month overlap, no K/JS transfer |
+
+SRC-*/DATA-*/FMX-*/REG-*/ASSOC-*/FCST-*/OPEN-01/GOV-03/OPS-01 remain
+`GATED_ON_DATA` / `BLOCKED_EXTERNAL` / deferred — unchanged by design.
+
 ## Honest residual risks
 
-- **P3 human approval is still required** — no code substitutes for it.
+- **P3 design-review attestation is owner-directed and design-only**
+  (see `STATUS_SCOPE_RECONCILIATION_NOTE_20260915.md`); it does not
+  authorize acquisition — P5-C remains a separate bounded
+  authorization. No code substitutes for owner sign-off.
 - Nepal-coverage counts and per-record intake verification remain
   `GATED_ON_DATA`; NGDC 166966 license is `BLOCKED_EXTERNAL`;
   sources stay `CANDIDATE_ONLY` until intake sidecars verify.
