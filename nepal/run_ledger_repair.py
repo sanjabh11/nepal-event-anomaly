@@ -134,33 +134,64 @@ def repair_ledger(run_root: Path) -> dict:
     return ledger
 
 
+def _payload_route(filename: str) -> str | None:
+    """Attribute a raw/ file to its retrieval route by name pattern.
+    Returns the varset key, ``"assembly_artifact"``, or None."""
+    if filename.startswith("assembled_"):
+        return "assembly_artifact"
+    if filename.startswith("arco_timeseries"):
+        return "t2m,d2m,u10,v10,tp"
+    if filename.startswith("sd_sf_edh"):
+        return "sd,sf (2001-2025)"
+    if filename.startswith("sd_sf_2026"):
+        return "sd,sf (2026)"
+    if filename.startswith("sd_sf_"):
+        return "sd,sf (2001-2025)"  # historical chunk naming
+    return None
+
+
 def write_provenance_receipts(run_root: Path) -> Path:
-    """Bind recoverable receipts for each retrieval route (H02)."""
+    """Bind recoverable receipts for each retrieval route (H02).
+
+    Payloads are attributed to their actual route by filename; the
+    assembly intermediates (``assembled_*``) are recorded separately,
+    not as a retrieval route."""
     run_root = Path(run_root)
     ledger = json.loads(
         (run_root / "download_ledger.json").read_text(encoding="utf-8"))
     receipts = {"run_root": str(run_root),
                 "generated_utc": utc_now_iso(),
                 "dataset": ledger.get("dataset", "UNVERIFIED"),
-                "routes": {}}
+                "routes": {},
+                "assembly_artifacts": [],
+                "unattributed": []}
+    raw_dir = run_root / "raw"
+    if raw_dir.is_dir():
+        for p in sorted(raw_dir.iterdir()):
+            if not p.is_file():
+                continue
+            rec = {
+                "file": p.name,
+                "sha256": sha256_file(p),
+                "size_bytes": p.stat().st_size,
+                "retrieval_utc_mtime_derived": datetime.fromtimestamp(
+                    p.stat().st_mtime, timezone.utc
+                ).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            }
+            route_key = _payload_route(p.name)
+            if route_key == "assembly_artifact":
+                receipts["assembly_artifacts"].append(rec)
+            elif route_key is None:
+                receipts["unattributed"].append(rec)
+            else:
+                receipts["routes"].setdefault(
+                    route_key, {"payloads": []})["payloads"].append(rec)
     for varset, route in ledger.get("retrieval_paths", {}).items():
         meta = ROUTE_META.get(route, {"provider": "UNVERIFIED",
                                       "license_url": "UNVERIFIED",
                                       "license_id": "UNVERIFIED"})
-        payloads = []
-        raw_dir = run_root / "raw"
-        if raw_dir.is_dir():
-            for p in sorted(raw_dir.iterdir()):
-                if p.is_file():
-                    payloads.append({
-                        "file": p.name,
-                        "sha256": sha256_file(p),
-                        "size_bytes": p.stat().st_size,
-                        "retrieval_utc_mtime_derived": datetime.fromtimestamp(
-                            p.stat().st_mtime, timezone.utc
-                        ).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                    })
-        receipts["routes"][varset] = {
+        entry = receipts["routes"].setdefault(varset, {"payloads": []})
+        entry.update({
             "endpoint": route,
             "provider": meta["provider"],
             "license_id": meta["license_id"],
@@ -170,8 +201,7 @@ def write_provenance_receipts(run_root: Path) -> Path:
             "response_job_id": "UNVERIFIED",
             "request_digest": "UNVERIFIED",
             "source_version": "UNVERIFIED",
-            "payloads": payloads,
-        }
+        })
     out = run_root / "provenance_receipts.json"
     out.write_text(json.dumps(receipts, indent=2, sort_keys=True)
                    + "\n", encoding="utf-8")

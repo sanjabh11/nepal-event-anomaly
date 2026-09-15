@@ -120,12 +120,15 @@ class TestLedgerRepair:
             d = root / stage
             d.mkdir(parents=True)
             (d / f"{stage}.nc").write_bytes(payload)
+        # route-attributable payload name
+        (root / "raw" / "arco_timeseries.nc").write_bytes(b"a" * 10)
         ledger = {
             "start_time": "2026-09-15T10:52:14.831623",
             "end_time": "2026-09-15T11:40:00.0",
             "status": "completed",
             "total_size_mb": 0.0,
-            "retrieval_paths": {"t2m": "reanalysis-era5-land"},
+            "retrieval_paths": {
+                "t2m,d2m,u10,v10,tp": "reanalysis-era5-land-timeseries"},
             "completed_months": [],
         }
         (root / "download_ledger.json").write_text(
@@ -135,7 +138,7 @@ class TestLedgerRepair:
     def test_totals_match_byte_sum(self, tmp_path):
         root = self._fake_run(tmp_path)
         repaired = repair_ledger(root)
-        expected = 100 + 50 + 30
+        expected = 100 + 10 + 50 + 30  # raw.nc + arco + monthly + merged
         acc = repaired["size_accounting"]
         assert acc["total_bytes"] == expected
         assert repaired["total_size_mb"] == pytest.approx(
@@ -154,10 +157,15 @@ class TestLedgerRepair:
         repair_ledger(root)
         out = write_provenance_receipts(root)
         receipts = json.loads(out.read_text())
-        route = receipts["routes"]["t2m"]
-        assert route["endpoint"] == "reanalysis-era5-land"
+        route = receipts["routes"]["t2m,d2m,u10,v10,tp"]
+        assert route["endpoint"] == "reanalysis-era5-land-timeseries"
         payloads = route["payloads"]
-        assert payloads and len(payloads[0]["sha256"]) == 64
+        assert len(payloads) == 1
+        assert payloads[0]["file"] == "arco_timeseries.nc"
+        assert len(payloads[0]["sha256"]) == 64
+        # the generic raw.nc does not match any route pattern
+        assert [p["file"] for p in receipts["unattributed"]] == \
+            ["raw.nc"]
 
 
 class TestCanonicalJson:
