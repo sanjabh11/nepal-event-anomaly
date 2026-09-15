@@ -1,6 +1,6 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "b3446f36819d61683a5fe598675ec09825ca11d2",
+  "content_head": "304987c35d0e229756319fcf939e642b5e696be6",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
@@ -19,8 +19,8 @@
     },
     {
       "relpath": "docs/science/GAP_REGISTER_V0.md",
-      "sha256": "4ccbe7aa2325ef14b1e9138b9bf94a30e15224c2b91aa277edf7430c6263d3a6",
-      "size_bytes": 39597
+      "sha256": "cdbc9fbf087731b029e1fbb9e0b5305b74fd219195fa41b8c9456f80de6fbb4f",
+      "size_bytes": 40731
     },
     {
       "relpath": "docs/science/HAZARD_EVENT_INVENTORY_DECISION_MATRIX_V0.md",
@@ -39,8 +39,8 @@
     },
     {
       "relpath": "docs/science/P0_BASELINE_LEDGER.md",
-      "sha256": "922e1f72a9aee615f46094538f925e5ce7b318332b274b6fabd07454d8506fde",
-      "size_bytes": 7747
+      "sha256": "1e02110d804c76ad1f4e5a9d862b80b8c5bfad9970684b16f8dddff32af5c766",
+      "size_bytes": 8200
     },
     {
       "relpath": "docs/science/P3_ATTESTATION_RECORD_V0.md",
@@ -124,8 +124,8 @@
     },
     {
       "relpath": "nepal/feature_extraction.py",
-      "sha256": "de66be4339a2285c229bdf1273f243199cd2fbb7c22571e8eca11f16a0b6038b",
-      "size_bytes": 40058
+      "sha256": "6b101d629e3b6949a15095dd6b372c0540efea877fd40daef4ca66ce1a6257f5",
+      "size_bytes": 40531
     },
     {
       "relpath": "nepal/gmm_descriptive.py",
