@@ -493,6 +493,60 @@ class TestCensoring:
 
 
 # ---------------------------------------------------------------------
+# Per-case lineage identifiers
+# ---------------------------------------------------------------------
+
+class TestLineage:
+    def test_payload_carries_lineage_fields(self):
+        d = fx.planted_cases(seed=1, per_cluster=1)[0].to_dict()
+        for key in ("opportunity_id", "outcome_source_id",
+                    "cutoff_time"):
+            assert d[key], key
+        assert ForecastCase.from_dict(d) == \
+            ForecastCase.from_dict(dict(d))
+
+    def test_empty_lineage_ids_reject(self):
+        design = fx.underpowered_design()
+        for field_name in ("opportunity_id", "outcome_source_id"):
+            bad = dataclasses.replace(design["cases"][0],
+                                      **{field_name: ""})
+            cases = [bad] + design["cases"][1:]
+            with pytest.raises(ValueError, match=field_name):
+                evaluate(cases, **_eval_kwargs(design))
+            bad = dataclasses.replace(design["cases"][0],
+                                      **{field_name: "   "})
+            cases = [bad] + design["cases"][1:]
+            with pytest.raises(ValueError, match=field_name):
+                evaluate(cases, **_eval_kwargs(design))
+
+    def test_missing_or_malformed_cutoff_rejects(self):
+        design = fx.underpowered_design()
+        for bad_cutoff in ("", "2021-01-01 00:00:00",
+                           "2021-01-01T00:00:00"):
+            bad = dataclasses.replace(design["cases"][0],
+                                      cutoff_time=bad_cutoff)
+            cases = [bad] + design["cases"][1:]
+            with pytest.raises(ValueError, match="cutoff_time"):
+                evaluate(cases, **_eval_kwargs(design))
+
+    def test_cutoff_after_issue_rejects(self):
+        design = fx.underpowered_design()
+        bad = dataclasses.replace(design["cases"][0],
+                                  cutoff_time="2021-01-02T00:00:00Z")
+        cases = [bad] + design["cases"][1:]
+        with pytest.raises(ValueError, match="postdates issue_time"):
+            evaluate(cases, **_eval_kwargs(design))
+
+    def test_cutoff_before_issue_admitted(self):
+        design = fx.underpowered_design()
+        earlier = dataclasses.replace(
+            design["cases"][0], cutoff_time="2020-12-31T00:00:00Z")
+        cases = [earlier] + design["cases"][1:]
+        report = evaluate(cases, **_eval_kwargs(design))
+        assert report.n_cases == len(cases)
+
+
+# ---------------------------------------------------------------------
 # Missing-feed degradation
 # ---------------------------------------------------------------------
 
@@ -589,6 +643,30 @@ class TestUncertaintyAndDeterminism:
         r2 = evaluate(design["cases"], **kwargs)
         assert sha256_canonical(r1.to_dict()) == \
             sha256_canonical(r2.to_dict())
+
+    def test_case_order_permutation_invariant_digest(self):
+        """Cases are canonically ordered by (case_id, opportunity_id)
+        before scoring and hashing — a pure reordering of the case
+        list (baseline vectors permuted to stay aligned) yields
+        identical metrics and an identical report digest."""
+        design = fx.underpowered_design()
+        cases = design["cases"]
+        n = len(cases)
+        kwargs = _eval_kwargs(design)
+        reference = evaluate(cases, **kwargs)
+        for perm in (list(reversed(range(n))),
+                     [(i * 7 + 3) % n for i in range(n)]):
+            assert sorted(perm) == list(range(n))
+            reordered = [cases[i] for i in perm]
+            pk = dict(kwargs)
+            pk["baseline_probs"] = {
+                name: [vec[i] for i in perm]
+                for name, vec in kwargs["baseline_probs"].items()}
+            rerouted = evaluate(reordered, **pk)
+            assert rerouted.experiment_id == reference.experiment_id
+            assert rerouted.metrics == reference.metrics
+            assert sha256_canonical(rerouted.to_dict()) == \
+                sha256_canonical(reference.to_dict())
 
     def test_report_json_safe(self):
         design = fx.underpowered_design()
