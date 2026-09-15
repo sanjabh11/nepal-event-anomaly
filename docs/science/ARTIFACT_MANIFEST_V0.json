@@ -1,6 +1,6 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "ddb184f2707f223fe258ebcb83499b36cfe5bd66",
+  "content_head": "13195d462a1d5d034b8a989e28dbd6e2c0ec4efc",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
@@ -34,8 +34,8 @@
     },
     {
       "relpath": "docs/science/P0_BASELINE_LEDGER.md",
-      "sha256": "19a9894fd4b00f3262bb3673a33b10f29181982b9dafde74c4d3f5f348c3870b",
-      "size_bytes": 4729
+      "sha256": "88f772fc28ac2ef6b0aa6b501913bceabc8ee43dccd16fe9dca84dbc072bb394",
+      "size_bytes": 6261
     },
     {
       "relpath": "docs/science/P3_ATTESTATION_RECORD_V0.md",
@@ -91,6 +91,11 @@
       "relpath": "nepal/era5_download.py",
       "sha256": "d563a66e907adbcfb20528f179047c82e7878f590f31bf411854d651d3280a2f",
       "size_bytes": 36438
+    },
+    {
+      "relpath": "nepal/era5_hybrid_fetch.py",
+      "sha256": "e23efbe4adb4fdceeb5de01c5ac0d769c1d4fde15b44ca2b1a6b725c06e5c1c4",
+      "size_bytes": 20163
     },
     {
       "relpath": "nepal/feature_extraction.py",
