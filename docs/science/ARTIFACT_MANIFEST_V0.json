@@ -1,6 +1,6 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "d5b8f01df189a6e0369ecac9a861a54e18b04234",
+  "content_head": "23a7ae37eb4f781c0b191dc2c76b58bca288fa7f",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
@@ -159,8 +159,8 @@
     },
     {
       "relpath": "nepal/run_ledger_repair.py",
-      "sha256": "cd35ca80ca95c15d9d243d644344ca960783a70e615500aaa3a134074d4d6cd2",
-      "size_bytes": 7678
+      "sha256": "8385c4c0b718a9efe619df473d3b7112f3d11d604a12cab2e66e72d90a59936d",
+      "size_bytes": 8854
     },
     {
       "relpath": "tests/fixtures/__init__.py",
@@ -199,8 +199,8 @@
     },
     {
       "relpath": "tests/test_run_a_reconciliation.py",
-      "sha256": "5129fa6f1c0fd926a109b19ca846a7dbac3d9dbcb5371bf403364548086e51df",
-      "size_bytes": 6790
+      "sha256": "fc60414cae61fa1cf34d6a72a0928345e0024ce8170e5a73021c5229285e2413",
+      "size_bytes": 7242
     }
   ],
   "generated": "2026-09-15",
