@@ -360,6 +360,18 @@ immutable evidence.
 | OPEN-01 | RESOLVED — `OPEN_DISTRIBUTION_NOTE_V0.md` scopes publishable vs external-restricted bytes |
 | OPS-01 | DEFERRED — explicit deferral; no prospective/authority path |
 
+## Reconciliation round 3 (P0/DOC/RUN/ENV, 2026-09-15)
+
+| ID | Disposition |
+|---|---|
+| P0-01 count discrepancy | RESOLVED — authoritative census: `--collect-only` = 1311 nodes = 1306 passed + 5 rasterio skips; manifest's 1306 verified correct. External 1300 was a stale/env-differentiated observation. |
+| DOC-01 historical vs current counts | RESOLVED — README and P0 label 1282 as ledger-time history, 1306 as current; historical evidence retained |
+| DOC-02 stale extractor comments | RESOLVED — both comments now state route-dependent semantics (ARCO increments vs MARS/EDH running accumulation) |
+| RUN-01 derived-run provenance | RESOLVED — derivation ledger carries `run_kind=derived`, `input_run_bundle_sha256`, `acquisition_disk_check=not_applicable_derived_run` |
+| ENV-01 warnings/skips | RESOLVED — 56 warnings classified: all xarray/netCDF4 deprecations in `test_p5_io_contract.py`; skips disclosed |
+| SRC-*/DATA-*/FMX-*/REG-*/ASSOC-*/FCST-* | UNCHANGED — remain `GATED_ON_DATA`/`BLOCKED_EXTERNAL` pending authorized real-data intake; no fabricated closure |
+| OPS-01 | UNCHANGED — deferred by design |
+
 ## License-evidence resolution (S-series partial)
 
 `run_b/SOURCE_EVIDENCE_ADDENDUM_V0.md` resolved license tags via

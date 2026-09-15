@@ -214,8 +214,11 @@ def extract_raw_features(ds: xr.Dataset) -> pd.DataFrame:
         if temp_var in df.columns:
             df[temp_var] = df[temp_var] - 273.15
 
-    # Precipitation and snowfall are accumulated in ERA5-Land
-    # Convert from m to mm
+    # Precipitation and snowfall are accumulated in ERA5-Land, but
+    # semantics differ by route: ARCO payloads carry per-hour
+    # increments while CDS/MARS/EDH payloads carry a running daily
+    # accumulation (closing-value deaccumulation handled in
+    # compute_thermal_indices).  Convert from m to mm here.
     for acc_var in ["tp", "sf"]:
         if acc_var in df.columns:
             df[acc_var] = df[acc_var] * 1000  # m → mm
@@ -331,8 +334,12 @@ def compute_thermal_indices(df: pd.DataFrame, model_elev_m: float) -> pd.DataFra
       - Instantaneous variables: daily MEAN (sd, wind_speed, wind_dir_sin/cos, RH)
       - Thermal indices: PDD, 7-day PDD, freezing height (computed, not counted as features)
 
-    ERA5-Land accumulation note: tp and sf are per-hour accumulations.
-    Daily total = sum of 24 hourly values, NOT mean.
+    ERA5-Land accumulation note: route-dependent semantics —
+    ARCO delivers per-hour increments (daily total = sum), CDS/MARS
+    and the EDH mirror deliver a running daily accumulation whose
+    00:00 stamp closes the PRIOR day (daily total = closing value).
+    Semantics are detected per series by _is_running_accumulation;
+    see the accumulation block below.
 
     P5-03: resample("D") materialises a CONTINUOUS daily index from the
     first to the last timestamp. On JJA-only hourly input it fills each

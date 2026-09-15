@@ -45,9 +45,16 @@ The empty Git shell is never the implementation root.
 
 - HEAD: `d3d9238`-series (see git log for current tip).
 - Full suite under pinned `.venv`: **1306 passed, 5 skipped
-  (rasterio), 0 failed** — 22 Run-A-reconciliation tests added
-  (calendar validity, claim-scan recursion, ledger repair, canonical
-  JSON, accumulation semantics).
+  (rasterio), 0 failed** — authoritative census: `pytest --collect-only`
+  reports 1311 nodes (1306 + 5), so every collected node is accounted
+  for. An external audit observed 1300 in an earlier environment; the
+  manifest's 1306 is verified correct at this HEAD. 24
+  Run-A-reconciliation tests (calendar validity, claim-scan recursion,
+  ledger repair, canonical JSON, accumulation semantics).
+- Warnings: all 56 are xarray/netCDF4 `DeprecationWarning`s in
+  `test_p5_io_contract.py` — library-level, none in the research
+  namespace. 5 skips are `rasterio` optional-dependency gates —
+  disclosed, not waived.
 - Run A corrected derivative: `research_runs/
   gmm_hybrid_corrected_20260915/` — sf running-accumulation defect
   (RA-01) corrected via closing-value aggregation; modal K=5
