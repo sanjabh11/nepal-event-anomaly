@@ -58,6 +58,35 @@ The empty Git shell is never the implementation root.
 **Not modified:** `nepal/framework_v1/`, `preregistration.md`, `pinned/`,
 `data/framework_inputs_v1_reconciled/`, all existing tests.
 
+## Run A result — P5 descriptive GMM confirmation (2026-09-15)
+
+The bounded ERA5-Land acquisition executed and completed. Run root:
+`research_runs/gmm_hybrid_20260915` (gitignored). Retrieval was hybrid
+because the MARS queue serializes per-account requests (1 running +
+3 queued; verified via CDS jobs API QoS metadata):
+
+- `t2m, d2m, u10, v10, tp` — CDS `reanalysis-era5-land-timeseries`
+  (ARCO copy of the same archive), one request, cell (28.3, 85.5).
+- `sd, sf` 2001–2025 — Earth Data Hub DestinE Zarr mirror of
+  `reanalysis-era5-land` (coverage ends 2026-05-31, last closed month).
+- `sd, sf` 2026 (Jun–Jul + Aug 1–25) — `reanalysis-era5-land` MARS,
+  2 requests.
+
+All 78 months passed the unchanged `normalize_payload` gate (exact
+vars, exact hourly timestamp sets, finite values, no post-cutoff data,
+`sde` absent). Merged: 57,264 hours; `merged/complete.json` digest
+matches. Features: 2,386 JJA daily rows, 156 edge-censored, 2,230
+usable; selected cell (28.3, 85.5), model elevation 4322 m. GMM:
+modal K=5 (3/3 seeds, all converged), JS 0.2618 (95% CI
+[0.2391, 0.2856], null p95 0.0456, exceeds null), pre-event JS 0.5084.
+Cross-reference vs reported literature values: 7-day mean T 9.42 °C
+(reported 9.43 °C), PDD 65.94 °C·d (reported 65.94 °C·d).
+
+Status: `EXPLORATORY_DESCRIPTIVE_SINGLE_CELL` — descriptive regime
+structure on one grid cell only. This is NOT a forecast, precursor,
+warning, or pilot result. `nepal/era5_hybrid_fetch.py` added (assembly
++ provenance-recorded retrieval paths).
+
 ## Owner designations
 
 - **P3 approver (designated):** repository owner (user), 2026-09-14.
