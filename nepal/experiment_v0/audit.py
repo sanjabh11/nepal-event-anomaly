@@ -36,6 +36,7 @@ from nepal.research_v0._hashing import sha256_canonical
 from nepal.research_v0.gates import scan_claims_text
 from nepal.research_v0.records import (ControlWindowV0, EventLabelV0,
                                      ForecastVintageV0, HoldoutPlanV0,
+                                     ObservationOpportunityV0,
                                      deserialize_record)
 
 from .association import (AssociationReport, RegimeAssignmentArtifact,
@@ -411,12 +412,25 @@ def _reconstruct_association(assoc: Mapping[str, Any]):
             raise ValueError(
                 f"association control deserialized to "
                 f"{type(c).__name__!r}, not ControlWindowV0")
+    opportunities: dict[str, ObservationOpportunityV0] = {}
+    for oid, op in (assoc.get("opportunities") or {}).items():
+        rec = deserialize_record(op)
+        if type(rec) is not ObservationOpportunityV0:
+            raise ValueError(
+                f"association opportunity deserialized to "
+                f"{type(rec).__name__!r}, not ObservationOpportunityV0")
+        if rec.opportunity_id != str(oid):
+            raise ValueError(
+                f"opportunity registry key {oid!r} does not match "
+                f"record id {rec.opportunity_id!r}")
+        opportunities[str(oid)] = rec
     holdout = _as_holdout(assoc["holdout"], "association")
     unit_basins = {str(k): str(v)
                    for k, v in (assoc.get("unit_basins") or {}).items()}
     region_basins = assoc.get("region_basins") or {}
     return (artifact, events, controls, unit_basins, holdout,
-            region_basins, int(assoc.get("n_boot", 200)),
+            region_basins, opportunities,
+            int(assoc.get("n_boot", 200)),
             int(assoc.get("seed", 0)))
 
 
@@ -701,7 +715,8 @@ def _order_probe_findings(assoc: Mapping[str, Any]) -> list[Finding]:
     findings: list[Finding] = []
     try:
         (artifact, events, controls, unit_basins, holdout,
-         region_basins, n_boot, seed) = _reconstruct_association(assoc)
+         region_basins, opportunities, n_boot, seed) = \
+            _reconstruct_association(assoc)
     except Exception as exc:
         return [Finding("RECONSTRUCTION_DEFECT",
                         "association",
@@ -719,11 +734,12 @@ def _order_probe_findings(assoc: Mapping[str, Any]) -> list[Finding]:
     try:
         forward = run_association(
             artifact, events, controls, unit_basins, holdout=holdout,
-            region_basins=region_basins, n_boot=n_boot, seed=seed)
+            region_basins=region_basins, opportunities=opportunities,
+            n_boot=n_boot, seed=seed)
         reversed_run = run_association(
             artifact, list(reversed(events)), controls, unit_basins,
             holdout=holdout, region_basins=region_basins,
-            n_boot=n_boot, seed=seed)
+            opportunities=opportunities, n_boot=n_boot, seed=seed)
     except Exception as exc:
         findings.append(Finding(
             "ASSOCIATION_REJECTED", "association",
@@ -811,12 +827,12 @@ def replay_bundle(bundle: Mapping[str, Any]) -> dict[str, Any]:
     if isinstance(assoc, Mapping):
         try:
             (artifact, events, controls, unit_basins, holdout,
-             region_basins, n_boot, seed) = \
+             region_basins, opportunities, n_boot, seed) = \
                 _reconstruct_association(assoc)
             report = run_association(
                 artifact, events, controls, unit_basins,
                 holdout=holdout, region_basins=region_basins,
-                n_boot=n_boot, seed=seed)
+                opportunities=opportunities, n_boot=n_boot, seed=seed)
             out["association_status"] = report.status
             out["association_digest"] = sha256_canonical(
                 report.to_dict())

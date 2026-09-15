@@ -297,6 +297,7 @@ class TestMutableOutputs:
         report = run_association(
             artifact, events, fx.make_controls(), fx.UNIT_BASINS,
             holdout=holdout, region_basins=fx.REGION_BASINS,
+            opportunities=fx.make_opportunities(),
             n_boot=16, seed=3)
         with pytest.raises(dataclasses.FrozenInstanceError):
             artifact.regime_digest = "0" * 64  # type: ignore[misc]
@@ -407,7 +408,9 @@ class TestClaimText:
         report = run_association(
             fx.planted_artifact(events), events, fx.make_controls(),
             fx.UNIT_BASINS, holdout=fx.make_holdout(events),
-            region_basins=fx.REGION_BASINS, n_boot=16, seed=3)
+            region_basins=fx.REGION_BASINS,
+            opportunities=fx.make_opportunities(),
+            n_boot=16, seed=3)
         assert scan_claims_text(association_report_text(report)) == []
 
     def test_real_module_sources_carry_no_claim_hits(self):

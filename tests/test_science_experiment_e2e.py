@@ -167,7 +167,8 @@ def test_synthetic_end_to_end_path():
     report = run_association(
         regime_art, held_out_labels, controls_v0,
         unit_basins, holdout=holdout_v0,
-        region_basins=region_basins, n_boot=50, seed=3)
+        region_basins=region_basins, opportunities=opps_v0,
+        n_boot=50, seed=3)
     assert report is not None
 
     # --- vintage admission (metadata-first) ---
@@ -206,7 +207,10 @@ def test_synthetic_end_to_end_path():
                 horizon="24h", lead_seconds=21600.0,
                 y_prob=0.8 if pos else 0.15,
                 y_state="POSITIVE" if pos else "NEGATIVE",
-                vintage_digest=vintage.archive_payload_sha256))
+                vintage_digest=vintage.archive_payload_sha256,
+                opportunity_id=f"syn-opp-{basin}-{j}",
+                outcome_source_id="synthetic-outcome-src",
+                cutoff_time="2020-06-01T06:00:00Z"))
     baseline_probs = {
         "climatology": climatology_probs(
             cases, {(r, "JJA"): 1 / 3 for r in _EVAL_REGIONS}),

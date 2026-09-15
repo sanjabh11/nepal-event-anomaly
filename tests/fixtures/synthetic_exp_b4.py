@@ -27,7 +27,8 @@ from nepal.experiment_v0.evaluation import ForecastCase
 from nepal.experiment_v0.vintages import VintageRequest, build_vintage
 from nepal.research_v0._hashing import sha256_canonical
 from nepal.research_v0.records import (ControlWindowV0, EventLabelV0,
-                                      HoldoutPlanV0)
+                                      HoldoutPlanV0,
+                                      ObservationOpportunityV0)
 
 from tests.fixtures.synthetic_exp_b2 import synthetic_vintage_request
 
@@ -129,6 +130,29 @@ def make_controls() -> list[ControlWindowV0]:
             controls.append(ctl)
             i += 1
     return controls
+
+
+def make_opportunities() -> dict:
+    """The verified opportunity registry backing make_controls —
+    one OBSERVED_FULL record per control, unit/window/state aligned."""
+    out = {}
+    for ctl in make_controls():
+        opp = ObservationOpportunityV0(
+            opportunity_id=ctl.opportunity_id,
+            unit_id=ctl.unit_id,
+            platform="SYNTHETIC",
+            window_start=ctl.window_start,
+            window_end=ctl.window_end,
+            coverage_fraction=1.0,
+            coverage_quality="synthetic-complete",
+            detection_threshold="synthetic",
+            state="OBSERVED_FULL",
+            source_id="synthetic_inventory_v0",
+            source_as_of="2020-08-01",
+            frame_ids=(f"frame-{ctl.opportunity_id}",))
+        assert not opp.problems(), opp.problems()
+        out[opp.opportunity_id] = opp
+    return out
 
 
 def make_holdout(events: Sequence[EventLabelV0],
@@ -286,6 +310,9 @@ def synthetic_forecast_cases(
                     y_prob=0.70 if positive else 0.30,
                     y_state="POSITIVE" if positive else "NEGATIVE",
                     vintage_digest=digest_of[region],
+                    opportunity_id=f"synth-opp-{i:05d}",
+                    outcome_source_id=f"synth-outcome-{region}",
+                    cutoff_time=v.issue_time,
                     features={"synth_precip": 5.0 + 0.1 * i,
                               "synth_temp": -1.0 - 0.05 * i}))
                 i += 1
@@ -329,6 +356,9 @@ def synthetic_bundle(n_events: int = 21, n_boot: int = 32,
             "artifact": artifact.to_dict(),
             "events": [e.to_dict() for e in events],
             "controls": [c.to_dict() for c in controls],
+            "opportunities": {oid: o.to_dict()
+                              for oid, o in make_opportunities()
+                              .items()},
             "unit_basins": dict(UNIT_BASINS),
             "holdout": a_holdout.to_dict(),
             "region_basins": {k: list(v)
@@ -352,6 +382,7 @@ __all__ = [
     "BASINS", "FORECAST_REGIONS", "FORECAST_SEASONS", "PLANTED_REGIME",
     "REGION_BASINS", "UNIT_BASINS",
     "admitted_vintage_for", "make_controls", "make_event",
+    "make_opportunities",
     "make_events", "make_holdout", "planted_artifact",
     "synthetic_baseline_probs", "synthetic_bundle",
     "synthetic_forecast_cases", "synthetic_forecast_holdout",

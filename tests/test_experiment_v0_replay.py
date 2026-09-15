@@ -133,13 +133,11 @@ class TestReplayStability:
             reversed(permuted["association"]["events"]))
         assert replay_problems(bundle, permuted) == []
 
-    def test_case_order_permutation_changes_evaluation_digest(self):
-        """DISCOVERED FINDING (B3): ``evaluate`` folds the *ordered*
-        case list into ``experiment_id`` via ``sha256_canonical`` over
-        ``[c.to_dict() for c in cases]`` — the same case set in a
-        different order produces a different evaluation digest.  The
-        metric values are order-insensitive; only the experiment
-        identity is not order-canonical."""
+    def test_case_order_permutation_preserves_evaluation_digest(self):
+        """I-10 fixed: ``evaluate`` canonically sorts cases by
+        (case_id, opportunity_id) and realigns baseline vectors before
+        hashing — a pure ordering perturbation must produce identical
+        metrics and an identical evaluation digest."""
         bundle = fx.synthetic_bundle()
         permuted = copy.deepcopy(bundle)
         permuted["forecast"]["cases"] = list(
@@ -150,9 +148,13 @@ class TestReplayStability:
             permuted["forecast"]["baseline_probs"][name] = list(
                 reversed(vec))
         diffs = replay_problems(bundle, permuted)
-        assert any("evaluation_digest" in d for d in diffs), \
-            "expected order-sensitivity finding: case order enters " \
-            "the evaluation digest through experiment_id"
+        assert not any("evaluation_digest" in d for d in diffs), \
+            f"order-sensitivity regression: {diffs}"
+        # the metrics must also be identical — realignment proved
+        a = replay_bundle(bundle)
+        b = replay_bundle(permuted)
+        assert a.get("evaluation_digest") == \
+            b.get("evaluation_digest")
 
     def test_drift_detected_when_digests_differ(self):
         bundle = fx.synthetic_bundle()
