@@ -1,6 +1,6 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "3d93e44db6e11a0f520963294968c8dd22da79b9",
+  "content_head": "537e59fb5537d5fbd7b87a30547719d18de51665",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
@@ -14,13 +14,13 @@
     },
     {
       "relpath": "README.md",
-      "sha256": "fc27784fd34a65c56fd7c64d0a934eb74628eb93e4c5ac2355217619fc37e45f",
-      "size_bytes": 5480
+      "sha256": "6df3b269f8a69eac65fe4e62aca526e0be86eff68d255b7ea6eac6c159d0187c",
+      "size_bytes": 5626
     },
     {
       "relpath": "docs/science/GAP_REGISTER_V0.md",
-      "sha256": "cdbc9fbf087731b029e1fbb9e0b5305b74fd219195fa41b8c9456f80de6fbb4f",
-      "size_bytes": 40731
+      "sha256": "8251ab0c2c008ff8d5a276a0d5bbcadfb03266019a7599ac66cae72f3f658725",
+      "size_bytes": 43010
     },
     {
       "relpath": "docs/science/HAZARD_EVENT_INVENTORY_DECISION_MATRIX_V0.md",
@@ -39,8 +39,8 @@
     },
     {
       "relpath": "docs/science/P0_BASELINE_LEDGER.md",
-      "sha256": "1e02110d804c76ad1f4e5a9d862b80b8c5bfad9970684b16f8dddff32af5c766",
-      "size_bytes": 8200
+      "sha256": "3c6b231fc237e24f12f99b2a139f5945c249d86e1103377684dacfe4d259d530",
+      "size_bytes": 8394
     },
     {
       "relpath": "docs/science/P3_ATTESTATION_RECORD_V0.md",
@@ -49,28 +49,28 @@
     },
     {
       "relpath": "docs/science/P3_ATTESTATION_TEMPLATE.md",
-      "sha256": "7f94b3c21a9c339a4a9cfbbdc9e05e343f81ea9d8d53a41480f71b298b1e166b",
-      "size_bytes": 3206
+      "sha256": "508541048cfaaac7f07d35a1e83e043710989b2ac6eec901028eb6a94ae4129e",
+      "size_bytes": 4165
     },
     {
       "relpath": "docs/science/SOURCE_FEASIBILITY_RECORDS_V0.md",
-      "sha256": "91132c7114b662d32272b6d9a81f87fd269a9a932d8935afe4040f2d0802bc53",
-      "size_bytes": 9566
+      "sha256": "ea8ca6c57c4eefb40206d2fc0cd254bef68231ec8796f17aef1f53e020229a08",
+      "size_bytes": 10102
     },
     {
       "relpath": "docs/science/run_a/HYBRID_ROUTE_RECONCILIATION_V0.md",
-      "sha256": "fd3fe6bcf62f6f5e362143824e7d9000445668c6a050ca70ec79087c7c2bc734",
-      "size_bytes": 10269
+      "sha256": "9f27f8e7979fc7e79b41fcadda4cf089fc1f2f4f1d64bff2ed0627dfb49446e3",
+      "size_bytes": 10561
     },
     {
       "relpath": "docs/science/run_a/RUN_A_EVIDENCE_SUMMARY_V0.md",
-      "sha256": "9435f12a989e825e7ea89f4fcd78ab5c269243bb6720f2107c5d62bc420604b4",
-      "size_bytes": 9661
+      "sha256": "348a46285bf2eaf2f606c58dfffe7cc3fc8bdc4aff873d56ee745dc513ba6082",
+      "size_bytes": 10446
     },
     {
       "relpath": "docs/science/run_a/SCOPE_OVERLAY_V0.md",
-      "sha256": "2b7b8f80e112fd1d96dfa0b169effc50eb2e895e25edad41b2c5a88f89df7d56",
-      "size_bytes": 3304
+      "sha256": "d0cf500951c36f1663b9576acd9a680140a1831ae97e9383445d307b0371637b",
+      "size_bytes": 3595
     },
     {
       "relpath": "docs/science/run_b/EVENT_PACKAGE_SPEC_V0.md",
@@ -84,8 +84,8 @@
     },
     {
       "relpath": "docs/science/run_b/REGIME_PROTOCOL_V0.md",
-      "sha256": "c381512843c8685429c3d70c88a0962811ec6ae2a5dffd211273c46be286b9e8",
-      "size_bytes": 6675
+      "sha256": "fc7d290b84db598ce9e1278600461a7c80c8554b61a64532a9ce50cd0225b11e",
+      "size_bytes": 6889
     },
     {
       "relpath": "docs/science/run_b/SOURCE_EVIDENCE_ADDENDUM_V0.md",
@@ -134,18 +134,18 @@
     },
     {
       "relpath": "nepal/experiment_v0/adapters.py",
-      "sha256": "3c105d9850d7135be72e02b411f9c5ec87c67f3c6ea060da1f2459ae9f025752",
-      "size_bytes": 20165
+      "sha256": "bc21625f2287974198b908c3558e75330ca836cfa60f32d6e8d4aa87ae84759a",
+      "size_bytes": 25706
     },
     {
       "relpath": "nepal/experiment_v0/association.py",
-      "sha256": "f1e93f461c09bdc71cb187ecef34203e4dd6103f4bc50330b3f9a65833282d99",
-      "size_bytes": 60960
+      "sha256": "7e58cda5660d528041b480628a66e700b2dc97ad64f41ccd43a1c8208743eb08",
+      "size_bytes": 66911
     },
     {
       "relpath": "nepal/experiment_v0/audit.py",
-      "sha256": "ec4ee9b6ed2cd523592a8cb372db17ff65f696925763817bd7df65db3b041e3c",
-      "size_bytes": 37802
+      "sha256": "4edf69639a1c7234f8e3807c779a299c3c17a562b2c53c8576827fa1ab51752a",
+      "size_bytes": 38971
     },
     {
       "relpath": "nepal/experiment_v0/baselines.py",
@@ -154,8 +154,8 @@
     },
     {
       "relpath": "nepal/experiment_v0/evaluation.py",
-      "sha256": "15fe654fde2c6bc0dc66921807486ff8d3d316fa43663152d5d6af94b536ce3f",
-      "size_bytes": 29092
+      "sha256": "ba343a6e3bc3e25a922dba9f5f18464fde1458365f8f9fc4b5c15625974d296e",
+      "size_bytes": 33963
     },
     {
       "relpath": "nepal/experiment_v0/metrics.py",
@@ -204,8 +204,8 @@
     },
     {
       "relpath": "nepal/research_v0/records.py",
-      "sha256": "938abd06ff99ebabbf1eb0c2f274b3a66fb13171fd2f51eaa4b05e489ccce3d0",
-      "size_bytes": 52365
+      "sha256": "8bf481c30e4a09b0b8d696dc4a585821f160de3b254f3d06d5267162a401a539",
+      "size_bytes": 53600
     },
     {
       "relpath": "nepal/run_ledger_repair.py",
@@ -229,8 +229,8 @@
     },
     {
       "relpath": "nepal/science_v0/regimes.py",
-      "sha256": "fffbf41fa652001a1f6a9501517c9e9230f57165188f1cf41f834d775380f308",
-      "size_bytes": 16430
+      "sha256": "920516667573de45e0709d4f85ef83f151ecfda62e66b16e29fff1d8cbb68865",
+      "size_bytes": 20625
     },
     {
       "relpath": "tests/fixtures/__init__.py",
@@ -249,23 +249,23 @@
     },
     {
       "relpath": "tests/fixtures/synthetic_exp_b3.py",
-      "sha256": "e3e1e95c43e373123d5557f7dbce2e7c89c0bba962277296146facf05e866740",
-      "size_bytes": 10963
+      "sha256": "69d0e8b9801a7b4689376a696d0b39ec0eaf3710c4bd4484c0ada9198016796b",
+      "size_bytes": 11126
     },
     {
       "relpath": "tests/fixtures/synthetic_exp_b4.py",
-      "sha256": "753f6d8cc225cbf7cbe14e6fcda9789b747ba995de72bc292cf28c07ff74d4e3",
-      "size_bytes": 14115
+      "sha256": "1670e731fc6c10278fe241993d620bb296ea9b60e09788da61bea014ee10ff61",
+      "size_bytes": 16324
     },
     {
       "relpath": "tests/test_experiment_v0_adapters.py",
-      "sha256": "509f99318d252beb21ddb5eff11ca63b688e83988f8d65d92b66eafcb9a6ff88",
-      "size_bytes": 9716
+      "sha256": "f8eb33f37e1270d55af212f05aebf0e9524c715e81cb9282429c0c6705e9a9cd",
+      "size_bytes": 16548
     },
     {
       "relpath": "tests/test_experiment_v0_b1_association.py",
-      "sha256": "ac9dc199aa8d793270d519f2dcfd0fd124b2644b839ea18a539a82234cd98a1b",
-      "size_bytes": 29780
+      "sha256": "00c7bd3a7cd4d652ca054c8ffb22c9b5b095803d48b4da1a3ee5d9ecb48e3149",
+      "size_bytes": 39644
     },
     {
       "relpath": "tests/test_experiment_v0_b2_vintages.py",
@@ -274,8 +274,8 @@
     },
     {
       "relpath": "tests/test_experiment_v0_b3_evaluation.py",
-      "sha256": "1a4e8d90e1a02c764351a43df98c3214516ffdd44e5a949563d61fdf24421612",
-      "size_bytes": 26167
+      "sha256": "e2649dd1c9ee836aadb79c887d919fe930c2b5f995b7c97b140520fd9756ba79",
+      "size_bytes": 31952
     },
     {
       "relpath": "tests/test_experiment_v0_b3_vintage_timing.py",
@@ -284,13 +284,13 @@
     },
     {
       "relpath": "tests/test_experiment_v0_b4_audit.py",
-      "sha256": "0b31fee4bc8d91e3f60b6682902631165dd745ba8eb2ec0a3bc76d7d1315e0d4",
-      "size_bytes": 17620
+      "sha256": "d81b9f4c1506801e906f6f35aaa59ae47cd10c4176975ba787d1ab17d40c7fd5",
+      "size_bytes": 17734
     },
     {
       "relpath": "tests/test_experiment_v0_replay.py",
-      "sha256": "979b7a7a10a1e61d9ab50696960d70960842e5534da63664157e30ae4ae06a8c",
-      "size_bytes": 10636
+      "sha256": "ecb3edcd8bb6b5775bd349034342e8909cf6371339eb259916cc40a5613856ec",
+      "size_bytes": 10665
     },
     {
       "relpath": "tests/test_p5_io_contract.py",
@@ -299,8 +299,8 @@
     },
     {
       "relpath": "tests/test_research_v0_adversarial.py",
-      "sha256": "d93ebac51aabd27277a97fb1c1f880c858c89dc4b2d3a92556f68b818747056c",
-      "size_bytes": 40930
+      "sha256": "1780ca9adbe44b5f5522a9c49db2210fbe1d07346c23995449f89c07a7c4c890",
+      "size_bytes": 42747
     },
     {
       "relpath": "tests/test_research_v0_gates.py",
@@ -324,8 +324,8 @@
     },
     {
       "relpath": "tests/test_science_experiment_e2e.py",
-      "sha256": "5fcd90399ba34feb33c61666cc56e235ef1a5c72bab16540ed70e25beeb1e8f6",
-      "size_bytes": 10162
+      "sha256": "a4c7448aca34f0ac8bad99abe407cfecdeec646ba4c55a6686e87c4b025bc295",
+      "size_bytes": 10660
     },
     {
       "relpath": "tests/test_science_v0_events.py",
@@ -339,8 +339,13 @@
     },
     {
       "relpath": "tests/test_science_v0_regimes.py",
-      "sha256": "9af5569c3dd607a0adc2a3f6a3d57a5ebeb1d948ebe5103a264b1d91f0d077f5",
-      "size_bytes": 8027
+      "sha256": "b3bf7f67faaa5f2a2356e18fa794f68b462d9ac0df427736f761ea5c262d8d73",
+      "size_bytes": 9873
+    },
+    {
+      "relpath": "docs/science/STATUS_SCOPE_RECONCILIATION_NOTE_20260915.md",
+      "sha256": "21af5dd057fb3febae408a525ab1263c897c225d711fa8409e9726f84e7a16f6",
+      "size_bytes": 3722
     }
   ],
   "generated": "2026-09-15",
@@ -353,10 +358,10 @@
   "scope": "governed science artifacts: docs/science, nepal/research_v0, research tests, CI workflow, README \u2014 non-science sources excluded by design",
   "self_excluded": true,
   "test_results": {
-    "full_suite_venv": "1641 passed, 5 skipped (rasterio), 0 failed",
-    "swarm_focused": "335 passed (science_v0 + experiment_v0 + adapters + e2e + b4)",
+    "full_suite_venv": "1687 passed, 5 skipped (rasterio), 0 failed",
     "p5_io_contract": "34 passed",
     "research_v0": "116 passed",
-    "run_a_reconciliation": "24 passed"
+    "run_a_reconciliation": "24 passed",
+    "swarm_focused": "410+ passed (science_v0 + experiment_v0 + adapters + e2e + b4 + adversarial)"
   }
 }
