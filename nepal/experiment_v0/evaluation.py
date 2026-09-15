@@ -651,8 +651,40 @@ def evaluate(cases: Sequence[ForecastCase], *,
     """
     cases = list(cases)
     problems: list[str] = []
+    # the holdout must BE a valid contract record — not merely expose
+    # test_locked/test_groups attributes (type + full problems())
+    if type(holdout) is not HoldoutPlanV0:
+        problems.append("holdout must be a HoldoutPlanV0 record")
+    else:
+        problems.extend(f"holdout: {p}" for p in holdout.problems())
+        named = set(holdout.evaluation_region_names)
+        undeclared = {c.region for c in cases
+                      if isinstance(c.region, str)} - named
+        if undeclared:
+            problems.append(
+                f"case regions are not declared evaluation regions: "
+                f"{sorted(undeclared)}")
     problems.extend(locked_region_problems(
         [c.region for c in cases], holdout))
+
+    # every admitted vintage must be a problem-free record whose map
+    # key recomputes to its canonical digest — the key is evidence,
+    # not a label
+    if not isinstance(admitted_vintages, Mapping):
+        problems.append("admitted_vintages must be a mapping of "
+                        "canonical vintage digest -> ForecastVintageV0")
+    else:
+        for key, v in admitted_vintages.items():
+            tag = f"admitted vintage {key!r}"
+            if type(v) is not ForecastVintageV0:
+                problems.append(f"{tag}: not a ForecastVintageV0")
+                continue
+            problems.extend(f"{tag}: {pp}" for pp in v.problems())
+            if sha256_canonical(v.to_dict()) != key:
+                problems.append(
+                    f"{tag}: key does not recompute to "
+                    "sha256_canonical(vintage.to_dict()) — the "
+                    "admission map is keyed by canonical digest")
 
     if isinstance(n_opportunities, bool) or \
             not isinstance(n_opportunities, int):
@@ -670,10 +702,18 @@ def evaluate(cases: Sequence[ForecastCase], *,
             "opportunity")
 
     seen_ids: set[str] = set()
+    seen_opps: set[str] = set()
     for c in cases:
         if c.case_id in seen_ids:
             problems.append(f"case {c.case_id!r}: duplicate case_id")
         seen_ids.add(c.case_id)
+        if c.opportunity_id and c.opportunity_id in seen_opps:
+            problems.append(
+                f"case {c.case_id!r}: opportunity_id "
+                f"{c.opportunity_id!r} is shared by another case — "
+                "every case must bind a distinct verified "
+                "opportunity")
+        seen_opps.add(c.opportunity_id)
         problems.extend(_case_lineage_problems(c))
         problems.extend(_case_vintage_problems(c, admitted_vintages))
 

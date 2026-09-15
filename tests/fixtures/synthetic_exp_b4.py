@@ -109,13 +109,37 @@ def make_events(count: int = 21) -> list[EventLabelV0]:
     return events
 
 
+def _event_intervals_by_basin() -> dict[str, list[tuple]]:
+    """(start, end) date intervals per basin for the synthetic event
+    grid — controls may never overlap these (the same derivation the
+    producer applies when emitting NEGATIVE state)."""
+    from datetime import date
+    intervals: dict[str, list] = {}
+    for ev in make_events(21):
+        s = date.fromisoformat(ev.event_time_start[:10])
+        e = date.fromisoformat(ev.event_time_end[:10])
+        intervals.setdefault(ev.basin_id, []).append((s, e))
+    return intervals
+
+
 def make_controls() -> list[ControlWindowV0]:
-    """NEGATIVE controls: five-day windows mid-gap on the event grid."""
+    """NEGATIVE controls: five-day windows chosen to overlap no
+    admitted event in the control's basin."""
+    intervals = _event_intervals_by_basin()
     controls = []
     i = 0
     for unit in sorted(UNIT_BASINS):
-        for k in range(10):
-            s = _BASE_DATE + timedelta(days=10 + k * 14)
+        basin = UNIT_BASINS[unit]
+        taken = intervals.get(basin, [])
+        placed, k = 0, 0
+        while placed < 10:
+            s = _BASE_DATE + timedelta(days=10 + k * 7)
+            e = s + timedelta(days=5)
+            k += 1
+            if any(s < ev_end and e > ev_start
+                   for ev_start, ev_end in taken):
+                continue
+            placed += 1
             ws = datetime(s.year, s.month, s.day, tzinfo=timezone.utc)
             ctl = ControlWindowV0(
                 control_id=f"ctl-{i:03d}",

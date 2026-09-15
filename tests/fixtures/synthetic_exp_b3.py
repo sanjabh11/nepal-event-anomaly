@@ -61,8 +61,7 @@ def synthetic_holdout(
         validation_groups=("validation_basin_b",),
         test_groups=groups,
         event_assignments={f"event-{g}": g for g in all_groups},
-        evaluation_region_names=groups[:2] if len(groups) >= 2
-        else groups,
+        evaluation_region_names=groups,
         assigned_before_filtering=True,
         test_locked=test_locked,
         embargo_seconds=2592000.0)

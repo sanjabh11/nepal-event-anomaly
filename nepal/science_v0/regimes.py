@@ -200,6 +200,12 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
     if len(set(config.seeds)) < MIN_SEEDS:
         return {"status": "RUN_ERROR",
                 "reason": f"need >= {MIN_SEEDS} distinct seeds"}
+    if any(isinstance(sd, bool) or not isinstance(sd, int)
+           for sd in config.seeds):
+        return {"status": "RUN_ERROR",
+                "reason": "seeds must be ints — a non-int seed is "
+                          "silently disenfranchised from the modal-K "
+                          "vote after int() coercion in the fit"}
     # Holdout binding (I-07): the mask is meaningless unless it is
     # tied to declared, disjoint train/held-out group membership.
     train_groups = set(config.train_groups)
@@ -236,13 +242,19 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
                 "reason": f"held-out rows contain undeclared groups: "
                           f"{sorted(held_mask_groups - heldout_groups)}"}
     train_mask = mask
-    groups = df[config.group_col].unique()
-    if len(groups) < MIN_GEO_GROUPS:
+    if config.group_col not in df.columns or             config.season_col not in df.columns:
         return {"status": "RUN_ERROR",
-                "reason": f"need >= {MIN_GEO_GROUPS} geographic groups; "
-                          f"got {len(groups)} — a single-cell or "
-                          f"single-basin fit may not emit a terminal "
-                          f"status"}
+                "reason": "group/season columns missing from the "
+                          "frame"}
+    groups = df[config.group_col].unique()
+    # the multi-region gate applies to the FIT side: held-out groups
+    # must not inflate the geographic diversity of the model fit
+    if len(mask_groups) < MIN_GEO_GROUPS:
+        return {"status": "RUN_ERROR",
+                "reason": f"need >= {MIN_GEO_GROUPS} geographic groups "
+                          f"in the fit mask; got {len(mask_groups)} — "
+                          "a single-cell or single-basin fit may not "
+                          "emit a terminal status"}
 
     # Row identity is explicit, never derived from the frame index:
     # unit_id + canonical ISO date columns must exist, and each
@@ -372,8 +384,9 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
     # leave-one-region-out refit (basin/geographic axis)
     loro = {}
     stable_loro = True
-    for g in groups:
-        m = np.asarray(train_mask) & (df[config.group_col] != g)
+    for g in [str(g) for g in groups]:
+        m = np.asarray(train_mask) & \
+            (df[config.group_col].astype(str) != g)
         sub = df.loc[m, feature_cols]
         if len(sub) < 50:
             loro[g] = "skipped_insufficient"

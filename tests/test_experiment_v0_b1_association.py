@@ -129,14 +129,27 @@ def make_control(control_id: str, unit: str, start: _date,
 
 
 def make_controls() -> list[ControlWindowV0]:
-    """NEGATIVE controls: every unit gets five-day windows offset from
-    the event grid (mid-gap, deterministic)."""
+    """NEGATIVE controls: five-day windows per unit that overlap no
+    admitted event in the unit's basin — the same derivation the
+    producer applies when emitting NEGATIVE state."""
+    intervals: dict[str, list] = {}
+    for ev in make_events(21):
+        intervals.setdefault(ev.basin_id, []).append((
+            _date.fromisoformat(ev.event_time_start[:10]),
+            _date.fromisoformat(ev.event_time_end[:10])))
     controls = []
     i = 0
     for unit in sorted(UNIT_BASINS):
-        for k in range(10):
-            start = _BASE_DATE + timedelta(days=10 + k * 14)
+        taken = intervals.get(UNIT_BASINS[unit], [])
+        placed, k = 0, 0
+        while placed < 10:
+            start = _BASE_DATE + timedelta(days=10 + k * 7)
+            k += 1
+            if any(start < ee and start + timedelta(days=5) > es
+                   for es, ee in taken):
+                continue
             controls.append(make_control(f"ctl-{i:03d}", unit, start))
+            placed += 1
             i += 1
     return controls
 
@@ -838,3 +851,75 @@ def test_problematic_registry_opportunity_rejected(planted):
         run_assoc(artifact, events, controls, UNIT_BASINS,
                   holdout=holdout, region_basins=REGION_BASINS,
                   opportunities=opportunities)
+
+
+# --------------------------------------------------------------
+# Adversarial binding probes (post-audit residuals)
+# --------------------------------------------------------------
+
+def _bound(artifact, events, controls, **kw):
+    kw.setdefault("holdout", make_holdout(events))
+    kw.setdefault("region_basins", REGION_BASINS)
+    return run_assoc(artifact, events, controls, UNIT_BASINS, **kw)
+
+
+def test_duplicate_control_id_rejected():
+    events = make_events(21)
+    controls = make_controls()
+    controls = controls + [dataclasses.replace(controls[0])]
+    artifact = planted_artifact(events)
+    with pytest.raises(ValueError, match="duplicate control_id"):
+        _bound(artifact, events, controls)
+
+
+def test_duplicate_event_id_rejected():
+    events = make_events(21)
+    events = events + [dataclasses.replace(
+        events[0], cascade_group_id=None)]
+    artifact = planted_artifact(events)
+    with pytest.raises(ValueError, match="duplicate event_id"):
+        _bound(artifact, events, make_controls())
+
+
+def test_negative_control_overlapping_event_rejected():
+    """A control window colliding with an admitted event in the same
+    basin cannot assert NEGATIVE — state is derived."""
+    events = make_events(21)
+    ev = events[0]
+    unit = next(u for u, b in UNIT_BASINS.items()
+                if b == ev.basin_id)
+    bad = make_control("ctl-overlap", unit,
+                       _date.fromisoformat(ev.event_time_start[:10]))
+    controls = make_controls() + [bad]
+    artifact = planted_artifact(events)
+    with pytest.raises(ValueError, match="overlaps"):
+        _bound(artifact, events, controls)
+
+
+def test_registry_key_must_match_record_id():
+    """The cited key must equal the record's own opportunity_id —
+    an aliased registry entry cannot stand in."""
+    controls = make_controls()
+    opps = make_opportunities(controls)
+    aliased = {k: dataclasses.replace(v, opportunity_id=k + "-fake")
+               for k, v in opps.items()}
+    events = make_events(21)
+    artifact = planted_artifact(events)
+    with pytest.raises(ValueError, match="does not match"):
+        _bound(artifact, events, controls, opportunities=aliased)
+
+
+def test_basin_claimed_by_two_regions_rejected():
+    events = make_events(21)
+    controls = make_controls()
+    artifact = planted_artifact(events)
+    region_basins = {"karnali_eval": {"karnali"},
+                     "gandaki_eval": {"gandaki", "koshi"},
+                     "koshi_eval": {"koshi"}}
+    holdout = make_holdout(events)
+    with pytest.raises(ValueError, match="claimed by both"):
+        run_association(
+            artifact, events, controls, UNIT_BASINS,
+            holdout=holdout, region_basins=region_basins,
+            opportunities=make_opportunities(controls),
+            n_boot=8, seed=0)

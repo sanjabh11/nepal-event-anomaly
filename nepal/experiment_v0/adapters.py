@@ -242,6 +242,16 @@ def holdout_plan_from_assignment(
                                  f"groups")
             basin_to_group[basin] = group
 
+    # the event universe must be symmetric: every basin_of_event key
+    # is assigned and every assignment has a basin — an event dropped
+    # between the two maps would silently vanish from the contract.
+    if set(assignments) != set(basin_of_event):
+        raise ValueError(
+            "assignments and basin_of_event must cover the same "
+            f"event universe; only-in-assignments: "
+            f"{sorted(set(assignments) - set(basin_of_event))[:5]}, "
+            f"only-in-basin_of_event: "
+            f"{sorted(set(basin_of_event) - set(assignments))[:5]}")
     # assignments are already event -> group; verify basin membership.
     event_to_group: dict[str, str] = {}
     for event_id, group in assignments.items():
@@ -386,6 +396,17 @@ def control_from_science(payload: Any, *,
     """
     p = _payload(payload, "ControlWindow")
     _require_exact_keys(p, _CONTROL_KEYS, "ControlWindow")
+    # control_digest is recomputed from the payload's own fields —
+    # a carried digest is verified, never trusted (same discipline as
+    # the regime-artifact boundary).
+    import hashlib
+    expected = hashlib.sha256(
+        f"{p['unit_id']}|{p['source_id']}|{p['basin']}|"
+        f"{p['window_start']}|{p['window_end']}|"
+        f"{p['opportunity_id']}".encode()).hexdigest()
+    if p["control_digest"] != expected:
+        raise ValueError("ControlWindow.control_digest does not "
+                         "recompute from the payload fields")
     record = ControlWindowV0(
         control_id=_req_str(p, "control_id", "ControlWindow"),
         unit_id=_req_str(p, "unit_id", "ControlWindow"),
@@ -459,6 +480,27 @@ def regime_assignment_from_artifact(
     if p["mode"] != "RETROSPECTIVE_REGIME":
         raise ValueError(f"regime artifact mode {p['mode']!r} != "
                          f"'RETROSPECTIVE_REGIME'")
+    # terminal-status + provenance floor: the producer's own verdict is
+    # binding — a RUN_ERROR or NOT_STABLE partition may not flow into
+    # association, and the I-05 provenance fields must be present.
+    status = p.get("status")
+    if status not in ("DESCRIPTIVE_REGIME_ONLY", "CANDIDATE_ONLY",
+                      "UNSUPERVISED_STRUCTURE_NOT_STABLE"):
+        raise ValueError(f"regime artifact status {status!r} is not a "
+                         "terminal producer status")
+    if status == "UNSUPERVISED_STRUCTURE_NOT_STABLE":
+        raise ValueError("producer declared the regime structure "
+                         "unstable — the assignment sidecar cannot "
+                         "bind to association")
+    if p.get("data_class") != "REANALYSIS":
+        raise ValueError(f"regime artifact data_class "
+                         f"{p.get('data_class')!r} != 'REANALYSIS'")
+    for field in ("feature_cols", "feature_matrix_digest",
+                  "config_digest", "fit_groups",
+                  "heldout_groups_declared", "train_mask_digest"):
+        if field not in p:
+            raise ValueError(f"regime artifact missing provenance "
+                             f"field {field!r}")
 
     # --- digest recomputation (I-01): never trust a carried digest ---
     if _regime_digest(raw) != p.get("assignment_digest"):
@@ -489,9 +531,10 @@ def regime_assignment_from_artifact(
                              "strings in the payload — no coercion "
                              "across the boundary")
         if isinstance(regime_id, bool) or \
-                not isinstance(regime_id, (int, str)):
-            raise ValueError("regime assignment regime_id must be "
-                             "int or str — other primitive types "
+                not isinstance(regime_id, int):
+            raise ValueError("regime assignment regime_id must be an "
+                             "int — the single permitted producer "
+                             "conversion is int -> str; other types "
                              "reject")
         triples.append([unit_id, day, str(regime_id)])
 
@@ -507,4 +550,8 @@ def regime_assignment_from_artifact(
         "seeds": list(seeds),
         "mode": p["mode"],
     })
+    problems = record.problems()
+    if problems:
+        raise ValueError("adapted RegimeAssignmentArtifact has "
+                         "problems: " + "; ".join(problems))
     return record

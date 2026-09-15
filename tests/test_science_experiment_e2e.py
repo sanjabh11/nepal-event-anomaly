@@ -38,12 +38,15 @@ from nepal.experiment_v0.baselines import (ThresholdRule,
                                            null_probs, rule_probs)
 from nepal.experiment_v0.evaluation import ForecastCase, evaluate
 from nepal.experiment_v0.vintages import VintageRequest
+from nepal.research_v0._hashing import sha256_canonical
 
-_BASINS = ("koshi", "bagmati", "gandaki", "karnali", "mahakali")
+_BASINS = ("koshi", "bagmati", "gandaki", "seti", "karnali",
+           "mahakali")
 _GROUP = {"koshi": "grp_east", "bagmati": "grp_east",
-          "gandaki": "grp_central", "karnali": "grp_west",
-          "mahakali": "grp_farwest"}
+          "gandaki": "grp_central", "seti": "grp_north",
+          "karnali": "grp_west", "mahakali": "grp_farwest"}
 _SPLIT = {"grp_east": "train", "grp_central": "val",
+          "grp_north": "train",
           "grp_west": "test", "grp_farwest": "test"}
 _EVAL_REGIONS = ("karnali", "mahakali")  # basins in distinct test groups
 _SHA = "a" * 64
@@ -95,7 +98,8 @@ def _feature_frame():
     rng = np.random.default_rng(7)
     rows = []
     for unit in _BASINS:
-        cluster = 0 if unit in ("koshi", "bagmati", "gandaki") else 1
+        cluster = 0 if unit in ("koshi", "bagmati", "gandaki",
+                            "seti") else 1
         for day in range(90):
             f1 = rng.normal(cluster * 4.0, 0.4)
             f2 = rng.normal(-cluster * 3.0, 0.4)
@@ -111,9 +115,9 @@ def _feature_frame():
 
 def _regime_artifact(df):
     train_mask = df["basin_group"].isin(
-        ["grp_east", "grp_central"]).to_numpy()
+        ["grp_east", "grp_central", "grp_north"]).to_numpy()
     cfg = RegimeRunConfig(
-        train_groups=("grp_east", "grp_central"),
+        train_groups=("grp_east", "grp_central", "grp_north"),
         heldout_groups=("grp_west", "grp_farwest"))
     art = run_regimes(df, ["f1", "f2"], train_mask, cfg)
     assert art.get("status") != "RUN_ERROR", art.get("reason")
@@ -207,7 +211,7 @@ def test_synthetic_end_to_end_path():
                 horizon="24h", lead_seconds=21600.0,
                 y_prob=0.8 if pos else 0.15,
                 y_state="POSITIVE" if pos else "NEGATIVE",
-                vintage_digest=vintage.archive_payload_sha256,
+                vintage_digest=sha256_canonical(vintage.to_dict()),
                 opportunity_id=f"syn-opp-{basin}-{j}",
                 outcome_source_id="synthetic-outcome-src",
                 cutoff_time="2020-06-01T06:00:00Z"))
@@ -220,7 +224,7 @@ def test_synthetic_end_to_end_path():
         "null": null_probs(len(cases), base_rate=1 / 3),
         "regularized_supervised": [c.y_prob for c in cases],
     }
-    admitted = {vintage.archive_payload_sha256: vintage}
+    admitted = {sha256_canonical(vintage.to_dict()): vintage}
     eval_report = evaluate(
         cases, holdout=holdout_v0, baseline_probs=baseline_probs,
         admitted_vintages=admitted, n_opportunities=len(cases),

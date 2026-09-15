@@ -919,3 +919,45 @@ class TestCLIBundle:
         rc = cli.main(["validate-envelope", str(env_file),
                        "--records-dir", str(recs)])
         assert rc == 1
+
+
+
+class TestCollectionFieldTypes:
+    """A bare string is not a collection — strings satisfy len()/set()
+    arithmetic while carrying none of the declared semantics."""
+
+    def test_frame_ids_string_rejected(self):
+        opp = ObservationOpportunityV0(
+            opportunity_id="opp-x", unit_id="u1", platform="p",
+            window_start="2020-01-01T00:00:00Z",
+            window_end="2020-01-02T00:00:00Z",
+            coverage_fraction=1.0, coverage_quality="x",
+            detection_threshold="x", state="OBSERVED_FULL",
+            source_id="s", source_as_of="2020-01-03",
+            frame_ids="f1")
+        assert any("frame_ids" in p for p in opp.problems())
+
+    def test_reviewer_ids_string_rejected(self):
+        label = EventLabelV0(
+            event_id="e1", vertical_id="v", source_id="s",
+            source_version="1",
+            event_time_start="2020-01-01T00:00:00Z",
+            event_time_end="2020-01-02T00:00:00Z",
+            uncertainty_seconds=86400.0,
+            event_time_precision="day",
+            event_time_basis="x", geometry_role="g",
+            basin_id="b", adjudication_state="TWO_REVIEW_AGREE",
+            adjudication_notes="n", reviewer_ids="ab")
+        assert any("reviewer_ids" in p for p in label.problems())
+
+    def test_holdout_group_string_rejected(self):
+        plan = HoldoutPlanV0(
+            holdout_plan_id="h", assignment_rule="basin",
+            train_groups=("t",), validation_groups=("v",),
+            test_groups="ab",
+            event_assignments={"e1": "t", "e2": "v",
+                               "e3": "a", "e4": "b"},
+            evaluation_region_names=("a", "b"),
+            assigned_before_filtering=True, test_locked=True,
+            embargo_seconds=None)
+        assert any("collection" in p for p in plan.problems())

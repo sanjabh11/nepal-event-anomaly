@@ -18,17 +18,17 @@ FEATURES = ["f1", "f2", "f3"]
 
 
 def _cfg(**kw):
-    """Declared holdout membership: grp0+grp1 train, grp2 held out."""
-    return RegimeRunConfig(train_groups=("grp0", "grp1"),
-                           heldout_groups=("grp2",), **kw)
+    """Declared holdout membership: grp0-2 train, grp3 held out."""
+    return RegimeRunConfig(train_groups=("grp0", "grp1", "grp2"),
+                           heldout_groups=("grp3",), **kw)
 
 
 def _mask(df):
-    """Train rows = grp0/grp1; grp2 rows are held out."""
-    return (df["basin_group"] != "grp2").to_numpy()
+    """Train rows = grp0-2; grp3 rows are held out."""
+    return (df["basin_group"] != "grp3").to_numpy()
 
 
-def _fixture(n_per=120, n_groups=3, structured=True, seed=0):
+def _fixture(n_per=120, n_groups=4, structured=True, seed=0):
     """3+ geographic groups, planted cluster structure when
     structured=True. Every row carries explicit unit_id + ISO date."""
     from datetime import date, timedelta
@@ -55,10 +55,10 @@ def _fixture(n_per=120, n_groups=3, structured=True, seed=0):
 class TestPreprocessor:
     def test_train_only_statistics(self):
         df = _fixture()
-        mask = np.array([True] * 240 + [False] * 120)
+        mask = np.array([True] * 360 + [False] * 120)
         prep = TrainOnlyPreprocessor().fit(df.loc[mask, FEATURES])
         train_mean = df.loc[mask, FEATURES].mean().to_numpy()
-        assert prep.fitted_rows == 240
+        assert prep.fitted_rows == 360
         np.testing.assert_allclose(prep._scaler.mean_, train_mean,
                                    rtol=1e-6)
         # transform on test rows uses train params — test rows must
@@ -120,7 +120,7 @@ class TestRunner:
     def test_mask_group_membership_enforced(self):
         df = _fixture()
         # held-out rows (grp2) are not in the declared heldout set
-        bad_cfg = RegimeRunConfig(train_groups=("grp0", "grp1"),
+        bad_cfg = RegimeRunConfig(train_groups=("grp0", "grp1", "grp2"),
                                   heldout_groups=("grp9",))
         art = run_regimes(df, FEATURES, _mask(df), bad_cfg)
         assert art["status"] == "RUN_ERROR"

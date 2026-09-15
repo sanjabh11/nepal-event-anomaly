@@ -704,3 +704,56 @@ class TestClaimScan:
                     "tests/test_experiment_v0_b3_vintage_timing.py"):
             findings = scan_claims_text((root / rel).read_text())
             assert findings == [], (rel, findings)
+
+
+# --------------------------------------------------------------
+# Post-audit residuals: admission-key and lineage probes
+# --------------------------------------------------------------
+
+def test_noncanonical_vintage_key_rejected():
+    """admitted_vintages keys must recompute to
+    sha256_canonical(vintage.to_dict()) — arbitrary keys mean the
+    admission map never passed through build_vintage discipline."""
+    design = fx.underpowered_design()
+    kwargs = _eval_kwargs(design)
+    vintages = kwargs["admitted_vintages"]
+    kwargs["admitted_vintages"] = {
+        "a" * 64: next(iter(vintages.values()))}
+    with pytest.raises(ValueError, match="canonical digest"):
+        evaluate(design["cases"], **kwargs)
+
+
+def test_holdout_record_validated_not_duck_typed():
+    """A HoldoutPlanV0 carrying contract violations must be rejected
+    even when it happens to expose locked test groups."""
+    design = fx.underpowered_design()
+    bad = dataclasses.replace(design["holdout"], holdout_plan_id="",
+                              test_locked=True)
+    assert bad.problems()  # the record itself is invalid
+    kwargs = _eval_kwargs(design)
+    kwargs["holdout"] = bad
+    with pytest.raises(ValueError, match="holdout"):
+        evaluate(design["cases"], **kwargs)
+
+
+def test_shared_opportunity_id_rejected():
+    design = fx.underpowered_design()
+    cases = list(design["cases"])
+    cases[1] = dataclasses.replace(
+        cases[1], opportunity_id=cases[0].opportunity_id)
+    kwargs = _eval_kwargs(design)
+    with pytest.raises(ValueError, match="distinct"):
+        evaluate(cases, **kwargs)
+
+
+def test_case_region_outside_declared_names_rejected():
+    """A case citing a locked test group that is NOT a declared
+    evaluation region rejects — declared regions are not decorative."""
+    design = fx.underpowered_design()
+    holdout = dataclasses.replace(
+        design["holdout"],
+        evaluation_region_names=("region_east",))
+    kwargs = _eval_kwargs(design)
+    kwargs["holdout"] = holdout
+    with pytest.raises(ValueError, match="declared evaluation"):
+        evaluate(design["cases"], **kwargs)

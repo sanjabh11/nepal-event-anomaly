@@ -1103,19 +1103,39 @@ def _holdout_binding_problems(
             f"(region_basins={sorted(region_basins)}, "
             f"evaluation_region_names={sorted(region_names)})")
     eval_basins: set[str] = set()
+    basin_owner: dict[str, str] = {}
     for name in sorted(region_names):
         basins = region_basins.get(name)
         if not basins:
             problems.append(f"evaluation region {name!r} maps to no "
                             "basins")
             continue
+        if isinstance(basins, str) or                 not isinstance(basins, (list, tuple, set, frozenset)):
+            problems.append(f"evaluation region {name!r} basins must "
+                            "be a collection of basin names")
+            continue
         for basin in basins:
-            eval_basins.add(str(basin))
+            basin = str(basin)
+            if basin in basin_owner and basin_owner[basin] != name:
+                problems.append(
+                    f"basin {basin!r} is claimed by both regions "
+                    f"{basin_owner[basin]!r} and {name!r}")
+            else:
+                basin_owner[basin] = name
+            eval_basins.add(basin)
 
     train_val = set(holdout.train_groups) | set(
         holdout.validation_groups)
     test_groups = set(holdout.test_groups)
     assignments_map = holdout.event_assignments or {}
+    seen_event_ids: set[str] = set()
+    for e in events:
+        eid0 = getattr(e, "event_id", None)
+        if eid0 in seen_event_ids:
+            problems.append(f"duplicate event_id {eid0!r} — an event "
+                            "may enter the association universe once")
+        else:
+            seen_event_ids.add(eid0)
     for e in events:
         eid = getattr(e, "event_id", None)
         basin = getattr(e, "basin_id", "")
@@ -1138,6 +1158,14 @@ def _holdout_binding_problems(
         problems.append("opportunities must be a mapping of "
                         "opportunity_id -> ObservationOpportunityV0")
         opportunities = {}
+    seen_control_ids: set[str] = set()
+    used_opportunity_ids: set[str] = set()
+    event_bounds = {
+        getattr(e, "event_id", ""): (
+            getattr(e, "event_time_start", ""),
+            getattr(e, "event_time_end", ""),
+            getattr(e, "basin_id", ""))
+        for e in events}
     for c in controls:
         unit = getattr(c, "unit_id", None)
         cid = getattr(c, "control_id", None)
@@ -1149,7 +1177,19 @@ def _holdout_binding_problems(
             problems.append(f"control {cid!r} sits in basin "
                             f"{unit_basins[unit]!r} outside the "
                             "locked evaluation regions")
+        cid0 = getattr(c, "control_id", None)
+        if cid0 in seen_control_ids:
+            problems.append(f"duplicate control_id {cid0!r} — a "
+                            "control may enter the universe once")
+        else:
+            seen_control_ids.add(cid0)
         oid = getattr(c, "opportunity_id", None)
+        if oid in used_opportunity_ids:
+            problems.append(f"control {cid0!r} shares opportunity "
+                            f"{oid!r} with another control — one "
+                            "control per opportunity")
+        elif isinstance(oid, str):
+            used_opportunity_ids.add(oid)
         opp = opportunities.get(oid)
         if opp is None:
             problems.append(f"control {cid!r} links opportunity "
@@ -1160,6 +1200,9 @@ def _holdout_binding_problems(
             problems.append(f"registry entry {oid!r} is not an "
                             "ObservationOpportunityV0 record")
             continue
+        if opp.opportunity_id != oid:
+            problems.append(f"registry key {oid!r} does not match "
+                            f"record id {opp.opportunity_id!r}")
         problems.extend(f"opportunity {oid!r}: {p}"
                         for p in opp.problems())
         if opp.unit_id != unit:
@@ -1181,6 +1224,20 @@ def _holdout_binding_problems(
             problems.append(f"NEGATIVE control {cid!r} must link an "
                             "OBSERVED_FULL opportunity — registry "
                             f"state is {opp.state!r}")
+        if getattr(c, "state", None) == TargetState.NEGATIVE.value:
+            cbasin = unit_basins.get(getattr(c, "unit_id", ""), "")
+            cw0 = getattr(c, "window_start", "")
+            cw1 = getattr(c, "window_end", "")
+            overlapping = [eid for eid, (es, ee, eb)
+                           in event_bounds.items()
+                           if eb == cbasin and es and ee
+                           and es < cw1 and cw0 < ee]
+            if overlapping:
+                problems.append(
+                    f"NEGATIVE control {cid0!r} window overlaps "
+                    f"admitted event(s) {sorted(overlapping)} in "
+                    f"basin {cbasin!r} — state is derived, never "
+                    "caller-asserted")
     artifact_units = {str(r[0]) for r in artifact.assignments
                       if isinstance(r, (tuple, list)) and len(r) == 3}
     for unit in sorted(artifact_units - set(unit_basins)):
@@ -1257,8 +1314,12 @@ def run_association(
                      "counted as negatives")
 
     groups = _group_events(admissible_events)
-    n_event_groups = len(groups)
     basin_units = _basin_units(unit_basins)
+    # Phantom groups — every member basin resolves to zero units —
+    # carry no evidence and cannot satisfy the power floor.
+    n_event_groups = sum(
+        1 for members in groups.values()
+        if any(basin_units.get(m.basin_id) for m in members))
 
     degenerate = bool(art_problems) or len(regime_ids) < 2
     if art_problems:

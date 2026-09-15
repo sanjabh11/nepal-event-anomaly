@@ -405,7 +405,7 @@ only — `EVIDENCE_VERIFIED` posture still requires byte-bound sidecar
 | I-09 case lineage | RESOLVED — ForecastCase carries opportunity_id/outcome_source_id/cutoff_time; evaluate() fails closed when empty |
 | I-10 order-sensitive digest | RESOLVED — canonical (case_id, opportunity_id) sort + baseline realignment before hashing; permutation-invariance tested |
 | I-11 audit scope | RESOLVED — B4 audit labeled experiment-layer; replay bundles now carry the opportunity registry |
-| DOC-01 count drift | RESOLVED — README/P0 record 1282/1306/1641 as dated history; 1671 current at swarm-C head |
+| DOC-01 count drift | RESOLVED — README/P0 record 1282/1306/1641 as dated history; 1687 current at post-audit head |
 | DOC-02 metadata-only scope | RESOLVED — SOURCE_FEASIBILITY_RECORDS_V0 labeled dated metadata-only snapshot |
 | GOV-01/02 | RESOLVED — P3 design-only vs P5-C acquisition separated; see STATUS_SCOPE_RECONCILIATION_NOTE_20260915 |
 | H01/H03 | RESOLVED (wording) — Run A docs state hybrid route, method-only, bounded 5-month overlap, no K/JS transfer |

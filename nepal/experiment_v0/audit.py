@@ -825,6 +825,12 @@ def replay_bundle(bundle: Mapping[str, Any]) -> dict[str, Any]:
 
     assoc = bundle.get("association")
     if isinstance(assoc, Mapping):
+        for required in ("events", "controls", "unit_basins",
+                         "opportunities", "holdout"):
+            if required not in assoc:
+                out["problems"].append(
+                    f"association section is missing {required!r} — "
+                    "an absent section is not an empty one")
         try:
             (artifact, events, controls, unit_basins, holdout,
              region_basins, opportunities, n_boot, seed) = \

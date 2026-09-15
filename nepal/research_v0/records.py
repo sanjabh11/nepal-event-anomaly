@@ -462,7 +462,12 @@ class EventLabelV0:
             problems.append(
                 f"adjudication_state {self.adjudication_state!r} not in "
                 f"{ADJUDICATION_STATES}")
-        if self.adjudication_state in POSITIVE_ADMISSIBLE_ADJUDICATION:
+        if isinstance(self.reviewer_ids, str) or not isinstance(
+                self.reviewer_ids, (list, tuple)):
+            problems.append("reviewer_ids must be a collection of "
+                            "reviewer identities — a bare string is "
+                            "not a reviewer set")
+        elif self.adjudication_state in POSITIVE_ADMISSIBLE_ADJUDICATION:
             if len(self.reviewer_ids) < 2:
                 problems.append(
                     "adjudicated labels require >=2 reviewer_ids")
@@ -537,8 +542,13 @@ class ObservationOpportunityV0:
         if self.state in ("OBSERVED_FULL", "OBSERVED_PARTIAL"):
             _req(problems, "source_id", self.source_id)
             _date(problems, "source_as_of", self.source_as_of)
-        if self.frame_ids and \
-                len(set(self.frame_ids)) != len(self.frame_ids):
+        if isinstance(self.frame_ids, str) or not isinstance(
+                self.frame_ids, (list, tuple)) or \
+                any(not isinstance(f, str) for f in self.frame_ids):
+            problems.append("frame_ids must be a collection of frame "
+                            "identifiers — a bare string is not a "
+                            "frame set")
+        elif len(set(self.frame_ids)) != len(self.frame_ids):
             problems.append("frame_ids must be unique")
         return problems
 
@@ -688,9 +698,19 @@ class HoldoutPlanV0:
             problems.append("locked test groups must be non-empty")
         for label, groups in (("train", self.train_groups),
                               ("validation", self.validation_groups),
-                              ("test", self.test_groups)):
-            if len(set(groups)) != len(groups):
+                              ("test", self.test_groups),
+                              ("evaluation_region",
+                               self.evaluation_region_names)):
+            if isinstance(groups, str) or not isinstance(
+                    groups, (list, tuple)) or \
+                    any(not isinstance(g, str) for g in groups):
+                problems.append(f"{label} groups must be a "
+                                "collection of group names")
+            elif len(set(groups)) != len(groups):
                 problems.append(f"{label} groups contain duplicates")
+        if not isinstance(self.event_assignments, Mapping):
+            problems.append("event_assignments must be a mapping of "
+                            "event_id -> declared group")
         if not self.assigned_before_filtering:
             problems.append("group assignment must precede eligibility "
                             "filtering")

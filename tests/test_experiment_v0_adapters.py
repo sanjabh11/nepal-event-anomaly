@@ -269,12 +269,19 @@ def _frozen_regime_payload(**overrides):
                    ("u2", "2020-06-01", 0)]
     art = {
         "mode": "RETROSPECTIVE_REGIME",
+        "data_class": "REANALYSIS",
         "fitted_on": "TRAIN_ONLY",
         "label_blinding": True,
         "k": 2,
         "seeds": [7, 42, 2024],
         "assignments": assignments,
         "assignment_digest": _canon(assignments),
+        "feature_cols": ["f1", "f2"],
+        "feature_matrix_digest": "b" * 64,
+        "config_digest": "c" * 64,
+        "fit_groups": ["g0", "g1", "g2"],
+        "heldout_groups_declared": ["g3"],
+        "train_mask_digest": "d" * 64,
         "occupancy": [0.6, 0.4],
         "status": "DESCRIPTIVE_REGIME_ONLY",
         "disclaimer": "synthetic",
@@ -392,3 +399,35 @@ def test_regime_summary_only_rejected():
         regime_assignment_from_artifact(
             {"regime_artifact_digest": "a" * 64, "assignments": []},
             artifact_id="x")
+
+
+def test_regime_run_error_status_rejected():
+    p = _frozen_regime_payload(status="RUN_ERROR")
+    with pytest.raises(ValueError, match="status"):
+        regime_assignment_from_artifact(p, artifact_id="x")
+
+
+def test_regime_unstable_status_rejected():
+    p = _frozen_regime_payload(status="UNSUPERVISED_STRUCTURE_NOT_STABLE")
+    with pytest.raises(ValueError):
+        regime_assignment_from_artifact(p, artifact_id="x")
+
+
+def test_regime_missing_i05_provenance_rejected():
+    for field in ("feature_cols", "feature_matrix_digest",
+                  "config_digest", "fit_groups",
+                  "heldout_groups_declared", "train_mask_digest"):
+        p = _frozen_regime_payload()
+        del p[field]
+        with pytest.raises(ValueError, match=field):
+            regime_assignment_from_artifact(p, artifact_id="x")
+
+
+def test_holdout_asymmetric_universe_rejected():
+    payload = _assignment_payload()
+    payload["basin_of_event"]["ev-999"] = "orphan_basin"
+    with pytest.raises(ValueError, match="same.*event universe"):
+        holdout_plan_from_assignment(
+            payload, holdout_plan_id="hp",
+            split_of_group={"g_train": "train", "g_val": "validation",
+                            "g_test_a": "test", "g_test_b": "test"})
