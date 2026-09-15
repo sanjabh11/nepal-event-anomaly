@@ -179,6 +179,10 @@ def planted_cases(
                         y_prob=y_prob,
                         y_state=y_state,
                         vintage_digest=digest,
+                        opportunity_id=f"synth-opp-{i:05d}",
+                        outcome_source_id=
+                        f"synth-outcome-{region}",
+                        cutoff_time=_iso(issue_dt),
                         features={
                             "synth_precip": 4.0 + 3.0 * s
                             + rng.gauss(0.0, 0.1),

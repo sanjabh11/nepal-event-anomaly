@@ -6,10 +6,13 @@ fail-closed, deterministic, synthetic-only evaluator:
 * ``evaluate`` validates the whole contract up front — locked-region
   guard, admitted vintage digests *plus* vintage-metadata timing
   (issue equality, valid-window containment, lead/horizon width
-  consistency), admissible horizons, three-valued targets, the
-  mandatory baseline set, aligned probability vectors, and an explicit
-  verified-opportunity denominator — and raises one ``ValueError``
-  listing every problem.
+  consistency), admissible horizons, three-valued targets, per-case
+  lineage identifiers (verified-opportunity id, outcome-source id,
+  issue-time feature cutoff), the mandatory baseline set, aligned
+  probability vectors, and an explicit verified-opportunity
+  denominator — and raises one ``ValueError`` listing every problem.
+  Cases are canonically ordered before hashing so the report digest
+  is invariant under input reordering.
 * Censored (``CENSORED_OR_AMBIGUOUS``) cases are excluded from every
   metric numerator and counted in ``n_censored``; the false-alarm
   denominator is the caller-supplied opportunity count, never the
@@ -56,7 +59,8 @@ _TIME_EPS = 1e-6
 _STR_FIELDS = frozenset({
     "case_id", "unit_id", "region", "season", "mechanism",
     "issue_time", "valid_start", "valid_end", "horizon", "y_state",
-    "vintage_digest"})
+    "vintage_digest", "opportunity_id", "outcome_source_id",
+    "cutoff_time"})
 _NUM_FIELDS = frozenset({"lead_seconds", "y_prob"})
 _CASE_TAG = "ForecastCase"
 
@@ -80,6 +84,9 @@ class ForecastCase:
     y_prob: float
     y_state: str                     # TargetState value
     vintage_digest: str
+    opportunity_id: str = ""         # verified-opportunity lineage
+    outcome_source_id: str = ""      # target/outcome source lineage
+    cutoff_time: str = ""            # feature-availability cutoff
     features: Mapping[str, float] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
@@ -581,6 +588,39 @@ def _case_vintage_problems(c: ForecastCase,
     return problems
 
 
+def _case_lineage_problems(c: ForecastCase) -> list[str]:
+    """Per-case lineage checks: every scored case must carry the
+    verified observation opportunity its target window was verified
+    under, the outcome-source lineage id, and an explicit-UTC
+    ``cutoff_time`` no later than ``issue_time`` — every feature is
+    required to be available at issue time."""
+    tag = f"case {c.case_id!r}"
+    problems: list[str] = []
+    if not isinstance(c.opportunity_id, str) or \
+            not c.opportunity_id.strip():
+        problems.append(
+            f"{tag}: opportunity_id is required — the case must "
+            "name the verified observation opportunity its target "
+            "window was verified under")
+    if not isinstance(c.outcome_source_id, str) or \
+            not c.outcome_source_id.strip():
+        problems.append(
+            f"{tag}: outcome_source_id is required — the case must "
+            "name the source lineage of its target state")
+    cutoff = parse_strict_utc(c.cutoff_time)
+    if cutoff is None:
+        problems.append(
+            f"{tag}: cutoff_time {c.cutoff_time!r} is not an "
+            "explicit-UTC timestamp")
+    else:
+        issue = parse_strict_utc(c.issue_time)
+        if issue is not None and cutoff > issue + _TIME_EPS:
+            problems.append(
+                f"{tag}: cutoff_time postdates issue_time — "
+                "features must be available at issue time")
+    return problems
+
+
 def evaluate(cases: Sequence[ForecastCase], *,
              holdout: HoldoutPlanV0,
              baseline_probs: Mapping[str, Sequence[float]],
@@ -595,14 +635,19 @@ def evaluate(cases: Sequence[ForecastCase], *,
     evaluation regions, unadmitted vintage digests, vintage-metadata
     timing violations (issue mismatch, post-issue or inverted windows,
     lead/horizon inconsistency), inadmissible horizons, invalid target
-    states, missing mandatory baselines, misaligned or out-of-range
-    probability vectors, duplicate case ids, and a missing,
-    non-positive, or undersized ``n_opportunities`` (the verified
-    observation-opportunity count must cover every case).
+    states, empty per-case lineage identifiers (``opportunity_id``,
+    ``outcome_source_id``, ``cutoff_time``) or a ``cutoff_time`` that
+    postdates ``issue_time``, missing mandatory baselines, misaligned
+    or out-of-range probability vectors, duplicate case ids, and a
+    missing, non-positive, or undersized ``n_opportunities`` (the
+    verified observation-opportunity count must cover every case).
 
     Censored cases are excluded from every metric numerator and
     counted in ``n_censored``; the false-alarm rate divides by the
     explicit ``n_opportunities`` — never by the unambiguous count.
+    Cases are canonically ordered by ``(case_id, opportunity_id)``
+    before scoring and hashing, so reordering identical inputs yields
+    an identical report and digest.
     """
     cases = list(cases)
     problems: list[str] = []
@@ -629,6 +674,7 @@ def evaluate(cases: Sequence[ForecastCase], *,
         if c.case_id in seen_ids:
             problems.append(f"case {c.case_id!r}: duplicate case_id")
         seen_ids.add(c.case_id)
+        problems.extend(_case_lineage_problems(c))
         problems.extend(_case_vintage_problems(c, admitted_vintages))
 
     provided = {str(k) for k in baseline_probs}
@@ -653,14 +699,26 @@ def evaluate(cases: Sequence[ForecastCase], *,
         raise ValueError("forecast evaluation rejected: "
                          + "; ".join(problems))
 
+    # Canonical case order: everything downstream — metric bundles,
+    # slices, aligned baseline vectors, and the experiment digest —
+    # is computed over the stable (case_id, opportunity_id) ordering,
+    # so a byte-identical reordering of the inputs yields identical
+    # metrics and an identical digest.
+    order = sorted(range(len(cases)),
+                   key=lambda i: (cases[i].case_id,
+                                  cases[i].opportunity_id))
+    cases = [cases[i] for i in order]
+    aligned_baselines = {
+        str(name): [list(probs)[i] for i in order]
+        for name, probs in baseline_probs.items()}
+
     sub = _unambiguous(cases)
     pos_idx = [i for i, c in enumerate(cases) if c.y_state != _CENSORED]
     y = _y(sub)
 
     scorers: dict[str, Sequence[float]] = {
         "model": [c.y_prob for c in cases]}
-    for name, probs in baseline_probs.items():
-        scorers[str(name)] = list(probs)
+    scorers.update(aligned_baselines)
 
     metric_table: dict[str, Any] = {}
     for name, probs in scorers.items():
@@ -687,7 +745,7 @@ def evaluate(cases: Sequence[ForecastCase], *,
     power = power_report(cases)
     degradation = missing_feed_degradation(cases, ())
     uncertainty = uncertainty_report(
-        cases, baseline_probs, n_boot=n_boot, seed=seed)
+        cases, aligned_baselines, n_boot=n_boot, seed=seed)
     status = ("FORECAST_EXPERIMENT_ONLY" if power["powered"]
               else "UNDERPOWERED_DESCRIPTIVE_ONLY")
 

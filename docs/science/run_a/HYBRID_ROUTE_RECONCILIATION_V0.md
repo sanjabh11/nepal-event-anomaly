@@ -161,6 +161,11 @@ noise) difference for tp, alongside a verified `sf_daily` feature
 defect. Pending the owner decision in §2, **Run A is retained as
 method-only implementation-confirmation** — it is not
 P5-C-authorized scientific evidence and may not be cited as such.
+The §4 comparison is bounded-overlap evidence only — five of 78
+months — and establishes no route equivalence for the untested
+months. Nothing in the Run A result (selected K, JS distances,
+occupancy values) transfers to the multi-region regime protocol
+(`run_b/REGIME_PROTOCOL_V0.md`).
 Equivalence, if ever claimed, would require either owner acceptance
 of the quantified bounds above or a controlled rerun under the
 literal request plan.

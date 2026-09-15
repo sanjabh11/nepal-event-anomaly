@@ -6,6 +6,15 @@
 > authorizes nothing. `human_approved` remains unset until an
 > authenticated human completes the checklist below.
 
+> **Status overlay annotation (2026-09-15):** the `P3_PENDING` value
+> below is the blank-template state. For the D1/D2 digest pair bound
+> here, it is superseded-by-design-attestation: an executed
+> owner-directed `design_review_only` attestation was recorded on
+> 2026-09-14 in `P3_ATTESTATION_RECORD_V0.md` (`human_approved=true`,
+> `approved_at=2026-09-14`). The row is preserved unmodified so this
+> file remains a faithful blank form for any future attestation round;
+> nothing in this template is itself an approval.
+
 ## Binding values (derived from current D1/D2 bytes)
 
 | Field | Value |
@@ -28,6 +37,13 @@
 
 These hashes are current byte-derived values that a future envelope
 must carry. No approval envelope exists yet; none is claimed here.
+
+*Annotated 2026-09-15:* the `P3_PENDING` row records this draft's
+template state. For the D1/D2 pair it is superseded-by-design-attestation
+per `P3_ATTESTATION_RECORD_V0.md` (owner-directed, `design_review_only`,
+attested 2026-09-14). The D1/D2 documents' own frozen status text still
+reads "pending human approval"; that text is likewise superseded for the
+design-review scope by the same record — the frozen bytes are unchanged.
 
 ## Attestation string (must match `EXPECTED_ATTESTATION` exactly)
 

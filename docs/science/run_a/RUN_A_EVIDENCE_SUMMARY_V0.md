@@ -128,11 +128,24 @@ not repeated by this lane — the bundle's own digest map is bound above).
   acceptable for method-only use and flagged for an exclusion
   sensitivity check under any future evidentiary use.
 - The retrieval route deviated from the literal P5-C request shape
-  (78 monthly area-box requests). Disposition options are recorded in
+  (78 monthly area-box requests): the executed route was a hybrid
+  ARCO (`reanalysis-era5-land-timeseries`) / EarthDataHub DestinE
+  mirror / CDS-MARS (`reanalysis-era5-land`) assembly. Disposition
+  options are recorded in
   `HYBRID_ROUTE_RECONCILIATION_V0.md` §2; pending owner ratification,
   Run A is retained as **method-only implementation-confirmation** —
   it is not P5-C-authorized scientific evidence and may not be cited
   as such.
+- Route-equivalence evidence is bounded-overlap-only: numeric
+  comparison against pure-route payloads exists for 5 of 78 months
+  (`HYBRID_ROUTE_RECONCILIATION_V0.md` §4); the other 73 months are
+  UNVERIFIED and no route-equivalence claim stands.
+- No transfer to multi-region science: the fitted K (modal K=5), JS
+  distances, occupancy values, and the pre-event overlay are
+  single-cell descriptive outputs of this run only. None of them
+  transfer into the multi-region regime protocol
+  (`run_b/REGIME_PROTOCOL_V0.md`), which refits every artifact from
+  its own bound inputs and forbids inherited K/performance transfer.
 
 ## 7. What remains UNVERIFIED by this record
 

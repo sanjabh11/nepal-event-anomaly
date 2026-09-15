@@ -39,7 +39,8 @@ from nepal.research_v0.policy import (TargetState, parse_strict_utc,
                                       require_finite_seconds)
 from nepal.research_v0.records import (POSITIVE_ADMISSIBLE_ADJUDICATION,
                                       ControlWindowV0, EventLabelV0,
-                                      HoldoutPlanV0)
+                                      HoldoutPlanV0,
+                                      ObservationOpportunityV0)
 
 # ---------------------------------------------------------------------
 # Constants
@@ -1057,7 +1058,8 @@ def _holdout_binding_problems(
         controls: Sequence[ControlWindowV0],
         unit_basins: Mapping[str, str],
         holdout: Any,
-        region_basins: Any) -> list[str]:
+        region_basins: Any,
+        opportunities: Any) -> list[str]:
     """Scope which labels and windows may enter the association
     universe at all.
 
@@ -1068,8 +1070,16 @@ def _holdout_binding_problems(
     ``region_basins``.  Controls must sit on mapped units inside those
     regions; every unit referenced by controls or by the frozen
     assignments must appear in ``unit_basins``; and every evaluated
-    unit must carry at least one frozen assignment row.  The binding
-    admits or rejects inputs — it never alters the artifact.
+    unit must carry at least one frozen assignment row.
+
+    Every control is additionally verified against the opportunity
+    registry, which is the source of truth for observability: the
+    linked ``opportunity_id`` must exist in ``opportunities`` as a
+    problem-free ``ObservationOpportunityV0`` whose unit, window, and
+    state exactly equal what the control asserts, and a NEGATIVE
+    control must link an OBSERVED_FULL opportunity — a control window
+    is never taken on faith.  The binding admits or rejects inputs —
+    it never alters the artifact.
     """
     problems: list[str] = []
     if type(holdout) is not HoldoutPlanV0:
@@ -1124,6 +1134,10 @@ def _holdout_binding_problems(
         if basin not in eval_basins:
             problems.append(f"event {eid!r} basin {basin!r} is "
                             "outside the locked evaluation regions")
+    if not isinstance(opportunities, Mapping):
+        problems.append("opportunities must be a mapping of "
+                        "opportunity_id -> ObservationOpportunityV0")
+        opportunities = {}
     for c in controls:
         unit = getattr(c, "unit_id", None)
         cid = getattr(c, "control_id", None)
@@ -1135,6 +1149,38 @@ def _holdout_binding_problems(
             problems.append(f"control {cid!r} sits in basin "
                             f"{unit_basins[unit]!r} outside the "
                             "locked evaluation regions")
+        oid = getattr(c, "opportunity_id", None)
+        opp = opportunities.get(oid)
+        if opp is None:
+            problems.append(f"control {cid!r} links opportunity "
+                            f"{oid!r} which is absent from the "
+                            "opportunity registry")
+            continue
+        if type(opp) is not ObservationOpportunityV0:
+            problems.append(f"registry entry {oid!r} is not an "
+                            "ObservationOpportunityV0 record")
+            continue
+        problems.extend(f"opportunity {oid!r}: {p}"
+                        for p in opp.problems())
+        if opp.unit_id != unit:
+            problems.append(f"control {cid!r} unit {unit!r} does not "
+                            f"match opportunity {oid!r} unit "
+                            f"{opp.unit_id!r}")
+        if (opp.window_start, opp.window_end) != (
+                getattr(c, "window_start", None),
+                getattr(c, "window_end", None)):
+            problems.append(f"control {cid!r} window does not equal "
+                            f"the window of opportunity {oid!r}")
+        if opp.state != getattr(c, "opportunity_state", None):
+            problems.append(f"control {cid!r} opportunity_state "
+                            f"{getattr(c, 'opportunity_state', None)!r} "
+                            f"does not match opportunity {oid!r} "
+                            f"state {opp.state!r}")
+        if getattr(c, "state", None) == TargetState.NEGATIVE.value and \
+                opp.state != "OBSERVED_FULL":
+            problems.append(f"NEGATIVE control {cid!r} must link an "
+                            "OBSERVED_FULL opportunity — registry "
+                            f"state is {opp.state!r}")
     artifact_units = {str(r[0]) for r in artifact.assignments
                       if isinstance(r, (tuple, list)) and len(r) == 3}
     for unit in sorted(artifact_units - set(unit_basins)):
@@ -1159,19 +1205,23 @@ def run_association(
         unit_basins: Mapping[str, str],
         *, holdout: HoldoutPlanV0,
         region_basins: Mapping[str, Collection[str]],
+        opportunities: Mapping[str, ObservationOpportunityV0],
         n_boot: int = 200, seed: int = 0) -> AssociationReport:
     """Run the held-out event–regime association harness.
 
     The ``holdout``/``region_basins`` binding scopes which labels and
     windows are admitted (locked test groups, named evaluation
-    regions); any binding violation raises ``ValueError`` listing all
-    problems — fail-closed, no partial association universe.  Pure and
-    deterministic: identical inputs plus ``seed`` give a
+    regions), and ``opportunities`` is the observation-opportunity
+    registry every control's lineage is verified against — control
+    denominators derive only from windows whose registry linkage
+    checks out.  Any binding violation raises ``ValueError`` listing
+    all problems — fail-closed, no partial association universe.
+    Pure and deterministic: identical inputs plus ``seed`` give a
     byte-identical ``canonical_json(report.to_dict())``.
     """
     binding = _holdout_binding_problems(
         artifact, events, controls, unit_basins, holdout,
-        region_basins)
+        region_basins, opportunities)
     if binding:
         raise ValueError("association holdout binding rejected: "
                          + "; ".join(binding))
@@ -1193,6 +1243,9 @@ def run_association(
         notes.append(f"{n_censored_events} event label(s) excluded as "
                      "censored or ambiguous — never counted as "
                      "negatives")
+    # Every NEGATIVE control below was verified at binding to link a
+    # problem-free OBSERVED_FULL registry opportunity — the registry,
+    # not the controls list, is the denominator's source of truth.
     negative_controls = [
         c for c in controls
         if type(c) is ControlWindowV0 and not c.problems()
