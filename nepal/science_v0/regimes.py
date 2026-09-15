@@ -140,6 +140,17 @@ def season_matched_null(df: pd.DataFrame, feature_cols: list[str],
 
 # -------------------------------------------------------------- runner
 
+_ISO_DATE_RE = None  # compiled lazily
+
+
+def _iso_date_ok(s: str) -> bool:
+    import re
+    global _ISO_DATE_RE
+    if _ISO_DATE_RE is None:
+        _ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+    return bool(_ISO_DATE_RE.match(str(s)))
+
+
 @dataclass(frozen=True)
 class RegimeRunConfig:
     seeds: tuple = (42, 7, 2024)
@@ -148,10 +159,10 @@ class RegimeRunConfig:
     season_col: str = "season"
     group_col: str = "basin_group"
     era_col: str | None = "era"
+    unit_col: str = "unit_id"
+    date_col: str = "date"
     label_blinding: bool = True
     fitted_on: str = "TRAIN_ONLY"
-    unit_col: str | None = None    # emit (unit,date,regime) assignments
-    date_col: str | None = None    # when both columns are present
 
 
 def run_regimes(df: pd.DataFrame, feature_cols: list[str],
@@ -181,6 +192,25 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
                           f"got {len(groups)} — a single-cell or "
                           f"single-basin fit may not emit a terminal "
                           f"status"}
+
+    # Row identity is explicit, never derived from the frame index:
+    # unit_id + canonical ISO date columns must exist, and each
+    # (unit_id, date) pair must be unique.
+    for col in (config.unit_col, config.date_col):
+        if col not in df.columns:
+            return {"status": "RUN_ERROR",
+                    "reason": f"required identity column {col!r} "
+                              "missing — identity is never inferred"}
+    bad_dates = ~df[config.date_col].astype(str).map(_iso_date_ok)
+    if bad_dates.any():
+        return {"status": "RUN_ERROR",
+                "reason": f"{int(bad_dates.sum())} rows have "
+                          "non-canonical ISO dates"}
+    dup = df.duplicated(subset=[config.unit_col, config.date_col])
+    if dup.any():
+        return {"status": "RUN_ERROR",
+                "reason": f"{int(dup.sum())} duplicate (unit_id, date) "
+                          "rows rejected"}
 
     # per-column missingness report (pre-filter)
     missingness = {c: float(df[c].isna().mean()) for c in feature_cols}
@@ -230,6 +260,18 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
     post = model.predict_proba(X_train).max(axis=1)
     occupancy = np.bincount(labels_train,
                             minlength=modal_k) / len(labels_train)
+
+    # --- deterministic assignment sidecar (unit_id, date, regime_id) --
+    # Every transformed row receives exactly one assignment; rows are
+    # canonically sorted by (unit_id, date) and the digest is bound
+    # into the artifact — the frozen artifact can never be emitted
+    # without it.
+    labels_all = model.predict(X_all)
+    assignments = sorted(
+        (str(u), str(d), int(r))
+        for u, d, r in zip(df[config.unit_col], df[config.date_col],
+                           labels_all))
+    assignment_digest = _digest(assignments)
 
     # --- seed stability: pairwise ARI on train assignments -----------
     seed_labels = {}
@@ -330,33 +372,19 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
     else:
         status = "CANDIDATE_ONLY"
 
-    # Per-unit-day assignments — the only downstream-consumable form
-    # (association harness binds (unit_id, date, regime_id) triples).
-    # Emitted for ALL rows (train + held-out), label-blind, BEFORE the
-    # artifact digest is bound so they are part of the frozen evidence.
-    assignments = None
-    if (config.unit_col and config.date_col
-            and config.unit_col in df.columns
-            and config.date_col in df.columns):
-        labels_all = model.predict(X_all)
-        dates = pd.to_datetime(df[config.date_col])
-        assignments = tuple(sorted(
-            (str(u), d.strftime("%Y-%m-%d"), f"regime_{int(l)}")
-            for u, d, l in zip(df[config.unit_col], dates, labels_all)))
-
     artifact = {
         "mode": "RETROSPECTIVE_REGIME",
         "data_class": "REANALYSIS",
         "fitted_on": "TRAIN_ONLY",
         "label_blinding": True,
-        "assignments_emitted": assignments is not None,
-        "assignments": list(assignments) if assignments else [],
         "k": modal_k,
         "seeds": sorted(set(int(s) for s in config.seeds)),
         "per_seed_best_k": {str(s): int(k)
                             for s, k in per_seed_best.items()},
         "modal_k_frequency": k_freq,
         "occupancy": occupancy.tolist(),
+        "assignments": assignments,
+        "assignment_digest": assignment_digest,
         "mean_max_posterior": float(post.mean()),
         "ambiguous_fraction": float((post < 0.7).mean()),
         "missingness": missingness,
@@ -386,6 +414,9 @@ def freeze_regime_artifact(artifact: dict) -> dict:
     only after this call returns."""
     if artifact.get("status") == "RUN_ERROR":
         raise ValueError("cannot freeze a RUN_ERROR artifact")
+    if not artifact.get("assignments"):
+        raise ValueError("cannot freeze an artifact without the "
+                         "assignment sidecar")
     frozen = dict(artifact)
     frozen["frozen"] = True
     frozen["freeze_digest"] = _digest(
