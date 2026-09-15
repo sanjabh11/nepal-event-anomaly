@@ -1,6 +1,6 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "13195d462a1d5d034b8a989e28dbd6e2c0ec4efc",
+  "content_head": "e940cbfc2bc54a9de1eeb56d927bce4d3d256b1f",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
@@ -154,8 +154,8 @@
     },
     {
       "relpath": "tests/test_research_v0_adversarial.py",
-      "sha256": "f218e3f4d5bd1f2b995ea4077de95f8bc7437fd07a476ec5415e5275f3bcd08b",
-      "size_bytes": 40754
+      "sha256": "d93ebac51aabd27277a97fb1c1f880c858c89dc4b2d3a92556f68b818747056c",
+      "size_bytes": 40930
     },
     {
       "relpath": "tests/test_research_v0_gates.py",
