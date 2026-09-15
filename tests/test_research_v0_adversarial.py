@@ -842,7 +842,10 @@ class TestNarrativeLint:
         # workflows, manifests.  Package sources are excluded — the
         # scanner's own pattern literals would self-trip.
         repo = Path(__file__).resolve().parents[1]
-        targets = list((repo / "docs" / "science").glob("*"))
+        # rglob + is_file: run_b/ and run_c/ are subdirectories of
+        # governed docs; glob("*") would try to read them as text.
+        targets = [p for p in (repo / "docs" / "science").rglob("*")
+                   if p.is_file()]
         targets += [repo / "README.md"]
         targets += list(
             (repo / ".github" / "workflows").glob("*.yml"))
