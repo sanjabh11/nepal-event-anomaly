@@ -793,9 +793,14 @@ def uncertainty_report(cases: Sequence[ForecastCase],
     point_denom = n_opportunities \
         if isinstance(n_opportunities, int) \
         and not isinstance(n_opportunities, bool) else denom(cases)
-    clusters: dict[tuple[str, str], list[int]] = {}
+    # EVAL-02: the resampling unit is the case's dependence cluster —
+    # its atomic ``event_group_id`` when carried, else the
+    # ``(unit_id, season)`` cell — never a raw (region, season) pair,
+    # which could merge independent cascades into one resample unit
+    # or split one cascade across units.
+    clusters: dict[tuple, list[int]] = {}
     for i, c in enumerate(cases):
-        clusters.setdefault((c.region, c.season), []).append(i)
+        clusters.setdefault(_case_cluster_key(c), []).append(i)
     cluster_keys = sorted(clusters)
     rng = random.Random(int(seed))
     scorers: dict[str, Sequence[float]] = {
@@ -846,8 +851,8 @@ def uncertainty_report(cases: Sequence[ForecastCase],
             }
         out[name] = metric_ci
     return {
-        "method": "region_season_block_bootstrap",
-        "cluster_key": "region+season",
+        "method": "event_group_block_bootstrap",
+        "cluster_key": "event_group_id_else_unit+season",
         "n_boot": int(n_boot),
         "seed": int(seed),
         "n_clusters": len(cluster_keys),
@@ -1212,6 +1217,8 @@ def evaluate(  # noqa: C901
              scenarios: Collection[str] = DEFAULT_SCENARIOS,
              experiment: Any = None,
              baseline_evidence: Optional[Mapping[str, Any]]
+             = None,
+             degradation_scenarios: Optional[Sequence[Mapping]]
              = None) -> EvaluationReport:
     """Validate the contract and emit the full descriptive report.
 
@@ -1656,8 +1663,30 @@ def evaluate(  # noqa: C901
         power_design = decl.power_design
     power = power_report(cases, eligible=scored_ids,
                          power_design=power_design)
+    # EVAL-01: the degradation report must never be empty — when the
+    # caller does not declare concrete dropout specs, run the
+    # declared deterministic default grid: fractional dropouts plus
+    # per-region unit dropout, so every evaluation carries a real
+    # missing-feed surface.
+    if degradation_scenarios is None:
+        _reg_units: dict[str, list[str]] = {}
+        for c in cases:
+            _reg_units.setdefault(c.region, [])
+            if c.unit_id not in _reg_units[c.region]:
+                _reg_units[c.region].append(c.unit_id)
+        degradation_specs = [
+            {"name": "fraction_dropout_0.10", "drop_fraction": 0.10},
+            {"name": "fraction_dropout_0.25", "drop_fraction": 0.25},
+            {"name": "fraction_dropout_0.50", "drop_fraction": 0.50},
+        ] + [
+            {"name": f"region_dropout_{r}",
+             "drop_units": sorted(us)}
+            for r, us in sorted(_reg_units.items())]
+    else:
+        degradation_specs = list(degradation_scenarios)
     degradation = missing_feed_degradation(
-        cases, (), opportunities=registry, unit_basins=ub,
+        cases, degradation_specs, opportunities=registry,
+        unit_basins=ub,
         region_basins=region_basins, eligible=scored_ids,
         n_opportunities=n_opportunities, threshold=threshold)
     missing_feed = _missing_feed_report(
@@ -1670,7 +1699,22 @@ def evaluate(  # noqa: C901
         opportunities=registry, unit_basins=ub,
         region_basins=region_basins, eligible=scored_ids,
         n_opportunities=n_opportunities, threshold=threshold)
-    status = ("FORECAST_EXPERIMENT_ONLY" if power["powered"]
+    # EVAL-03: a forecast-experiment status requires a complete bound
+    # declaration — real vintage lineage, declared ablations, a bound
+    # feature artifact, and byte-bound baseline evidence.  A
+    # fixture-only call can never emit it, however high synthetic
+    # power is.
+    _baseline_bound = baseline_evidence is not None and all(
+        isinstance(v, Mapping)
+        and v.get("fit_provenance") == "bound"
+        for v in baseline_provenance.values())
+    _decl_complete = (
+        decl is not None
+        and not decl.problems()
+        and len(tuple(decl.vintage_lineage or ())) > 0
+        and _baseline_bound)
+    status = ("FORECAST_EXPERIMENT_ONLY"
+              if power["powered"] and _decl_complete
               else "UNDERPOWERED_DESCRIPTIVE_ONLY")
 
     if decl is None:

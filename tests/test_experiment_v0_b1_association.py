@@ -16,8 +16,10 @@ from pathlib import Path
 
 import pytest
 
+from nepal.experiment_v0 import association as _assoc
 from nepal.experiment_v0.association import (
-    MIN_EVENT_GROUPS, PLACEMENT_MODES, AssociationReport,
+    ALLOWED_LOOKBACK_DAYS, MIN_EVENT_GROUPS, MIN_SPATIAL_SHIFTS,
+    PLACEMENT_MODES, SPATIAL_SHIFT_OFFSETS, AssociationReport,
     RegimeAssignmentArtifact, association_report_text,
     event_group_bootstrap, run_association)
 from nepal.research_v0._hashing import canonical_json, sha256_canonical
@@ -240,6 +242,9 @@ def _rows_to_artifact(rows: dict[tuple[str, str], str],
                       **kw) -> RegimeAssignmentArtifact:
     assignments = tuple(sorted(
         (u, d, r) for (u, d), r in rows.items()))
+    kw.setdefault(
+        "producer_payload_digest",
+        hashlib.sha256(b"synthetic-direct-fixture").hexdigest())
     return RegimeAssignmentArtifact(
         artifact_id=artifact_id,
         regime_digest=hashlib.sha256(
@@ -1363,7 +1368,127 @@ def test_precision_exclusion_recorded_for_short_lookback(planted):
     holdout = _h if _h is not None else make_holdout(events)
     rep = run_assoc(artifact, events, controls,
                     holdout=holdout, region_basins=REGION_BASINS,
-                    lookback_horizons=("0d", "1d"))
+                    lookback_horizons=("0d", "2d"))
     excl = rep.multiplicity.get("precision_exclusions", {})
     assert excl
     assert all(isinstance(v, int) for v in excl.values())
+    # the 2d cell excludes events whose declared interval is
+    # coarser than the horizon (3-day-wide fixture members)
+    assert excl["2d|midpoint"] > 0
+
+# ---------------------------------------------------------------------
+# Round-5: spatial-null resolution, horizon allowlist, digest
+# revalidation
+# ---------------------------------------------------------------------
+
+def test_spatial_shift_null_resolution_reaches_alpha(planted):
+    """ASSOC-01 (R5): the default spatial-shift null carries >=20
+    preregistered nonzero offsets — the p-grid resolves below the
+    family alpha and a regime beating every shifted replicate
+    achieves p < 0.05."""
+    artifact, events, controls, holdout = planted
+    rep = run_assoc(artifact, events, controls,
+                    holdout=holdout, region_basins=REGION_BASINS)
+    shift = rep.negative_controls["spatial_shift"]
+    assert len(SPATIAL_SHIFT_OFFSETS) >= MIN_SPATIAL_SHIFTS >= 20
+    assert all(int(o) != 0 for o in SPATIAL_SHIFT_OFFSETS)
+    assert len(set(SPATIAL_SHIFT_OFFSETS)) == \
+        len(SPATIAL_SHIFT_OFFSETS)
+    assert shift["n_shifts"] == len(shift["offsets"]) \
+        == len(SPATIAL_SHIFT_OFFSETS)
+    assert 1.0 / shift["n_shifts"] < 0.05
+    # the planted regime beats every shifted replicate -> p == 0,
+    # reachable only because the grid resolves below alpha
+    p = shift["per_regime"][PLANTED_REGIME]["p"]
+    assert p is not None and p < 0.05
+    # shifted_ratios keys stay canonical-JSON strings, never ints
+    for rid, r in shift["per_regime"].items():
+        assert all(type(k) is str
+                   for k in r.get("shifted_ratios", {})), rid
+
+
+def test_spatial_shift_null_short_offsets_rejected(planted):
+    """A caller-declared offset family under MIN_SPATIAL_SHIFTS
+    nonzero offsets fails closed — a low-resolution null can never
+    support a verdict."""
+    artifact, events, controls, _h = planted
+    groups = _assoc._group_events(events)
+    basin_units = _assoc._basin_units(UNIT_BASINS)
+    for bad in ((), (-90, -30, 30, 90), tuple(range(-9, 10)),
+                tuple(SPATIAL_SHIFT_OFFSETS[:19])):
+        with pytest.raises(ValueError, match="nonzero day offsets"):
+            _assoc._spatial_shift_null(
+                artifact, groups, controls, basin_units, UNIT_BASINS,
+                mode="midpoint", lookback_days=0, offsets=bad)
+    # exactly at the floor admits; the default family runs clean
+    rec = _assoc._spatial_shift_null(
+        artifact, groups, controls, basin_units, UNIT_BASINS,
+        mode="midpoint", lookback_days=0)
+    assert rec["n_shifts"] == len(SPATIAL_SHIFT_OFFSETS)
+    assert len(rec["digest"]) == 64
+
+
+def test_lookback_horizon_outside_allowlist_rejected(planted):
+    """ASSOC-02 (R5): a syntactically valid horizon whose day count
+    sits outside the declared policy allowlist rejects."""
+    artifact, events, controls, holdout = planted
+    kw = dict(holdout=holdout, region_basins=REGION_BASINS)
+    for bad in (("1d",), ("4d",), ("45d",), ("0d", "99d")):
+        with pytest.raises(ValueError, match="lookback"):
+            run_assoc(artifact, events, controls, UNIT_BASINS,
+                      lookback_horizons=bad, **kw)
+    # the declared allowlist itself admits — every named member
+    rep = run_assoc(artifact, events, controls, UNIT_BASINS,
+                    lookback_horizons=tuple(
+                        f"{d}d" for d in ALLOWED_LOOKBACK_DAYS),
+                    **kw)
+    assert rep.lookback_horizons == tuple(
+        f"{d}d" for d in ALLOWED_LOOKBACK_DAYS)
+
+
+def test_negative_control_digest_tamper_flagged(planted):
+    """ASSOC-03 (R5): problems() recomputes every negative-control
+    digest over the exact creation payload — a record altered after
+    signing can never stand behind a supported verdict."""
+    artifact, events, controls, holdout = planted
+    rep = run_assoc(artifact, events, controls,
+                    holdout=holdout, region_basins=REGION_BASINS)
+    assert rep.status == "REGIME_ASSOCIATION_SUPPORTED"
+    assert rep.problems() == []
+    # tamper the spatial-shift payload without re-signing
+    neg = dict(rep.negative_controls)
+    bad_shift = dict(neg["spatial_shift"])
+    bad_shift["per_regime"] = dict(bad_shift["per_regime"])
+    bad_shift["per_regime"][PLANTED_REGIME] = {
+        "observed_ratio": 99.0, "p": 0.0, "shifted_ratios": {}}
+    neg["spatial_shift"] = bad_shift
+    probs = dataclasses.replace(
+        rep, negative_controls=neg).problems()
+    assert any("spatial_shift" in p and "digest" in p
+               for p in probs), probs
+    # tamper the label-shuffle digest-bound payload
+    neg = dict(rep.negative_controls)
+    bad_ls = dict(neg["label_shuffle"])
+    bad_ls["per_regime"] = {PLANTED_REGIME: {"p": 0.0}}
+    neg["label_shuffle"] = bad_ls
+    probs = dataclasses.replace(
+        rep, negative_controls=neg).problems()
+    assert any("label_shuffle" in p and "digest" in p
+               for p in probs), probs
+    # a replaced-but-well-formed digest string still mismatches
+    neg = dict(rep.negative_controls)
+    bad_ls = dict(neg["label_shuffle"])
+    bad_ls["digest"] = "0" * 64
+    neg["label_shuffle"] = bad_ls
+    probs = dataclasses.replace(
+        rep, negative_controls=neg).problems()
+    assert any("label_shuffle" in p and "digest" in p
+               for p in probs), probs
+    # a malformed digest shape is flagged outright
+    neg = dict(rep.negative_controls)
+    bad_shift = dict(neg["spatial_shift"])
+    bad_shift["digest"] = "not-a-digest"
+    neg["spatial_shift"] = bad_shift
+    probs = dataclasses.replace(
+        rep, negative_controls=neg).problems()
+    assert any("malformed digest" in p for p in probs), probs

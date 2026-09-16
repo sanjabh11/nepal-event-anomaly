@@ -33,7 +33,8 @@ from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
 
 from nepal.research_v0._hashing import sha256_canonical
-from nepal.research_v0.gates import scan_claims_text
+from nepal.research_v0.gates import (REQUIRED_REGIME_GATE_NAMES,
+                                   scan_claims_text)
 from nepal.research_v0.records import (ControlWindowV0, EventLabelV0,
                                      ForecastVintageV0, HoldoutPlanV0,
                                      ObservationOpportunityV0,
@@ -809,13 +810,12 @@ def _producer_seed_findings(payload: Mapping[str, Any]
     return findings
 
 
-#: The declared producer gate universe — every terminal artifact must
-#: carry each of these in ``stability.required_gates``.
-_REQUIRED_GATE_NAMES = frozenset({
-    "seed_policy", "modal_k_unanimous", "seed_ari", "seed_coverage",
-    "loro", "temporal_bootstrap", "season_refits", "elevation",
-    "missingness", "effort", "era_drift", "shuffled_null",
-    "season_matched_null"})
+#: The declared producer gate universe lives in
+#: ``nepal.research_v0.gates.REQUIRED_REGIME_GATE_NAMES`` so the
+#: producer, freeze, adapter, replay, and this auditor enforce the
+#: same set — every terminal artifact must carry exactly these
+#: ``stability.required_gates`` keys.
+_REQUIRED_GATE_NAMES = REQUIRED_REGIME_GATE_NAMES
 
 
 def _producer_gate_findings(payload: Mapping[str, Any]
@@ -850,6 +850,13 @@ def _producer_gate_findings(payload: Mapping[str, Any]
                 f"required_gates omits declared gates "
                 f"{missing_gates} — an absent gate can never stand "
                 "in for evidence"))
+        extra_gates = sorted(set(gates) - _REQUIRED_GATE_NAMES)
+        if extra_gates:
+            findings.append(Finding(
+                "PRODUCER_SCHEMA_MALFORMED", path,
+                f"required_gates carries undeclared gates "
+                f"{extra_gates} — the gate map is exactly the "
+                "declared universe, nothing more"))
     if gates and any(not isinstance(v, bool) for v in gates.values()):
         findings.append(Finding(
             "PRODUCER_SCHEMA_MALFORMED", path,
@@ -979,7 +986,8 @@ def audit_producer_payload(payload: Any) -> list[Finding]:
                 "source_manifest must be a mapping"))
         elif not sm.get("fixture"):
             for key in ("source_id", "source_digests", "units",
-                        "feature_allowlist", "lineage"):
+                        "feature_allowlist", "lineage",
+                        "evidence_root"):
                 if not sm.get(key):
                     findings.append(Finding(
                         "PRODUCER_PROVENANCE_MISSING",

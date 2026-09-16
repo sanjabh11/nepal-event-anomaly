@@ -89,9 +89,12 @@ No hazard vertical is pre-selected; the current pilot outcome is
 Run status:
 
 - **Run A** — completed bounded diagnostic (single cell, hybrid
-  route): `docs/science/run_a/` holds the evidence summary, route
-  reconciliation, and scope overlay. Result status
+  route): an authorized single-cell descriptive GMM implementation
+  confirmation, method-only. `docs/science/run_a/` holds the evidence
+  summary, route reconciliation, and scope overlay. Result status
   `EXPLORATORY_DESCRIPTIVE_SINGLE_CELL`; descriptive reanalysis only.
+  Multi-region regime fitting remains gated under Run B and has not
+  run on real data.
 - **Runs B and C** — `SPECIFICATION_COMPLETE` with real data pending:
   `docs/science/run_b/` and `docs/science/run_c/` contain protocol
   documents and synthetic fixtures only — no intake, fitting, or
@@ -99,13 +102,19 @@ Run status:
 
 Test-suite honesty: the full suite under the pinned `.venv` recorded
 1282 passed / 5 skipped / 0 failed at the time of
-`P0_BASELINE_LEDGER.md` (historical snapshot). Later snapshots: 1306
-at the round-2 reconciliation head, 1641 after the first swarm
-integration. Current verification (swarm-C + post-audit residual fixes,
-HEAD `b1aa8e6`-series): **1828 passed / 5 skipped / 0 failed**. The 5 skips
-are `rasterio`-dependent optional-dependency gates in frozen-package
-tests — disclosed, not waived — and the suite emits warnings that are
-not treated as failures.
+`P0_BASELINE_LEDGER.md` (historical snapshot). Later dated snapshots:
+1306 at the round-2 reconciliation head, 1641 after the first swarm
+integration, 1828 at the post-audit residual-repair head. Last
+fully-verified baseline (manifest commit `442d966`; its
+`content_head=4f7f30b` is the ancestor commit whose tree the manifest
+hashes — the manifest commit itself follows the content commit; 69
+manifest files): **1853 passed / 5 skipped / 0 failed / 57 warnings**,
+with 400 focused-lane tests green. Round-5 remediation is in
+progress — this census will be refreshed at the final manifest
+rebind; the figures above are the last verified baseline, not a
+projected final count. The 5 skips are `rasterio`-dependent
+optional-dependency gates in frozen-package tests — disclosed, not
+waived — and warnings are not treated as failures.
 
 ## Structure
 

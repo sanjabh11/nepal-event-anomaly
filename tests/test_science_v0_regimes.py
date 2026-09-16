@@ -32,6 +32,7 @@ def _cfg(**kw):
     kw.setdefault("effort_waiver_reason",
                   "synthetic frame carries no observation-effort "
                   "column — the axis is waived for the fixture")
+    kw.setdefault("bootstrap_block_len", 12)
     return RegimeRunConfig(train_groups=("grp0", "grp1", "grp2"),
                            heldout_groups=("grp3",), **kw)
 
@@ -171,6 +172,7 @@ class TestRunner:
         mask = (df["basin_group"] == "grp0").to_numpy()
         cfg = RegimeRunConfig(train_groups=("grp0",),
                               heldout_groups=("grp1",),
+                              bootstrap_block_len=12,
                               source_manifest={"fixture": True})
         art = run_regimes(df, FEATURES, mask, cfg)
         assert art["status"] == "RUN_ERROR"
@@ -180,6 +182,7 @@ class TestRunner:
         df = _fixture()
         art = run_regimes(df, FEATURES, _mask(df),
                           RegimeRunConfig(
+                              bootstrap_block_len=12,
                               source_manifest={"fixture": True}))
         assert art["status"] == "RUN_ERROR"
         assert "non-empty" in art["reason"]
@@ -189,6 +192,7 @@ class TestRunner:
         # held-out rows (grp2) are not in the declared heldout set
         bad_cfg = RegimeRunConfig(train_groups=("grp0", "grp1", "grp2"),
                                   heldout_groups=("grp9",),
+                                  bootstrap_block_len=12,
                                   source_manifest={"fixture": True})
         art = run_regimes(df, FEATURES, _mask(df), bad_cfg)
         assert art["status"] == "RUN_ERROR"
@@ -229,13 +233,14 @@ class TestRunner:
 
     def test_label_blinding_mandatory(self):
         df = _fixture()
-        bad = RegimeRunConfig(label_blinding=False)
+        bad = RegimeRunConfig(label_blinding=False,
+                              bootstrap_block_len=12)
         art = run_regimes(df, FEATURES, np.ones(len(df), bool), bad)
         assert art["status"] == "RUN_ERROR"
 
     def test_two_seeds_rejected(self):
         df = _fixture()
-        bad = RegimeRunConfig(seeds=(1, 2))
+        bad = RegimeRunConfig(seeds=(1, 2), bootstrap_block_len=12)
         art = run_regimes(df, FEATURES, np.ones(len(df), bool), bad)
         assert art["status"] == "RUN_ERROR"
 

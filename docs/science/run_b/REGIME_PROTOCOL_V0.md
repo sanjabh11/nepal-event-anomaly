@@ -15,11 +15,22 @@ bound inputs.
 Mode is `RETROSPECTIVE_REGIME` — disjoint from `FORECAST_REGIME`
 (D2 §10).
 
-The only terminal statuses this protocol may emit are
-`DESCRIPTIVE_REGIME_ONLY` and `UNSUPERVISED_STRUCTURE_NOT_STABLE`.
-Association testing is a downstream phase (Run C
-`ASSOCIATION_PROTOCOL_V0.md`) and begins only after regimes are
-frozen — labels never touch fitting, selection, or interpretation.
+The terminal statuses this protocol may emit are
+`DESCRIPTIVE_REGIME_ONLY` (every required gate closed — the only
+status that may freeze for downstream association),
+`UNSUPERVISED_STRUCTURE_NOT_STABLE` (a structural gate — seed
+coverage, modal-K unanimity, label-invariant ARI, or LORO —
+failed), and `CANDIDATE_ONLY` (structure reproduces but an evidence
+gate — bootstrap, season/elevation/missingness/effort/era axis, or a
+null family — failed; a demotion, never terminal-associable).
+`RUN_ERROR` is a preflight rejection, not a status: a malformed
+configuration or frame fails closed before any fit. Declared axis
+waivers (`*_waiver_reason`) and `NOT_APPLICABLE` dispositions are
+bound in the configuration digest and are non-promoting — a waived
+axis can never stand in for evidence. Association testing is a
+downstream phase (Run C `ASSOCIATION_PROTOCOL_V0.md`) and begins
+only after regimes are frozen — labels never touch fitting,
+selection, or interpretation.
 
 ## 1. Inputs
 

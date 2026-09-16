@@ -91,6 +91,27 @@ DEFAULT_LOOKBACK_HORIZONS = ("0d",)
 #: placement-mode cell).
 FAMILY_ALPHA = 0.05
 
+#: The declared look-back horizon allowlist in integer days — the
+#: only day counts a ``lookback_horizons`` string may name.  Bound
+#: to the event-time class horizon allowlist in
+#: ``research_v0.policy`` (48h / 72h / 7d / 14d / 30d -> 2, 3, 7,
+#: 14, 30 days) plus the ``"0d"`` identity horizon; any other
+#: declared day count rejects at the door.
+ALLOWED_LOOKBACK_DAYS = (0, 2, 3, 7, 14, 30)
+
+#: Preregistered deterministic nonzero day offsets for the
+#: geography-preserving spatial-shift null: every 15-day magnitude
+#: from 15 through 180 applied in both directions — 24 shifts, so
+#: the smallest nonzero per-regime p is 1/24 < FAMILY_ALPHA.
+SPATIAL_SHIFT_OFFSETS = tuple(
+    o for mag in range(15, 181, 15) for o in (-mag, mag))
+
+#: Minimum number of distinct nonzero day offsets a spatial-shift
+#: null may carry — a coarser null can never reach the family
+#: alpha, so it fails closed instead of producing a low-resolution
+#: p-value.
+MIN_SPATIAL_SHIFTS = 20
+
 #: Negative-control families that must execute and land in the report
 #: before ``REGIME_ASSOCIATION_SUPPORTED`` is reachable: a placebo
 #: window draw, a structurally-independent ("impossible") partition,
@@ -177,11 +198,26 @@ def _spatial_shift_null(
         basin_units: Mapping[str, Sequence[str]],
         unit_basins: Mapping[str, str], *,
         mode: str, lookback_days: int,
-        offsets: Sequence[int] = (-90, -30, 30, 90)) -> dict:
+        offsets: Sequence[int] = SPATIAL_SHIFT_OFFSETS) -> dict:
     """ASSOC-04 geography-preserving shift null: every event group's
     effective window is shifted by each declared day-offset while its
     basin geography is held fixed — the observed enrichment must beat
-    every shifted-date distribution, not merely be nonzero."""
+    every shifted-date distribution, not merely be nonzero.
+
+    The offset family is preregistered (``SPATIAL_SHIFT_OFFSETS``).
+    A caller-declared family must still carry at least
+    ``MIN_SPATIAL_SHIFTS`` distinct nonzero day offsets — a zero
+    offset is not a shift and is dropped before the floor is
+    counted, and a low-resolution null fails closed because its
+    p-grid can never reach the family alpha."""
+    resolved = tuple(sorted({int(o) for o in offsets if int(o) != 0}))
+    if len(resolved) < MIN_SPATIAL_SHIFTS:
+        raise ValueError(
+            f"spatial_shift null requires at least "
+            f"{MIN_SPATIAL_SHIFTS} distinct nonzero day offsets — "
+            f"got {len(resolved)} from {tuple(offsets)!r}; a "
+            "low-resolution null can never support a verdict")
+    offsets = resolved
     obs_table = _build_table(artifact, groups, controls,
                              basin_units, mode, lookback_days)
     observed = _point_ratios(obs_table)
@@ -225,8 +261,11 @@ def _spatial_shift_null(
                                for off in offsets}}
     rec = {"name": "spatial_shift",
            "strata": "basin_fixed_date_shift",
-           "offsets": sorted(int(o) for o in offsets),
+           "offsets": list(offsets),
+           "n_shifts": len(offsets),
            "per_regime": per_regime}
+    # The digest binds every key present at this point — it never
+    # covers the "digest" key attached afterward.
     rec["digest"] = sha256_canonical(rec)
     return rec
 
@@ -345,6 +384,11 @@ class RegimeAssignmentArtifact:
     artifact_id: str
     regime_digest: str        # 64-hex sha256
     assignments: tuple[tuple[str, str, str], ...]
+    # PROV-04: 64-hex binding to the frozen producer payload this
+    # artifact was adapted from (``freeze_digest``).  The adapter
+    # stamps it; a direct construction must declare its binding —
+    # there is no anonymous path into association.
+    producer_payload_digest: str = ""
     fitted_on: str = "TRAIN_ONLY"
     label_blinding: bool = True
     seeds: tuple[int, ...] = ()
@@ -399,6 +443,14 @@ class RegimeAssignmentArtifact:
                                     f"{unit_id!r} on {day!r} — one "
                                     "regime per unit-day")
                 seen.add(key)
+        if not isinstance(self.producer_payload_digest, str) or \
+                not _SHA256_RE.match(self.producer_payload_digest):
+            problems.append(
+                "producer_payload_digest must be a 64-hex binding "
+                "to the frozen producer payload (freeze_digest) — "
+                "construct via "
+                "adapters.regime_assignment_from_artifact; a bare "
+                "hand-built artifact cannot bind to association")
         if self.fitted_on != "TRAIN_ONLY":
             problems.append("assignments must be fitted on training "
                             "groups only")
@@ -437,6 +489,7 @@ class RegimeAssignmentArtifact:
             # its digest — is independent of input row order.
             "assignments": sorted(
                 [list(r) for r in self.assignments]),
+            "producer_payload_digest": self.producer_payload_digest,
             "fitted_on": self.fitted_on,
             "label_blinding": self.label_blinding,
             "seeds": list(self.seeds),
@@ -457,6 +510,8 @@ class RegimeAssignmentArtifact:
             artifact_id=d["artifact_id"],
             regime_digest=d["regime_digest"],
             assignments=tuple(tuple(row) for row in d["assignments"]),
+            producer_payload_digest=d.get(
+                "producer_payload_digest", ""),
             fitted_on=d.get("fitted_on", "TRAIN_ONLY"),
             label_blinding=d.get("label_blinding", True),
             seeds=tuple(d.get("seeds", ())),
@@ -471,7 +526,8 @@ def _strict_artifact_payload_problems(d: Any) -> list[str]:
     seeds, ``str`` only for text fields, real sequences for tuple
     fields), and assignment dates calendar-valid."""
     fields = ("artifact_id", "regime_digest", "assignments",
-              "fitted_on", "label_blinding", "seeds", "mode")
+              "producer_payload_digest", "fitted_on",
+              "label_blinding", "seeds", "mode")
     problems: list[str] = []
     if not isinstance(d, Mapping):
         return ["payload must be a JSON-object mapping"]
@@ -485,7 +541,8 @@ def _strict_artifact_payload_problems(d: Any) -> list[str]:
     for name in ("artifact_id", "regime_digest", "assignments"):
         if name not in d:
             problems.append(f"missing required field {name!r}")
-    for name in ("artifact_id", "regime_digest", "fitted_on", "mode"):
+    for name in ("artifact_id", "regime_digest",
+                 "producer_payload_digest", "fitted_on", "mode"):
         if name in d and type(d[name]) is not str:
             problems.append(f"field {name!r} must be a string")
     if "label_blinding" in d and type(d["label_blinding"]) is not bool:
@@ -1235,7 +1292,11 @@ def _label_shuffle_null(
     # BEAT the null, so the driver reads per_regime p-values directly
     flat = all(v["p"] is None or v["p"] > FAMILY_ALPHA
                for v in per_regime.values())
+    # ``seed`` is recorded so the digest payload below can be
+    # re-derived verbatim by report revalidation — the digest binds
+    # exactly {"null", "seed", "n_replicates", "per_regime"}.
     return {"kind": "label_shuffle", "n_replicates": n_reps,
+            "seed": seed,
             "per_regime": per_regime, "flat": flat,
             "digest": sha256_canonical(
                 {"null": "label_shuffle", "seed": seed,
@@ -1432,6 +1493,47 @@ class AssociationReport:
                 problems.append("a supported verdict requires at "
                                 "least one regime Holm-significant "
                                 "in every declared family cell")
+            # ASSOC-03: negative-control digest revalidation — every
+            # null record carrying a "digest" is re-hashed over the
+            # exact payload bound at creation and compared.  A
+            # record altered after signing can never stand behind a
+            # supported verdict.
+            for nc_name, entry in (
+                    self.negative_controls or {}).items():
+                if not isinstance(entry, Mapping) \
+                        or "digest" not in entry:
+                    continue
+                digest = entry.get("digest")
+                if not isinstance(digest, str) \
+                        or not _SHA256_RE.match(digest):
+                    problems.append(f"negative control {nc_name!r} "
+                                    "carries a malformed digest")
+                    continue
+                if entry.get("kind") == "label_shuffle":
+                    # Created as sha256_canonical over exactly this
+                    # key subset — never the whole record.
+                    payload = {
+                        "null": "label_shuffle",
+                        "seed": entry.get("seed"),
+                        "n_replicates": entry.get("n_replicates"),
+                        "per_regime": entry.get("per_regime")}
+                else:
+                    # Created as sha256_canonical(rec) before the
+                    # "digest" key was attached — the digest never
+                    # covers itself.
+                    payload = {k: v for k, v in entry.items()
+                               if k != "digest"}
+                try:
+                    recomputed = sha256_canonical(payload)
+                except (TypeError, ValueError):
+                    problems.append(f"negative control {nc_name!r} "
+                                    "payload cannot be canonically "
+                                    "re-hashed")
+                    continue
+                if recomputed != digest:
+                    problems.append(
+                        f"negative control {nc_name!r} digest does "
+                        "not match its recorded payload")
         return problems
 
     def to_dict(self) -> dict:
@@ -1680,7 +1782,8 @@ def run_association(
     record with the same provenance surface.
 
     ``lookback_horizons`` declares real look-back horizons ("0d",
-    "3d", "7d" — integer-day strings): a horizon of ``h`` days
+    "3d", "7d" — integer-day strings drawn from
+    ``ALLOWED_LOOKBACK_DAYS``): a horizon of ``h`` days
     extends each event's effective date window backward by ``h``
     days before regime co-occurrence is counted, so an event counts
     toward a cell when the co-occurrence holds within the look-back
@@ -1737,6 +1840,18 @@ def run_association(
             "undeclared horizon family is inadmissible")
     lookback_days = tuple(sorted(
         {_parse_lookback_days(h) for h in lookback_horizons}))
+    # ASSOC-02: syntax alone is not admissibility — every declared
+    # horizon must sit inside the policy-derived allowlist
+    # (event-time class horizons plus the "0d" identity).
+    disallowed = [d for d in lookback_days
+                  if d not in ALLOWED_LOOKBACK_DAYS]
+    if disallowed:
+        raise ValueError(
+            f"lookback_horizons "
+            f"{tuple(f'{d}d' for d in disallowed)!r} are outside "
+            f"the declared allowlist {ALLOWED_LOOKBACK_DAYS} — "
+            "only event-time-class-admissible look-back day "
+            "counts may enter the inference family")
     lookback_names = tuple(f"{d}d" for d in lookback_days)
     regime_ids = artifact.regime_ids()
 
@@ -2314,16 +2429,19 @@ def association_report_text(report: AssociationReport) -> str:
 
 
 __all__ = [
+    "ALLOWED_LOOKBACK_DAYS",
     "ASSOCIATION_STATUSES",
     "AssociationReport",
     "DEFAULT_LOOKBACK_HORIZONS",
     "MECHANISM_MIN_GROUPS",
     "MIN_EVENT_GROUPS",
+    "MIN_SPATIAL_SHIFTS",
     "NOVELTY_SHARE_MAX",
     "PLACEMENT_MODES",
     "REQUIRED_SENSITIVITY_AXES",
     "RegimeAssignmentArtifact",
     "SENSITIVITY_DISPOSITIONS",
+    "SPATIAL_SHIFT_OFFSETS",
     "STATUS_DESCRIPTIVE",
     "STATUS_NOT_SUPPORTED",
     "STATUS_SUPPORTED",

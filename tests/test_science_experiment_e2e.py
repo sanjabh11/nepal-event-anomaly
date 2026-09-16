@@ -120,6 +120,7 @@ def _regime_artifact(df):
         train_groups=("grp_east", "grp_central", "grp_north"),
         heldout_groups=("grp_west", "grp_farwest"),
         source_manifest={"fixture": True},
+        bootstrap_block_len=12,
         effort_waiver_reason="synthetic e2e frame carries no "
                              "observation-effort column",
         era_col=None,

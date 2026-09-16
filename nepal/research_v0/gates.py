@@ -52,6 +52,18 @@ EXPECTED_SCOPE = "design_review_only"
 ALLOWED_PILOT_RULES = frozenset({
     "FIRST_PASSING_ALL_GATES_ELSE_NO_QUALIFYING"})
 
+#: The declared producer gate universe for a terminal science_v0
+#: regime artifact — ``stability.required_gates`` must carry exactly
+#: this set at freeze, adapter, replay, and audit boundaries.  An
+#: omitted gate is not a closed gate; an extra gate is undeclared
+#: evidence.
+REQUIRED_REGIME_GATE_NAMES = frozenset({
+    "seed_policy", "modal_k_unanimous", "seed_ari", "seed_coverage",
+    "loro", "temporal_bootstrap", "season_refits", "elevation",
+    "missingness", "effort", "era_drift", "shuffled_null",
+    "season_matched_null"})
+
+
 APPROVAL_REQUIRED_FIELDS = (
     "artifact_root",
     "matrix_path",

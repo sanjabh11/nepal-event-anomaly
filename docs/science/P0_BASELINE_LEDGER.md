@@ -41,19 +41,35 @@ The empty Git shell is never the implementation root.
   (bound head is the manifest's own field — see
   `ARTIFACT_MANIFEST_V0.json` for the current value).
 
-## Current verification snapshot (2026-09-15, round 2)
+## Last fully-verified baseline (2026-09-16, round-5 doc residuals)
 
-- HEAD: `d3d9238`-series (see git log for current tip).
+- HEAD: `442d966` — "docs(science): manifest bound to round-4
+  hardened head; 69 files".
+- Manifest/HEAD relationship: `ARTIFACT_MANIFEST_V0.json` carries
+  `content_head=4f7f30b` — an **ancestor commit whose tree the
+  manifest hashes**; the manifest commit itself (`442d966`) follows
+  the content commit. 69 manifest files.
+- Full suite under pinned `.venv`: **1853 passed, 5 skipped
+  (rasterio), 0 failed, 57 warnings**.
+- Focused lanes: **400 green**.
+- **Round-5 remediation in progress** — this census will be refreshed
+  at the final manifest rebind; the figures above are the last
+  verified baseline, not a projected final count.
+
+## Verification snapshot history (2026-09-15, round 2 and later)
+
+- HEAD at round-2 snapshot: `d3d9238`-series.
 - Full suite under pinned `.venv` (round-2 snapshot): **1306 passed,
   5 skipped (rasterio), 0 failed** — `pytest --collect-only` reported
   1311 nodes (1306 + 5). An external audit observed 1300 in an earlier
   environment; the manifest's 1306 was verified correct at that HEAD.
 - Post-swarm snapshots: **1641** after the first science_v0 +
   experiment_v0 integration; **1828 passed, 5 skipped (rasterio), 0
-  failed** at the post-audit residual-repair head (current).
-  Earlier counts are retained as dated history. 24
-  Run-A-reconciliation tests (calendar validity, claim-scan recursion,
-  ledger repair, canonical JSON, accumulation semantics).
+  failed** at the post-audit residual-repair head (round-4; superseded
+  by the verified baseline above). Earlier counts are retained as
+  dated history. 24 Run-A-reconciliation tests (calendar validity,
+  claim-scan recursion, ledger repair, canonical JSON, accumulation
+  semantics).
 - Warnings: all 56 are xarray/netCDF4 `DeprecationWarning`s in
   `test_p5_io_contract.py` — library-level, none in the research
   namespace. 5 skips are `rasterio` optional-dependency gates —
@@ -143,7 +159,11 @@ warning, or pilot result. `nepal/era5_hybrid_fetch.py` added (assembly
 ## Standing prohibitions (unchanged)
 
 No downloads before P3 design approval + P5 intake gates. No FMX freeze
-without a verified external freeze token. No clustering/regime fitting on
-real data. No claims about operational use, warnings, production,
+without a verified external freeze token. No clustering/regime fitting
+on real data beyond Run A's authorized single-cell bounded descriptive
+GMM implementation confirmation (method-only,
+`EXPLORATORY_DESCRIPTIVE_SINGLE_CELL`); multi-region regime discovery
+and event–regime association remain gated under Run B and have not run
+on real data. No claims about operational use, warnings, production,
 prediction, or scientific validation. Existing green tests are
 contract-layer evidence, not real-data science.

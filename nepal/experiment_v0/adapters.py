@@ -32,6 +32,7 @@ from nepal.research_v0.records import (
     ObservationOpportunityV0)
 
 from nepal.research_v0._hashing import sha256_canonical
+from nepal.research_v0.gates import REQUIRED_REGIME_GATE_NAMES
 
 from .association import RegimeAssignmentArtifact
 from .vintages import VintageRequest, build_vintage
@@ -518,6 +519,12 @@ def regime_assignment_from_artifact(
                 "regime artifact claims a terminal descriptive "
                 "status but carries no stability.required_gates "
                 "map — the freeze-gate evidence is absent")
+        if set(gates) != REQUIRED_REGIME_GATE_NAMES:
+            raise ValueError(
+                "regime artifact required_gates must be exactly "
+                "the declared gate universe — missing "
+                f"{sorted(REQUIRED_REGIME_GATE_NAMES - set(gates))}, "
+                f"extra {sorted(set(gates) - REQUIRED_REGIME_GATE_NAMES)}")
         open_gates = sorted(str(g) for g, v in gates.items()
                             if v is not True)
         if open_gates:
@@ -578,6 +585,10 @@ def regime_assignment_from_artifact(
     record = RegimeAssignmentArtifact.from_dict({
         "artifact_id": artifact_id,
         "regime_digest": p["freeze_digest"],
+        # PROV-04: the declared binding to the frozen producer payload
+        # — replay/audit can cross-check the artifact's claimed
+        # provenance against the payload's freeze_digest.
+        "producer_payload_digest": p["freeze_digest"],
         "assignments": triples,
         "fitted_on": p["fitted_on"],
         "label_blinding": p["label_blinding"],

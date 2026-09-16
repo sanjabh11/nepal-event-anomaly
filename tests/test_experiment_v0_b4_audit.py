@@ -468,6 +468,7 @@ def _mini_regime_frame():
         train_groups=("grp_east", "grp_central", "grp_north"),
         heldout_groups=("grp_west", "grp_farwest"),
         source_manifest={"fixture": True},
+        bootstrap_block_len=12,
         effort_waiver_reason="synthetic audit fixture carries no "
                              "observation-effort column",
         era_waiver_reason="synthetic audit fixture is single-era")

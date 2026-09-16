@@ -7,20 +7,32 @@ on:
   push:
     paths:
       - "nepal/research_v0/**"
+      - "nepal/science_v0/**"
+      - "nepal/experiment_v0/**"
       - "nepal/era5_download.py"
       - "nepal/feature_extraction.py"
       - "nepal/gmm_descriptive.py"
       - "tests/test_research_v0_*.py"
+      - "tests/test_science_v0_*.py"
+      - "tests/test_experiment_v0_*.py"
+      - "tests/test_science_experiment_e2e.py"
+      - "tests/fixtures/**"
       - "tests/test_p5_io_contract.py"
       - "docs/science/**"
       - ".github/workflows/research-v0.yml"
   pull_request:
     paths:
       - "nepal/research_v0/**"
+      - "nepal/science_v0/**"
+      - "nepal/experiment_v0/**"
       - "nepal/era5_download.py"
       - "nepal/feature_extraction.py"
       - "nepal/gmm_descriptive.py"
       - "tests/test_research_v0_*.py"
+      - "tests/test_science_v0_*.py"
+      - "tests/test_experiment_v0_*.py"
+      - "tests/test_science_experiment_e2e.py"
+      - "tests/fixtures/**"
       - "tests/test_p5_io_contract.py"
       - "docs/science/**"
       - ".github/workflows/research-v0.yml"
@@ -35,12 +47,18 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          # ENV-01: the supported line is pinned — CI runs the same
+          # Python family as the verified local environment and
+          # installs the locked dependency set, never floating
+          # latest.  rasterio is intentionally absent from the lock:
+          # the 5 rasterio-dependent tests are disclosed skips, not
+          # silently-missing gates.
+          python-version: "3.14"
 
-      - name: Install test runner and P5 io-contract deps
+      - name: Install test runner and pinned deps
         run: >
-          python -m pip install pytest numpy pandas xarray netcdf4
-          scikit-learn scipy matplotlib
+          python -m pip install -r requirements.txt
+          && python -m pip install pytest
 
       - name: Frozen-boundary diff check (pull_request)
         if: github.event_name == 'pull_request'
@@ -86,6 +104,19 @@ jobs:
         run: |
           PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
             python -B -m pytest tests/test_research_v0_*.py -q -rs
+
+      - name: Science/experiment v0 contract tests
+        # CI-01: covers the science_v0 + experiment_v0 lanes — regimes,
+        # adapters, association, vintages, evaluation, audit, replay,
+        # and the science-experiment e2e.  Contract-layer only:
+        # synthetic fixtures, no real-data intake.
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
+            python -B -m pytest \
+            tests/test_science_v0_*.py \
+            tests/test_experiment_v0_*.py \
+            tests/test_science_experiment_e2e.py \
+            -q -rs
 
       - name: P5 io-contract tests
         # P5-15: -rs surfaces skip reasons in the CI log — skips (the

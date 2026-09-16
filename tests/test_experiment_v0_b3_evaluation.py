@@ -269,10 +269,33 @@ class TestEvaluate:
         auprc_model = report.metrics["model"]["precision_recall"]["auprc"]
         auprc_null = report.metrics["null"]["precision_recall"]["auprc"]
         assert auprc_model > auprc_null
-        assert report.status == "FORECAST_EXPERIMENT_ONLY"
+        # EVAL-03: a powered fixture-only call can no longer emit a
+        # forecast status — that requires a complete bound
+        # declaration plus byte-bound baseline evidence.
+        assert report.status == "UNDERPOWERED_DESCRIPTIVE_ONLY"
         assert report.status in NEUTRAL_RESEARCH_STATUSES
         assert report.claim_scope == \
             "research_only_no_operational_authorization"
+        # the same powered design reaches FORECAST_EXPERIMENT_ONLY
+        # only when the declaration and baseline evidence are bound
+        from nepal.research_v0._hashing import sha256_canonical
+        cases = design["cases"]
+        probs = fx.make_baseline_probs(cases)
+        kw = _eval_kwargs(design)
+        kw["baseline_evidence"] = {
+            name: {"digest": sha256_canonical(
+                       [round(float(v), 9) for v in v_]),
+                   "fit_provenance": "bound"}
+            for name, v_ in probs.items()}
+        kw["experiment"] = ForecastExperimentDeclaration(
+            declaration_id="decl-powered",
+            feature_artifact_digest="a" * 64,
+            threshold_record={"threshold": 0.5},
+            ablations=("model",),
+            vintage_lineage=tuple(
+                sorted({c.vintage_digest for c in cases})))
+        declared = evaluate(cases, **kw)
+        assert declared.status == "FORECAST_EXPERIMENT_ONLY"
 
     def test_opportunity_denominator_is_explicit(self):
         design = fx.underpowered_design()
@@ -611,7 +634,15 @@ class TestDegradation:
         assert report.degradation["policy"] == \
             "degradation_recompute_never_imputation"
         assert "reference_metrics" in report.degradation
-        assert report.degradation["scenarios"] == []
+        # EVAL-01: an undeclared scenario set runs the deterministic
+        # default grid — the degradation surface is never empty.
+        scen = report.degradation["scenarios"]
+        names = {s["name"] for s in scen}
+        assert {"fraction_dropout_0.10", "fraction_dropout_0.25",
+                "fraction_dropout_0.50"} <= names
+        assert any(n.startswith("region_dropout_") for n in names)
+        for s in scen:
+            assert s["n_cases"] >= 0 and "n_dropped" in s
 
 
 # ---------------------------------------------------------------------
@@ -627,7 +658,26 @@ class TestPower:
 
     def test_powered_status(self):
         design = fx.powered_design()
-        report = evaluate(design["cases"], **_eval_kwargs(design))
+        cases = design["cases"]
+        kw = _eval_kwargs(design)
+        # EVAL-03: power alone no longer promotes a fixture-only call;
+        # bind the declaration + baseline evidence for the forecast
+        # status.
+        from nepal.research_v0._hashing import sha256_canonical
+        probs = fx.make_baseline_probs(cases)
+        kw["baseline_evidence"] = {
+            name: {"digest": sha256_canonical(
+                       [round(float(v), 9) for v in v_]),
+                   "fit_provenance": "bound"}
+            for name, v_ in probs.items()}
+        kw["experiment"] = ForecastExperimentDeclaration(
+            declaration_id="decl-powered",
+            feature_artifact_digest="a" * 64,
+            threshold_record={"threshold": 0.5},
+            ablations=("model",),
+            vintage_lineage=tuple(
+                sorted({c.vintage_digest for c in cases})))
+        report = evaluate(cases, **kw)
         assert report.power["powered"] is True
         assert report.power["effective_n"] >= report.power["required_n"]
         assert report.status == "FORECAST_EXPERIMENT_ONLY"

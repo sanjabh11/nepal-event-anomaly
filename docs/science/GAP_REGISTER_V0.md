@@ -471,3 +471,56 @@ unchanged by design; `NO_QUALIFYING_PILOT_SOURCE` stands.
 - Feature-field registry is shape-level defense; semantic verification
   of actual feature VALUES requires intake data (A20 — gated).
 - Pilot outcome stands at `NO_QUALIFYING_PILOT_SOURCE`.
+
+## Round-5 clarification — license metadata vs payload qualification (2026-09-16)
+
+Earlier rounds use the word "license" for two distinct questions;
+readers should not conflate them:
+
+- **Metadata license resolution — done (metadata only).** The S-series
+  addendum (`run_b/SOURCE_EVIDENCE_ADDENDUM_V0.md`) resolved license
+  *tags* via public metadata APIs — see "License-evidence resolution
+  (S-series partial)" above. Rows such as B27/C23 marked
+  `BLOCKED_EXTERNAL` are not contradicted by that section: those rows
+  track procurement, registration, and access-path blockers (e.g.,
+  ECMWF MARS procurement, request-gated records), not tag lookup.
+- **Payload qualification — not done.** Access authorization, Nepal
+  subset counts, file schemas, coverage/extent splits, timing
+  precision, byte-bound evidence sidecars, and independent review are
+  intake artifacts. No source is `EVIDENCE_VERIFIED`; every source
+  remains `CANDIDATE_ONLY`, and `NO_QUALIFYING_PILOT_SOURCE` stands.
+
+## Round-5 closure — codeable enforcement residuals (2026-09-16)
+
+All codeable gaps from the Round-5 conformance audit are closed in
+this commit range; every closure carries a behavioral test in
+`tests/test_round5_hardening.py` or the lane suite. Data-gated and
+external items (SRC-*, DATA-*, GOV-*, FCST-EXT-*, REVIEW-01,
+RUN-A-01 ratification, OPS-01) remain open by design.
+
+| Gap | Closure |
+|---|---|
+| GOAL-01 | `docs/science/MISSION_SCOPE_OVERLAY_V0.md` — versioned scope overlay; frozen preregistration untouched. |
+| PROV-01/02 | `REQUIRED_REGIME_GATE_NAMES` in `research_v0.gates` is the single gate universe enforced identically at producer emit, `freeze_regime_artifact`, the adapter, replay, and `audit_producer_payload` — missing, extra, false, and malformed gates all reject. |
+| PROV-03 | Non-fixture `source_manifest` requires `evidence_root` in addition to source digests, units, allowlist, and lineage — producer preflight and auditor both enforce. |
+| PROV-04 | `RegimeAssignmentArtifact.producer_payload_digest` binds the artifact to the frozen payload's `freeze_digest`; `problems()` rejects bare hand-built artifacts. |
+| REG-01 | `run_regimes` rejects units appearing in more than one geographic group — the unit→basin binding is a partition. |
+| REG-02 | `bootstrap_block_len` must be a positive preregistered int; the declared cadence must equal the finest observed within-unit spacing with all diffs integer multiples of it (1H-on-daily, 2D-on-daily, off-grid rows all fail pre-fit). |
+| REG-03 | The missingness-selected surface (`fit_sel_full`) feeds LORO fold fits, the temporal bootstrap resample pool, season/elevation refits, the elevation ablation, and the season-matched null generator. |
+| REG-04 | `effort_split` is validated (`median`/`tercile`/`first10`/`quantile:q`) and the resolved strata policy is executed and recorded. |
+| REG-05 | `_null_envelope` serializes per-replicate `{i, gen_seed, fit_seed, k, stat, ok}` and the family digest covers it. |
+| REG-06 | `run_b/REGIME_PROTOCOL_V0.md` status taxonomy aligned to the code's three terminal statuses + `RUN_ERROR`; waivers/N-A dispositions are bound and non-promoting. |
+| ASSOC-01 | `SPATIAL_SHIFT_OFFSETS` = 24 deterministic nonzero day shifts (p-resolution ≈0.042 < 0.05); `MIN_SPATIAL_SHIFTS=20` enforced on caller overrides. |
+| ASSOC-02 | `ALLOWED_LOOKBACK_DAYS` binds declared horizons to the policy horizon allowlist (`0d` identity + {2,3,7,14,30}d). |
+| ASSOC-03 | `AssociationReport.problems()` recomputes every carried negative-control digest over its creation subset. |
+| EVAL-01 | `evaluate()` populates `degradation` from declared `degradation_scenarios` or the deterministic default grid (fraction dropouts + per-region unit dropout) — never empty. |
+| EVAL-02 | Uncertainty bootstrap resamples `event_group_id`-else-`unit+season` clusters — the dependence unit, not raw region+season. |
+| EVAL-03 | `FORECAST_EXPERIMENT_ONLY` requires a complete bound declaration (vintage lineage, ablations, feature digest, threshold) plus byte-bound baseline evidence — fixture-only calls cap at `UNDERPOWERED_DESCRIPTIVE_ONLY`. |
+| EVAL-04 | Slice denominators carry explicit registry attribution via `scope_rule` (`region_owned_basins`, `opportunity_window_midpoint_season`, `linked_opportunities_only`) with verified/censored id tuples. |
+| DOC-01..04, GOAL-01 | Census reconciliation (1853/5/0/57), Run-A wording, license clarification, mission overlay, legacy-path caveats. |
+| CI-01 | Workflow triggers cover `nepal/science_v0/**`, `nepal/experiment_v0/**`, their tests and fixtures; focused contract-test step added. |
+| ENV-01 | CI runs Python 3.14 with `requirements.txt` pins; the 5 rasterio skips are disclosed as excluded-gate skips (rasterio intentionally outside the supported lock). |
+
+Unchanged boundaries: `NO_QUALIFYING_PILOT_SOURCE`;
+`WARNING_PATH_AUTHORIZED: NO`; synthetic fixtures are contract-only;
+clusters are candidate representations, never forecasts.

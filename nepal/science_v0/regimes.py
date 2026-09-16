@@ -70,6 +70,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.impute import SimpleImputer
 
 from nepal.research_v0._hashing import sha256_canonical
+from nepal.research_v0.gates import REQUIRED_REGIME_GATE_NAMES
 
 STATUSES = frozenset({
     "DESCRIPTIVE_REGIME_ONLY",
@@ -417,9 +418,13 @@ def _null_envelope(observed_stat, generator, modal_k: int,
                          "cannot be exceeded")
         return rec
     stats = []
+    rec["replicates"] = []
     for i in range(int(n_replicates)):
         gen_seed = int(decl_seeds[0]) + 1000003 * (i + 1)
         fit_seed = int(decl_seeds[i % len(decl_seeds)])
+        rep = {"i": i, "gen_seed": gen_seed, "fit_seed": fit_seed,
+               "k": None, "stat": None, "ok": False}
+        rec["replicates"].append(rep)
         try:
             X_n = generator(i, gen_seed)
         except Exception:
@@ -437,10 +442,13 @@ def _null_envelope(observed_stat, generator, modal_k: int,
             continue
         f = min(conv, key=lambda f: f["bic"])
         rec["null_k_distribution"][str(f["k"])] =             rec["null_k_distribution"].get(str(f["k"]), 0) + 1
+        rep["k"] = int(f["k"])
         s = _silhouette(X_n, f["model"].predict(X_n))
         if s is None:
             rec["n_failed"] += 1
             continue
+        rep["stat"] = float(s)
+        rep["ok"] = True
         stats.append(s)
     rec["n_succeeded"] = len(stats)
     if rec["n_failed"]:
@@ -503,7 +511,7 @@ class RegimeRunConfig:
     # REG-01 calendar-aware bootstrap: cadence + declared block
     # length + gap policy are bound configuration, never derived.
     cadence: str = "1D"
-    bootstrap_block_len: int = 0   # 0 -> n_dates // 10 (recorded)
+    bootstrap_block_len: int = 0   # MUST be declared >0 (REG-02)
     gap_policy: str = "calendar"   # blocks are calendar ranges
     # REG-08/09 waivers: an undeclared axis FAILS the gate unless the
     # waiver reason is explicitly bound in configuration.
@@ -640,10 +648,22 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
                           "dates) is admitted"}
     if isinstance(config.bootstrap_block_len, bool) or \
             not isinstance(config.bootstrap_block_len, int) or \
-            config.bootstrap_block_len < 0:
+            config.bootstrap_block_len <= 0:
         return {"status": "RUN_ERROR",
-                "reason": "bootstrap_block_len must be a non-negative "
-                          "int (0 = derive n_dates//10, recorded)"}
+                "reason": "bootstrap_block_len must be a positive "
+                          "preregistered int — a derived or omitted "
+                          "block length silently binds the temporal "
+                          "null to the observed grid"}
+    _ES_POLICIES = ("median", "tercile", "first10")
+    _es = str(config.effort_split)
+    if not (_es in _ES_POLICIES or
+            (_es.startswith("quantile:") and
+             _es.split(":", 1)[1].replace(".", "", 1).isdigit()
+             and 0.0 < float(_es.split(":", 1)[1]) < 1.0)):
+        return {"status": "RUN_ERROR",
+                "reason": f"effort_split {config.effort_split!r} "
+                          "unsupported — declare 'median', 'tercile', "
+                          "'first10', or 'quantile:<q in (0,1)>'"}
     if isinstance(config.n_null_replicates, bool) or \
             not isinstance(config.n_null_replicates, int) or \
             config.n_null_replicates < MIN_NULL_REPLICATES:
@@ -688,7 +708,8 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
     if not sm.get("fixture"):
         missing_sm = [k for k in ("source_id", "source_digests",
                                   "units", "feature_allowlist",
-                                  "lineage") if not sm.get(k)]
+                                  "lineage", "evidence_root")
+                      if not sm.get(k)]
         if missing_sm:
             return {"status": "RUN_ERROR",
                     "reason": f"non-fixture source_manifest lacks "
@@ -793,6 +814,48 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
         return {"status": "RUN_ERROR",
                 "reason": f"{int(dup.sum())} duplicate (unit_id, date) "
                           "rows rejected"}
+    # REG-01: a unit belongs to exactly one geographic group — the
+    # unit->basin binding is a partition, so no unit can cross the
+    # LORO train/evaluation boundary.
+    _ug = df.groupby(df[config.unit_col].astype(str))[
+        config.group_col].nunique()
+    _multi = sorted(_ug[_ug > 1].index.tolist())
+    if _multi:
+        return {"status": "RUN_ERROR",
+                "reason": "geographic groups must be a unit-level "
+                          "partition — unit(s) appearing in multiple "
+                          f"groups: {_multi[:8]}"}
+    # REG-02: the declared cadence must match the observed within-
+    # unit grid — every observed spacing is a positive integer
+    # multiple of the declared step and the declared step equals the
+    # finest observed spacing.  A 1H declaration over a daily grid
+    # (or a 1.5D declaration over daily rows) fails before fitting.
+    try:
+        _step_td = pd.Timedelta(
+            pd.tseries.frequencies.to_offset(config.cadence).nanos)
+    except (TypeError, ValueError) as exc:
+        return {"status": "RUN_ERROR",
+                "reason": f"cadence {config.cadence!r} is not a "
+                          "fixed-length offset (grid cannot be "
+                          f"verified): {exc}"}
+    _diffs = (df.assign(_d=pd.to_datetime(df[config.date_col]))
+                .sort_values([config.unit_col, "_d"])
+                .groupby(config.unit_col)["_d"].diff().dropna())
+    if len(_diffs):
+        _min_d = _diffs.min()
+        if _step_td != _min_d or (_min_d % _step_td) != pd.Timedelta(0):
+            return {"status": "RUN_ERROR",
+                    "reason": f"declared cadence {config.cadence!r} "
+                              "does not match the observed grid: "
+                              f"finest within-unit spacing {_min_d} "
+                              "— the declared step must equal the "
+                              "finest observed spacing"}
+        if bool((_diffs % _step_td != pd.Timedelta(0)).any()):
+            return {"status": "RUN_ERROR",
+                    "reason": f"rows fall off the declared "
+                              f"{config.cadence!r} grid — observed "
+                              "within-unit spacings are not integer "
+                              "multiples of the cadence"}
 
     # per-column missingness report (pre-filter)
     missingness = {c: float(df[c].isna().mean()) for c in feature_cols}
@@ -848,6 +911,12 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
         "train_rows_total": int(len(train_df)),
         "train_rows_fitted": int(fit_sel.sum()),
         "train_rows_dropped": int((~fit_sel).sum())}
+    # REG-03: the policy-selected surface is bound as a frame-level
+    # mask so EVERY downstream refit, resample, and null generator
+    # draws from exactly the rows the model was fitted on.
+    fit_sel_full = np.zeros(len(df), dtype=bool)
+    fit_sel_full[np.flatnonzero(train_mask)[fit_sel]] = True
+    fit_rows_index = df.index.to_numpy()[fit_sel_full]
     train_df = train_df.loc[fit_sel]
     if len(train_df) < 50:
         return {"status": "RUN_ERROR",
@@ -995,7 +1064,7 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
                                     if config.fold_seed_policy == "all"
                                     else decl_seeds[:1])],
                 "seed_failures": [], "per_seed": {}}
-        m_fit = np.asarray(train_mask) & \
+        m_fit = np.asarray(train_mask) & fit_sel_full & \
             (df[config.group_col].astype(str) != g)
         m_eval = np.asarray(train_mask) & \
             (df[config.group_col].astype(str) == g)
@@ -1120,14 +1189,17 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
     # only); fitted parameters are aligned to the reference model and
     # collected into 95% percentile intervals.  Replicate failures are
     # counted explicitly; >10% failures fails the axis.
-    train_dates = pd.to_datetime(df.loc[train_mask,
+    # REG-03: the resample pool is the missingness-selected fit
+    # surface — rows the policy dropped can never re-enter a
+    # replicate.
+    train_dates = pd.to_datetime(df.loc[fit_rows_index,
                                       config.date_col])
     unique_days = np.array(sorted(train_dates.dt.normalize()
                                   .unique()))
     n_dates = int(len(unique_days))
-    n_train_rows = int(train_mask.sum())
+    n_train_rows = int(len(fit_rows_index))
     norm_dates = train_dates.dt.normalize()
-    train_index = df.loc[train_mask].index.to_numpy()
+    train_index = fit_rows_index
     norm_values = norm_dates.to_numpy()
 
     boot = {"n_replicates": int(config.n_bootstrap),
@@ -1145,8 +1217,7 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
         boot["failure_rate"] = 1.0
         stability["temporal_block_bootstrap"] = boot
     else:
-        block_len = (config.bootstrap_block_len
-                     or max(7, n_dates // 10))
+        block_len = int(config.bootstrap_block_len)
         rng_bt = np.random.default_rng(int(decl_seeds[0]))
         b_weights, b_means, b_occ, b_post, b_ari = \
             [], [], [], [], []
@@ -1249,7 +1320,7 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
     seasons_seen = [str(x) for x in
                     pd.unique(df.loc[train_mask, config.season_col])]
     for seas in sorted(seasons_seen):
-        m_s = np.asarray(train_mask) & \
+        m_s = np.asarray(train_mask) & fit_sel_full & \
             (df[config.season_col].astype(str) == seas)
         sub = df.loc[m_s, feature_cols]
         rec = {"status": None, "js": None, "ari": None,
@@ -1301,7 +1372,7 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
         band_js = []
         bands = pd.unique(df.loc[train_mask, config.elevation_col])
         for band in sorted(map(str, bands)):
-            m_e = np.asarray(train_mask) & \
+            m_e = np.asarray(train_mask) & fit_sel_full & \
                 (df[config.elevation_col].astype(str) == band)
             sub = df.loc[m_e, feature_cols]
             if len(sub) < 50:
@@ -1344,7 +1415,7 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
         # regime structure is marginally explained by elevation and
         # cannot be promoted as independent structure.
         try:
-            elev_train = df.loc[train_mask,
+            elev_train = df.loc[fit_sel_full,
                                 config.elevation_col].to_numpy(
                                     dtype=np.float64).reshape(-1, 1)
             f_el = _fit_gmm(elev_train, modal_k,
@@ -1352,7 +1423,7 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
             if f_el["converged"]:
                 el_lab = f_el["model"].predict(elev_train)
                 ref_lab_el = model.predict(prep.transform(
-                    df.loc[train_mask, feature_cols]))
+                    df.loc[fit_sel_full, feature_cols]))
                 abl_ari = float(_ari(ref_lab_el, el_lab))
             else:
                 abl_ari = None
@@ -1476,12 +1547,30 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
         # REG-08: the effort split is a DECLARED policy recorded in
         # the bound config — "median" is the declared midpoint split
         # (its threshold is recorded), not a silently-dynamic strata.
-        if pd.api.types.is_numeric_dtype(ev):
-            med = float(np.nanmedian(ev.to_numpy(dtype=np.float64)))
-            band_sel = {"le_median": ev.to_numpy() <= med,
-                        "gt_median": ev.to_numpy() > med}
-            strata_policy = {"kind": "numeric_median",
-                             "median": med}
+        _ev_num = ev.to_numpy(dtype=np.float64) \
+            if pd.api.types.is_numeric_dtype(ev) else None
+        if _ev_num is not None:
+            if _es == "tercile":
+                q1, q2 = (float(np.nanquantile(_ev_num, q))
+                          for q in (1 / 3, 2 / 3))
+                band_sel = {"le_t1": _ev_num <= q1,
+                            "t1_t2": (_ev_num > q1) & (_ev_num <= q2),
+                            "gt_t2": _ev_num > q2}
+                strata_policy = {"kind": "numeric_tercile",
+                                 "q1": q1, "q2": q2}
+            elif _es.startswith("quantile:"):
+                q = float(_es.split(":", 1)[1])
+                cut = float(np.nanquantile(_ev_num, q))
+                band_sel = {f"le_q{q}": _ev_num <= cut,
+                            f"gt_q{q}": _ev_num > cut}
+                strata_policy = {"kind": "numeric_quantile",
+                                 "q": q, "cut": cut}
+            else:  # "median" (default) and "first10" on numeric
+                med = float(np.nanmedian(_ev_num))
+                band_sel = {"le_median": _ev_num <= med,
+                            "gt_median": _ev_num > med}
+                strata_policy = {"kind": "numeric_median",
+                                 "median": med}
         else:
             uniques = sorted(map(str, ev.dropna().unique()))
             band_sel = {u: (ev.astype(str) == u).to_numpy()
@@ -1609,7 +1698,9 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
     # gate.  The hard-coded 0.02 JS threshold is removed.
     observed_stat = _silhouette(X_train, labels_train) \
         if modal_k >= 2 else None
-    train_sub = df.loc[train_mask]
+    # REG-03: null generators draw from the policy-selected
+    # surface, not the raw train slice.
+    train_sub = df.loc[fit_rows_index]
 
     def _gen_shuffled(i, gen_seed):
         return shuffled_null(X_train, seed=gen_seed)
@@ -1649,7 +1740,8 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
              "null_stat_min": rec.get("null_stat_min"),
              "null_stat_max": rec.get("null_stat_max"),
              "null_k_distribution": rec.get(
-                 "null_k_distribution", {})})
+                 "null_k_distribution", {}),
+             "replicates": rec.get("replicates", [])})
     nulls = {"statistic": NULL_STATISTIC,
              "observed": observed_stat,
              "alpha": float(config.null_alpha),
@@ -1680,6 +1772,7 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
         "shuffled_null": bool(null_shuf["status"] == "PASS"),
         "season_matched_null": bool(null_seas["status"] == "PASS"),
     }
+    assert set(required_gates) == REQUIRED_REGIME_GATE_NAMES
     stability["required_gates"] = required_gates
     stable = all(required_gates.values())
     structural = ("modal_k_unanimous", "seed_ari", "seed_coverage",
@@ -1877,6 +1970,12 @@ def freeze_regime_artifact(artifact: dict) -> dict:
     if not isinstance(gates, dict) or not gates:
         raise ValueError("stability.required_gates missing or empty "
                          "— the producer audit cannot run")
+    if set(gates) != REQUIRED_REGIME_GATE_NAMES:
+        raise ValueError(
+            "stability.required_gates must carry exactly the "
+            "declared gate universe — missing gates "
+            f"{sorted(REQUIRED_REGIME_GATE_NAMES - set(gates))}, "
+            f"extra gates {sorted(set(gates) - REQUIRED_REGIME_GATE_NAMES)}")
     if status == "DESCRIPTIVE_REGIME_ONLY" and \
             not all(bool(v) for v in gates.values()):
         raise ValueError("DESCRIPTIVE_REGIME_ONLY requires every "
