@@ -723,8 +723,12 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
         # configuration, fit/held-out membership, and the exact mask
         # are all bound into the artifact before freezing.
         "feature_cols": list(feature_cols),
+        # six-decimal semantic digest is a versioned normalization
+        # domain; the exact raw input bytes are bound alongside it
         "feature_matrix_digest": _digest(
             df[feature_cols].round(6).to_numpy().tolist()),
+        "feature_matrix_raw_digest": _sha_bytes(
+            df[feature_cols].to_numpy().tobytes()),
         "config_digest": _digest(dataclasses.asdict(config)),
         "fit_groups": sorted(mask_groups),
         "heldout_groups_declared": sorted(heldout_groups),
