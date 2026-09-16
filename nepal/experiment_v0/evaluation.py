@@ -15,19 +15,38 @@ fail-closed, deterministic, synthetic-only evaluator:
   ordered before hashing so the report digest is invariant under
   input reordering.
 * Censored (``CENSORED_OR_AMBIGUOUS``) cases are excluded from every
-  metric numerator and counted in ``n_censored``; the false-alarm
-  denominator is the count of registry opportunities inside the
-  declared evaluation scope, never the unambiguous-case count and
+  metric numerator and counted in ``n_censored``; an unambiguous case
+  whose linked opportunity is not a verified in-scope
+  ``OBSERVED_FULL`` record is likewise censored — never scored — and
+  counted in ``n_censored_for_opportunity_state`` /
+  ``n_censored_out_of_scope``.  The false-alarm denominator is the
+  count of *problem-free* ``OBSERVED_FULL`` registry opportunities
+  inside the declared evaluation scope — partial, unknown, unobserved,
+  and defective records are excluded and counted separately in
+  ``n_censored_opportunities`` — never the unambiguous-case count and
   never a caller-chosen integer.
 * Metrics are recomputed per region / season / mechanism slice and per
-  lead-time (horizon) bucket.
+  lead-time (horizon) bucket; every slice denominator is derived by
+  the shared ``_scoped_opportunity_count`` — case counts are never
+  denominators.
 * ``power_report`` derives the effective sample size as the count of
-  independent (region, season, mechanism) clusters — windows are never
-  counted as independent — and gates the neutral status.
-* ``missing_feed_degradation`` drops cases under declared scenarios and
-  recomputes — degradation, never imputation.
+  independent clusters — an atomic ``event_group_id`` when the case
+  carries one, else the ``(unit_id, season)`` basin-season cell —
+  windows are never counted as independent — and gates the neutral
+  status.
+* ``missing_feed`` executes the declared missing-feed scenario set
+  (provider / variable dropout executed as recomputations, member
+  truncation and latency stress reported ``NOT_APPLICABLE`` where no
+  ensemble or latency axis exists, missing-opportunity censoring) —
+  degradation, never imputation.
+* ``missing_feed_degradation`` drops cases under declared dropout
+  scenarios and recomputes with registry-derived denominators.
 * ``uncertainty_report`` runs a seeded (region, season) block
   bootstrap and reports percentile intervals per metric.
+* ``experiment`` optionally binds a ``ForecastExperimentDeclaration``
+  (or a convertible mapping); when absent the report records
+  ``mode="fixture_only"`` — a standalone probability mapping can never
+  claim more than fixture scope.
 
 This module scores no real forecasts and emits only neutral research
 statuses (``FORECAST_EXPERIMENT_ONLY`` /
@@ -39,6 +58,7 @@ from __future__ import annotations
 import hashlib
 import math
 import random
+import re
 from dataclasses import MISSING as _MISSING
 from dataclasses import asdict, dataclass, field, fields
 from statistics import NormalDist
@@ -58,12 +78,20 @@ from .baselines import REQUIRED_BASELINE_NAMES
 _CENSORED = TargetState.CENSORED_OR_AMBIGUOUS.value
 _TARGET_VALUES = frozenset(s.value for s in TargetState)
 _TIME_EPS = 1e-6
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+
+#: The declared missing-feed scenario vocabulary.  Every declared
+#: scenario either recomputes (``EXECUTED``) or reports
+#: ``NOT_APPLICABLE`` with a reason — never silently skipped.
+DEFAULT_SCENARIOS = (
+    "provider_dropout", "variable_dropout", "member_truncation",
+    "latency_stress", "missing_opportunity")
 
 _STR_FIELDS = frozenset({
     "case_id", "unit_id", "region", "season", "mechanism",
     "issue_time", "valid_start", "valid_end", "horizon", "y_state",
     "vintage_digest", "opportunity_id", "outcome_source_id",
-    "cutoff_time"})
+    "cutoff_time", "event_group_id"})
 _NUM_FIELDS = frozenset({"lead_seconds", "y_prob"})
 _CASE_TAG = "ForecastCase"
 
@@ -90,6 +118,7 @@ class ForecastCase:
     opportunity_id: str = ""         # verified-opportunity lineage
     outcome_source_id: str = ""      # target/outcome source lineage
     cutoff_time: str = ""            # feature-availability cutoff
+    event_group_id: str = ""         # atomic event group (independence unit)
     features: Mapping[str, float] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
@@ -174,6 +203,113 @@ class ForecastCase:
             else:  # pragma: no cover - unknown keys rejected above
                 kwargs[name] = value
         return cls(**kwargs)
+
+
+#: Required keys of a bound experiment declaration (EVAL-C06/FCST-C02).
+_DECLARATION_KEYS = frozenset({
+    "declaration_id", "feature_artifact_digest", "threshold_record",
+    "ablations", "vintage_lineage"})
+
+
+@dataclass(frozen=True)
+class ForecastExperimentDeclaration:
+    """A typed v0-lite experiment declaration.
+
+    Binds the evaluation to its predeclared provenance: the
+    declaration id, the feature-artifact digest, the decision
+    ``threshold_record``, the ablation list, and the vintage lineage
+    (the canonical digests of every admitted vintage the cases score
+    under).  ``problems()`` is the admission surface — a declaration
+    missing any key is inadmissible.  ``from_mapping`` performs the
+    strict mapping conversion ``evaluate`` accepts.
+    """
+
+    declaration_id: str = ""
+    feature_artifact_digest: str = ""
+    threshold_record: Any = None
+    ablations: Any = ()
+    vintage_lineage: Any = ()
+
+    def problems(self) -> list[str]:
+        problems: list[str] = []
+        if not isinstance(self.declaration_id, str) or \
+                not self.declaration_id.strip():
+            problems.append("declaration_id is required — a non-empty "
+                            "string identifying the predeclared "
+                            "experiment")
+        if not isinstance(self.feature_artifact_digest, str) or \
+                not _SHA256_RE.match(self.feature_artifact_digest):
+            problems.append("feature_artifact_digest must be a 64-hex "
+                            "sha256 digest binding the feature "
+                            "artifact")
+        tr = self.threshold_record
+        if tr is None or tr == "" or \
+                (isinstance(tr, (Mapping, Collection))
+                 and not isinstance(tr, (str, bytes)) and not tr):
+            problems.append("threshold_record is required — the "
+                            "predeclared decision-threshold record")
+        elif not isinstance(tr, (str, Mapping)):
+            problems.append("threshold_record must be a mapping or a "
+                            "record identifier string")
+        abl = self.ablations
+        if isinstance(abl, (str, bytes)) or \
+                not isinstance(abl, Collection):
+            problems.append("ablations must be a collection of "
+                            "ablation declarations")
+        elif any(not isinstance(a, (str, Mapping)) or
+                 (isinstance(a, str) and not a.strip())
+                 for a in abl):
+            problems.append("ablations entries must be non-empty "
+                            "identifiers or mappings")
+        lin = self.vintage_lineage
+        if isinstance(lin, (str, bytes)) or \
+                not isinstance(lin, Collection):
+            problems.append("vintage_lineage must be a collection of "
+                            "canonical vintage digests")
+        elif any(not isinstance(v, str) or not _SHA256_RE.match(v)
+                 for v in lin):
+            problems.append("vintage_lineage entries must be 64-hex "
+                            "canonical vintage digests")
+        return problems
+
+    def to_dict(self) -> dict:
+        d = asdict(self)
+        d["ablations"] = [dict(a) if isinstance(a, Mapping) else a
+                          for a in (self.ablations or ())]
+        d["vintage_lineage"] = list(self.vintage_lineage or ())
+        d["declaration_type"] = "ForecastExperimentDeclaration"
+        return d
+
+    @classmethod
+    def from_mapping(
+            cls, m: Mapping) -> "ForecastExperimentDeclaration":
+        """Strict mapping conversion — every required key must be
+        present and no unknown keys are admitted."""
+        if not isinstance(m, Mapping):
+            raise ValueError(
+                "experiment declaration must be a mapping")
+        extra = set(m) - _DECLARATION_KEYS
+        if extra:
+            raise ValueError(
+                f"experiment declaration: unknown keys "
+                f"{sorted(extra)}")
+        missing = _DECLARATION_KEYS - set(m)
+        if missing:
+            raise ValueError(
+                f"experiment declaration: missing required keys "
+                f"{sorted(missing)}")
+        return cls(
+            declaration_id=m["declaration_id"],
+            feature_artifact_digest=m["feature_artifact_digest"],
+            threshold_record=m["threshold_record"],
+            ablations=tuple(m["ablations"])
+            if isinstance(m["ablations"], Collection)
+            and not isinstance(m["ablations"], (str, bytes))
+            else m["ablations"],
+            vintage_lineage=tuple(m["vintage_lineage"])
+            if isinstance(m["vintage_lineage"], Collection)
+            and not isinstance(m["vintage_lineage"], (str, bytes))
+            else m["vintage_lineage"])
 
 
 def locked_region_problems(regions: Collection[str],
@@ -265,24 +401,127 @@ def _core_metrics(y: list[int], p: list[float], *,
     }
 
 
+def _basin_owner_map(region_basins: Any) -> dict[str, str]:
+    """Tolerant basin -> owning-region projection of a
+    ``region_basins`` map (validation happens elsewhere; this helper
+    only resolves scope membership and never raises)."""
+    owner: dict[str, str] = {}
+    if not isinstance(region_basins, Mapping):
+        return owner
+    for region, basins in region_basins.items():
+        if isinstance(basins, (str, bytes)) or \
+                not isinstance(basins, Collection):
+            continue
+        for basin in basins:
+            if isinstance(basin, str) and basin not in owner:
+                owner[basin] = str(region)
+    return owner
+
+
+def _scoped_opportunity_count(
+        opportunities: Any,
+        unit_basins: Any,
+        region_basins: Any,
+        *,
+        regions: Optional[Collection[str]] = None,
+        linked_ids: Optional[Collection[str]] = None,
+        all_linked_ids: Optional[Collection[str]] = None) -> dict:
+    """Verified and censored opportunity counts inside one scope.
+
+    This is the single denominator-derivation surface shared by the
+    top-level metric table, every slice (region / season / mechanism),
+    and the lead-time buckets — case counts are never denominators.
+
+    * ``regions`` restricts the scope to basins owned by those
+      evaluation regions (``None`` = every declared region).
+    * ``linked_ids`` — when given — restricts counting to
+      opportunities linked by the scope's cases plus opportunities
+      linked by *no* case (``all_linked_ids`` supplies the full
+      case-linkage set), because registry entries carry no intrinsic
+      season/mechanism/horizon attribution.  ``linked_ids=None``
+      counts every in-scope entry.
+    * An entry is *verified* when it is an ``ObservationOpportunityV0``
+      whose id equals its registry key, whose ``problems()`` is empty,
+      and whose ``state`` is ``OBSERVED_FULL``; anything else in scope
+      is a *censored* opportunity — partial, unknown, unobserved, and
+      defective records never enter a denominator.
+    """
+    owner = _basin_owner_map(region_basins)
+    region_set = None if regions is None else \
+        {str(r) for r in regions}
+    allowed_basins = {b for b, o in owner.items()
+                      if region_set is None or o in region_set}
+    linked = None if linked_ids is None else \
+        {str(k) for k in linked_ids}
+    all_linked = None if all_linked_ids is None else \
+        {str(k) for k in all_linked_ids}
+    verified: list[str] = []
+    censored: list[str] = []
+    if not isinstance(opportunities, Mapping):
+        return {"n_opportunities": 0, "n_censored_opportunities": 0,
+                "verified_ids": (), "censored_ids": ()}
+    for key, rec in opportunities.items():
+        if type(rec) is not ObservationOpportunityV0:
+            continue
+        basin = unit_basins.get(rec.unit_id) \
+            if isinstance(unit_basins, Mapping) else None
+        if basin not in allowed_basins:
+            continue
+        if linked is not None:
+            pool = all_linked if all_linked is not None else linked
+            if key not in linked and key in pool:
+                continue
+        ok = (rec.opportunity_id == key
+              and rec.state == "OBSERVED_FULL"
+              and not rec.problems())
+        (verified if ok else censored).append(str(key))
+    return {"n_opportunities": len(verified),
+            "n_censored_opportunities": len(censored),
+            "verified_ids": tuple(sorted(verified)),
+            "censored_ids": tuple(sorted(censored))}
+
+
 def _slice_bundle(cases: Sequence[ForecastCase],
                   probs: Mapping[str, Sequence[float]],
                   idx: Sequence[int], *,
-                  threshold: float) -> dict:
-    """Metric bundles for one slice.  The slice's opportunity
-    denominator is the slice's own case count — the smallest verified
-    bound, since every case is one opportunity."""
-    pos = [i for i in idx if cases[i].y_state != _CENSORED]
+                  threshold: float,
+                  scored: Collection[int],
+                  link_status: Mapping[str, str],
+                  scope: Mapping[str, Any],
+                  scope_rule: str) -> dict:
+    """Metric bundles for one slice.
+
+    Only verified-basis unambiguous cases (``scored``) enter metric
+    numerators; the opportunity denominator is the slice's own
+    registry-derived ``opportunities_scoped`` — the slice's case count
+    is never a denominator.
+    """
+    pos = [i for i in idx if i in scored]
     sub = [cases[i] for i in pos]
     y = _y(sub)
     scorers: dict[str, Any] = {}
     for name, full in probs.items():
-        scorers[name] = _bundle(y, [full[i] for i in pos],
-                                threshold=threshold,
-                                n_opportunities=len(idx))
-    return {"n_cases": len(idx),
-            "n_censored": len(idx) - len(pos),
-            "scorers": scorers}
+        scorers[name] = _bundle(
+            y, [full[i] for i in pos], threshold=threshold,
+            n_opportunities=scope["n_opportunities"])
+    n_state_censored = sum(
+        1 for i in idx if cases[i].y_state == _CENSORED)
+    unamb = [i for i in idx if cases[i].y_state != _CENSORED]
+    return {
+        "n_cases": len(idx),
+        "n_scored": len(pos),
+        "n_censored": n_state_censored,
+        "n_censored_for_opportunity_state": sum(
+            1 for i in unamb
+            if link_status.get(cases[i].case_id) == "unverified"),
+        "n_censored_out_of_scope": sum(
+            1 for i in unamb
+            if link_status.get(cases[i].case_id) == "out_of_scope"),
+        "opportunities_scoped": scope["n_opportunities"],
+        "n_censored_opportunities":
+            scope["n_censored_opportunities"],
+        "scope_rule": scope_rule,
+        "scorers": scorers}
 
 
 def _group_indices(cases: Sequence[ForecastCase],
@@ -305,25 +544,82 @@ def _fraction_dropped(case_id: str, fraction: float) -> bool:
     return int(digest[:12], 16) / float(16 ** 12) < fraction
 
 
+def _scope_counter(opportunities: Any, unit_basins: Any,
+                   region_basins: Any,
+                   all_cases: Sequence[ForecastCase]):
+    """Return ``subset_cases -> verified in-scope opportunity count``
+    using the shared ``_scoped_opportunity_count`` (linked-by-subset
+    plus never-linked, in the subset's region scope), or ``None`` when
+    no opportunity registry is bound.  The fallback denominator —
+    used only when the registry is absent — is the count of distinct
+    linked opportunity ids, a lineage-derived count, never the raw
+    case count."""
+    bound = isinstance(opportunities, Mapping) and \
+        isinstance(unit_basins, Mapping) and \
+        isinstance(region_basins, Mapping)
+    all_linked = {c.opportunity_id for c in all_cases
+                  if isinstance(c.opportunity_id, str)
+                  and c.opportunity_id}
+
+    def count(subset: Sequence[ForecastCase]) -> int:
+        if bound:
+            return _scoped_opportunity_count(
+                opportunities, unit_basins, region_basins,
+                regions={c.region for c in subset},
+                linked_ids={c.opportunity_id for c in subset
+                            if c.opportunity_id},
+                all_linked_ids=all_linked)["n_opportunities"]
+        return len({c.opportunity_id for c in subset
+                    if c.opportunity_id})
+
+    return count
+
+
+def _eligible_subset(cases: Sequence[ForecastCase],
+                     eligible: Optional[Collection[str]]
+                     ) -> list[ForecastCase]:
+    """Unambiguous cases additionally restricted to the verified
+    (eligible) basis when an eligibility set is bound."""
+    if eligible is None:
+        return _unambiguous(cases)
+    ids = {str(x) for x in eligible}
+    return [c for c in cases
+            if c.y_state != _CENSORED and c.case_id in ids]
+
+
 def missing_feed_degradation(
         cases: Sequence[ForecastCase],
-        scenarios: Sequence[Mapping]) -> dict:
-    """Recompute core metrics under predeclared missing-feed scenarios.
+        scenarios: Sequence[Mapping], *,
+        opportunities: Any = None,
+        unit_basins: Any = None,
+        region_basins: Any = None,
+        eligible: Optional[Collection[str]] = None,
+        n_opportunities: Optional[int] = None,
+        threshold: float = 0.5) -> dict:
+    """Recompute core metrics under predeclared dropout scenarios.
 
     Each scenario is ``{"name": str}`` plus ``drop_units`` (an iterable
     of unit ids removed entirely) and/or ``drop_fraction`` (a
     deterministic fractional dropout by case-id hash).  Surviving
     cases are re-scored as-is — cases are degraded away, never
-    imputed.  Each scenario's opportunity denominator is its surviving
-    case count (every case is one opportunity).  A scenario that
-    empties the unambiguous subset is flagged ``degenerate``.
+    imputed.  Opportunity denominators are registry-derived through
+    ``_scoped_opportunity_count`` when the registry is bound (the
+    surviving scope's verified opportunities), else the count of
+    distinct linked opportunity ids — never a raw case count.
+    ``eligible`` restricts scoring to verified-basis case ids.
+    A scenario that empties the scored subset is flagged
+    ``degenerate``.
     """
     cases = list(cases)
-    full = _unambiguous(cases)
-    y_full = _y(full)
-    p_full = [c.y_prob for c in full]
-    reference = _core_metrics(y_full, p_full, threshold=0.5,
-                              n_opportunities=len(cases))
+    denom = _scope_counter(
+        opportunities, unit_basins, region_basins, cases)
+    full = _eligible_subset(cases, eligible)
+    reference = _core_metrics(
+        _y(full), [c.y_prob for c in full], threshold=threshold,
+        n_opportunities=(n_opportunities
+                         if isinstance(n_opportunities, int)
+                         and not isinstance(n_opportunities, bool)
+                         else denom(cases)))
     out_scenarios: list[dict] = []
     for scenario in scenarios:
         name = str(scenario.get("name", "scenario"))
@@ -332,10 +628,10 @@ def missing_feed_degradation(
         survivors = [c for c in cases
                      if c.unit_id not in drop_units
                      and not _fraction_dropped(c.case_id, fraction)]
-        sub = _unambiguous(survivors)
+        sub = _eligible_subset(survivors, eligible)
         metrics = _core_metrics(_y(sub), [c.y_prob for c in sub],
-                                threshold=0.5,
-                                n_opportunities=len(survivors))
+                                threshold=threshold,
+                                n_opportunities=denom(survivors))
         delta = {k: metrics[k] - reference[k]
                  for k in ("brier", "auprc", "event_recall",
                            "false_alarms_per_opportunity")}
@@ -355,22 +651,36 @@ def missing_feed_degradation(
             "scenarios": out_scenarios}
 
 
+def _case_cluster_key(c: ForecastCase) -> tuple:
+    """The independence unit of a case: its atomic ``event_group_id``
+    when carried, else the ``(unit_id, season)`` basin-season cell.
+    Individual windows are never independent."""
+    gid = c.event_group_id
+    if isinstance(gid, str) and gid.strip():
+        return ("event_group", gid)
+    return ("unit_season_cell", c.unit_id, c.season)
+
+
 def power_report(cases: Sequence[ForecastCase], *,
                  target_precision: float = 0.1,
-                 alpha: float = 0.05) -> dict:
+                 alpha: float = 0.05,
+                 eligible: Optional[Collection[str]] = None) -> dict:
     """Prospective precision/power computation on the declared design.
 
-    The effective sample size is the number of independent
-    ``(region, season, mechanism)`` clusters over the unambiguous
-    subset — individual windows are never counted as independent.
+    The effective sample size is the number of independent clusters
+    over the scored subset — an atomic ``event_group_id`` when the
+    case carries one, else the ``(unit_id, season)`` basin-season
+    cell.  ``n_effective`` is the distinct-cluster count, never the
+    raw case count; ``clustering_unit`` names the rule.  ``eligible``
+    optionally restricts scoring to verified-basis case ids.
     ``required_n`` is the cluster count needed for a worst-case
     (rate = 0.5) proportion to meet ``target_precision`` at the
     two-sided ``alpha`` level.  ``powered`` requires the effective
     size to meet the requirement and at least two clusters.
     """
     cases = list(cases)
-    sub = _unambiguous(cases)
-    clusters = {(c.region, c.season, c.mechanism) for c in sub}
+    sub = _eligible_subset(cases, eligible)
+    clusters = {_case_cluster_key(c) for c in sub}
     n_clusters = len(clusters)
     observed_rate = (sum(1 for c in sub
                          if c.y_state == TargetState.POSITIVE.value)
@@ -387,10 +697,13 @@ def power_report(cases: Sequence[ForecastCase], *,
     return {
         "n_cases": len(cases),
         "n_unambiguous": len(sub),
+        "n_scored": len(sub),
         "n_censored": len(cases) - len(sub),
         "n_clusters": n_clusters,
+        "n_effective": n_clusters,
         "effective_n": n_clusters,
-        "cluster_key": "region+season+mechanism",
+        "clustering_unit":
+            "event_group_id_else_unit_id+season_cell",
         "observed_rate": observed_rate,
         "target_precision": target_precision,
         "alpha": alpha,
@@ -410,18 +723,33 @@ def _percentile(sorted_vals: list[float], q: float) -> float:
 
 def uncertainty_report(cases: Sequence[ForecastCase],
                        baseline_probs: Mapping[str, Sequence[float]],
-                       *, n_boot: int = 200, seed: int = 0) -> dict:
+                       *, n_boot: int = 200, seed: int = 0,
+                       opportunities: Any = None,
+                       unit_basins: Any = None,
+                       region_basins: Any = None,
+                       eligible: Optional[Collection[str]] = None,
+                       n_opportunities: Optional[int] = None,
+                       threshold: float = 0.5) -> dict:
     """Seeded (region, season) block bootstrap intervals.
 
-    Clusters of *all* cases (censored included — a case is one
-    opportunity) are resampled with replacement ``n_boot`` times; each
-    replicate recomputes the core metrics on the resampled unambiguous
-    subset with the resampled case count as the opportunity
-    denominator.  Percentile intervals (alpha = 0.05) are reported per
-    scorer and metric.  The stream is ``random.Random(seed)``: same
-    inputs give identical intervals.
+    Clusters of *all* cases are resampled with replacement ``n_boot``
+    times; each replicate recomputes the core metrics on the
+    resampled scored (unambiguous, verified-basis) subset.  The point
+    denominator is the registry-derived in-scope opportunity count
+    (``n_opportunities`` when bound, else the count of distinct linked
+    opportunity ids); each replicate's denominator is the
+    registry-derived verified count for the drawn scope via the shared
+    ``_scoped_opportunity_count`` — never a raw case count.
+    Percentile intervals (alpha = 0.05) are reported per scorer and
+    metric.  The stream is ``random.Random(seed)``: same inputs give
+    identical intervals.
     """
     cases = list(cases)
+    denom = _scope_counter(
+        opportunities, unit_basins, region_basins, cases)
+    point_denom = n_opportunities \
+        if isinstance(n_opportunities, int) \
+        and not isinstance(n_opportunities, bool) else denom(cases)
     clusters: dict[tuple[str, str], list[int]] = {}
     for i, c in enumerate(cases):
         clusters.setdefault((c.region, c.season), []).append(i)
@@ -432,13 +760,22 @@ def uncertainty_report(cases: Sequence[ForecastCase],
     for name, probs in baseline_probs.items():
         scorers[str(name)] = list(probs)
 
-    idx_un = [i for i, c in enumerate(cases) if c.y_state != _CENSORED]
+    eligible_ids = None if eligible is None else \
+        {str(x) for x in eligible}
+
+    def _scored(idx: Sequence[int]) -> list[int]:
+        return [i for i in idx
+                if cases[i].y_state != _CENSORED
+                and (eligible_ids is None
+                     or cases[i].case_id in eligible_ids)]
+
+    idx_un = _scored(range(len(cases)))
     out: dict[str, Any] = {}
     for name, probs in scorers.items():
         y_all = _y([cases[i] for i in idx_un])
         p_all = [probs[i] for i in idx_un]
-        point = _core_metrics(y_all, p_all, threshold=0.5,
-                              n_opportunities=len(cases))
+        point = _core_metrics(y_all, p_all, threshold=threshold,
+                              n_opportunities=point_denom)
         replicates: dict[str, list[float]] = {
             k: [] for k in ("brier", "auprc", "event_recall",
                             "false_alarms_per_opportunity")}
@@ -447,11 +784,12 @@ def uncertainty_report(cases: Sequence[ForecastCase],
                 break
             draw = rng.choices(cluster_keys, k=len(cluster_keys))
             idx = [i for key in draw for i in clusters[key]]
-            sub = [i for i in idx if cases[i].y_state != _CENSORED]
+            sub = _scored(idx)
             y = _y([cases[i] for i in sub])
             p = [probs[i] for i in sub]
-            m = _core_metrics(y, p, threshold=0.5,
-                              n_opportunities=len(idx))
+            m = _core_metrics(
+                y, p, threshold=threshold,
+                n_opportunities=denom([cases[i] for i in idx]))
             for k in replicates:
                 replicates[k].append(m[k])
         metric_ci: dict[str, Any] = {}
@@ -481,6 +819,8 @@ class EvaluationReport:
     ``status`` is ``FORECAST_EXPERIMENT_ONLY`` when the declared design
     meets its precision floor, else ``UNDERPOWERED_DESCRIPTIVE_ONLY`` —
     both neutral research statuses; neither is a real-data finding.
+    ``declaration.mode`` is ``fixture_only`` unless a bound
+    ``ForecastExperimentDeclaration`` was supplied.
     """
 
     experiment_id: str
@@ -489,14 +829,149 @@ class EvaluationReport:
     metrics: dict       # "model" + each baseline name -> metric bundle
     slices: dict        # per region / season / mechanism
     lead_time: dict     # per-horizon metric bundles
-    degradation: dict   # missing-feed scenario recomputation
+    degradation: dict   # dropout-scenario recomputation
+    missing_feed: dict  # declared missing-feed scenario sub-reports
     power: dict
     uncertainty: dict   # block-bootstrap intervals
     status: str
+    n_opportunities: int = 0
+    n_censored_opportunities: int = 0
+    n_censored_for_opportunity_state: int = 0
+    n_censored_out_of_scope: int = 0
+    opportunity_scope: dict = field(default_factory=dict)
+    declaration: dict = field(default_factory=dict)
     claim_scope: str = "research_only_no_operational_authorization"
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+
+def _case_link_status(c: ForecastCase,
+                      registry: Mapping[str, Any],
+                      unit_basins: Mapping[str, Any],
+                      basin_owner: Mapping[str, str]) -> str:
+    """The opportunity-basis verdict for one case.
+
+    ``verified`` — the case links a problem-free in-scope
+    ``OBSERVED_FULL`` record on its own unit and claimed region; only
+    verified unambiguous cases are scored.  ``unverified`` /
+    ``out_of_scope`` censor the case (a case's state is never trusted
+    without the opportunity basis).  ``absent`` /
+    ``invalid_record`` / ``unit_mismatch`` / ``region_mismatch`` are
+    structural defects reported as problems, never scored.
+    """
+    opp = registry.get(c.opportunity_id)
+    if opp is None:
+        return "absent"
+    if type(opp) is not ObservationOpportunityV0 or \
+            opp.opportunity_id != c.opportunity_id:
+        return "invalid_record"
+    if opp.unit_id != c.unit_id:
+        return "unit_mismatch"
+    basin = unit_basins.get(opp.unit_id) \
+        if isinstance(unit_basins, Mapping) else None
+    owner = basin_owner.get(basin) if isinstance(basin, str) else None
+    if owner is None:
+        return "out_of_scope"
+    if owner != c.region:
+        return "region_mismatch"
+    if opp.state != "OBSERVED_FULL" or opp.problems():
+        return "unverified"
+    return "verified"
+
+
+def _missing_feed_report(
+        names: Sequence[str], *,
+        cases: Sequence[ForecastCase],
+        scored_idx: Sequence[int],
+        scorers: Mapping[str, Sequence[float]],
+        threshold: float,
+        n_opportunities: int,
+        n_censored_for_opportunity_state: int) -> dict:
+    """Execute the declared missing-feed scenario set.
+
+    Each scenario recomputes the scorer table on the identical
+    verified-basis scored subset — ``EXECUTED`` with its own metric
+    bundle — or reports ``NOT_APPLICABLE`` with a reason where the
+    scenario's axis does not exist (point probabilities carry no
+    ensemble-member axis; no provider-latency distribution is bound).
+    """
+    y = _y([cases[i] for i in scored_idx])
+
+    def _table(drop: Collection[str] = (),
+               overrides: Optional[Mapping[str, Sequence[float]]]
+               = None) -> dict:
+        out: dict[str, Any] = {}
+        for name, probs in scorers.items():
+            if name in drop:
+                continue
+            vec = probs if overrides is None \
+                else overrides.get(name, probs)
+            out[name] = _bundle(
+                y, [vec[i] for i in scored_idx],
+                threshold=threshold,
+                n_opportunities=n_opportunities)
+        return out
+
+    results: list[dict] = []
+    for raw in names:
+        name = str(raw)
+        if name == "provider_dropout":
+            results.append({
+                "name": name, "status": "EXECUTED",
+                "reason": "model scorer output dropped — the "
+                          "baseline suite is rescored on the "
+                          "identical verified-basis subset",
+                "n_scored": len(scored_idx),
+                "scorers": _table(drop={"model"})})
+        elif name == "variable_dropout":
+            clim = scorers.get("climatology")
+            if clim is None:
+                results.append({
+                    "name": name, "status": "NOT_APPLICABLE",
+                    "reason": "no climatology baseline vector is "
+                              "bound — the feature-starved rule "
+                              "baseline has no fallback"})
+            else:
+                results.append({
+                    "name": name, "status": "EXECUTED",
+                    "reason": "case features are unavailable — the "
+                              "rule baseline cannot observe its "
+                              "inputs and falls back to climatology "
+                              "rates",
+                    "n_scored": len(scored_idx),
+                    "scorers": _table(overrides={"rule": clim})})
+        elif name == "member_truncation":
+            results.append({
+                "name": name, "status": "NOT_APPLICABLE",
+                "reason": "cases carry point probabilities, not "
+                          "ensemble members — there is no member "
+                          "axis to truncate"})
+        elif name == "latency_stress":
+            results.append({
+                "name": name, "status": "NOT_APPLICABLE",
+                "reason": "no provider-latency distribution is bound "
+                          "to the evaluation — the effective horizon "
+                          "cannot be shifted"})
+        elif name == "missing_opportunity":
+            results.append({
+                "name": name, "status": "EXECUTED",
+                "reason": "metrics recomputed with cases linked to "
+                          "non-OBSERVED_FULL or unverified registry "
+                          "entries censored — a case's state is never "
+                          "trusted without the opportunity basis",
+                "n_scored": len(scored_idx),
+                "n_censored_for_opportunity_state":
+                    n_censored_for_opportunity_state,
+                "scorers": _table()})
+        else:
+            results.append({
+                "name": name, "status": "NOT_APPLICABLE",
+                "reason": f"scenario {name!r} is not a declared "
+                          "missing-feed scenario"})
+    return {"policy": "declared_missing_feed_recompute_never_"
+                      "imputation",
+            "scenarios": results}
 
 
 def _case_vintage_problems(c: ForecastCase,
@@ -688,7 +1163,9 @@ def evaluate(cases: Sequence[ForecastCase], *,
              n_opportunities_declared: Optional[int] = None,
              threshold: float = 0.5,
              n_boot: int = 200,
-             seed: int = 0) -> EvaluationReport:
+             seed: int = 0,
+             scenarios: Collection[str] = DEFAULT_SCENARIOS,
+             experiment: Any = None) -> EvaluationReport:
     """Validate the contract and emit the full descriptive report.
 
     Raises ``ValueError`` listing *every* problem: unlocked or unmapped
@@ -704,19 +1181,32 @@ def evaluate(cases: Sequence[ForecastCase], *,
     ``opportunities`` is the verified observation-opportunity registry
     (``opportunity_id`` -> ``ObservationOpportunityV0``) — the same
     registry type ``run_association`` consumes.  Every registry entry
-    must be a problem-free record whose ``opportunity_id`` equals its
-    map key and whose ``unit_id`` has a ``unit_basins`` mapping.
-    Every case's ``opportunity_id`` must resolve to a registry entry
-    on the case's own unit whose basin (via ``unit_basins``) is
-    claimed — through ``region_basins`` — by the case's declared
-    evaluation region.
+    must be an ``ObservationOpportunityV0`` whose ``opportunity_id``
+    equals its map key and whose ``unit_id`` has a ``unit_basins``
+    mapping; entries failing ``problems()`` or not ``OBSERVED_FULL``
+    are excluded from every denominator and counted in
+    ``n_censored_opportunities``.  Every case's ``opportunity_id``
+    must resolve to a registry entry on the case's own unit; an
+    unambiguous case whose linked entry is not a verified in-scope
+    ``OBSERVED_FULL`` record is censored — never scored — and counted
+    in ``n_censored_for_opportunity_state`` or
+    ``n_censored_out_of_scope``.
 
     The false-alarm denominator ``n_opportunities`` is *derived* from
-    the registry: the count of distinct registry opportunity ids whose
-    unit's basin lies inside the declared evaluation regions.  It is
-    never caller-chosen.  The optional ``n_opportunities_declared``
-    is tamper evidence only — when given it must equal the derived
-    count exactly.
+    the registry by ``_scoped_opportunity_count``: the count of
+    problem-free ``OBSERVED_FULL`` opportunities whose unit's basin
+    lies inside the declared evaluation regions.  It is never
+    caller-chosen.  The optional ``n_opportunities_declared`` is
+    tamper evidence only — when given it must equal the derived count
+    exactly.
+
+    ``scenarios`` names the missing-feed scenario set executed into
+    ``report.missing_feed`` (default ``DEFAULT_SCENARIOS``).
+    ``experiment`` optionally binds a
+    ``ForecastExperimentDeclaration`` — as the typed record or a
+    strictly-convertible mapping — whose ``problems()`` and whose
+    ``vintage_lineage``/``threshold_record`` bindings are validated;
+    when absent the report records ``mode="fixture_only"``.
 
     Censored cases are excluded from every metric numerator and
     counted in ``n_censored``; the false-alarm rate divides by the
@@ -778,7 +1268,6 @@ def evaluate(cases: Sequence[ForecastCase], *,
     rb_problems, basin_owner = _region_basin_problems(
         holdout, region_basins)
     problems.extend(rb_problems)
-    eval_basins = set(basin_owner)
 
     # ---- opportunity registry: the denominator's source of truth --
     registry: Mapping[str, Any] = {}
@@ -801,19 +1290,23 @@ def evaluate(cases: Sequence[ForecastCase], *,
                     f"{rec.opportunity_id!r} does not equal the "
                     "registry key — the registry is keyed by "
                     "opportunity_id")
-            problems.extend(f"{tag}: {p}" for p in rec.problems())
             basin = ub.get(rec.unit_id)
             if not isinstance(basin, str) or not basin.strip():
                 problems.append(
                     f"{tag}: unit {rec.unit_id!r} has no basin "
                     "mapping in unit_basins")
+            # rec.problems() is NOT a hard reject: a defective or
+            # non-OBSERVED_FULL record is excluded from every
+            # denominator and counted as a censored opportunity —
+            # the registry's scope evidence decides scoring.
 
-    # The denominator: distinct registry opportunities whose unit's
-    # basin lies inside the declared evaluation regions.
-    n_opportunities = sum(
-        1 for rec in registry.values()
-        if type(rec) is ObservationOpportunityV0
-        and ub.get(rec.unit_id) in eval_basins)
+    # The denominator: problem-free OBSERVED_FULL registry
+    # opportunities inside the declared evaluation scope — derived by
+    # the shared scope counter; partial/unknown/unobserved/defective
+    # entries are counted separately as censored opportunities.
+    scope_result = _scoped_opportunity_count(
+        registry, ub, region_basins)
+    n_opportunities = scope_result["n_opportunities"]
     if isinstance(opportunities, Mapping) and \
             isinstance(unit_basins, Mapping) and n_opportunities <= 0:
         problems.append(
@@ -837,6 +1330,7 @@ def evaluate(cases: Sequence[ForecastCase], *,
 
     seen_ids: set[str] = set()
     seen_opps: set[str] = set()
+    link_status: dict[str, str] = {}
     for c in cases:
         if c.case_id in seen_ids:
             problems.append(f"case {c.case_id!r}: duplicate case_id")
@@ -850,36 +1344,40 @@ def evaluate(cases: Sequence[ForecastCase], *,
         seen_opps.add(c.opportunity_id)
         problems.extend(_case_lineage_problems(c))
         problems.extend(_case_vintage_problems(c, admitted_vintages))
+        status = _case_link_status(c, registry, ub, basin_owner)
+        link_status[c.case_id] = status
         if isinstance(c.opportunity_id, str) and \
                 c.opportunity_id.strip():
-            opp = registry.get(c.opportunity_id)
-            if c.opportunity_id not in registry:
+            if status == "absent":
                 problems.append(
                     f"case {c.case_id!r}: opportunity_id "
                     f"{c.opportunity_id!r} is absent from the "
                     "opportunity registry")
-            elif type(opp) is ObservationOpportunityV0:
-                if opp.unit_id != c.unit_id:
-                    problems.append(
-                        f"case {c.case_id!r}: unit {c.unit_id!r} "
-                        f"does not match opportunity "
-                        f"{opp.opportunity_id!r} unit "
-                        f"{opp.unit_id!r}")
+            elif status == "invalid_record":
+                problems.append(
+                    f"case {c.case_id!r}: opportunity_id "
+                    f"{c.opportunity_id!r} does not resolve to an "
+                    "ObservationOpportunityV0 record keyed by that "
+                    "id — the opportunity basis is unverifiable")
+            elif status == "unit_mismatch":
+                opp = registry[c.opportunity_id]
+                problems.append(
+                    f"case {c.case_id!r}: unit {c.unit_id!r} "
+                    f"does not match opportunity "
+                    f"{opp.opportunity_id!r} unit "
+                    f"{opp.unit_id!r}")
+            elif status == "region_mismatch":
+                opp = registry[c.opportunity_id]
                 basin = ub.get(opp.unit_id)
-                owner = basin_owner.get(basin) \
-                    if isinstance(basin, str) else None
-                if owner is None:
-                    problems.append(
-                        f"case {c.case_id!r}: opportunity "
-                        f"{opp.opportunity_id!r} sits in basin "
-                        f"{basin!r} outside the declared evaluation "
-                        "regions")
-                elif owner != c.region:
-                    problems.append(
-                        f"case {c.case_id!r}: opportunity basin "
-                        f"{basin!r} belongs to evaluation region "
-                        f"{owner!r}, not the case's declared region "
-                        f"{c.region!r}")
+                problems.append(
+                    f"case {c.case_id!r}: opportunity basin "
+                    f"{basin!r} belongs to evaluation region "
+                    f"{basin_owner.get(basin)!r}, not the case's "
+                    f"declared region {c.region!r}")
+            # "unverified" / "out_of_scope" are NOT problems: the
+            # case is censored — never scored — because its declared
+            # state cannot be trusted without the verified
+            # opportunity basis.
 
     provided = {str(k) for k in baseline_probs}
     missing = REQUIRED_BASELINE_NAMES - provided
@@ -899,6 +1397,67 @@ def evaluate(cases: Sequence[ForecastCase], *,
             problems.append(
                 f"baseline {name!r}: probabilities must be finite in "
                 "[0,1]")
+
+    # ---- declared missing-feed scenario set -----------------------
+    scenario_names: list[str] = []
+    if isinstance(scenarios, (str, bytes)) or \
+            not isinstance(scenarios, Collection):
+        problems.append("scenarios must be a collection of declared "
+                        "missing-feed scenario names")
+    else:
+        for s in scenarios:
+            if not isinstance(s, str) or not s.strip():
+                problems.append(
+                    f"scenario name {s!r} must be a non-empty "
+                    "string")
+            else:
+                scenario_names.append(s)
+
+    # ---- optional bound experiment declaration --------------------
+    decl: Optional[ForecastExperimentDeclaration] = None
+    if experiment is not None:
+        if type(experiment) is ForecastExperimentDeclaration:
+            decl = experiment
+        elif isinstance(experiment, Mapping):
+            try:
+                decl = ForecastExperimentDeclaration.from_mapping(
+                    experiment)
+            except ValueError as exc:
+                problems.append(f"experiment: {exc}")
+        else:
+            problems.append(
+                "experiment must be a ForecastExperimentDeclaration "
+                "or a mapping convertible to one — a standalone "
+                "probability mapping claims fixture scope only")
+        if decl is not None:
+            problems.extend(f"experiment: {p}"
+                            for p in decl.problems())
+            lineage = {str(v) for v in
+                       (decl.vintage_lineage or ())}
+            used = {c.vintage_digest for c in cases
+                    if isinstance(c.vintage_digest, str)}
+            uncovered = used - lineage
+            if uncovered:
+                problems.append(
+                    "experiment: vintage_lineage does not cover the "
+                    f"admitted case vintage digests "
+                    f"{sorted(uncovered)} — the declared lineage "
+                    "must bind every vintage the cases score under")
+            tr = decl.threshold_record
+            if isinstance(tr, Mapping) and "threshold" in tr:
+                tv = tr["threshold"]
+                if isinstance(tv, bool) or \
+                        not isinstance(tv, (int, float)) or \
+                        not math.isfinite(float(tv)):
+                    problems.append(
+                        "experiment: threshold_record['threshold'] "
+                        "must be a finite number")
+                elif abs(float(tv) - float(threshold)) > _TIME_EPS:
+                    problems.append(
+                        f"experiment: threshold_record threshold "
+                        f"{tv!r} does not equal the evaluation "
+                        f"threshold {threshold!r} — the decision "
+                        "threshold is bound by the declaration")
     if problems:
         raise ValueError("forecast evaluation rejected: "
                          + "; ".join(problems))
@@ -916,9 +1475,24 @@ def evaluate(cases: Sequence[ForecastCase], *,
         str(name): [list(probs)[i] for i in order]
         for name, probs in baseline_probs.items()}
 
-    sub = _unambiguous(cases)
-    pos_idx = [i for i, c in enumerate(cases) if c.y_state != _CENSORED]
+    # The scored subset: unambiguous cases whose linked opportunity is
+    # a verified in-scope OBSERVED_FULL record.  Every other case is
+    # excluded from every metric numerator — a case's declared state
+    # is never trusted without the opportunity basis.
+    scored_idx = [i for i, c in enumerate(cases)
+                  if c.y_state != _CENSORED
+                  and link_status.get(c.case_id) == "verified"]
+    scored_set = set(scored_idx)
+    sub = [cases[i] for i in scored_idx]
     y = _y(sub)
+    n_state_censored = sum(
+        1 for c in cases if c.y_state == _CENSORED)
+    n_cens_for_state = sum(
+        1 for c in cases if c.y_state != _CENSORED
+        and link_status.get(c.case_id) == "unverified")
+    n_cens_out_scope = sum(
+        1 for c in cases if c.y_state != _CENSORED
+        and link_status.get(c.case_id) == "out_of_scope")
 
     scorers: dict[str, Sequence[float]] = {
         "model": [c.y_prob for c in cases]}
@@ -927,31 +1501,92 @@ def evaluate(cases: Sequence[ForecastCase], *,
     metric_table: dict[str, Any] = {}
     for name, probs in scorers.items():
         metric_table[name] = _bundle(
-            y, [probs[i] for i in pos_idx], threshold=threshold,
+            y, [probs[i] for i in scored_idx], threshold=threshold,
             n_opportunities=n_opportunities)
 
-    slices = {
-        axis: {value: _slice_bundle(cases, scorers, idx,
-                                    threshold=threshold)
-               for value, idx in sorted(
-                   _group_indices(cases, key).items())}
-        for axis, key in (("region", lambda c: c.region),
-                          ("season", lambda c: c.season),
-                          ("mechanism", lambda c: c.mechanism))
-    }
-    lead_time = {
-        h: _slice_bundle(cases, scorers, idx, threshold=threshold)
-        for h, idx in sorted(
-            _group_indices(cases, lambda c: c.horizon).items(),
-            key=lambda kv: HORIZON_SECONDS[kv[0]])
-    }
+    all_linked_ids = {c.opportunity_id for c in cases
+                      if c.opportunity_id}
 
-    power = power_report(cases)
-    degradation = missing_feed_degradation(cases, ())
+    def _slice_scope(axis: str, value: str,
+                     idx: Sequence[int]) -> tuple[dict, str]:
+        """The slice's verified-opportunity scope via the shared
+        ``_scoped_opportunity_count`` — region slices count every
+        opportunity owned by the region; season/mechanism/lead-time
+        slices count opportunities linked by the slice's cases plus
+        opportunities linked by no case, within the slice's region
+        scope (registry entries carry no intrinsic season, mechanism,
+        or horizon attribution)."""
+        if axis == "region":
+            return _scoped_opportunity_count(
+                registry, ub, region_basins,
+                regions={value}), "region_owned_basins"
+        return _scoped_opportunity_count(
+            registry, ub, region_basins,
+            regions={cases[i].region for i in idx},
+            linked_ids={cases[i].opportunity_id
+                        for i in idx if cases[i].opportunity_id},
+            all_linked_ids=all_linked_ids), \
+            "linked_case_opportunities_plus_unlinked_in_case_regions"
+
+    slices: dict[str, Any] = {}
+    for axis, key in (("region", lambda c: c.region),
+                      ("season", lambda c: c.season),
+                      ("mechanism", lambda c: c.mechanism)):
+        slices[axis] = {}
+        for value, idx in sorted(
+                _group_indices(cases, key).items()):
+            scope, rule = _slice_scope(axis, value, idx)
+            slices[axis][value] = _slice_bundle(
+                cases, scorers, idx, threshold=threshold,
+                scored=scored_set, link_status=link_status,
+                scope=scope, scope_rule=rule)
+    lead_time = {}
+    for h, idx in sorted(
+            _group_indices(cases, lambda c: c.horizon).items(),
+            key=lambda kv: HORIZON_SECONDS[kv[0]]):
+        scope, rule = _slice_scope("horizon", h, idx)
+        lead_time[h] = _slice_bundle(
+            cases, scorers, idx, threshold=threshold,
+            scored=scored_set, link_status=link_status,
+            scope=scope, scope_rule=rule)
+
+    scored_ids = {cases[i].case_id for i in scored_idx}
+    power = power_report(cases, eligible=scored_ids)
+    degradation = missing_feed_degradation(
+        cases, (), opportunities=registry, unit_basins=ub,
+        region_basins=region_basins, eligible=scored_ids,
+        n_opportunities=n_opportunities, threshold=threshold)
+    missing_feed = _missing_feed_report(
+        scenario_names, cases=cases, scored_idx=scored_idx,
+        scorers=scorers, threshold=threshold,
+        n_opportunities=n_opportunities,
+        n_censored_for_opportunity_state=n_cens_for_state)
     uncertainty = uncertainty_report(
-        cases, aligned_baselines, n_boot=n_boot, seed=seed)
+        cases, aligned_baselines, n_boot=n_boot, seed=seed,
+        opportunities=registry, unit_basins=ub,
+        region_basins=region_basins, eligible=scored_ids,
+        n_opportunities=n_opportunities, threshold=threshold)
     status = ("FORECAST_EXPERIMENT_ONLY" if power["powered"]
               else "UNDERPOWERED_DESCRIPTIVE_ONLY")
+
+    if decl is None:
+        declaration = {
+            "mode": "fixture_only",
+            "reason": "no experiment declaration bound — a "
+                      "standalone probability mapping can never "
+                      "claim more than fixture scope"}
+    else:
+        tr = decl.threshold_record
+        declaration = {
+            "mode": "declared",
+            "declaration_id": decl.declaration_id,
+            "feature_artifact_digest": decl.feature_artifact_digest,
+            "threshold_record_digest":
+                sha256_canonical(dict(tr)) if isinstance(tr, Mapping)
+                else str(tr),
+            "n_ablations": len(decl.ablations or ()),
+            "n_vintage_lineage": len(decl.vintage_lineage or ()),
+        }
 
     digest = sha256_canonical({
         "cases": [c.to_dict() for c in cases],
@@ -959,6 +1594,8 @@ def evaluate(cases: Sequence[ForecastCase], *,
         "vintages": sorted(str(k) for k in admitted_vintages),
         "opportunity_ids": sorted(str(k) for k in registry),
         "n_opportunities": n_opportunities,
+        "scenarios": scenario_names,
+        "declaration": declaration,
         "holdout": holdout.to_dict(),
     })
     experiment_id = f"eval-{digest[:16]}"
@@ -966,18 +1603,33 @@ def evaluate(cases: Sequence[ForecastCase], *,
     return EvaluationReport(
         experiment_id=experiment_id,
         n_cases=len(cases),
-        n_censored=len(cases) - len(sub),
+        n_censored=n_state_censored,
         metrics=metric_table,
         slices=slices,
         lead_time=lead_time,
         degradation=degradation,
+        missing_feed=missing_feed,
         power=power,
         uncertainty=uncertainty,
-        status=status)
+        status=status,
+        n_opportunities=n_opportunities,
+        n_censored_opportunities=
+        scope_result["n_censored_opportunities"],
+        n_censored_for_opportunity_state=n_cens_for_state,
+        n_censored_out_of_scope=n_cens_out_scope,
+        opportunity_scope={
+            "n_opportunities": n_opportunities,
+            "n_censored_opportunities":
+                scope_result["n_censored_opportunities"],
+            "verified_ids": list(scope_result["verified_ids"]),
+            "censored_ids": list(scope_result["censored_ids"]),
+        },
+        declaration=declaration)
 
 
 __all__ = [
-    "ForecastCase", "EvaluationReport", "locked_region_problems",
-    "evaluate", "power_report", "missing_feed_degradation",
-    "uncertainty_report",
+    "ForecastCase", "EvaluationReport",
+    "ForecastExperimentDeclaration", "DEFAULT_SCENARIOS",
+    "locked_region_problems", "evaluate", "power_report",
+    "missing_feed_degradation", "uncertainty_report",
 ]

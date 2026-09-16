@@ -282,6 +282,15 @@ def _frozen_regime_payload(**overrides):
         "heldout_groups_declared": ["g3"],
         "train_mask_digest": "d" * 64,
         "occupancy": [0.6, 0.4],
+        "stability": {
+            "required_gates": {
+                "modal_k_unanimous": True, "seed_ari": True,
+                "loro": True, "temporal_bootstrap": True,
+                "season_refits": True, "elevation": True,
+                "missingness": True, "era_drift": True,
+                "shuffled_null": True, "season_matched_null": True,
+            },
+        },
         "status": "DESCRIPTIVE_REGIME_ONLY",
         "disclaimer": "synthetic",
     }
@@ -422,6 +431,68 @@ def test_regime_missing_i05_provenance_rejected():
         del p[field]
         with pytest.raises(ValueError, match=field):
             regime_assignment_from_artifact(p, artifact_id="x")
+
+
+def _repair_digests(p):
+    """Recompute the self-referential digests exactly as the
+    producer/freeze path does, so a test can corrupt ONE claim and
+    keep every other binding valid."""
+    p["assignment_digest"] = _canon(p["assignments"])
+    p["regime_artifact_digest"] = _canon(
+        {k: v for k, v in p.items()
+         if k not in ("regime_artifact_digest", "freeze_digest",
+                      "frozen")})
+    p["freeze_digest"] = _canon(
+        {k: v for k, v in p.items()
+         if k not in ("freeze_digest", "frozen")})
+    return p
+
+
+def test_regime_descriptive_over_open_gate_rejected():
+    """PROV-C03: a frozen artifact whose required_gates are not all
+    True cannot carry a terminal descriptive status — even with
+    internally consistent digests."""
+    p = _frozen_regime_payload()
+    p["stability"]["required_gates"]["season_refits"] = False
+    _repair_digests(p)
+    with pytest.raises(ValueError, match="required_gates"):
+        regime_assignment_from_artifact(p, artifact_id="x")
+
+
+def test_regime_descriptive_without_gate_map_rejected():
+    """PROV-C03: the descriptive status requires the flat gate map
+    to be present — absent gate evidence is not closed gates."""
+    for mutation in (
+            lambda p: p.pop("stability"),
+            lambda p: p["stability"].pop("required_gates"),
+            lambda p: p["stability"].__setitem__(
+                "required_gates", {})):
+        p = _frozen_regime_payload()
+        mutation(p)
+        _repair_digests(p)
+        with pytest.raises(ValueError, match="required_gates"):
+            regime_assignment_from_artifact(p, artifact_id="x")
+
+
+def test_regime_descriptive_with_nonbool_gate_rejected():
+    """A non-boolean gate value is not ``True`` — the freeze-gate
+    admits no tri-state verdicts."""
+    p = _frozen_regime_payload()
+    p["stability"]["required_gates"]["loro"] = "PASS"
+    _repair_digests(p)
+    with pytest.raises(ValueError, match="required_gates"):
+        regime_assignment_from_artifact(p, artifact_id="x")
+
+
+def test_regime_candidate_status_with_open_gate_adapts():
+    """An honestly-demoted artifact — open evidence gate, candidate
+    status — binds cleanly: the freeze-gate constrains the
+    descriptive claim, not the sidecar itself."""
+    p = _frozen_regime_payload(status="CANDIDATE_ONLY")
+    p["stability"]["required_gates"]["season_matched_null"] = False
+    _repair_digests(p)
+    rec = regime_assignment_from_artifact(p, artifact_id="ra-cand")
+    assert rec.problems() == []
 
 
 def test_holdout_asymmetric_universe_rejected():

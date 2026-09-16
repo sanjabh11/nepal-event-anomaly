@@ -16,6 +16,7 @@ import pytest
 
 from nepal.experiment_v0.audit import (Finding, audit_module_source,
                                      audit_output_class, audit_pipeline,
+                                     audit_producer_payload,
                                      replay_bundle, replay_problems)
 from nepal.experiment_v0.association import (
     RegimeAssignmentArtifact, association_report_text, run_association)
@@ -427,3 +428,231 @@ class TestClaimText:
                       'LINE = "status: FORECAST_READY"\n')
         codes = {f.code for f in audit_module_source(path)}
         assert "FORBIDDEN_CLAIM_TEXT" in codes
+
+
+# ---------------------------------------------------------------------
+# 9. Producer-payload audit — the canonical producer schema
+# ---------------------------------------------------------------------
+
+def _mini_regime_frame():
+    """A small synthetic feature frame that satisfies run_regimes
+    preflight: >=3 geographic groups in the fit mask, >=50 train
+    rows, declared held-out groups, single season/era."""
+    import numpy as np
+    import pandas as pd
+    from nepal.science_v0.regimes import RegimeRunConfig
+    rng = np.random.default_rng(7)
+    units = ("u-east-a", "u-east-b", "u-central", "u-north",
+             "u-west", "u-farwest")
+    group_of = {"u-east-a": "grp_east", "u-east-b": "grp_east",
+                "u-central": "grp_central", "u-north": "grp_north",
+                "u-west": "grp_west", "u-farwest": "grp_farwest"}
+    cluster_of = {"u-west": 1, "u-farwest": 1}
+    rows = []
+    for unit in units:
+        cluster = cluster_of.get(unit, 0)
+        for day in range(70):
+            rows.append({
+                "unit_id": unit,
+                "date": (pd.Timestamp("2020-06-01")
+                         + pd.Timedelta(days=day)
+                         ).strftime("%Y-%m-%d"),
+                "f1": rng.normal(cluster * 4.0, 0.4),
+                "f2": rng.normal(-cluster * 3.0, 0.4),
+                "basin_group": group_of[unit],
+                "season": "JJA", "era": "e1"})
+    df = pd.DataFrame(rows)
+    train_mask = df["basin_group"].isin(
+        ["grp_east", "grp_central", "grp_north"]).to_numpy()
+    config = RegimeRunConfig(
+        train_groups=("grp_east", "grp_central", "grp_north"),
+        heldout_groups=("grp_west", "grp_farwest"))
+    return df, ["f1", "f2"], train_mask, config
+
+
+class TestProducerPayloadAudit:
+    """PROV-C01/C02 — audit_producer_payload consumes the canonical
+    producer schema: complete provenance, well-formed evidence
+    bindings, exact seed coverage, and a closed required-gates map
+    under any terminal descriptive status."""
+
+    def test_fixture_payload_audits_clean(self):
+        payload = fx.planted_artifact_payload(fx.make_events(21))
+        assert audit_producer_payload(payload) == []
+
+    def test_non_mapping_payload_flagged(self):
+        findings = audit_producer_payload([1, 2, 3])
+        assert [f.code for f in findings] == \
+            ["PRODUCER_PAYLOAD_MALFORMED"]
+
+    def test_missing_canonical_fields_flagged(self):
+        for field in ("input_bytes_digest", "model", "input_schema",
+                      "seeds_declared", "seed_coverage", "stability",
+                      "preprocessing_digest", "n_rows",
+                      "n_train_rows", "per_seed_best_k",
+                      "modal_k_frequency", "occupancy", "nulls",
+                      "k_selection_digest", "stability_report_digest",
+                      "null_model_digest"):
+            payload = fx.planted_artifact_payload(fx.make_events(21))
+            del payload[field]
+            findings = audit_producer_payload(payload)
+            assert any(f.code == "PRODUCER_PROVENANCE_MISSING"
+                       and repr(field) in f.detail
+                       for f in findings), field
+
+    def test_malformed_digests_flagged(self):
+        for field in ("input_bytes_digest", "feature_matrix_digest",
+                      "config_digest", "preprocessing_digest",
+                      "train_mask_digest", "assignment_digest"):
+            payload = fx.planted_artifact_payload(fx.make_events(21))
+            payload[field] = "not-a-digest"
+            findings = audit_producer_payload(payload)
+            assert any(f.code == "PRODUCER_DIGEST_MALFORMED"
+                       and field in f.detail
+                       for f in findings), field
+
+    def test_missing_required_gates_flagged(self):
+        payload = fx.planted_artifact_payload(fx.make_events(21))
+        del payload["stability"]["required_gates"]
+        payload["stability_report_digest"] = sha256_canonical(
+            payload["stability"])
+        findings = audit_producer_payload(payload)
+        assert any(f.code == "PRODUCER_PROVENANCE_MISSING"
+                   and "required_gates" in f.detail
+                   for f in findings)
+
+    def test_nonbool_gate_value_flagged(self):
+        payload = fx.planted_artifact_payload(fx.make_events(21))
+        payload["stability"]["required_gates"]["loro"] = "PASS"
+        payload["stability_report_digest"] = sha256_canonical(
+            payload["stability"])
+        findings = audit_producer_payload(payload)
+        assert any(f.code == "PRODUCER_SCHEMA_MALFORMED"
+                   and "required_gates" in f.detail
+                   for f in findings)
+
+    def test_open_gate_under_descriptive_status_flagged(self):
+        """A promoted status over an open gate is a bypass — the
+        fixture's CANDIDATE payload carries one open gate."""
+        payload = fx.planted_artifact_payload(fx.make_events(21))
+        payload["status"] = "DESCRIPTIVE_REGIME_ONLY"
+        findings = audit_producer_payload(payload)
+        assert any(f.code == "PRODUCER_GATE_BYPASSED"
+                   and "season_matched_null" in f.detail
+                   for f in findings)
+
+    def test_stability_digest_tamper_flagged(self):
+        """Mutating the stability block without rebinding its digest
+        must surface — the carried report digest is verified, never
+        trusted."""
+        payload = fx.planted_artifact_payload(fx.make_events(21))
+        payload["stability"]["seed_ari_min"] = 0.01
+        findings = audit_producer_payload(payload)
+        assert any(f.code == "PRODUCER_DIGEST_MISMATCH"
+                   for f in findings)
+
+    def test_model_must_carry_parameters(self):
+        payload = fx.planted_artifact_payload(fx.make_events(21))
+        del payload["model"]["covariances"]
+        findings = audit_producer_payload(payload)
+        assert any(f.code == "PRODUCER_SCHEMA_MALFORMED"
+                   and "model" in f.path for f in findings)
+
+    def test_model_component_count_mismatch_flagged(self):
+        payload = fx.planted_artifact_payload(fx.make_events(21))
+        payload["model"]["weights"] = [1.0]
+        findings = audit_producer_payload(payload)
+        assert any(f.code == "PRODUCER_SCHEMA_MALFORMED"
+                   for f in findings)
+
+    def test_input_schema_feature_order_binding(self):
+        payload = fx.planted_artifact_payload(fx.make_events(21))
+        payload["input_schema"]["feature_cols"] = \
+            ["synth_f2", "synth_f1"]
+        findings = audit_producer_payload(payload)
+        assert any(f.code == "PRODUCER_SCHEMA_MALFORMED"
+                   and "feature_cols" in f.detail
+                   for f in findings)
+
+    def test_input_schema_shape_binding(self):
+        payload = fx.planted_artifact_payload(fx.make_events(21))
+        n = payload["input_schema"]["n_rows"]
+        payload["input_schema"]["shape"] = [n, 7]
+        findings = audit_producer_payload(payload)
+        assert any(f.code == "PRODUCER_SCHEMA_MALFORMED"
+                   and "shape" in f.detail for f in findings)
+
+    def test_input_schema_row_count_binding(self):
+        payload = fx.planted_artifact_payload(fx.make_events(21))
+        payload["input_schema"]["n_rows"] = \
+            payload["n_rows"] + 1
+        findings = audit_producer_payload(payload)
+        assert any(f.code == "PRODUCER_SCHEMA_MALFORMED"
+                   for f in findings)
+
+    def test_seed_coverage_must_match_declared(self):
+        payload = fx.planted_artifact_payload(fx.make_events(21))
+        del payload["seed_coverage"]["42"]
+        findings = audit_producer_payload(payload)
+        assert any(f.code == "PRODUCER_SEED_COVERAGE_MISMATCH"
+                   for f in findings)
+
+    def test_seed_coverage_unknown_state_flagged(self):
+        payload = fx.planted_artifact_payload(fx.make_events(21))
+        payload["seed_coverage"]["42"] = "converged-ish"
+        findings = audit_producer_payload(payload)
+        assert any(f.code == "PRODUCER_SCHEMA_MALFORMED"
+                   and "seed_coverage" in f.path
+                   for f in findings)
+
+    def test_failed_seed_demotes(self):
+        payload = fx.planted_artifact_payload(fx.make_events(21))
+        payload["seed_coverage"]["23"] = "failed"
+        findings = audit_producer_payload(payload)
+        assert any(f.code == "PRODUCER_SEED_FAILED"
+                   and "23" in f.detail for f in findings)
+
+    def test_row_accounting_inconsistency_flagged(self):
+        payload = fx.planted_artifact_payload(fx.make_events(21))
+        payload["n_train_rows"] = payload["n_rows"] + 10
+        findings = audit_producer_payload(payload)
+        assert any(f.code == "PRODUCER_SCHEMA_MALFORMED"
+                   for f in findings)
+
+    def test_real_run_regimes_payload_audits_clean(self):
+        """PROV-C01: a real ``run_regimes`` + ``freeze_regime_artifact``
+        payload must audit with zero findings — no fixture shim.
+
+        While lane R1 lands the canonical producer fields
+        (``input_bytes_digest`` replacing ``feature_matrix_raw_digest``,
+        ``model``, ``input_schema``, ``seeds_declared``,
+        ``seed_coverage``), the only admissible findings on a
+        pre-canonical payload are the provenance-missing flags for
+        exactly those fields — anything else is an auditor defect.
+        """
+        from nepal.science_v0.regimes import (
+            freeze_regime_artifact, run_regimes)
+        df, feature_cols, train_mask, config = _mini_regime_frame()
+        artifact = run_regimes(df, feature_cols, train_mask, config)
+        assert artifact.get("status") != "RUN_ERROR", \
+            artifact.get("reason")
+        assert artifact.get("status") in (
+            "DESCRIPTIVE_REGIME_ONLY", "CANDIDATE_ONLY"), \
+            artifact.get("status")
+        payload = freeze_regime_artifact(artifact)
+        findings = audit_producer_payload(payload)
+        canonical = ("input_bytes_digest", "model", "input_schema",
+                     "seeds_declared", "seed_coverage")
+        if all(k in payload for k in canonical):
+            assert findings == [], [f"{f.code}: {f.detail}"
+                                    for f in findings]
+        else:
+            missing = {k for k in canonical if k not in payload}
+            assert missing
+            assert findings, \
+                "a pre-canonical payload must not audit clean"
+            for f in findings:
+                assert f.code == "PRODUCER_PROVENANCE_MISSING", \
+                    f"{f.code}: {f.detail}"
+                assert any(repr(k) in f.detail for k in missing), \
+                    f.detail

@@ -20,6 +20,7 @@ from nepal.experiment_v0.adapters import (
 from nepal.experiment_v0.audit import (REPLAY_SCHEMA, audit_pipeline,
                                      replay_bundle, replay_problems)
 from nepal.experiment_v0.association import ASSOCIATION_STATUSES
+from nepal.research_v0._hashing import sha256_canonical
 
 from tests.fixtures import synthetic_exp_b4 as fx
 
@@ -177,6 +178,126 @@ class TestReplayStability:
         # A different seed must not crash; it either reproduces the
         # same digests or reports drift — never silently passes.
         assert isinstance(diffs, list)
+
+
+# ---------------------------------------------------------------------
+# REP-C01 / PROV-C03 — regime-digest binding and freeze-gate probes
+# ---------------------------------------------------------------------
+
+def _repair_payload_digests(payload):
+    """Recompute the payload's self-referential digests exactly as
+    the producer/freeze path does, so a probe can corrupt ONE claim
+    while every other binding stays valid."""
+    payload["assignment_digest"] = sha256_canonical(
+        payload["assignments"])
+    payload["regime_artifact_digest"] = sha256_canonical(
+        {k: v for k, v in payload.items()
+         if k not in ("regime_artifact_digest", "freeze_digest",
+                      "frozen")})
+    payload["freeze_digest"] = sha256_canonical(
+        {k: v for k, v in payload.items()
+         if k not in ("freeze_digest", "frozen")})
+    return payload
+
+
+class TestRegimeDigestBinding:
+    """The bundle-level regime digest is recomputed from the
+    serialized artifact_payload and verified against every carried
+    reference — editing the payload, the assignments, the source
+    digests, or a bundle-level reference must produce a replay
+    problem, never a silent pass."""
+
+    def test_tampered_carried_regime_digest_fails(self):
+        bundle = fx.synthetic_bundle()
+        bundle["association"]["artifact"]["regime_digest"] = \
+            "f" * 64
+        result = replay_bundle(bundle)
+        assert result["association_status"] == "REPLAY_FAILED"
+        assert any("recomputed" in p for p in result["problems"])
+        assert any(f.code == "REGIME_DIGEST_MISMATCH"
+                   for f in audit_pipeline(bundle))
+
+    def test_tampered_carried_artifact_id_fails(self):
+        bundle = fx.synthetic_bundle()
+        bundle["association"]["artifact"]["artifact_id"] = "forged"
+        result = replay_bundle(bundle)
+        assert result["association_status"] == "REPLAY_FAILED"
+        assert result["problems"]
+
+    def test_tampered_assignment_row_fails(self):
+        bundle = fx.synthetic_bundle()
+        rows = bundle["association"]["artifact_payload"][
+            "assignments"]
+        rows[0] = [rows[0][0], rows[0][1],
+                   (rows[0][2] + 1) % 5]
+        result = replay_bundle(bundle)
+        assert result["association_status"] == "REPLAY_FAILED"
+        assert any("assignment_digest" in p
+                   for p in result["problems"])
+
+    def test_tampered_source_digest_fails(self):
+        """A swapped source digest leaves every recomputed binding
+        broken — the artifact digest no longer covers the payload."""
+        bundle = fx.synthetic_bundle()
+        bundle["association"]["artifact_payload"][
+            "feature_matrix_digest"] = "e" * 64
+        result = replay_bundle(bundle)
+        assert result["association_status"] == "REPLAY_FAILED"
+        assert any("regime_artifact_digest" in p
+                   for p in result["problems"])
+
+    def test_tampered_input_bytes_digest_fails(self):
+        bundle = fx.synthetic_bundle()
+        bundle["association"]["artifact_payload"][
+            "input_bytes_digest"] = "d" * 64
+        result = replay_bundle(bundle)
+        assert result["association_status"] == "REPLAY_FAILED"
+        assert result["problems"]
+
+    def test_swapped_artifact_payload_fails(self):
+        """Two bundles' payloads are not interchangeable — a
+        payload that fails to recompute against the carried
+        references is rejected at the replay boundary."""
+        bundle = fx.synthetic_bundle()
+        other = fx.synthetic_bundle(n_events=14)
+        bundle["association"]["artifact_payload"] = \
+            other["association"]["artifact_payload"]
+        result = replay_bundle(bundle)
+        assert result["association_status"] == "REPLAY_FAILED"
+        assert result["problems"]
+
+    def test_descriptive_status_over_open_gate_fails(self):
+        """PROV-C03: promoting the artifact to a terminal
+        descriptive status while a required gate is open — even
+        with every digest repaired — must fail replay."""
+        bundle = fx.synthetic_bundle()
+        payload = bundle["association"]["artifact_payload"]
+        payload["status"] = "DESCRIPTIVE_REGIME_ONLY"
+        # the fixture leaves season_matched_null open
+        _repair_payload_digests(payload)
+        result = replay_bundle(bundle)
+        assert result["association_status"] == "REPLAY_FAILED"
+        assert any("required_gates" in p for p in result["problems"])
+
+    def test_descriptive_status_all_gates_closed_replays_clean(self):
+        """The freeze-gate blocks a false claim, not a true one:
+        closing the open gate and promoting the status — with
+        digests repaired — replays with no problems."""
+        bundle = fx.synthetic_bundle()
+        payload = bundle["association"]["artifact_payload"]
+        payload["status"] = "DESCRIPTIVE_REGIME_ONLY"
+        payload["stability"]["required_gates"][
+            "season_matched_null"] = True
+        payload["stability_report_digest"] = sha256_canonical(
+            payload["stability"])
+        _repair_payload_digests(payload)
+        # every carried reference must track the repaired payload —
+        # the bundle-level digest is rebound, not bypassed
+        bundle["association"]["artifact"]["regime_digest"] = \
+            payload["freeze_digest"]
+        result = replay_bundle(bundle)
+        assert result["problems"] == []
+        assert result["association_status"] in ASSOCIATION_STATUSES
 
 
 # ---------------------------------------------------------------------

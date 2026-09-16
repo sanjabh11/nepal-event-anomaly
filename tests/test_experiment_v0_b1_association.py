@@ -955,16 +955,20 @@ def test_multiplicity_and_nulls_bound_in_report(planted):
                     holdout=holdout, region_basins=REGION_BASINS)
     # the declared family and Holm correction are bound into the
     # report — a post-hoc cell cannot be appended to the verdict
-    assert rep.horizon_family == ("midpoint", "uniform")
+    assert rep.horizon_family == ("midpoint", "uniform",
+                                "worst_case")
+    assert rep.lookback_horizons == ("0d",)
     assert rep.multiplicity["method"] == "holm"
     assert rep.multiplicity["alpha"] == 0.05
     assert "label_shuffle" in rep.negative_controls
     assert rep.negative_controls["label_shuffle"]["digest"]
     # every mandatory sensitivity axis is dispositioned explicitly
-    for axis in ("interval_placement", "observation_effort",
-                 "era", "missingness"):
+    for axis in ("interval_placement", "precision",
+                 "observation_effort", "era_boundary",
+                 "feature_subset", "missingness", "mechanism"):
         assert rep.sensitivities[axis]["status"] in (
             "PASS", "FAIL", "NOT_APPLICABLE")
+        assert rep.sensitivities[axis]["reason"]
 
 
 def test_label_shuffle_null_is_deterministic(planted):
@@ -974,3 +978,316 @@ def test_label_shuffle_null_is_deterministic(planted):
     r2 = run_assoc(artifact, events, controls, UNIT_BASINS, **kw)
     assert (r1.negative_controls["label_shuffle"]["digest"]
             == r2.negative_controls["label_shuffle"]["digest"])
+
+# ---------------------------------------------------------------------
+# ASSOC-C01: real look-back horizons vs placement modes
+# ---------------------------------------------------------------------
+
+_SEASON_BY_MONTH = {
+    12: "DJF", 1: "DJF", 2: "DJF", 3: "MAM", 4: "MAM", 5: "MAM",
+    6: "JJA", 7: "JJA", 8: "JJA", 9: "SON", 10: "SON", 11: "SON",
+}
+
+
+def _ev_dates(ev) -> list:
+    s = _date.fromisoformat(ev.event_time_start[:10])
+    e = _date.fromisoformat(ev.event_time_end[:10])
+    return _dates_between(s, e)
+
+
+def _basin_units() -> dict:
+    out: dict[str, list] = {}
+    for u, b in UNIT_BASINS.items():
+        out.setdefault(b, []).append(u)
+    return out
+
+
+def _midpoint_date(ev) -> _date:
+    s = datetime.strptime(ev.event_time_start, "%Y-%m-%dT%H:%M:%SZ")
+    e = datetime.strptime(ev.event_time_end, "%Y-%m-%dT%H:%M:%SZ")
+    return (s + (e - s) / 2).date()
+
+
+def _rows_with(plant_cells: set, event_cells: set,
+               background_mod: int = 41) -> dict:
+    """Assignment rows: R_PLANT on ``plant_cells``, a sparse R_PLANT
+    background (~1/background_mod) on non-event cells only, and
+    hash-driven baselines elsewhere."""
+    rows: dict[tuple[str, str], str] = {}
+    for unit in sorted(UNIT_BASINS):
+        for d in _dates_between(_BASE_DATE, _ASSIGN_END):
+            key = (unit, d.isoformat())
+            if key in plant_cells:
+                rows[key] = PLANTED_REGIME
+            elif key in event_cells:
+                rows[key] = "R%d" % (
+                    int(_h(f"base|{unit}|{d.isoformat()}")[:8], 16)
+                    % 3)
+            elif d.timetuple().tm_yday % background_mod == 0:
+                rows[key] = PLANTED_REGIME
+            else:
+                rows[key] = "R%d" % (
+                    int(_h(f"base|{unit}|{d.isoformat()}")[:8], 16)
+                    % 3)
+    return rows
+
+
+def test_lookback_horizon_extends_event_window():
+    """A regime planted only in the 3 days *preceding* each event is
+    invisible at the identity horizon and enriched at '3d'."""
+    events = make_events(21)
+    holdout = make_holdout(events)
+    bu = _basin_units()
+    event_cells = {(u, d.isoformat()) for ev in events
+                   for d in _ev_dates(ev)
+                   for u in bu[ev.basin_id]}
+    plant_cells = set()
+    for ev in events:
+        s = _date.fromisoformat(ev.event_time_start[:10])
+        for k in (1, 2, 3):
+            day = (s - timedelta(days=k)).isoformat()
+            for u in bu[ev.basin_id]:
+                plant_cells.add((u, day))
+    plant_cells -= event_cells
+    artifact = _rows_to_artifact(_rows_with(plant_cells, event_cells))
+    kw = dict(holdout=holdout, region_basins=REGION_BASINS,
+              horizon_family=("uniform",))
+    rep0 = run_assoc(artifact, events, make_controls(), UNIT_BASINS,
+                     lookback_horizons=("0d",), **kw)
+    rep3 = run_assoc(artifact, events, make_controls(), UNIT_BASINS,
+                     lookback_horizons=("3d",), **kw)
+    assert rep0.lookback_horizons == ("0d",)
+    assert rep3.lookback_horizons == ("3d",)
+    # At 0d the event window touches no planted date at all.
+    assert rep0.enrichment[PLANTED_REGIME]["event_share"] == 0.0
+    assert rep0.enrichment[PLANTED_REGIME]["ratio"] is not None
+    assert rep0.enrichment[PLANTED_REGIME]["ratio"] < 1.0
+    # At 3d the look-back window preceding the anchor covers the
+    # planted days.
+    assert rep3.enrichment[PLANTED_REGIME]["ratio"] > 1.0
+    assert f"3d|uniform|{PLANTED_REGIME}" in \
+        rep3.multiplicity["holm_rejected"]
+    assert f"0d|uniform|{PLANTED_REGIME}" not in \
+        rep0.multiplicity["holm_rejected"]
+
+
+def test_undeclared_lookback_horizon_rejects(planted):
+    artifact, events, controls, holdout = planted
+    kw = dict(holdout=holdout, region_basins=REGION_BASINS)
+    for bad in (("3x",), ("week",), ("-1d",), (3,), ("3.5d",), ()):
+        with pytest.raises(ValueError, match="lookback"):
+            run_assoc(artifact, events, controls, UNIT_BASINS,
+                      lookback_horizons=bad, **kw)
+
+
+def test_holm_family_spans_lookback_and_placement(planted):
+    artifact, events, controls, holdout = planted
+    rep = run_assoc(artifact, events, controls, UNIT_BASINS,
+                    holdout=holdout, region_basins=REGION_BASINS,
+                    lookback_horizons=("0d", "3d"),
+                    horizon_family=("midpoint", "uniform"))
+    pvals = rep.multiplicity["family_pvals"]
+    assert pvals
+    # every p_enrich feeding Holm is a regime x horizon x placement
+    # cell — and only cells inside the declared family appear
+    assert all(k.count("|") == 2 for k in pvals)
+    for h in ("0d", "3d"):
+        for m in ("midpoint", "uniform"):
+            assert any(k.startswith(f"{h}|{m}|") for k in pvals)
+    assert not any(k.startswith("7d|") for k in pvals)
+    assert not any(k.startswith("0d|worst_case|") for k in pvals)
+    assert rep.lookback_horizons == ("0d", "3d")
+
+
+def test_single_placement_hit_cannot_promote():
+    """R_PLANT planted only on each event's midpoint date is enriched
+    under midpoint and uniform but collapses under worst_case — the
+    all-cells rule keeps it out of the supported verdict."""
+    events = make_events(21)
+    holdout = make_holdout(events)
+    bu = _basin_units()
+    event_cells = {(u, d.isoformat()) for ev in events
+                   for d in _ev_dates(ev)
+                   for u in bu[ev.basin_id]}
+    mid_cells = {(u, _midpoint_date(ev).isoformat())
+                 for ev in events for u in bu[ev.basin_id]}
+    artifact = _rows_to_artifact(
+        _rows_with(mid_cells & event_cells, event_cells))
+    rep = run_assoc(artifact, events, make_controls(), UNIT_BASINS,
+                    holdout=holdout, region_basins=REGION_BASINS)
+    assert rep.n_event_groups >= MIN_EVENT_GROUPS
+    assert rep.status == "DESCRIPTIVE_REGIME_ONLY"
+    assert f"0d|midpoint|{PLANTED_REGIME}" in \
+        rep.multiplicity["holm_rejected"]
+    assert f"0d|worst_case|{PLANTED_REGIME}" not in \
+        rep.multiplicity["holm_rejected"]
+
+
+# ---------------------------------------------------------------------
+# ASSOC-C02: stratified label shuffle
+# ---------------------------------------------------------------------
+
+def test_label_shuffle_is_stratified_by_season_and_basin():
+    """When every (season, basin) stratum carries a single distinct
+    label, a within-stratum permutation is the identity — every null
+    replicate reproduces the observed ratio exactly (p == 1.0).  A
+    global shuffle would leak labels across strata and could not."""
+    events = make_events(21)
+    holdout = make_holdout(events)
+    rows = {}
+    for unit in sorted(UNIT_BASINS):
+        for d in _dates_between(_BASE_DATE, _ASSIGN_END):
+            rows[(unit, d.isoformat())] = (
+                f"R-{UNIT_BASINS[unit]}-{_SEASON_BY_MONTH[d.month]}")
+    artifact = _rows_to_artifact(rows)
+    rep = run_assoc(artifact, events, make_controls(), UNIT_BASINS,
+                    holdout=holdout, region_basins=REGION_BASINS)
+    null = rep.negative_controls["label_shuffle"]
+    assert null["flat"] is True
+    assert null["per_regime"]
+    for rid, entry in null["per_regime"].items():
+        assert entry["p"] is None or entry["p"] == 1.0, (rid, entry)
+        if entry["p"] == 1.0:
+            assert entry["null_p95"] == entry["observed_ratio"]
+
+
+def test_label_shuffle_stratification_is_order_invariant(planted):
+    artifact, events, controls, holdout = planted
+    kw = dict(holdout=holdout, region_basins=REGION_BASINS)
+    rev = dataclasses.replace(
+        artifact, assignments=tuple(reversed(artifact.assignments)))
+    r1 = run_assoc(artifact, events, controls, UNIT_BASINS, **kw)
+    r2 = run_assoc(rev, events, controls, UNIT_BASINS, **kw)
+    assert (r1.negative_controls["label_shuffle"]["digest"]
+            == r2.negative_controls["label_shuffle"]["digest"])
+
+
+# ---------------------------------------------------------------------
+# ASSOC-C03: mandatory sensitivity registry
+# ---------------------------------------------------------------------
+
+def test_sensitivity_registry_complete(planted):
+    artifact, events, controls, holdout = planted
+    rep = run_assoc(artifact, events, controls, UNIT_BASINS,
+                    holdout=holdout, region_basins=REGION_BASINS)
+    expected = {"interval_placement", "precision",
+                "observation_effort", "era_boundary",
+                "feature_subset", "missingness", "mechanism"}
+    assert expected <= set(rep.sensitivities)
+    assert "era" not in rep.sensitivities  # renamed to era_boundary
+    for axis in expected:
+        entry = rep.sensitivities[axis]
+        assert entry["status"] in ("PASS", "FAIL", "NOT_APPLICABLE")
+        assert isinstance(entry["reason"], str) and entry["reason"]
+    fs = rep.sensitivities["feature_subset"]
+    assert fs["status"] == "NOT_APPLICABLE"
+    assert fs["reason"] == ("regime artifact frozen — feature "
+                            "ablation is a producer-side axis")
+    # single-calendar-year fixture: no era boundary exists to split
+    assert rep.sensitivities["era_boundary"]["status"] == \
+        "NOT_APPLICABLE"
+    # day-precision events are planted too -> direction survives
+    assert rep.sensitivities["precision"]["status"] == "PASS"
+    assert rep.sensitivities["mechanism"]["status"] == "PASS"
+
+
+def test_precision_sensitivity_fail_blocks_supported():
+    """Day-precision events sit on unplanted dates; only
+    interval-precision events are planted.  The precise-only
+    recomputation reverses the enrichment -> FAIL -> not supported."""
+    events = make_events(21)
+    holdout = make_holdout(events)
+    bu = _basin_units()
+    event_cells = {(u, d.isoformat()) for ev in events
+                   for d in _ev_dates(ev)
+                   for u in bu[ev.basin_id]}
+    plant_cells = {(u, d.isoformat()) for ev in events
+                   if ev.event_time_precision != "day"
+                   for d in _ev_dates(ev)
+                   for u in bu[ev.basin_id]}
+    artifact = _rows_to_artifact(
+        _rows_with(plant_cells, event_cells))
+    rep = run_assoc(artifact, events, make_controls(), UNIT_BASINS,
+                    holdout=holdout, region_basins=REGION_BASINS)
+    assert rep.n_event_groups >= MIN_EVENT_GROUPS
+    assert rep.sensitivities["precision"]["status"] == "FAIL"
+    assert rep.status == "DESCRIPTIVE_REGIME_ONLY"
+
+
+def test_mechanism_sensitivity_fail_blocks_supported():
+    """Two mechanism slices (via vertical_id): the planted regime
+    holds only for one mechanism — the other slice has >=3 groups
+    and reverses -> mechanism FAIL blocks the supported verdict."""
+    events = make_events(21)
+    events = [dataclasses.replace(e, vertical_id="glof")
+              if i % 2 else e for i, e in enumerate(events)]
+    holdout = make_holdout(events)
+    bu = _basin_units()
+    event_cells = {(u, d.isoformat()) for ev in events
+                   for d in _ev_dates(ev)
+                   for u in bu[ev.basin_id]}
+    plant_cells = {(u, d.isoformat()) for i, ev in enumerate(events)
+                   if i % 2 == 0
+                   for d in _ev_dates(ev)
+                   for u in bu[ev.basin_id]}
+    artifact = _rows_to_artifact(
+        _rows_with(plant_cells, event_cells))
+    rep = run_assoc(artifact, events, make_controls(), UNIT_BASINS,
+                    holdout=holdout, region_basins=REGION_BASINS)
+    assert rep.n_event_groups >= MIN_EVENT_GROUPS
+    mech = rep.sensitivities["mechanism"]
+    assert mech["status"] == "FAIL"
+    assert "glof" in mech["per_mechanism_ratios"]
+    assert rep.status == "DESCRIPTIVE_REGIME_ONLY"
+
+
+# ---------------------------------------------------------------------
+# ASSOC-C04: report problems() + artifact provenance floor
+# ---------------------------------------------------------------------
+
+def test_report_problems_block_hollow_supported(planted):
+    artifact, events, controls, holdout = planted
+    rep = run_assoc(artifact, events, controls, UNIT_BASINS,
+                    holdout=holdout, region_basins=REGION_BASINS)
+    assert rep.status == "REGIME_ASSOCIATION_SUPPORTED"
+    assert rep.problems() == []
+    # A supported verdict cannot stand on empty enrichment.
+    assert dataclasses.replace(rep, enrichment={}).problems()
+    # ... or with a required null family missing.
+    neg = dict(rep.negative_controls)
+    neg.pop("label_shuffle")
+    assert dataclasses.replace(rep, negative_controls=neg).problems()
+    # ... or a missing sensitivity disposition.
+    sens = dict(rep.sensitivities)
+    sens.pop("mechanism")
+    assert dataclasses.replace(rep, sensitivities=sens).problems()
+    # ... or an empty declared horizon family.
+    assert dataclasses.replace(rep, horizon_family=()).problems()
+    assert dataclasses.replace(rep, lookback_horizons=()).problems()
+    # ... or a FAIL disposition (any FAIL blocks supported).
+    bad = dict(rep.sensitivities)
+    bad["precision"] = {"status": "FAIL", "reason": "reversed"}
+    assert dataclasses.replace(rep, sensitivities=bad).problems()
+
+
+def test_artifact_provenance_floor_rejected(planted):
+    artifact, events, controls, holdout = planted
+    kw = dict(holdout=holdout, region_basins=REGION_BASINS)
+    # Locally-self-digested minimal artifacts — empty assignments,
+    # non-64-hex digest, or missing producer provenance fields —
+    # are rejected at the door; synthetic fixtures built on the same
+    # record satisfy the floor because they carry those fields.
+    with pytest.raises(ValueError, match="artifact"):
+        run_assoc(dataclasses.replace(artifact, assignments=()),
+                  events, controls, UNIT_BASINS, **kw)
+    with pytest.raises(ValueError, match="artifact"):
+        run_assoc(dataclasses.replace(
+            artifact, regime_digest="self-digested-locally"),
+            events, controls, UNIT_BASINS, **kw)
+    with pytest.raises(ValueError, match="artifact"):
+        run_assoc(dataclasses.replace(artifact, seeds=()),
+                  events, controls, UNIT_BASINS, **kw)
+    with pytest.raises(ValueError, match="RegimeAssignmentArtifact"):
+        run_association(object(), events, controls, UNIT_BASINS,
+                        holdout=holdout, region_basins=REGION_BASINS,
+                        opportunities=make_opportunities(controls))

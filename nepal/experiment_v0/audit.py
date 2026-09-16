@@ -397,6 +397,62 @@ def _as_holdout(payload: Any, section: str) -> HoldoutPlanV0:
     return record
 
 
+def _recomputed_regime_digest(payload: Mapping[str, Any]) -> str:
+    """The regime digest bound downstream: ``sha256_canonical``
+    over the serialized payload minus the freeze-local fields —
+    the same surface ``freeze_regime_artifact`` digests."""
+    return sha256_canonical(
+        {k: v for k, v in payload.items()
+         if k not in ("freeze_digest", "frozen")})
+
+
+def _verify_regime_digest_references(
+        assoc: Mapping[str, Any], payload: Mapping[str, Any],
+        artifact: Any) -> None:
+    """REP-C01 — the bundle-level regime digest must recompute from
+    the serialized ``artifact_payload`` and equal every reference
+    the bundle carries.  A carried digest or artifact_id is
+    verified, never trusted: editing the payload, the assignment
+    sidecar, the source digests, or a bundle-level reference must
+    surface here."""
+    recomputed = _recomputed_regime_digest(payload)
+    if artifact.regime_digest != recomputed:
+        raise ValueError(
+            "reconstructed artifact regime_digest does not equal "
+            "the digest recomputed from artifact_payload — the "
+            "contract artifact and the serialized payload "
+            "disagree")
+    references: list[tuple[str, Any]] = []
+    carried = assoc.get("artifact")
+    if carried is not None:
+        if not isinstance(carried, Mapping):
+            raise ValueError(
+                "association.artifact is present but not a "
+                "mapping — the serialized contract artifact "
+                "cannot be verified")
+        references.append(("association.artifact.regime_digest",
+                           carried.get("regime_digest")))
+        carried_id = carried.get("artifact_id")
+        if carried_id is not None and \
+                str(carried_id) != artifact.artifact_id:
+            raise ValueError(
+                f"association.artifact.artifact_id "
+                f"{carried_id!r} does not match the declared "
+                f"artifact_id {artifact.artifact_id!r} — the "
+                "bundle binds two different artifacts")
+    for field in ("regime_digest", "artifact_regime_digest"):
+        if field in assoc:
+            references.append((f"association.{field}",
+                               assoc[field]))
+    for name, ref in references:
+        if ref != recomputed:
+            raise ValueError(
+                f"{name} {ref!r} does not equal the regime "
+                "digest recomputed from the serialized "
+                "artifact_payload — a carried reference was "
+                "tampered with or mislabeled")
+
+
 def _reconstruct_association(assoc: Mapping[str, Any]):
     """Rebuild the association lane inputs from a bundle section.
 
@@ -416,6 +472,7 @@ def _reconstruct_association(assoc: Mapping[str, Any]):
     artifact = regime_assignment_from_artifact(
         payload, artifact_id=str(
             assoc.get("artifact_id") or "replay-artifact"))
+    _verify_regime_digest_references(assoc, payload, artifact)
     events = [deserialize_record(e) for e in assoc.get("events") or []]
     for e in events:
         if type(e) is not EventLabelV0:
@@ -451,31 +508,345 @@ def _reconstruct_association(assoc: Mapping[str, Any]):
             int(assoc.get("seed", 0)))
 
 
+#: The canonical producer schema — every field a serialized
+#: ``science_v0.run_regimes`` + ``freeze_regime_artifact`` payload
+#: must carry.  Missing fields are provenance gaps; a fabricated
+#: artifact that omits them cannot support a terminal status.
+_PRODUCER_REQUIRED_FIELDS = (
+    "assignments", "assignment_digest",
+    "regime_artifact_digest", "freeze_digest", "frozen",
+    "label_blinding", "fitted_on", "mode", "status",
+    "data_class", "seeds", "seeds_declared", "seed_coverage",
+    "feature_cols", "feature_matrix_digest", "input_bytes_digest",
+    "input_schema", "model", "config_digest", "fit_groups",
+    "heldout_groups_declared", "n_train_rows", "n_rows",
+    "train_mask_digest", "k", "per_seed_best_k",
+    "modal_k_frequency", "occupancy", "stability", "nulls",
+    "preprocessing_digest", "k_selection_digest",
+    "stability_report_digest", "null_model_digest", "disclaimer")
+
+#: Carried digests are verified, never trusted: each must be a
+#: 64-hex sha256 when present (absence is a provenance finding).
+_PRODUCER_DIGEST_FIELDS = (
+    "assignment_digest", "regime_artifact_digest", "freeze_digest",
+    "feature_matrix_digest", "input_bytes_digest", "config_digest",
+    "train_mask_digest", "preprocessing_digest",
+    "k_selection_digest", "stability_report_digest",
+    "null_model_digest")
+
+_SEED_COVERAGE_STATES = frozenset({"converged", "failed"})
+
+
+def _is_sha256(value: Any) -> bool:
+    return isinstance(value, str) and bool(_SHA256_RE.match(value))
+
+
+def _is_number(value: Any) -> bool:
+    return not isinstance(value, bool) and \
+        isinstance(value, (int, float))
+
+
+def _seq_of_numbers(value: Any) -> bool:
+    return isinstance(value, (list, tuple)) and bool(value) and \
+        all(_is_number(v) for v in value)
+
+
+def _producer_model_findings(payload: Mapping[str, Any],
+                             ) -> list[Finding]:
+    """Well-formedness of the ``model`` binding — the serialized
+    GMM parameters that let a replay reconstruct the partition
+    without re-predicting."""
+    findings: list[Finding] = []
+    model = payload.get("model")
+    if not isinstance(model, Mapping) or \
+            set(model) != {"weights", "means", "covariances"}:
+        return [Finding(
+            "PRODUCER_SCHEMA_MALFORMED", "artifact_payload.model",
+            "model must be a mapping with exactly the keys "
+            "{weights, means, covariances}")]
+    weights, means, covs = (model["weights"], model["means"],
+                            model["covariances"])
+    if not _seq_of_numbers(weights):
+        findings.append(Finding(
+            "PRODUCER_SCHEMA_MALFORMED", "artifact_payload.model",
+            "model.weights must be a non-empty sequence of "
+            "numbers"))
+    if not isinstance(means, (list, tuple)) or not means or \
+            any(not _seq_of_numbers(row) for row in means):
+        findings.append(Finding(
+            "PRODUCER_SCHEMA_MALFORMED", "artifact_payload.model",
+            "model.means must be a non-empty sequence of numeric "
+            "rows"))
+    if not isinstance(covs, (list, tuple)) or not covs or \
+            any(not isinstance(m, (list, tuple)) or
+                any(not _seq_of_numbers(row) for row in m)
+                for m in covs):
+        findings.append(Finding(
+            "PRODUCER_SCHEMA_MALFORMED", "artifact_payload.model",
+            "model.covariances must be a non-empty sequence of "
+            "numeric matrices"))
+    if not findings and not (len(weights) == len(means) ==
+                             len(covs)):
+        findings.append(Finding(
+            "PRODUCER_SCHEMA_MALFORMED", "artifact_payload.model",
+            "model weights/means/covariances component counts "
+            "disagree"))
+    k = payload.get("k")
+    if not findings and isinstance(k, int) and \
+            not isinstance(k, bool) and len(weights) != k:
+        findings.append(Finding(
+            "PRODUCER_SCHEMA_MALFORMED", "artifact_payload.model",
+            f"model carries {len(weights)} components but the "
+            f"artifact declares k={k}"))
+    return findings
+
+
+def _producer_input_schema_findings(
+        payload: Mapping[str, Any]) -> list[Finding]:
+    """Well-formedness of ``input_schema`` — feature order, row
+    count, dtypes, and frame shape bound against the artifact's own
+    declared fields."""
+    findings: list[Finding] = []
+    schema = payload.get("input_schema")
+    path = "artifact_payload.input_schema"
+    if not isinstance(schema, Mapping):
+        return [Finding("PRODUCER_SCHEMA_MALFORMED", path,
+                        "input_schema must be a mapping with "
+                        "feature_cols, n_rows, dtypes, and shape")]
+    missing = sorted({"feature_cols", "n_rows", "dtypes", "shape"}
+                     - set(schema))
+    if missing:
+        findings.append(Finding(
+            "PRODUCER_SCHEMA_MALFORMED", path,
+            f"input_schema lacks {missing}"))
+        return findings
+    cols = schema["feature_cols"]
+    if not isinstance(cols, (list, tuple)) or not cols or \
+            any(not isinstance(c, str) or not c.strip()
+                for c in cols):
+        findings.append(Finding(
+            "PRODUCER_SCHEMA_MALFORMED", path,
+            "input_schema.feature_cols must be a non-empty "
+            "sequence of column names"))
+    declared = payload.get("feature_cols")
+    if isinstance(cols, (list, tuple)) and \
+            isinstance(declared, (list, tuple)) and \
+            list(cols) != list(declared):
+        findings.append(Finding(
+            "PRODUCER_SCHEMA_MALFORMED", path,
+            "input_schema.feature_cols does not equal the "
+            "artifact's feature_cols — the feature order binding "
+            "is inconsistent"))
+    n_rows = schema["n_rows"]
+    if isinstance(n_rows, bool) or not isinstance(n_rows, int) or \
+            n_rows <= 0:
+        findings.append(Finding(
+            "PRODUCER_SCHEMA_MALFORMED", path,
+            "input_schema.n_rows must be a positive integer"))
+    shape = schema["shape"]
+    if not isinstance(shape, (list, tuple)) or len(shape) != 2 or \
+            any(isinstance(d, bool) or not isinstance(d, int)
+                or d <= 0 for d in shape):
+        findings.append(Finding(
+            "PRODUCER_SCHEMA_MALFORMED", path,
+            "input_schema.shape must be two positive integers"))
+    else:
+        if isinstance(cols, (list, tuple)) and \
+                shape[1] != len(cols):
+            findings.append(Finding(
+                "PRODUCER_SCHEMA_MALFORMED", path,
+                "input_schema.shape[1] != len(feature_cols)"))
+        if isinstance(n_rows, int) and not isinstance(n_rows, bool) \
+                and n_rows > 0 and shape[0] != n_rows:
+            findings.append(Finding(
+                "PRODUCER_SCHEMA_MALFORMED", path,
+                "input_schema.shape[0] != input_schema.n_rows"))
+    frame_rows = payload.get("n_rows")
+    if isinstance(n_rows, int) and not isinstance(n_rows, bool) \
+            and isinstance(frame_rows, int) and \
+            not isinstance(frame_rows, bool) and \
+            n_rows != frame_rows:
+        findings.append(Finding(
+            "PRODUCER_SCHEMA_MALFORMED", path,
+            "input_schema.n_rows != artifact n_rows — the input "
+            "frame binding is inconsistent"))
+    dtypes = schema["dtypes"]
+    if isinstance(dtypes, Mapping):
+        if isinstance(cols, (list, tuple)) and \
+                set(map(str, dtypes)) != set(map(str, cols)):
+            findings.append(Finding(
+                "PRODUCER_SCHEMA_MALFORMED", path,
+                "input_schema.dtypes keys do not cover exactly the "
+                "declared feature columns"))
+    elif not (isinstance(dtypes, (list, tuple)) and
+              isinstance(cols, (list, tuple)) and
+              len(dtypes) == len(cols) and
+              all(isinstance(d, str) for d in dtypes)):
+        findings.append(Finding(
+            "PRODUCER_SCHEMA_MALFORMED", path,
+            "input_schema.dtypes must map every feature column to "
+            "a dtype or list one dtype per column"))
+    return findings
+
+
+def _producer_seed_findings(payload: Mapping[str, Any]
+                            ) -> list[Finding]:
+    """Seed-declaration coverage: ``seed_coverage`` must key
+    exactly the ``seeds_declared`` set, carry only the declared
+    vocabulary, and a failed seed demotes the artifact."""
+    findings: list[Finding] = []
+    declared = payload.get("seeds_declared")
+    declared_ok = isinstance(declared, (list, tuple)) and \
+        bool(declared) and all(
+            isinstance(s, int) and not isinstance(s, bool)
+            for s in declared)
+    if "seeds_declared" in payload and not declared_ok:
+        findings.append(Finding(
+            "PRODUCER_SCHEMA_MALFORMED",
+            "artifact_payload.seeds_declared",
+            "seeds_declared must be a non-empty sequence of "
+            "integers"))
+    coverage = payload.get("seed_coverage")
+    if "seed_coverage" not in payload:
+        return findings
+    if not isinstance(coverage, Mapping) or not coverage:
+        findings.append(Finding(
+            "PRODUCER_SCHEMA_MALFORMED",
+            "artifact_payload.seed_coverage",
+            "seed_coverage must be a non-empty seed -> state map"))
+        return findings
+    bad_states = {str(k): v for k, v in coverage.items()
+                  if v not in _SEED_COVERAGE_STATES}
+    if bad_states:
+        findings.append(Finding(
+            "PRODUCER_SCHEMA_MALFORMED",
+            "artifact_payload.seed_coverage",
+            f"seed_coverage states outside "
+            f"{sorted(_SEED_COVERAGE_STATES)}: {bad_states}"))
+    if declared_ok and \
+            {str(k) for k in coverage} != \
+            {str(s) for s in declared}:
+        findings.append(Finding(
+            "PRODUCER_SEED_COVERAGE_MISMATCH",
+            "artifact_payload.seed_coverage",
+            f"seed_coverage keys {sorted(map(str, coverage))} do "
+            f"not equal seeds_declared "
+            f"{sorted(str(s) for s in declared)} — every declared "
+            "seed must be accounted for"))
+    failed = sorted(str(k) for k, v in coverage.items()
+                    if v == "failed")
+    if failed:
+        findings.append(Finding(
+            "PRODUCER_SEED_FAILED", "artifact_payload.seed_coverage",
+            f"declared seeds {failed} failed to converge — the "
+            "artifact's seed evidence is incomplete and the "
+            "terminal-status claim is demoted"))
+    return findings
+
+
+def _producer_gate_findings(payload: Mapping[str, Any]
+                            ) -> list[Finding]:
+    """The flat ``stability.required_gates`` map must exist; under a
+    terminal descriptive status every gate must be closed."""
+    findings: list[Finding] = []
+    stability = payload.get("stability")
+    path = "artifact_payload.stability"
+    if "stability" not in payload:
+        return findings          # absence is a provenance finding
+    if not isinstance(stability, Mapping):
+        return [Finding("PRODUCER_SCHEMA_MALFORMED", path,
+                        "stability must be a mapping carrying the "
+                        "required_gates evidence")]
+    gates = stability.get("required_gates")
+    if not isinstance(gates, Mapping) or not gates:
+        findings.append(Finding(
+            "PRODUCER_PROVENANCE_MISSING", path,
+            "stability.required_gates is missing or not a "
+            "non-empty flat gate map — the artifact carries no "
+            "gate evidence to audit"))
+        gates = None
+    elif any(not isinstance(v, bool) for v in gates.values()):
+        findings.append(Finding(
+            "PRODUCER_SCHEMA_MALFORMED", path,
+            "required_gates values must be booleans — the flat "
+            "gate map admits no tri-state or numeric verdicts"))
+    descriptive = payload.get("status") == "DESCRIPTIVE_REGIME_ONLY"
+    if gates and descriptive:
+        open_gates = sorted(str(g) for g, v in gates.items()
+                            if v is not True)
+        if open_gates:
+            findings.append(Finding(
+                "PRODUCER_GATE_BYPASSED", path,
+                f"required_gates {open_gates} are open yet the "
+                "artifact claims a terminal descriptive status — "
+                "a frozen artifact cannot outrun its own gate "
+                "evidence"))
+    # the bound stability-report digest must recompute over the
+    # carried stability block — a carried digest is verified,
+    # never trusted
+    report_digest = payload.get("stability_report_digest")
+    if _is_sha256(report_digest):
+        try:
+            recomputed = sha256_canonical(stability)
+        except (TypeError, ValueError) as exc:
+            findings.append(Finding(
+                "PRODUCER_PAYLOAD_MALFORMED", path,
+                f"stability block is not canonically "
+                f"serializable: {exc}"))
+        else:
+            if recomputed != report_digest:
+                findings.append(Finding(
+                    "PRODUCER_DIGEST_MISMATCH", path,
+                    "stability_report_digest does not recompute "
+                    "over the payload's stability block — the "
+                    "gate evidence may have been rewritten "
+                    "post-bind"))
+    return findings
+
+
 def audit_producer_payload(payload: Any) -> list[Finding]:
     """AUD-01 — producer-side audit over a serialized science_v0
     regime artifact payload.  Independent of the adapter: it checks
-    that every regime-protocol gate is *present and closed* on the
-    artifact itself, so a fabricated-but-internally-consistent
-    payload still fails when protocol evidence is absent."""
+    the canonical producer schema — every provenance and
+    source/evidence binding present, every carried digest well
+    formed, the flat required-gates map closed under a terminal
+    descriptive status, and the declared seed set fully covered —
+    so a fabricated-but-internally-consistent payload still fails
+    when protocol evidence is absent."""
     findings: list[Finding] = []
     if not isinstance(payload, Mapping):
         return [Finding("PRODUCER_PAYLOAD_MALFORMED",
                         "artifact_payload",
                         "producer payload is not a mapping")]
-    required = ("assignments", "assignment_digest",
-                "regime_artifact_digest", "freeze_digest", "frozen",
-                "label_blinding", "fitted_on", "mode", "status",
-                "data_class", "seeds", "feature_cols",
-                "feature_matrix_digest", "input_bytes_digest",
-                "config_digest", "fit_groups",
-                "heldout_groups_declared", "train_mask_digest")
-    for field in required:
+    for field in _PRODUCER_REQUIRED_FIELDS:
         if field not in payload:
             findings.append(Finding(
                 "PRODUCER_PROVENANCE_MISSING", "artifact_payload",
                 f"producer payload lacks {field!r} — a regime "
                 "artifact without complete provenance cannot "
                 "support a terminal descriptive status"))
+    for field in _PRODUCER_DIGEST_FIELDS:
+        if field in payload and not _is_sha256(payload[field]):
+            findings.append(Finding(
+                "PRODUCER_DIGEST_MALFORMED", "artifact_payload",
+                f"{field} is not a 64-hex sha256 — a carried "
+                "digest that cannot recompute is not a binding"))
+    for field in ("n_train_rows", "n_rows"):
+        if field in payload and (
+                isinstance(payload[field], bool) or
+                not isinstance(payload[field], int) or
+                payload[field] <= 0):
+            findings.append(Finding(
+                "PRODUCER_SCHEMA_MALFORMED", "artifact_payload",
+                f"{field} must be a positive integer"))
+    if all(isinstance(payload.get(f), int) and
+           not isinstance(payload[f], bool) and payload[f] > 0
+           for f in ("n_train_rows", "n_rows")) and \
+            payload["n_train_rows"] > payload["n_rows"]:
+        findings.append(Finding(
+            "PRODUCER_SCHEMA_MALFORMED", "artifact_payload",
+            "n_train_rows exceeds n_rows — the mask accounting "
+            "is inconsistent"))
     if payload.get("status") == "RUN_ERROR":
         findings.append(Finding(
             "PRODUCER_STATUS_ERROR", "artifact_payload",
@@ -499,13 +870,29 @@ def audit_producer_payload(payload: Any) -> list[Finding]:
             "PRODUCER_SEED_GATE", "artifact_payload",
             "fewer than three seeds — the seed-stability gate is "
             "unmet"))
+    occupancy = payload.get("occupancy")
+    k = payload.get("k")
+    if isinstance(occupancy, (list, tuple)) and \
+            isinstance(k, int) and not isinstance(k, bool) and \
+            len(occupancy) != k:
+        findings.append(Finding(
+            "PRODUCER_SCHEMA_MALFORMED", "artifact_payload",
+            f"occupancy carries {len(occupancy)} components but "
+            f"the artifact declares k={k}"))
+    if "model" in payload:
+        findings.extend(_producer_model_findings(payload))
+    if "input_schema" in payload:
+        findings.extend(_producer_input_schema_findings(payload))
+    findings.extend(_producer_seed_findings(payload))
+    findings.extend(_producer_gate_findings(payload))
     axes = payload.get("axis_results") or payload.get("axes")
     if axes is not None and isinstance(axes, Mapping):
         failing = {k: v for k, v in axes.items()
                    if isinstance(v, Mapping) and
                    v.get("status") in ("FAIL", "SKIPPED",
                                        "NONCONVERGED")}
-        if failing and payload.get("status") ==                 "DESCRIPTIVE_REGIME_ONLY":
+        if failing and payload.get("status") == \
+                "DESCRIPTIVE_REGIME_ONLY":
             findings.append(Finding(
                 "PRODUCER_GATE_BYPASSED", "artifact_payload",
                 f"stability axes {sorted(failing)} failed/skipped "
@@ -653,6 +1040,29 @@ def _provenance_findings(assoc: Mapping[str, Any],
             "MISSING_PROVENANCE", "association.artifact",
             "regime_digest is missing or not a 64-hex sha256 — the "
             "frozen partition is not byte-bound"))
+    else:
+        # REP-C01: the carried reference must equal the digest
+        # recomputed from the serialized artifact_payload — a
+        # well-formed but wrong digest is tampering, not provenance.
+        payload = assoc.get("artifact_payload")
+        if isinstance(payload, Mapping):
+            try:
+                recomputed = _recomputed_regime_digest(payload)
+            except (TypeError, ValueError) as exc:
+                findings.append(Finding(
+                    "PRODUCER_PAYLOAD_MALFORMED",
+                    "association.artifact_payload",
+                    f"artifact_payload is not canonically "
+                    f"serializable: {exc}"))
+            else:
+                if digest != recomputed:
+                    findings.append(Finding(
+                        "REGIME_DIGEST_MISMATCH",
+                        "association.artifact",
+                        "regime_digest does not equal the digest "
+                        "recomputed from the serialized "
+                        "artifact_payload — a carried reference "
+                        "is verified, never trusted"))
     admitted: dict[str, Any] = {}
     for i, reqd in enumerate(fc.get("vintage_requests") or []):
         req_path = f"forecast.vintage_requests[{i}]"
@@ -867,6 +1277,8 @@ def audit_pipeline(bundle: Any) -> list[Finding]:
     findings.extend(_region_findings(assoc, fc))
     findings.extend(_cascade_findings(assoc))
     findings.extend(_provenance_findings(assoc, fc))
+    findings.extend(audit_producer_payload(
+        assoc.get("artifact_payload")))
     findings.extend(_baseline_findings(fc))
     findings.extend(_immutability_findings())
     findings.extend(_order_probe_findings(assoc))
