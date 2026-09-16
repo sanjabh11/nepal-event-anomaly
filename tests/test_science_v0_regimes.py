@@ -251,3 +251,76 @@ class TestAssignmentSidecar:
         art = run_regimes(df, FEATURES, _mask(df), _cfg())
         if art["status"] == "DESCRIPTIVE_REGIME_ONLY":
             assert art["k"] == 1  # only the null K may claim stable
+
+
+# ---------------------------------------------------------------------
+# REG-01..08 adversarial checks (round-2 hardening)
+# ---------------------------------------------------------------------
+
+class TestRound2Hardening:
+    def test_k_out_of_range_rejected(self):
+        df = _fixture()
+        bad = _cfg(k_candidates=(1, 2, 9))
+        art = run_regimes(df, FEATURES, _mask(df), bad)
+        assert art["status"] == "RUN_ERROR"
+        assert "k_candidates" in art["reason"]
+
+    def test_k_missing_null_candidate_rejected(self):
+        df = _fixture()
+        bad = _cfg(k_candidates=(2, 3))
+        art = run_regimes(df, FEATURES, _mask(df), bad)
+        assert art["status"] == "RUN_ERROR"
+        assert "K=1" in art["reason"]
+
+    def test_negative_seed_rejected(self):
+        df = _fixture()
+        bad = _cfg(seeds=(-1, 7, 42))
+        art = run_regimes(df, FEATURES, _mask(df), bad)
+        assert art["status"] == "RUN_ERROR"
+        assert "non-negative" in art["reason"]
+
+    def test_missing_group_column_preflight(self):
+        df = _fixture().drop(columns=["basin_group"])
+        art = run_regimes(df, FEATURES, _mask(
+            _fixture()), _cfg())
+        assert art["status"] == "RUN_ERROR"
+        assert "basin_group" in art["reason"]
+
+    def test_loro_locked_group_never_a_fold(self):
+        """REG-02: the held-out group cannot create a false
+        zero-distance fold — folds iterate declared train groups."""
+        df = _fixture()
+        art = run_regimes(df, FEATURES, _mask(df), _cfg())
+        folds = art["stability"]["leave_one_region_out"]["folds"]
+        assert "grp3" not in folds
+        assert set(folds) == {"grp0", "grp1", "grp2"}
+        assert art["stability"]["leave_one_region_out"][
+            "locked_groups_excluded"] == ["grp3"]
+
+    def test_loro_fold_states_explicit(self):
+        df = _fixture()
+        art = run_regimes(df, FEATURES, _mask(df), _cfg())
+        loro = art["stability"]["leave_one_region_out"]
+        assert loro["n_required"] == 3
+        for fold in loro["folds"].values():
+            assert fold["status"] in (
+                "PASS", "FAIL", "SKIPPED", "NONCONVERGED")
+
+    def test_required_stability_axes_present(self):
+        df = _fixture()
+        art = run_regimes(df, FEATURES, _mask(df), _cfg())
+        st = art["stability"]
+        for axis in ("temporal_block_bootstrap", "season_refits",
+                     "elevation", "missingness_sensitivity",
+                     "era_drift", "required_gates"):
+            assert axis in st, axis
+        assert st["temporal_block_bootstrap"]["n_replicates"] >= 200
+        assert "w0" in st["temporal_block_bootstrap"][
+            "weight_intervals_95"]
+
+    def test_unstructured_frame_not_stable(self):
+        df = _fixture(structured=False)
+        art = run_regimes(df, FEATURES, _mask(df), _cfg())
+        assert art["status"] in ("UNSUPERVISED_STRUCTURE_NOT_STABLE",
+                                 "CANDIDATE_ONLY")
+        assert art["status"] != "DESCRIPTIVE_REGIME_ONLY"
