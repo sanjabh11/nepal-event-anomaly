@@ -41,25 +41,22 @@ The empty Git shell is never the implementation root.
   (bound head is the manifest's own field — see
   `ARTIFACT_MANIFEST_V0.json` for the current value).
 
-## Last fully-verified baseline (2026-09-16, round-6 hardening)
+## Last fully-verified baseline (2026-09-16, round-7 hardening)
 
-- HEAD: `aceedff` — "Round-6 enforcement hardening" (content
+- HEAD: `cc2218b` — "Round-7 enforcement hardening" (content
   commit; the manifest rebind lands as its direct child, same
   relationship as previous binds).
 - Manifest/HEAD relationship: `ARTIFACT_MANIFEST_V0.json` carries
-  `content_head=aceedff` — the **commit whose tree the manifest
+  `content_head=cc2218b` — the **commit whose tree the manifest
   hashes**; the manifest commit itself follows the content commit.
-  76 manifest files (71 + GOVERNANCE_EXERCISE_RECORD_V0.md + 4
-  `test_r6_*` hardening files).
-- Full suite under pinned `.venv`: **1993 passed, 5 skipped
+  77 manifest files (76 + test_r7_hardening.py).
+- Full suite under pinned `.venv`: **2015 passed, 5 skipped
   (rasterio), 0 failed, 57 warnings**.
-- Focused lanes: **540 green** (round5-hardening 18 + round-6
-  hardening 118 + regimes 93 + association 63 + evaluation 118 +
-  audit 61 + adapters/replay/e2e, per the manifest's
-  `test_results`).
-- Prior baseline retained as history below: manifest commit
-  `4e2ef91`, `content_head=99ccec9`, 71 files, 1875/5/0/57, 411
-  focused (round-5).
+- Focused lanes: **562 green** (round7-hardening 22 + round6
+  hardening 118 + round5 hardening 18 + regimes 93 + association 63
+  + evaluation 118 + audit 61 + adapters/replay/e2e).
+- Prior baseline retained as history below: round-6 content
+  `aceedff`, 76 files, 1993/5/0/57, 540 focused.
 
 ## Verification snapshot history (2026-09-15, round 2 and later)
 

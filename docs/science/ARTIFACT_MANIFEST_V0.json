@@ -1,6 +1,6 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "aceedffea83e10d73a4385a40ef8f8c08900aec7",
+  "content_head": "cc2218ba10f27c59b5dee1b190c79c4c1c33d4b6",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
@@ -14,8 +14,8 @@
     },
     {
       "relpath": "README.md",
-      "sha256": "8c5c23c1462b7ed54b0fe57c4e118d2df4915f02903d879bb5d190175a57e942",
-      "size_bytes": 6213
+      "sha256": "643931a04409c2af72b07be6313ee5c26e766462687997f550009cf134b46956",
+      "size_bytes": 6181
     },
     {
       "relpath": "docs/science/GAP_REGISTER_V0.md",
@@ -49,8 +49,8 @@
     },
     {
       "relpath": "docs/science/P0_BASELINE_LEDGER.md",
-      "sha256": "652c777e6b7fed2cb1df0e5077ab49797f0da9f00ee5e014d6c035f2d29000f3",
-      "size_bytes": 9895
+      "sha256": "8a67a01cd20dadfafa656656142b71b8919c4111fa02e943ac7cce6cfdce73df",
+      "size_bytes": 9797
     },
     {
       "relpath": "docs/science/P3_ATTESTATION_RECORD_V0.md",
@@ -154,13 +154,13 @@
     },
     {
       "relpath": "nepal/experiment_v0/association.py",
-      "sha256": "8260a3aa9cf07a3e3b160e10a28c5a0eef11313069787ccfddb00766500e03c9",
-      "size_bytes": 130122
+      "sha256": "98559c9c5a069267f3421527a517f16e009b85fd44b6a3c54ee754b4a12f4f1e",
+      "size_bytes": 134193
     },
     {
       "relpath": "nepal/experiment_v0/audit.py",
-      "sha256": "63295b1dec572626141c05152e44e82d6329b40ef646e485dba932d7f9bd55c6",
-      "size_bytes": 76033
+      "sha256": "cf308371be264fedf5d2d5d88fdca6d3758c31f262f1063b5511e869d991bed6",
+      "size_bytes": 76509
     },
     {
       "relpath": "nepal/experiment_v0/baselines.py",
@@ -169,8 +169,8 @@
     },
     {
       "relpath": "nepal/experiment_v0/evaluation.py",
-      "sha256": "365468ac570e0efa8ebf146f9aa6b8d3a86adc62928267ac0c473c32ec12f620",
-      "size_bytes": 87916
+      "sha256": "d0c32ce96b932405d29a7105a391d54fb6c0e6bd89ab854b933725bbc6d69777",
+      "size_bytes": 89938
     },
     {
       "relpath": "nepal/experiment_v0/metrics.py",
@@ -199,8 +199,8 @@
     },
     {
       "relpath": "nepal/research_v0/_hashing.py",
-      "sha256": "2c21f03ac36bf8953e64a322e6a8b6755328b13c5ffba2d9e43b80d3fb0fa423",
-      "size_bytes": 8375
+      "sha256": "037b788cb1c0a625cdbb363c9ebf725bfab055b17f4772e59672f4ee7e6d533c",
+      "size_bytes": 8587
     },
     {
       "relpath": "nepal/research_v0/cli.py",
@@ -244,8 +244,8 @@
     },
     {
       "relpath": "nepal/science_v0/regimes.py",
-      "sha256": "8376fd9dc6cd79eb2144becc54782dffec0d58b77cedf5086cc687fe579e4f1c",
-      "size_bytes": 102383
+      "sha256": "fbdfaeca6e852f190e45fcce389a5881461b8af8075290b23171c5b917de6fbd",
+      "size_bytes": 110170
     },
     {
       "relpath": "tests/fixtures/__init__.py",
@@ -324,13 +324,18 @@
     },
     {
       "relpath": "tests/test_r6_provenance.py",
-      "sha256": "6055cb3aafe0f844d2791c3001e0b6cf818e51957def16bcafa5eec10f06023b",
-      "size_bytes": 28592
+      "sha256": "d94d24d9db2a11a74b48bca50d6fd7c272add13f47efda22efcf5e6b3bcc18b7",
+      "size_bytes": 29972
     },
     {
       "relpath": "tests/test_r6_regimes.py",
-      "sha256": "8cfc16acaf0434e6dc7de0bae24ad650d081919cbbc07b6b4910aa0cc07d8808",
-      "size_bytes": 23623
+      "sha256": "f55665b4933fea847b2560233bae16d6cf2b38fd856edc74b4d49030238259b4",
+      "size_bytes": 24993
+    },
+    {
+      "relpath": "tests/test_r7_hardening.py",
+      "sha256": "568aa31d1554ef124d0b2913c07bbdf7107b8895aae44a820e6c7a8a2056d389",
+      "size_bytes": 12618
     },
     {
       "relpath": "tests/test_research_v0_adversarial.py",
@@ -354,8 +359,8 @@
     },
     {
       "relpath": "tests/test_round5_hardening.py",
-      "sha256": "07570843925834dd9f24742bd76a9e2c40ab4f849a38f7ebc540ff36f2aeda20",
-      "size_bytes": 11010
+      "sha256": "7844899b2f7d3f0c51ed763e118f771745d98f02ce3c71789c990856ed0113b7",
+      "size_bytes": 11929
     },
     {
       "relpath": "tests/test_run_a_reconciliation.py",
@@ -385,7 +390,7 @@
   ],
   "generated": "2026-09-16",
   "interpreter": ".venv/bin/python",
-  "manifest_commit": "aceedffea83e10d73a4385a40ef8f8c08900aec7",
+  "manifest_commit": "cc2218ba10f27c59b5dee1b190c79c4c1c33d4b6",
   "manifest_version": "ARTIFACT_MANIFEST_V0.3",
   "repository_relative_root": ".",
   "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -393,9 +398,9 @@
   "scope": "governed science artifacts: docs/science, nepal/research_v0, research tests, CI workflow, README \u2014 non-science sources excluded by design",
   "self_excluded": true,
   "test_results": {
-    "full_suite_venv": "1993 passed, 5 skipped (rasterio), 0 failed",
-    "swarm_focused": "540 passed (round6 hardening 118 + round5 hardening 18 + regimes 93 + association 63 + evaluation 118 + audit 61 + adapters 41 + replay 25 + e2e 3)",
-    "adversarial_probes": "118 r6 tests pass (strict bool gates, calendar dates, fit-surface intersection, first10-numeric reject, null input digests, forecast-mode contract, byte-verified source evidence, adapter/freeze parity, findings-gated replay, verified producer binding, input_digest revalidation, bound baselines, feature-row membership)",
+    "full_suite_venv": "2015 passed, 5 skipped (rasterio), 0 failed",
+    "swarm_focused": "562 passed (round7 hardening 22 + round6 hardening 118 + round5 hardening 18 + regimes 93 + association 63 + evaluation 118 + audit 61 + adapters 41 + replay 25 + e2e 3)",
+    "adversarial_probes": "140 r6+r7 tests pass (strict bool gates, calendar dates, fit-surface intersection, null input digests, forecast-mode contract, byte-verified source evidence, adapter/freeze parity, findings-gated replay, verified producer binding, input_digest revalidation, bound baselines, feature-row membership, per-event precision horizons, mandatory report fields, finite permutation, RunManifestV0, unit-basin map, semantic config revalidation)",
     "claim_scan": "clean on all governed files",
     "research_v0": "119 passed",
     "p5_io_contract": "34 passed",
