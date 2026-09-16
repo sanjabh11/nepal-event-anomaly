@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 from nepal.experiment_v0 import metrics as M
-from nepal.experiment_v0.baselines import (
+from nepal.experiment_v0.baselines import (FitPartition, 
     BASELINE_NAMES, ThresholdRule, climatology_probs,
     fit_regularized_supervised, null_probs, rule_probs)
 from nepal.experiment_v0.evaluation import (
@@ -74,16 +74,22 @@ class TestBaselines:
     def test_supervised_fit_predicts(self):
         train = fx.planted_cases(seed=3, regions=("train_basin_a",),
                                  per_cluster=10)
-        X = [c.features for c in train]
-        y = [1 if c.y_state == "POSITIVE" else 0 for c in train]
-        predict = fit_regularized_supervised(X, y, seed=0)
+        part = FitPartition(
+            partition="TRAIN_ONLY",
+            rows=[c.features for c in train],
+            labels=[1 if c.y_state == "POSITIVE" else 0
+                    for c in train])
+        X = part.rows
+        predict = fit_regularized_supervised(part, seed=0)
         probs = predict(X)
         assert len(probs) == len(X)
         assert all(0.0 <= p <= 1.0 for p in probs)
 
     def test_supervised_single_class_is_constant(self):
         predict = fit_regularized_supervised(
-            [[0.0], [1.0]], [0, 0], seed=0)
+            FitPartition(partition="TRAIN_ONLY",
+                         rows=[[0.0], [1.0]], labels=[0, 0]),
+            seed=0)
         assert predict([[5.0], [6.0]]) == [0.0, 0.0]
 
 
@@ -229,7 +235,14 @@ def _eval_kwargs(design):
     return {"holdout": design["holdout"],
             "baseline_probs": fx.make_baseline_probs(cases),
             "admitted_vintages": fx.admitted_for_cases(cases),
-            "n_opportunities": len(cases),
+            "opportunities": design.get(
+                "opportunities", fx.opportunity_registry(cases)),
+            "unit_basins": design.get(
+                "unit_basins", fx.unit_basins_for(cases)),
+            "region_basins": design.get(
+                "region_basins",
+                fx.region_basins_for(
+                    sorted({c.region for c in cases}))),
             "n_boot": 50, "seed": 7}
 
 
@@ -261,35 +274,41 @@ class TestEvaluate:
         design = fx.underpowered_design()
         cases = design["cases"]
         kwargs = _eval_kwargs(design)
-        kwargs["n_opportunities"] = len(cases) + 9
         report = evaluate(cases, **kwargs)
         flagged = sum(
             1 for c in cases
             if c.y_state != "CENSORED_OR_AMBIGUOUS"
             and c.y_prob >= 0.5)
-        expected = flagged / (len(cases) + 9)
+        derived = len(design["opportunities"])
+        expected = flagged / derived
         assert report.metrics["model"][
             "false_alarms_per_opportunity"] == pytest.approx(expected)
-        # The recorded denominator is the explicit count, never the
-        # unambiguous-case count.
-        assert report.metrics["model"]["n_opportunities"] == \
-            len(cases) + 9
+        # The recorded denominator is the registry-derived count,
+        # never the unambiguous-case count and never caller-chosen.
+        assert report.metrics["model"]["n_opportunities"] == derived
         assert report.metrics["model"]["n"] == len(cases)
 
     def test_missing_or_undersized_opportunities_reject(self):
         design = fx.underpowered_design()
         cases = design["cases"]
         kwargs = _eval_kwargs(design)
-        omitted = {k: v for k, v in kwargs.items()
-                   if k != "n_opportunities"}
-        with pytest.raises(ValueError, match="n_opportunities"):
-            evaluate(cases, **omitted)
-        for bad in (-1, 0, len(cases) - 1):
-            kwargs["n_opportunities"] = bad
-            with pytest.raises(ValueError, match="n_opportunities"):
-                evaluate(cases, **kwargs)
-        kwargs["n_opportunities"] = "many"
-        with pytest.raises(ValueError, match="n_opportunities"):
+        # a registry missing a case's opportunity id rejects
+        shrunk = {k: v for k, v in
+                  design["opportunities"].items()
+                  if k != cases[0].opportunity_id}
+        kwargs["opportunities"] = shrunk
+        with pytest.raises(ValueError, match="absent from the"):
+            evaluate(cases, **kwargs)
+        # a declared count that disagrees with the registry rejects
+        kwargs = _eval_kwargs(design)
+        kwargs["n_opportunities_declared"] = 10 ** 6
+        with pytest.raises(ValueError,
+                           match="n_opportunities_declared"):
+            evaluate(cases, **kwargs)
+        # an inflated free integer is not even a valid parameter
+        kwargs.pop("n_opportunities_declared")
+        kwargs["n_opportunities"] = 10 ** 6
+        with pytest.raises(TypeError):
             evaluate(cases, **kwargs)
 
     def test_region_not_in_test_groups_rejects(self):

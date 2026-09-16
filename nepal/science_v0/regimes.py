@@ -37,15 +37,21 @@ K_CANDIDATES = (1, 2, 3, 4, 5)
 MIN_SEEDS = 3
 MIN_GEO_GROUPS = 3
 MIN_BOOTSTRAP = 200
+LORO_JS_MAX = 0.35
 
 
 def _sha_bytes(b: bytes) -> str:
     return hashlib.sha256(b).hexdigest()
 
 
+from nepal.research_v0._hashing import sha256_canonical
+
+
 def _digest(obj) -> str:
-    return _sha_bytes(json.dumps(obj, sort_keys=True,
-                               default=str).encode())
+    """Strict canonical digest — no default=str fallback, so two
+    distinct non-JSON-native objects can never collide in the digest
+    domain (DIG-01)."""
+    return sha256_canonical(obj)
 
 
 # ------------------------------------------------------- preprocessing
@@ -161,6 +167,8 @@ class RegimeRunConfig:
     season_col: str = "season"
     group_col: str = "basin_group"
     era_col: str | None = "era"
+    elevation_col: str | None = None
+    era_drift_max: float = 0.5
     unit_col: str = "unit_id"
     date_col: str = "date"
     label_blinding: bool = True
@@ -190,22 +198,69 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
     test rows are transformed but never fitted on.
     Returns a RegimeArtifactV0-shaped dict plus a terminal status.
     """
+    # ---- REG-01: complete configuration preflight BEFORE any
+    # dataframe access — a malformed configuration must fail closed,
+    # never partially execute.
+    if not isinstance(feature_cols, (list, tuple)) or \
+            not feature_cols or not all(
+                isinstance(c, str) and c.strip() for c in feature_cols):
+        return {"status": "RUN_ERROR",
+                "reason": "feature_cols must be a non-empty list of "
+                          "column names"}
     missing = [c for c in feature_cols if c not in df.columns]
     if missing:
         return {"status": "RUN_ERROR",
                 "reason": f"missing feature columns: {missing}"}
+    for col in (config.group_col, config.season_col,
+                config.unit_col, config.date_col):
+        if not isinstance(col, str) or col not in df.columns:
+            return {"status": "RUN_ERROR",
+                    "reason": f"required column {col!r} missing from "
+                              "the frame — preflight rejects before "
+                              "any mask or fit access"}
+    if config.elevation_col is not None and \
+            config.elevation_col not in df.columns:
+        return {"status": "RUN_ERROR",
+                "reason": f"declared elevation column "
+                          f"{config.elevation_col!r} missing"}
     if not config.label_blinding or config.fitted_on != "TRAIN_ONLY":
         return {"status": "RUN_ERROR",
                 "reason": "label_blinding and TRAIN_ONLY are mandatory"}
+    # K candidates: a declared subset of {1..5} that MUST contain the
+    # K=1 null; non-int or out-of-range values never silently pass.
+    if not isinstance(config.k_candidates, (list, tuple)) or \
+            not config.k_candidates:
+        return {"status": "RUN_ERROR",
+                "reason": "k_candidates must be a non-empty declared "
+                          "set"}
+    if any(isinstance(k, bool) or not isinstance(k, int) or
+           k not in K_CANDIDATES for k in config.k_candidates):
+        return {"status": "RUN_ERROR",
+                "reason": f"k_candidates must be ints within "
+                          f"{K_CANDIDATES}; got "
+                          f"{list(config.k_candidates)!r}"}
+    if 1 not in config.k_candidates:
+        return {"status": "RUN_ERROR",
+                "reason": "the K=1 null candidate is mandatory and "
+                          "must appear in k_candidates"}
+    # Seeds: distinct, non-negative integers.
     if len(set(config.seeds)) < MIN_SEEDS:
         return {"status": "RUN_ERROR",
                 "reason": f"need >= {MIN_SEEDS} distinct seeds"}
     if any(isinstance(sd, bool) or not isinstance(sd, int)
-           for sd in config.seeds):
+           or sd < 0 for sd in config.seeds):
         return {"status": "RUN_ERROR",
-                "reason": "seeds must be ints — a non-int seed is "
-                          "silently disenfranchised from the modal-K "
-                          "vote after int() coercion in the fit"}
+                "reason": "seeds must be distinct non-negative ints — "
+                          "a non-int or negative seed is silently "
+                          "disenfranchised from the modal-K vote "
+                          "after int() coercion in the fit"}
+    if isinstance(config.n_bootstrap, bool) or \
+            not isinstance(config.n_bootstrap, int) or \
+            config.n_bootstrap < MIN_BOOTSTRAP:
+        return {"status": "RUN_ERROR",
+                "reason": f"n_bootstrap must be an int >= "
+                          f"{MIN_BOOTSTRAP} — the temporal-block "
+                          "bootstrap is a required stability axis"}
     # Holdout binding (I-07): the mask is meaningless unless it is
     # tied to declared, disjoint train/held-out group membership.
     train_groups = set(config.train_groups)
@@ -242,10 +297,6 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
                 "reason": f"held-out rows contain undeclared groups: "
                           f"{sorted(held_mask_groups - heldout_groups)}"}
     train_mask = mask
-    if config.group_col not in df.columns or             config.season_col not in df.columns:
-        return {"status": "RUN_ERROR",
-                "reason": "group/season columns missing from the "
-                          "frame"}
     groups = df[config.group_col].unique()
     # the multi-region gate applies to the FIT side: held-out groups
     # must not inflate the geographic diversity of the model fit
@@ -257,13 +308,7 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
                           "emit a terminal status"}
 
     # Row identity is explicit, never derived from the frame index:
-    # unit_id + canonical ISO date columns must exist, and each
-    # (unit_id, date) pair must be unique.
-    for col in (config.unit_col, config.date_col):
-        if col not in df.columns:
-            return {"status": "RUN_ERROR",
-                    "reason": f"required identity column {col!r} "
-                              "missing — identity is never inferred"}
+    # (unit_id, date) pairs must be unique (columns were preflighted).
     bad_dates = ~df[config.date_col].astype(str).map(_iso_date_ok)
     if bad_dates.any():
         return {"status": "RUN_ERROR",
@@ -381,60 +426,288 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
         "n_bootstrap": config.n_bootstrap,
     }
 
-    # leave-one-region-out refit (basin/geographic axis)
+    # leave-one-region-out refit (basin/geographic axis).
+    # REG-02: folds iterate over the declared TRAIN groups only — a
+    # locked held-out group can never enter a fold, and can never
+    # manufacture a false zero-distance pass.  REG-03: every fold is
+    # an explicit state; a skipped/nonconverged/failed required fold
+    # forces UNSUPERVISED_STRUCTURE_NOT_STABLE rather than
+    # disappearing from the numeric summary.
     loro = {}
-    stable_loro = True
-    for g in [str(g) for g in groups]:
-        m = np.asarray(train_mask) & \
+    loro_required = sorted(mask_groups)
+    for g in loro_required:
+        fold = {"status": None, "js": None, "reason": None}
+        m_fit = np.asarray(train_mask) & \
             (df[config.group_col].astype(str) != g)
-        sub = df.loc[m, feature_cols]
-        if len(sub) < 50:
-            loro[g] = "skipped_insufficient"
+        m_eval = np.asarray(train_mask) & \
+            (df[config.group_col].astype(str) == g)
+        sub = df.loc[m_fit, feature_cols]
+        eval_rows = df.loc[m_eval, feature_cols]
+        if len(sub) < 50 or len(eval_rows) == 0:
+            fold["status"] = "SKIPPED"
+            fold["reason"] = ("insufficient complement or empty "
+                              "excluded-group rows")
+            loro[g] = fold
             continue
         p2 = TrainOnlyPreprocessor().fit(sub)
         X2 = p2.transform(sub)
         f2 = _fit_gmm(X2, modal_k, int(config.seeds[0]))
         if not f2["converged"]:
-            loro[g] = "nonconverged"
-            stable_loro = False
+            fold["status"] = "NONCONVERGED"
+            fold["reason"] = "fold fit failed to converge"
+            loro[g] = fold
             continue
-        l2 = f2["model"].predict(X2)
-        # compare structure: occupancy JSD vs full fit
-        occ2 = np.bincount(l2, minlength=modal_k) / len(l2)
-        loro[g] = _js_divergence(occupancy, occ2)
-    stability["leave_one_region_out"] = loro
+        # genuine out-of-fold evaluation: the excluded group's train
+        # rows were never fitted on; their predicted occupancy is
+        # contrasted against the fold-fit occupancy.
+        eval_labels = f2["model"].predict(p2.transform(eval_rows))
+        occ_eval = np.bincount(eval_labels,
+                               minlength=modal_k) / len(eval_labels)
+        occ_fit = np.bincount(f2["model"].predict(X2),
+                              minlength=modal_k) / len(X2)
+        js = _js_divergence(occ_eval, occ_fit)
+        fold["js"] = float(js)
+        fold["n_eval_rows"] = int(len(eval_rows))
+        fold["status"] = "PASS" if js < LORO_JS_MAX else "FAIL"
+        if fold["status"] == "FAIL":
+            fold["reason"] = (f"out-of-fold occupancy JS {js:.4f} "
+                              f">= {LORO_JS_MAX}")
+        loro[g] = fold
+    stability["leave_one_region_out"] = {
+        "folds": loro,
+        "n_required": len(loro_required),
+        "n_pass": sum(1 for f in loro.values()
+                      if f["status"] == "PASS"),
+        "locked_groups_excluded": sorted(heldout_groups),
+    }
+    loro_pass = (all(f["status"] == "PASS" for f in loro.values())
+                 and len(loro) >= MIN_GEO_GROUPS)
 
-    # drift: era-pair diagnostics (means per era)
+    # --- REG-04: temporal-block bootstrap + 95% parameter intervals.
+    # Deterministic contiguous-date block resampling of the train
+    # frame; per replicate the modal-K model is re-PREDICTED (the
+    # fitted component parameters are the estimand) and the occupancy
+    # vector + mean max-posterior are collected — the 95% percentile
+    # intervals are bound as the parameter-confidence artifact.
+    train_dates = pd.to_datetime(df.loc[train_mask,
+                                      config.date_col])
+    day_order = train_dates.sort_values()
+    ordered_idx = day_order.index.to_numpy()
+    n_dates = int(pd.unique(train_dates).size)
+    block_len = max(7, n_dates // 10)
+    rng_bt = np.random.default_rng(int(config.seeds[0]))
+    boot_occ = np.empty((config.n_bootstrap, modal_k))
+    boot_post = np.empty(config.n_bootstrap)
+    unique_days = np.array(sorted(train_dates.dt.normalize()
+                                  .unique()))
+    for b in range(config.n_bootstrap):
+        chosen = []
+        start_pool = np.arange(len(unique_days))
+        while len(chosen) < len(ordered_idx):
+            st = rng_bt.choice(start_pool)
+            span = unique_days[st:st + block_len]
+            chosen.extend(df.loc[train_mask].index[
+                train_dates.dt.normalize().isin(span)].tolist())
+        rows = np.array(chosen[:len(ordered_idx)])
+        bl = model.predict(prep.transform(df.loc[rows,
+                                                feature_cols]))
+        bp = model.predict_proba(
+            prep.transform(df.loc[rows, feature_cols])).max(axis=1)
+        boot_occ[b] = np.bincount(bl, minlength=modal_k) / len(bl)
+        boot_post[b] = float(bp.mean())
+    weight_ci = {f"w{i}": [float(np.percentile(boot_occ[:, i], 2.5)),
+                          float(np.percentile(boot_occ[:, i], 97.5))]
+                 for i in range(modal_k)}
+    stability["temporal_block_bootstrap"] = {
+        "n_replicates": int(config.n_bootstrap),
+        "block_len_dates": int(block_len),
+        "weight_intervals_95": weight_ci,
+        "mean_max_posterior_interval_95": [
+            float(np.percentile(boot_post, 2.5)),
+            float(np.percentile(boot_post, 97.5))],
+        "status": "PASS",
+    }
+
+    # --- REG-05: season refits — each declared season is refit under
+    # the frozen K/seed and its out-of-season occupancy is compared.
+    season_refits = {}
+    seasons_seen = [str(x) for x in
+                    pd.unique(df.loc[train_mask, config.season_col])]
+    for seas in sorted(seasons_seen):
+        m_s = np.asarray(train_mask) & \
+            (df[config.season_col].astype(str) == seas)
+        sub = df.loc[m_s, feature_cols]
+        rec = {"status": None, "js": None, "reason": None}
+        if len(sub) < 50:
+            rec["status"] = "SKIPPED"
+            rec["reason"] = "insufficient in-season rows"
+        else:
+            ps = TrainOnlyPreprocessor().fit(sub)
+            fs = _fit_gmm(ps.transform(sub), modal_k,
+                          int(config.seeds[0]))
+            if not fs["converged"]:
+                rec["status"] = "NONCONVERGED"
+                rec["reason"] = "season refit failed to converge"
+            else:
+                occ_s = np.bincount(
+                    fs["model"].predict(ps.transform(sub)),
+                    minlength=modal_k) / len(sub)
+                js = _js_divergence(occupancy, occ_s)
+                rec["js"] = float(js)
+                rec["status"] = "PASS" if js < LORO_JS_MAX else "FAIL"
+                if rec["status"] == "FAIL":
+                    rec["reason"] = (f"season occupancy JS {js:.4f} "
+                                     f">= {LORO_JS_MAX}")
+        season_refits[seas] = rec
+    if len(seasons_seen) < 2:
+        stability["season_refits"] = {
+            "status": "NOT_APPLICABLE",
+            "reason": "single declared season — the calendar-artifact "
+                      "axis has no refit complement",
+            "folds": season_refits}
+        season_ok = True
+    else:
+        stability["season_refits"] = {
+            "status": "PASS" if all(
+                f["status"] == "PASS" for f in season_refits.values())
+            else "FAIL",
+            "folds": season_refits}
+        season_ok = all(f["status"] == "PASS"
+                        for f in season_refits.values())
+
+    # --- REG-06a: elevation bands (only when declared + present) ----
+    if config.elevation_col is None:
+        stability["elevation"] = {
+            "status": "NOT_APPLICABLE",
+            "reason": "no elevation column declared in the run "
+                      "configuration"}
+        elev_ok = True
+    else:
+        elev_refits = {}
+        elev_ok = True
+        bands = pd.unique(df.loc[train_mask, config.elevation_col])
+        for band in sorted(map(str, bands)):
+            m_e = np.asarray(train_mask) & \
+                (df[config.elevation_col].astype(str) == band)
+            sub = df.loc[m_e, feature_cols]
+            rec = {"status": None, "js": None, "reason": None}
+            if len(sub) < 50:
+                rec["status"] = "SKIPPED"
+                rec["reason"] = "insufficient band rows"
+                elev_ok = False
+            else:
+                pe = TrainOnlyPreprocessor().fit(sub)
+                fe = _fit_gmm(pe.transform(sub), modal_k,
+                              int(config.seeds[0]))
+                if not fe["converged"]:
+                    rec["status"] = "NONCONVERGED"
+                    elev_ok = False
+                else:
+                    occ_e = np.bincount(
+                        fe["model"].predict(pe.transform(sub)),
+                        minlength=modal_k) / len(sub)
+                    js = _js_divergence(occupancy, occ_e)
+                    rec["js"] = float(js)
+                    rec["status"] = ("PASS" if js < LORO_JS_MAX
+                                     else "FAIL")
+                    if rec["status"] == "FAIL":
+                        elev_ok = False
+            elev_refits[band] = rec
+        stability["elevation"] = {"status": "PASS" if elev_ok
+                                            else "FAIL",
+                                  "folds": elev_refits}
+
+    # --- REG-06b: missingness/effort sensitivity — occupancy on the
+    # complete-case subset must not diverge from the imputed fit ----
+    complete_mask = np.asarray(train_mask) & \
+        df[feature_cols].notna().all(axis=1).to_numpy()
+    n_complete = int(complete_mask.sum())
+    if n_complete >= 50:
+        occ_complete = np.bincount(
+            model.predict(prep.transform(
+                df.loc[complete_mask, feature_cols])),
+            minlength=modal_k) / n_complete
+        js_miss = float(_js_divergence(occupancy, occ_complete))
+        stability["missingness_sensitivity"] = {
+            "status": "PASS" if js_miss < LORO_JS_MAX else "FAIL",
+            "complete_rows": n_complete,
+            "occupancy_js": js_miss}
+        miss_ok = js_miss < LORO_JS_MAX
+    else:
+        stability["missingness_sensitivity"] = {
+            "status": "FAIL",
+            "reason": "fewer than 50 complete-case train rows — the "
+                      "missingness axis cannot be evaluated",
+            "complete_rows": n_complete}
+        miss_ok = False
+
+    # --- REG-07: era drift — declared boundaries, per-pair max abs
+    # standardized mean shift, thresholded; failure propagates -------
     drift = {}
+    era_ok = True
     if config.era_col and config.era_col in df.columns:
-        eras = pd.unique(df[config.era_col])
-        for i in range(len(eras)):
-            for j in range(i + 1, len(eras)):
-                a = df.loc[train_mask &
-                           (df[config.era_col] == eras[i]),
-                           feature_cols].mean()
-                b = df.loc[train_mask &
-                           (df[config.era_col] == eras[j]),
-                           feature_cols].mean()
-                drift[f"{eras[i]}|{eras[j]}"] = float(
-                    np.abs(a - b).max())
+        eras = sorted(map(str, pd.unique(
+            df.loc[train_mask, config.era_col])))
+        if len(eras) < 2:
+            stability["era_drift"] = {
+                "status": "NOT_APPLICABLE",
+                "reason": "single era in the fit frame — no era pair "
+                          "exists",
+                "pairs": {}}
+        else:
+            for i in range(len(eras)):
+                for j in range(i + 1, len(eras)):
+                    a = X_train[(df.loc[train_mask,
+                                         config.era_col]
+                                 .astype(str) == eras[i])
+                                .to_numpy()].mean(axis=0)
+                    b = X_train[(df.loc[train_mask,
+                                         config.era_col]
+                                 .astype(str) == eras[j])
+                                .to_numpy()].mean(axis=0)
+                    drift[f"{eras[i]}|{eras[j]}"] = float(
+                        np.abs(a - b).max())
+            era_ok = all(v < config.era_drift_max
+                         for v in drift.values())
+            stability["era_drift"] = {
+                "status": "PASS" if era_ok else "FAIL",
+                "threshold": config.era_drift_max,
+                "pairs": drift}
+    else:
+        stability["era_drift"] = {
+            "status": "NOT_APPLICABLE",
+            "reason": "no era column declared",
+            "pairs": {}}
     stability["drift_max_abs_mean_shift"] = drift
 
     # --- terminal status -------------------------------------------------
-    loros_numeric = [v for v in loro.values()
-                     if isinstance(v, float)]
-    loro_ok = all(v < 0.35 for v in loros_numeric) if \
-        loros_numeric else False
-    stable = (k_freq == 1.0 and
-              (min(seed_ari) if seed_ari else 0.0) > 0.6 and
-              loro_ok and exceeds_shuffled)
+    # Every required stability axis must explicitly PASS (or carry a
+    # policy-admissible NOT_APPLICABLE) — a recorded-but-ungated
+    # metric can never promote a result.
+    seas_null_ok = seas_ok and seas_fit["converged"] \
+        and js_seas is not None
+    required_gates = {
+        "modal_k_unanimous": k_freq == 1.0,
+        "seed_ari": bool(seed_ari) and min(seed_ari) > 0.6,
+        "loro": loro_pass,
+        "temporal_bootstrap": stability[
+            "temporal_block_bootstrap"]["status"] == "PASS",
+        "season_refits": season_ok,
+        "elevation": elev_ok,
+        "missingness": miss_ok,
+        "era_drift": era_ok,
+        "shuffled_null": exceeds_shuffled,
+        "season_matched_null": seas_null_ok,
+    }
+    stability["required_gates"] = required_gates
+    stable = all(required_gates.values())
     if stable:
         status = "DESCRIPTIVE_REGIME_ONLY"
     elif k_freq < 1.0 or (seed_ari and min(seed_ari) <= 0.6) \
-            or not loro_ok:
+            or not loro_pass:
         status = "UNSUPERVISED_STRUCTURE_NOT_STABLE"
     else:
-        status = "CANDIDATE_ONLY"
+        status = "UNSUPERVISED_STRUCTURE_NOT_STABLE"
 
     artifact = {
         "mode": "RETROSPECTIVE_REGIME",

@@ -482,12 +482,16 @@ def test_negative_controls_flat_under_null():
                              UNIT_BASINS, holdout=holdout,
                              region_basins=REGION_BASINS)
     neg = report.negative_controls
-    assert set(neg) == {"placebo", "impossible_regime",
-                       "time_reversed"}
-    for name, entry in neg.items():
+    assert {"placebo", "impossible_regime", "time_reversed",
+            "label_shuffle"} <= set(neg)
+    # the flat controls must stay flat under a null artifact; the
+    # label-shuffle null IS expected to stay flat here because the
+    # null artifact's partition is itself arbitrary
+    for name in ("placebo", "impossible_regime", "time_reversed"):
+        entry = neg[name]
         assert entry["flat"], f"{name} not flat: {entry}"
         for cell in entry["per_regime"].values():
-            if cell["ci_low"] is not None:
+            if cell.get("ci_low") is not None:
                 assert cell["ci_low"] <= 1.0 <= cell["ci_high"], (
                     name, cell)
     assert report.status == "DESCRIPTIVE_REGIME_ONLY"
@@ -923,3 +927,50 @@ def test_basin_claimed_by_two_regions_rejected():
             holdout=holdout, region_basins=region_basins,
             opportunities=make_opportunities(controls),
             n_boot=8, seed=0)
+
+
+# ---------------------------------------------------------------------
+# Family / multiplicity / null-completeness adversarial checks
+# ---------------------------------------------------------------------
+
+def test_undeclared_horizon_mode_rejects(planted):
+    artifact, events, controls, holdout = planted
+    with pytest.raises(ValueError, match="horizon_family"):
+        run_assoc(artifact, events, controls, UNIT_BASINS,
+                  holdout=holdout, region_basins=REGION_BASINS,
+                  horizon_family=("midpoint", "post_hoc_mode"))
+
+
+def test_empty_horizon_family_rejects(planted):
+    artifact, events, controls, holdout = planted
+    with pytest.raises(ValueError, match="horizon_family"):
+        run_assoc(artifact, events, controls, UNIT_BASINS,
+                  holdout=holdout, region_basins=REGION_BASINS,
+                  horizon_family=())
+
+
+def test_multiplicity_and_nulls_bound_in_report(planted):
+    artifact, events, controls, holdout = planted
+    rep = run_assoc(artifact, events, controls, UNIT_BASINS,
+                    holdout=holdout, region_basins=REGION_BASINS)
+    # the declared family and Holm correction are bound into the
+    # report — a post-hoc cell cannot be appended to the verdict
+    assert rep.horizon_family == ("midpoint", "uniform")
+    assert rep.multiplicity["method"] == "holm"
+    assert rep.multiplicity["alpha"] == 0.05
+    assert "label_shuffle" in rep.negative_controls
+    assert rep.negative_controls["label_shuffle"]["digest"]
+    # every mandatory sensitivity axis is dispositioned explicitly
+    for axis in ("interval_placement", "observation_effort",
+                 "era", "missingness"):
+        assert rep.sensitivities[axis]["status"] in (
+            "PASS", "FAIL", "NOT_APPLICABLE")
+
+
+def test_label_shuffle_null_is_deterministic(planted):
+    artifact, events, controls, holdout = planted
+    kw = dict(holdout=holdout, region_basins=REGION_BASINS)
+    r1 = run_assoc(artifact, events, controls, UNIT_BASINS, **kw)
+    r2 = run_assoc(artifact, events, controls, UNIT_BASINS, **kw)
+    assert (r1.negative_controls["label_shuffle"]["digest"]
+            == r2.negative_controls["label_shuffle"]["digest"])

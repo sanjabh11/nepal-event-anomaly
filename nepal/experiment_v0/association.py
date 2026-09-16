@@ -27,14 +27,16 @@ Boundaries honored here:
 """
 from __future__ import annotations
 
+import dataclasses
 import random
 import re
 from collections import Counter
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import date as _date
 from datetime import datetime, timedelta, timezone
 from typing import Any, Collection, Mapping, Optional, Sequence
 
+from nepal.research_v0._hashing import sha256_canonical
 from nepal.research_v0.policy import (TargetState, parse_strict_utc,
                                       require_finite_seconds)
 from nepal.research_v0.records import (POSITIVE_ADMISSIBLE_ADJUDICATION,
@@ -65,7 +67,21 @@ STATUS_UNDERPOWERED = "UNDERPOWERED_DESCRIPTIVE_ONLY"
 STATUS_NOT_SUPPORTED = "UNSUPERVISED_PATH_NOT_SUPPORTED"
 
 #: Event-time interval placements recomputed for sensitivity reporting.
+#: These are also the only members a declared ``horizon_family`` may
+#: name — the analysis family is predeclared, never implicit.
 PLACEMENT_MODES = ("midpoint", "uniform", "worst_case")
+
+#: Family-wise level for the Holm step-down correction applied across
+#: the declared horizon family (every regime x placement-mode cell).
+FAMILY_ALPHA = 0.05
+
+#: Negative-control families that must execute and land in the report
+#: before ``REGIME_ASSOCIATION_SUPPORTED`` is reachable: a placebo
+#: window draw, a structurally-independent ("impossible") partition,
+#: a post-event (time-reversed) placement, and a seeded label-shuffle
+#: null.  A missing or failed null blocks the top status outright.
+REQUIRED_NULLS = ("placebo", "impossible_regime", "time_reversed",
+                  "label_shuffle")
 
 #: A regime whose control-frame share is at or under this fraction is
 #: reported in the rarity ("novelty") slice.
@@ -152,6 +168,26 @@ def _percentile_pair(values: Sequence[float]) -> tuple[float, float]:
     lo = ordered[min(n - 1, int(0.025 * n))]
     hi = ordered[min(n - 1, int(0.975 * n))]
     return lo, hi
+
+
+def _holm_significant(pvals: Mapping[str, Optional[float]],
+                      alpha: float = FAMILY_ALPHA) -> dict[str, bool]:
+    """Holm step-down over the declared cell family.
+
+    ``pvals`` maps cell name -> one-sided bootstrap p (or None for
+    incomputable cells, which are never rejected).  Returns the
+    per-cell rejection map; only Holm-significant cells may promote
+    the supported verdict — post-hoc cells cannot enter it."""
+    items = [(k, v) for k, v in pvals.items() if v is not None]
+    items.sort(key=lambda kv: (kv[1], kv[0]))
+    m = len(items)
+    out = {k: False for k in pvals}
+    for i, (k, v) in enumerate(items):
+        if v <= alpha / (m - i):
+            out[k] = True
+        else:
+            break
+    return out
 
 
 def _ratio(numer: float, denom: float) -> Optional[float]:
@@ -422,12 +458,25 @@ def _group_basins(members: Sequence[EventLabelV0]) -> tuple[str, ...]:
     return tuple(sorted({m.basin_id for m in members if m.basin_id}))
 
 
-def _group_season(members: Sequence[EventLabelV0]) -> str:
+def _group_anchor_date(members: Sequence[EventLabelV0]
+                       ) -> Optional[_date]:
+    """The group's earliest member midpoint date — the deterministic
+    anchor used for season and era membership."""
     days = [d for d in (_event_midpoint_date(m) for m in members)
             if d is not None]
-    if not days:
-        return "UNKNOWN"
-    return _season_of(min(days))
+    return min(days) if days else None
+
+
+def _group_season(members: Sequence[EventLabelV0]) -> str:
+    day = _group_anchor_date(members)
+    return "UNKNOWN" if day is None else _season_of(day)
+
+
+def _control_anchor_date(control: ControlWindowV0) -> Optional[_date]:
+    """A control window's middle intersected date — the deterministic
+    anchor used for era membership."""
+    dates = _control_dates(control)
+    return dates[len(dates) // 2] if dates else None
 
 
 # ---------------------------------------------------------------------
@@ -753,6 +802,10 @@ def event_group_bootstrap(
                 reps.append(share / c_share)
             lo, hi = _percentile_pair(reps)
             cell["ci_low"], cell["ci_high"] = _round12(lo), _round12(hi)
+            # one-sided bootstrap p: fraction of resamples at or
+            # below the no-enrichment boundary (ratio <= 1.0)
+            cell["p_enrich"] = _round12(
+                sum(1 for r in reps if r <= 1.0) / len(reps))
         out[label] = cell
     return out
 
@@ -941,6 +994,68 @@ def _impossible_regime_control(
             "flat": flat}
 
 
+def _label_shuffle_null(
+        artifact: RegimeAssignmentArtifact,
+        groups: Mapping[str, Sequence[EventLabelV0]],
+        controls: Sequence[ControlWindowV0],
+        basin_units: Mapping[str, Sequence[str]], *,
+        n_boot: int, seed: int) -> dict[str, Any]:
+    """Seeded label-shuffle null: the frozen regime labels are
+    permuted across the assignment cells (label multiset preserved)
+    and the midpoint enrichment table is recomputed per replicate —
+    any regime whose observed ratio sits inside the shuffle
+    distribution is consistent with a null partition."""
+    base_table = _build_table(artifact, groups, controls,
+                              basin_units, "midpoint")
+    observed = _point_ratios(base_table)
+    # canonicalize row order — input ordering must not leak into
+    # the seeded permutation (byte-identical replay contract)
+    rows = sorted((tuple(r) for r in artifact.assignments))
+    labels = sorted({str(r[2]) for r in rows} - {UNASSIGNED_LABEL})
+    null_ratios: dict[str, list[float]] = {l: [] for l in labels}
+    rng = random.Random(seed ^ 0x5F1E)
+    n_reps = max(int(n_boot), 1)
+    for rep in range(n_reps):
+        shuffled_ids = [r[2] for r in rows]
+        rng.shuffle(shuffled_ids)
+        shuffled = tuple(sorted(
+            (r[0], r[1], str(sv))
+            for r, sv in zip(rows, shuffled_ids)))
+        sh_art = dataclasses.replace(artifact,
+                                     assignments=shuffled)
+        t = _build_table(sh_art, groups, controls, basin_units,
+                         "midpoint")
+        pr = _point_ratios(t)
+        for l in labels:
+            if pr.get(l) is not None:
+                null_ratios[l].append(pr[l])
+    per_regime: dict[str, Any] = {}
+    for l in labels:
+        obs = observed.get(l)
+        reps = null_ratios[l]
+        if obs is None or not reps:
+            per_regime[l] = {"observed_ratio": obs,
+                             "null_p95": None, "p": None}
+            continue
+        p = _round12(sum(1 for r in reps if r >= obs)
+                     / len(reps))
+        per_regime[l] = {
+            "observed_ratio": obs,
+            "null_p95": _round12(_percentile_pair(reps)[1]),
+            "p": p}
+    # ``flat`` records the null-consistent outcome (no regime beats
+    # the shuffle) — for the verdict, enriched regimes must instead
+    # BEAT the null, so the driver reads per_regime p-values directly
+    flat = all(v["p"] is None or v["p"] > FAMILY_ALPHA
+               for v in per_regime.values())
+    return {"kind": "label_shuffle", "n_replicates": n_reps,
+            "per_regime": per_regime, "flat": flat,
+            "digest": sha256_canonical(
+                {"null": "label_shuffle", "seed": seed,
+                 "n_replicates": n_reps,
+                 "per_regime": per_regime})}
+
+
 def _time_reversed_control(
         artifact: RegimeAssignmentArtifact,
         groups: Mapping[str, Sequence[EventLabelV0]],
@@ -1031,6 +1146,9 @@ class AssociationReport:
     slices: dict
     status: str
     notes: tuple[str, ...]
+    horizon_family: tuple[str, ...] = ()
+    multiplicity: dict = field(default_factory=dict)
+    sensitivities: dict = field(default_factory=dict)
 
     def problems(self) -> list[str]:
         problems: list[str] = []
@@ -1263,6 +1381,7 @@ def run_association(
         *, holdout: HoldoutPlanV0,
         region_basins: Mapping[str, Collection[str]],
         opportunities: Mapping[str, ObservationOpportunityV0],
+        horizon_family: Collection[str] = ("midpoint", "uniform"),
         n_boot: int = 200, seed: int = 0) -> AssociationReport:
     """Run the held-out event–regime association harness.
 
@@ -1285,6 +1404,14 @@ def run_association(
     notes: list[str] = [
         "claim_scope=research_only_no_operational_authorization",
     ]
+    family = tuple(horizon_family or ())
+    bad_modes = [m for m in family
+                 if m not in ("midpoint", "uniform")]
+    if bad_modes or not family:
+        raise ValueError(
+            f"horizon_family must be a non-empty declared subset of "
+            f"('midpoint', 'uniform') — got {tuple(family)!r}; "
+            "post-hoc cells are inadmissible")
     art_problems = artifact.problems()
     regime_ids = artifact.regime_ids()
 
@@ -1342,11 +1469,16 @@ def run_association(
             slices={"pooled": {}, "per_basin": {}, "per_season": {}},
             status=STATUS_NOT_SUPPORTED, notes=tuple(notes))
 
-    # --- primary table (midpoint placement) + bootstrap intervals ---
-    table = _build_table(artifact, groups, negative_controls,
-                         basin_units, "midpoint")
-    enrichment = event_group_bootstrap(table, admissible_events,
-                                       n_boot=n_boot, seed=seed)
+    # --- declared horizon family: every regime x mode cell gets the
+    # full bootstrap; the family is predeclared, never implicit ---
+    family_tables = {mode: _build_table(
+        artifact, groups, negative_controls, basin_units, mode)
+        for mode in family}
+    family_enrichment = {mode: event_group_bootstrap(
+        family_tables[mode], admissible_events,
+        n_boot=n_boot, seed=seed) for mode in family}
+    table = family_tables[family[0]]
+    enrichment = family_enrichment[family[0]]
 
     # --- transition pairs (same resampling machinery) ---
     trans_table = _build_transition_table(artifact, groups,
@@ -1375,9 +1507,18 @@ def run_association(
         "time_reversed": _time_reversed_control(
             artifact, groups, negative_controls, basin_units,
             n_boot=n_boot, seed=seed),
+        "label_shuffle": _label_shuffle_null(
+            artifact, groups, negative_controls, basin_units,
+            n_boot=n_boot, seed=seed),
     }
-    all_flat = all(neg[k]["flat"] for k in
-                   ("placebo", "impossible_regime", "time_reversed"))
+    # the flat controls (placebo, impossible, time-reversed) must
+    # stay flat; the label-shuffle null must instead be BEATEN by
+    # every enriched regime — its per-regime p must reach alpha.
+    flat_nulls = ("placebo", "impossible_regime", "time_reversed")
+    missing_nulls = [k for k in REQUIRED_NULLS if k not in neg]
+    all_flat = (not missing_nulls) and all(
+        neg[k].get("flat") for k in flat_nulls)
+    shuffle_p = neg["label_shuffle"].get("per_regime", {})
 
     # --- interval-placement sensitivity ---
     uniform_table = _build_table(artifact, groups, negative_controls,
@@ -1425,20 +1566,139 @@ def run_association(
               "per_season": per_season}
 
     # --- decision rule ---
-    enriched = [r for r, cell in enrichment.items()
-                if cell["ci_low"] is not None and cell["ci_low"] > 1.0]
+    # Multiplicity: Holm step-down over every declared
+    # regime x placement-mode cell; only corrected-significant cells
+    # may promote the verdict.
+    family_pvals = {
+        f"{mode}|{rid}": cell.get("p_enrich")
+        for mode, cells in family_enrichment.items()
+        for rid, cell in cells.items()}
+    holm = _holm_significant(family_pvals)
+    corrected_cells = {
+        f"{mode}|{rid}"
+        for mode, cells in family_enrichment.items()
+        for rid in cells if holm.get(f"{mode}|{rid}")}
+    # a regime counts as enriched only if it is Holm-significant in
+    # EVERY declared family mode — a single-mode hit is a post-hoc
+    # cell and cannot promote
+    enriched = sorted({
+        rid for mode, cells in family_enrichment.items()
+        for rid in cells
+        if all(f"{m}|{rid}" in corrected_cells for m in family)})
     direction_ok = all(
         (sensitivity["uniform"].get(r) is not None
          and sensitivity["uniform"][r] > 1.0
          and sensitivity["worst_case"].get(r) is not None
          and sensitivity["worst_case"][r] > 1.0)
         for r in enriched)
+
+    # --- mandatory sensitivity dispositions: every axis present with
+    # PASS / FAIL / NOT_APPLICABLE-with-reason; absent data can never
+    # silently become a pass ---
+    sensitivities: dict[str, Any] = {}
+    # (a) interval placement
+    sensitivities["interval_placement"] = {
+        "status": "PASS" if direction_ok or not enriched else "FAIL",
+        "modes": sensitivity,
+        "detail": "enrichment direction must survive every "
+                  "placement mode"}
+    # (b) observation effort: control shares re-weighted by the
+    # number of registry opportunities on each control's unit
+    opp_per_unit = Counter(
+        opp.unit_id for opp in opportunities.values()
+        if type(opp) is ObservationOpportunityV0)
+    w_controls = Counter()
+    w_total = 0.0
+    for c in negative_controls:
+        w = float(opp_per_unit.get(c.unit_id, 0))
+        if w > 0:
+            for lbl, cnt in _control_label_counts(artifact, c).items():
+                w_controls[lbl] += cnt * w
+            w_total += w
+    if w_total > 0:
+        w_ratios = {}
+        for rid in enriched:
+            e_share = (enrichment.get(rid) or {}).get(
+                "event_share", 0.0)
+            wc = w_controls.get(rid, 0.0) / w_total
+            w_ratios[rid] = _round12(_ratio(e_share, wc))
+        sensitivities["observation_effort"] = {
+            "status": "PASS" if all(
+                r is not None and r > 1.0 for r in w_ratios.values())
+                or not enriched else "FAIL",
+            "weighted_ratios": w_ratios,
+            "detail": "control frame re-weighted by verified "
+                      "opportunity counts per unit"}
+    else:
+        sensitivities["observation_effort"] = {
+            "status": "NOT_APPLICABLE",
+            "detail": "no verified registry opportunities weight "
+                      "the control frame"}
+    # (c) era: event groups split at the median anchor date
+    anchors = sorted(d for d in (_group_anchor_date(m)
+                                 for m in groups.values())
+                     if d is not None)
+    if len(set(a.year for a in anchors)) < 2:
+        sensitivities["era"] = {
+            "status": "NOT_APPLICABLE",
+            "detail": "event groups span a single era (one calendar "
+                      "year) — no era split exists"}
+    else:
+        mid = anchors[len(anchors) // 2]
+        era_ratios = {}
+        era_fail = False
+        for tag, pred in (("early", lambda d: d < mid),
+                          ("late", lambda d: d >= mid)):
+            sub = {gid: m for gid, m in groups.items()
+                   if _group_anchor_date(m) is not None
+                   and pred(_group_anchor_date(m))}
+            if not sub:
+                continue
+            st = _build_table(artifact, sub, negative_controls,
+                              basin_units, "midpoint")
+            pr = _point_ratios(st)
+            era_ratios[tag] = {r: pr.get(r) for r in enriched}
+            for r in enriched:
+                if era_ratios[tag][r] is not None and                         era_ratios[tag][r] <= 1.0:
+                    era_fail = True
+        sensitivities["era"] = {
+            "status": "FAIL" if era_fail else "PASS",
+            "per_era_ratios": era_ratios,
+            "detail": "enriched regimes must hold direction in both "
+                      "era halves"}
+    # (d) missingness: the registry's coverage spectrum — when every
+    # opportunity is OBSERVED_FULL there is nothing to weight
+    states = {opp.state for opp in opportunities.values()
+              if type(opp) is ObservationOpportunityV0}
+    if states <= {"OBSERVED_FULL"}:
+        sensitivities["missingness"] = {
+            "status": "NOT_APPLICABLE",
+            "detail": "registry contains only OBSERVED_FULL "
+                      "opportunities — no partial coverage to "
+                      "sensitize"}
+    else:
+        partial = [o for o in opportunities.values()
+                   if type(o) is ObservationOpportunityV0
+                   and o.state != "OBSERVED_FULL"]
+        sensitivities["missingness"] = {
+            "status": "PASS",
+            "n_partial": len(partial),
+            "detail": "partial-coverage opportunities are excluded "
+                      "from NEGATIVE derivation by binding already"}
+    sens_failed = [k for k, v in sensitivities.items()
+                   if v.get("status") == "FAIL"]
+
     if n_event_groups < MIN_EVENT_GROUPS:
         status = STATUS_UNDERPOWERED
         notes.append(f"{n_event_groups} atomic event groups is below "
                      f"the MIN_EVENT_GROUPS={MIN_EVENT_GROUPS} floor — "
                      "descriptive output only")
-    elif enriched and all_flat and direction_ok:
+    elif enriched and all_flat and direction_ok \
+            and not sens_failed \
+            and all(
+                (shuffle_p.get(r) or {}).get("p") is not None
+                and shuffle_p[r]["p"] <= FAMILY_ALPHA
+                for r in enriched):
         status = STATUS_SUPPORTED
         notes.append("one or more frozen regimes show a non-random "
                      "correspondence with held-out adjudicated events "
@@ -1456,6 +1716,11 @@ def run_association(
         if enriched and not direction_ok:
             notes.append("interval-placement sensitivity reverses or "
                          "collapses the enrichment direction")
+        if missing_nulls:
+            notes.append(f"required null families missing: "
+                         f"{missing_nulls}")
+        if sens_failed:
+            notes.append(f"sensitivity checks failed: {sens_failed}")
 
     return AssociationReport(
         artifact_id=artifact.artifact_id,
@@ -1466,7 +1731,13 @@ def run_association(
         enrichment=enrichment, transitions=transitions,
         novelty=novelty, negative_controls=neg,
         interval_sensitivity=sensitivity, slices=slices,
-        status=status, notes=tuple(notes))
+        status=status, notes=tuple(notes),
+        horizon_family=tuple(family),
+        multiplicity={"method": "holm", "alpha": FAMILY_ALPHA,
+                      "family_pvals": family_pvals,
+                      "holm_rejected": sorted(k for k, v in
+                                              holm.items() if v)},
+        sensitivities=sensitivities)
 
 
 # ---------------------------------------------------------------------

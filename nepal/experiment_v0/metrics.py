@@ -60,10 +60,23 @@ def _binary(y_true: Any) -> list[int]:
 
 
 def _probs(y_prob: Any) -> list[float]:
-    """Coerce predicted probabilities to finite floats in [0, 1]."""
+    """Coerce predicted probabilities to finite floats in [0, 1].
+
+    Booleans and strings are never accepted — ``"0.5"`` or ``True``
+    reject rather than coerce; only real numeric types in range pass.
+    """
     out: list[float] = []
     for value in y_prob:
-        p = float(value)
+        if isinstance(value, bool) or isinstance(value, (str, bytes)):
+            raise ValueError(
+                f"predicted probability {value!r} is not a numeric "
+                "value — strings and booleans never coerce")
+        try:
+            p = float(value)
+        except (TypeError, ValueError):
+            raise ValueError(
+                f"predicted probability {value!r} is not numeric") \
+                from None
         if not math.isfinite(p) or p < 0.0 or p > 1.0:
             raise ValueError(
                 f"predicted probability {value!r} is not finite in [0,1]")
@@ -72,7 +85,22 @@ def _probs(y_prob: Any) -> list[float]:
 
 
 def _flags(y_flag: Any) -> list[int]:
-    return [1 if bool(f) else 0 for f in y_flag]
+    """Coerce alert flags to 0/1.
+
+    Accepts booleans and 0/1 numerics only — a flag is a binary
+    decision, so strings, other numerics, and arbitrary objects reject
+    rather than silently coerce through ``bool()``.
+    """
+    out: list[int] = []
+    for value in y_flag:
+        if isinstance(value, bool):
+            out.append(int(value))
+        elif isinstance(value, (int, float)) and value in (0, 1):
+            out.append(int(value))
+        else:
+            raise ValueError(
+                f"flag value {value!r} is not binary 0/1")
+    return out
 
 
 def _aligned(y_true: Any, y_prob: Any) -> tuple[list[int], list[float]]:
@@ -102,7 +130,10 @@ def calibration_bins(y_true: Any, y_prob: Any,
     always JSON-serializable.  ``p == 1.0`` lands in the last bin.
     """
     y, p = _aligned(y_true, y_prob)
-    n_bins = max(1, int(n_bins))
+    if isinstance(n_bins, bool) or not isinstance(n_bins, int) or \
+            n_bins < 1:
+        raise ValueError(
+            f"n_bins {n_bins!r} must be a positive integer")
     bins = [
         {"bin": i, "lower": i / n_bins, "upper": (i + 1) / n_bins,
          "count": 0, "sum_predicted": 0.0, "sum_observed": 0.0,
@@ -238,7 +269,15 @@ def false_alarms_per_opportunity(y_flag: Any,
     yields 0.0 rather than NaN so reports stay JSON-safe.
     """
     flags = _flags(y_flag)
-    if n_opportunities <= 0:
+    if isinstance(n_opportunities, bool) or \
+            not isinstance(n_opportunities, int):
+        raise ValueError(
+            f"n_opportunities {n_opportunities!r} must be an integer "
+            "count of verified observation opportunities")
+    if n_opportunities < 0:
+        raise ValueError(
+            f"n_opportunities {n_opportunities!r} cannot be negative")
+    if n_opportunities == 0:
         return 0.0
     return sum(flags) / n_opportunities
 
