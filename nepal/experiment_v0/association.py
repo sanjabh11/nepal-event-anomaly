@@ -4,11 +4,16 @@ This module implements the contract-layer, synthetic-fixture-only half
 of the run-C association protocol: given a *frozen*, label-blind regime
 assignment artifact and independently adjudicated event labels plus
 derived control windows, it computes regime-enrichment statistics,
-transition-pair statistics, rarity ("novelty") slices, three negative
-controls, interval-placement sensitivity, and pooled/per-basin/
-per-season slices.  Uncertainty comes from a deterministic seeded
-event-group bootstrap that resamples atomic cascade groups within
-basin-aware strata.
+transition-pair statistics, rarity ("novelty") slices, four negative
+controls, a mandatory sensitivity registry, and pooled/per-basin/
+per-season slices.  The declared inference family is every
+regime x (look-back horizon x placement mode) cell — look-back
+horizons ("0d", "3d", "7d") extend each event's effective window
+backward before a placement mode counts co-occurrence — and a Holm
+step-down spans exactly the declared cells.  Uncertainty comes from
+a deterministic seeded event-group bootstrap that resamples atomic
+cascade groups within basin-aware strata; the label-shuffle null
+permutes regime labels only within (season, basin) strata.
 
 Boundaries honored here:
 
@@ -71,8 +76,19 @@ STATUS_NOT_SUPPORTED = "UNSUPERVISED_PATH_NOT_SUPPORTED"
 #: name — the analysis family is predeclared, never implicit.
 PLACEMENT_MODES = ("midpoint", "uniform", "worst_case")
 
+#: Declared look-back horizons are strings of integer days
+#: ("0d", "3d", "7d", ...).  A horizon of ``h`` days extends each
+#: event's effective date window backward by ``h`` days before any
+#: placement mode counts regime co-occurrence — the look-back window
+#: precedes the event anchor.  ``"0d"`` is the identity horizon.
+_LOOKBACK_RE = re.compile(r"^(\d+)d$")
+
+#: The look-back horizon family applied when the caller declares none.
+DEFAULT_LOOKBACK_HORIZONS = ("0d",)
+
 #: Family-wise level for the Holm step-down correction applied across
-#: the declared horizon family (every regime x placement-mode cell).
+#: the declared horizon family (every regime x look-back-horizon x
+#: placement-mode cell).
 FAMILY_ALPHA = 0.05
 
 #: Negative-control families that must execute and land in the report
@@ -82,6 +98,21 @@ FAMILY_ALPHA = 0.05
 #: null.  A missing or failed null blocks the top status outright.
 REQUIRED_NULLS = ("placebo", "impossible_regime", "time_reversed",
                   "label_shuffle")
+
+#: Sensitivity axes the report must disposition explicitly — every
+#: axis present with a PASS / FAIL / NOT_APPLICABLE status plus a
+#: reason; a missing axis can never silently stand in for a pass.
+REQUIRED_SENSITIVITY_AXES = (
+    "interval_placement", "precision", "observation_effort",
+    "era_boundary", "feature_subset", "missingness", "mechanism")
+
+#: The only dispositions a sensitivity axis may carry.
+SENSITIVITY_DISPOSITIONS = frozenset(
+    {"PASS", "FAIL", "NOT_APPLICABLE"})
+
+#: A mechanism slice needs at least this many atomic event groups
+#: before a direction reversal inside it can fail the axis.
+MECHANISM_MIN_GROUPS = 3
 
 #: A regime whose control-frame share is at or under this fraction is
 #: reported in the rarity ("novelty") slice.
@@ -128,21 +159,42 @@ def _dates_between(first: _date, last: _date) -> list[_date]:
     return out
 
 
-def _event_dates(event: EventLabelV0) -> tuple[_date, ...]:
-    """Every calendar date the event interval intersects (inclusive)."""
+def _parse_lookback_days(horizon: Any) -> int:
+    """Map a declared look-back horizon string ("0d", "3d", "7d")
+    to a day count.  Anything else rejects — the horizon family is
+    declared, never implicit."""
+    m = _LOOKBACK_RE.match(horizon) if isinstance(horizon, str) \
+        else None
+    if m is None:
+        raise ValueError(
+            f"lookback_horizons entries must be day strings like "
+            f"'0d', '3d', '7d' — got {horizon!r}")
+    return int(m.group(1))
+
+
+def _event_dates(event: EventLabelV0,
+                 lookback_days: int = 0) -> tuple[_date, ...]:
+    """Every calendar date the event's effective window intersects
+    (inclusive).  ``lookback_days`` extends the window backward —
+    the look-back window precedes the event anchor."""
     s = parse_strict_utc(event.event_time_start)
     e = parse_strict_utc(event.event_time_end)
     if s is None or e is None or e < s:
         return ()
-    return tuple(_dates_between(_epoch_to_date(s), _epoch_to_date(e)))
+    first = _epoch_to_date(s) - timedelta(days=lookback_days)
+    return tuple(_dates_between(first, _epoch_to_date(e)))
 
 
-def _event_midpoint_date(event: EventLabelV0) -> Optional[_date]:
+def _event_midpoint_date(event: EventLabelV0,
+                         lookback_days: int = 0) -> Optional[_date]:
+    """Midpoint of the event's effective window — the placed date
+    under the ``midpoint`` placement mode at this look-back."""
     s = parse_strict_utc(event.event_time_start)
     e = parse_strict_utc(event.event_time_end)
     if s is None or e is None or e < s:
         return None
-    return _epoch_to_date((s + e) / 2.0)
+    return _epoch_to_date(
+        ((s - lookback_days * _DAY_SECONDS) + e) / 2.0)
 
 
 def _season_of(day: _date) -> str:
@@ -472,6 +524,19 @@ def _group_season(members: Sequence[EventLabelV0]) -> str:
     return "UNKNOWN" if day is None else _season_of(day)
 
 
+def _event_mechanism(event: EventLabelV0) -> str:
+    """The mechanism axis for sensitivity slicing.  EventLabelV0
+    carries no dedicated mechanism field, so the axis resolves to a
+    declared ``mechanism`` attribute when present and falls back to
+    ``vertical_id`` — the only mechanism-determining field on the
+    label."""
+    mech = getattr(event, "mechanism", "")
+    if mech:
+        return str(mech)
+    vertical = getattr(event, "vertical_id", "")
+    return str(vertical) if vertical else "UNSPECIFIED"
+
+
 def _control_anchor_date(control: ControlWindowV0) -> Optional[_date]:
     """A control window's middle intersected date — the deterministic
     anchor used for era membership."""
@@ -494,7 +559,8 @@ def _group_label_counts(
         artifact: RegimeAssignmentArtifact,
         members: Sequence[EventLabelV0],
         basin_units: Mapping[str, Sequence[str]],
-        mode: str) -> tuple[dict[str, float], float]:
+        mode: str,
+        lookback_days: int = 0) -> tuple[dict[str, float], float]:
     """Weighted regime histogram for one atomic event group.
 
     Each group contributes total weight equal to the number of distinct
@@ -509,10 +575,10 @@ def _group_label_counts(
         us = basin_units.get(ev.basin_id, ())
         units.update(us)
         if mode == "midpoint":
-            day = _event_midpoint_date(ev)
+            day = _event_midpoint_date(ev, lookback_days)
             dates = (day,) if day is not None else ()
         else:  # "uniform"
-            dates = _event_dates(ev)
+            dates = _event_dates(ev, lookback_days)
         for u in us:
             for d in dates:
                 samples.append((u, d))
@@ -530,6 +596,7 @@ def _group_date_histograms(
         artifact: RegimeAssignmentArtifact,
         members: Sequence[EventLabelV0],
         basin_units: Mapping[str, Sequence[str]],
+        lookback_days: int = 0,
         ) -> tuple[dict[_date, Counter], int]:
     """Per-date unweighted regime histograms for one event group —
     the raw material for ``worst_case`` placement, which may choose a
@@ -539,13 +606,33 @@ def _group_date_histograms(
     for ev in members:
         us = basin_units.get(ev.basin_id, ())
         units.update(us)
-        for day in _event_dates(ev):
+        for day in _event_dates(ev, lookback_days):
             counter = hist.setdefault(day, Counter())
             for u in us:
                 label = artifact.regime_for(u, day.isoformat())
                 counter[label if label is not None
                         else UNASSIGNED_LABEL] += 1
     return hist, len(units)
+
+
+def _group_worst_case_counts(
+        artifact: RegimeAssignmentArtifact,
+        members: Sequence[EventLabelV0],
+        basin_units: Mapping[str, Sequence[str]],
+        lookback_days: int = 0) -> tuple[dict[str, float], float]:
+    """Per-regime adversarial placement for one event group: for each
+    regime label present in the group's per-date histograms, the
+    unit count at the intersected date minimizing that regime's
+    within-group count (ties resolved to the earliest date)."""
+    hist, n_units = _group_date_histograms(
+        artifact, members, basin_units, lookback_days)
+    if not hist or n_units <= 0:
+        return {}, 0.0
+    counts: dict[str, float] = {}
+    for label in {l for c in hist.values() for l in c}:
+        chosen = min(hist, key=lambda d: (hist[d].get(label, 0), d))
+        counts[label] = float(hist[chosen].get(label, 0))
+    return counts, float(n_units)
 
 
 def _group_transition_counts(
@@ -626,19 +713,27 @@ def _build_table(
         groups: Mapping[str, Sequence[EventLabelV0]],
         controls: Sequence[ControlWindowV0],
         basin_units: Mapping[str, Sequence[str]],
-        mode: str) -> dict[str, Any]:
+        mode: str,
+        lookback_days: int = 0) -> dict[str, Any]:
     """Assemble the resampling table consumed by the bootstrap.
 
     ``groups`` maps group_id -> member events; ``controls`` are the
     already-filtered NEGATIVE controls.  Group strata are basin-aware:
-    the sorted basin set of the group's members.
+    the sorted basin set of the group's members.  ``lookback_days``
+    extends each event's effective window backward before the
+    declared placement ``mode`` counts co-occurrence; the control
+    frame is never extended.
     """
     table_groups: dict[str, dict[str, Any]] = {}
     strata: dict[str, list[str]] = {}
     for gid in sorted(groups):
         members = groups[gid]
-        counts, weight = _group_label_counts(
-            artifact, members, basin_units, mode)
+        if mode == "worst_case":
+            counts, weight = _group_worst_case_counts(
+                artifact, members, basin_units, lookback_days)
+        else:
+            counts, weight = _group_label_counts(
+                artifact, members, basin_units, mode, lookback_days)
         basins = _group_basins(members)
         stratum = "|".join(basins) if basins else "UNMAPPED"
         table_groups[gid] = {
@@ -816,23 +911,20 @@ def _worst_case_ratios(
         basin_units: Mapping[str, Sequence[str]],
         control_counts: Mapping[str, float],
         control_total: float,
-        labels: Sequence[str]) -> dict[str, Optional[float]]:
+        labels: Sequence[str],
+        lookback_days: int = 0) -> dict[str, Optional[float]]:
     """Per-regime adversarial placement: each event group is placed on
     the intersected date minimizing that regime's within-group share
     (ties resolved to the earliest date)."""
-    hists = {gid: _group_date_histograms(artifact, members, basin_units)
-             for gid, members in groups.items()}
+    per_group = {
+        gid: _group_worst_case_counts(artifact, members, basin_units,
+                                      lookback_days)
+        for gid, members in groups.items()}
     out: dict[str, Optional[float]] = {}
     for label in labels:
-        numer = 0.0
-        denom = 0.0
-        for gid in sorted(groups):
-            hist, n_units = hists[gid]
-            if not hist or n_units <= 0:
-                continue
-            chosen = min(hist, key=lambda d: (hist[d].get(label, 0), d))
-            numer += hist[chosen].get(label, 0)
-            denom += n_units
+        numer = sum(counts.get(label, 0.0)
+                    for counts, _w in per_group.values())
+        denom = sum(w for _counts, w in per_group.values())
         e_share = numer / denom if denom > 0 else 0.0
         c_share = float(control_counts.get(label, 0.0)) / control_total \
             if control_total > 0 else 0.0
@@ -998,33 +1090,56 @@ def _label_shuffle_null(
         artifact: RegimeAssignmentArtifact,
         groups: Mapping[str, Sequence[EventLabelV0]],
         controls: Sequence[ControlWindowV0],
-        basin_units: Mapping[str, Sequence[str]], *,
+        basin_units: Mapping[str, Sequence[str]],
+        unit_basins: Mapping[str, str], *,
+        mode: str = "midpoint", lookback_days: int = 0,
         n_boot: int, seed: int) -> dict[str, Any]:
     """Seeded label-shuffle null: the frozen regime labels are
-    permuted across the assignment cells (label multiset preserved)
-    and the midpoint enrichment table is recomputed per replicate —
-    any regime whose observed ratio sits inside the shuffle
-    distribution is consistent with a null partition."""
+    permuted *within (season, basin) strata* across the assignment
+    cells — never globally — so the permutation preserves season and
+    geography structure while destroying any real event–regime
+    correspondence.  The enrichment table is recomputed per replicate
+    at the primary declared cell; any regime whose observed ratio
+    sits inside the shuffle distribution is consistent with a null
+    partition."""
     base_table = _build_table(artifact, groups, controls,
-                              basin_units, "midpoint")
+                              basin_units, mode, lookback_days)
     observed = _point_ratios(base_table)
     # canonicalize row order — input ordering must not leak into
     # the seeded permutation (byte-identical replay contract)
     rows = sorted((tuple(r) for r in artifact.assignments))
     labels = sorted({str(r[2]) for r in rows} - {UNASSIGNED_LABEL})
+    # Stratification: an assignment row's stratum is the season of
+    # its date and the basin of its unit; labels are permuted only
+    # inside each stratum, preserving the per-stratum multiset.
+    strata_idx: dict[tuple[str, str], list[int]] = {}
+    for i, r in enumerate(rows):
+        unit, day = str(r[0]), str(r[1])
+        try:
+            season = _season_of(_date.fromisoformat(day))
+        except ValueError:
+            season = "UNKNOWN"
+        basin = str(unit_basins.get(unit, "UNMAPPED"))
+        strata_idx.setdefault((season, basin), []).append(i)
+    stratum_order = sorted(strata_idx)
     null_ratios: dict[str, list[float]] = {l: [] for l in labels}
     rng = random.Random(seed ^ 0x5F1E)
     n_reps = max(int(n_boot), 1)
     for rep in range(n_reps):
-        shuffled_ids = [r[2] for r in rows]
-        rng.shuffle(shuffled_ids)
+        shuffled_ids = [str(r[2]) for r in rows]
+        for key in stratum_order:
+            idxs = strata_idx[key]
+            vals = [shuffled_ids[i] for i in idxs]
+            rng.shuffle(vals)
+            for i, v in zip(idxs, vals):
+                shuffled_ids[i] = v
         shuffled = tuple(sorted(
             (r[0], r[1], str(sv))
             for r, sv in zip(rows, shuffled_ids)))
         sh_art = dataclasses.replace(artifact,
                                      assignments=shuffled)
         t = _build_table(sh_art, groups, controls, basin_units,
-                         "midpoint")
+                         mode, lookback_days)
         pr = _point_ratios(t)
         for l in labels:
             if pr.get(l) is not None:
@@ -1147,6 +1262,7 @@ class AssociationReport:
     status: str
     notes: tuple[str, ...]
     horizon_family: tuple[str, ...] = ()
+    lookback_horizons: tuple[str, ...] = ()
     multiplicity: dict = field(default_factory=dict)
     sensitivities: dict = field(default_factory=dict)
 
@@ -1158,6 +1274,50 @@ class AssociationReport:
         for name in ("artifact_id", "regime_digest"):
             if not getattr(self, name):
                 problems.append(f"{name} is required")
+        if self.status == STATUS_SUPPORTED:
+            # The top status may never stand on an empty or partial
+            # evidence surface — every declared-family, null, and
+            # sensitivity requirement must be visibly discharged.
+            if not _SHA256_RE.match(str(self.regime_digest)):
+                problems.append("a supported verdict requires a "
+                                "64-hex regime_digest")
+            if not self.enrichment:
+                problems.append("REGIME_ASSOCIATION_SUPPORTED "
+                                "requires a non-empty enrichment "
+                                "mapping")
+            if not self.horizon_family or not self.lookback_horizons:
+                problems.append("a supported verdict requires a "
+                                "non-empty declared horizon family "
+                                "(look-back horizons x placement "
+                                "modes)")
+            missing_nulls = [k for k in REQUIRED_NULLS
+                             if k not in self.negative_controls]
+            if missing_nulls:
+                problems.append(f"required null families missing "
+                                f"from the report: {missing_nulls}")
+            missing_axes = [a for a in REQUIRED_SENSITIVITY_AXES
+                            if a not in self.sensitivities]
+            if missing_axes:
+                problems.append(f"sensitivity dispositions missing: "
+                                f"{missing_axes}")
+            else:
+                malformed = [
+                    a for a in REQUIRED_SENSITIVITY_AXES
+                    if not isinstance(self.sensitivities[a], Mapping)
+                    or self.sensitivities[a].get("status")
+                    not in SENSITIVITY_DISPOSITIONS
+                    or not self.sensitivities[a].get("reason")]
+                if malformed:
+                    problems.append(f"sensitivity dispositions "
+                                    f"malformed: {malformed}")
+            failed_axes = sorted(
+                a for a, v in self.sensitivities.items()
+                if isinstance(v, Mapping)
+                and v.get("status") == "FAIL")
+            if failed_axes:
+                problems.append(f"sensitivity FAIL dispositions "
+                                f"block the supported verdict: "
+                                f"{failed_axes}")
         return problems
 
     def to_dict(self) -> dict:
@@ -1381,7 +1541,9 @@ def run_association(
         *, holdout: HoldoutPlanV0,
         region_basins: Mapping[str, Collection[str]],
         opportunities: Mapping[str, ObservationOpportunityV0],
-        horizon_family: Collection[str] = ("midpoint", "uniform"),
+        lookback_horizons: Collection[str]
+        = DEFAULT_LOOKBACK_HORIZONS,
+        horizon_family: Collection[str] = PLACEMENT_MODES,
         n_boot: int = 200, seed: int = 0) -> AssociationReport:
     """Run the held-out event–regime association harness.
 
@@ -1392,9 +1554,46 @@ def run_association(
     denominators derive only from windows whose registry linkage
     checks out.  Any binding violation raises ``ValueError`` listing
     all problems — fail-closed, no partial association universe.
+
+    ``artifact`` must be frozen producer-adapter output — the
+    ``RegimeAssignmentArtifact`` emitted by
+    ``adapters.regime_assignment_from_artifact`` — carrying the
+    artifact's own provenance fields (64-hex ``regime_digest``,
+    non-empty ``assignments``, ``fitted_on``/``label_blinding``/
+    ``mode``/``seeds``).  Locally-self-digested minimal artifacts
+    lacking those fields are rejected at the door.  Synthetic
+    fixtures satisfy this because they are constructed on the same
+    record with the same provenance surface.
+
+    ``lookback_horizons`` declares real look-back horizons ("0d",
+    "3d", "7d" — integer-day strings): a horizon of ``h`` days
+    extends each event's effective date window backward by ``h``
+    days before regime co-occurrence is counted, so an event counts
+    toward a cell when the co-occurrence holds within the look-back
+    window preceding its anchor.  ``horizon_family`` declares the
+    interval-placement subset (``midpoint`` / ``uniform`` /
+    ``worst_case``); the inference family is every
+    regime x (look-back horizon x placement mode) cell, and the Holm
+    family spans exactly those declared cells.
+
     Pure and deterministic: identical inputs plus ``seed`` give a
     byte-identical ``canonical_json(report.to_dict())``.
     """
+    # ASSOC-C04 provenance floor: reject before any binding work —
+    # a non-artifact or a record failing its own problems() (bad
+    # digest, empty assignments, missing provenance fields) can
+    # never enter the association universe.
+    if not isinstance(artifact, RegimeAssignmentArtifact):
+        raise ValueError(
+            "association artifact must be a RegimeAssignmentArtifact "
+            "— frozen producer adapter output "
+            "(adapters.regime_assignment_from_artifact); synthetic "
+            "fixtures built on the same record satisfy this")
+    art_problems = artifact.problems()
+    if art_problems:
+        raise ValueError("association regime artifact rejected — "
+                         "provenance floor unmet: "
+                         + "; ".join(art_problems))
     binding = _holdout_binding_problems(
         artifact, events, controls, unit_basins, holdout,
         region_basins, opportunities)
@@ -1404,15 +1603,27 @@ def run_association(
     notes: list[str] = [
         "claim_scope=research_only_no_operational_authorization",
     ]
-    family = tuple(horizon_family or ())
-    bad_modes = [m for m in family
-                 if m not in ("midpoint", "uniform")]
+    # Declared placement family — canonicalized to PLACEMENT_MODES
+    # order so caller ordering cannot perturb the family.
+    declared_modes = tuple(horizon_family or ())
+    bad_modes = [m for m in declared_modes
+                 if m not in PLACEMENT_MODES]
+    family = tuple(m for m in PLACEMENT_MODES
+                   if m in set(declared_modes))
     if bad_modes or not family:
         raise ValueError(
             f"horizon_family must be a non-empty declared subset of "
-            f"('midpoint', 'uniform') — got {tuple(family)!r}; "
+            f"{PLACEMENT_MODES} — got {declared_modes!r}; "
             "post-hoc cells are inadmissible")
-    art_problems = artifact.problems()
+    # Declared look-back horizons — canonicalized by day count.
+    if not lookback_horizons:
+        raise ValueError(
+            "lookback_horizons must declare at least one "
+            "integer-day horizon ('0d', '3d', '7d', ...) — an "
+            "undeclared horizon family is inadmissible")
+    lookback_days = tuple(sorted(
+        {_parse_lookback_days(h) for h in lookback_horizons}))
+    lookback_names = tuple(f"{d}d" for d in lookback_days)
     regime_ids = artifact.regime_ids()
 
     # Three-valued discipline: only clean adjudicated labels enter
@@ -1448,16 +1659,10 @@ def run_association(
         1 for members in groups.values()
         if any(basin_units.get(m.basin_id) for m in members))
 
-    degenerate = bool(art_problems) or len(regime_ids) < 2
-    if art_problems:
-        notes.append("regime artifact failed validation: "
-                     + "; ".join(art_problems))
     if len(regime_ids) < 2:
         notes.append("regime artifact is degenerate — fewer than two "
                      "distinct regimes (single-regime trivial "
                      "partition)")
-
-    if degenerate:
         return AssociationReport(
             artifact_id=artifact.artifact_id,
             regime_digest=artifact.regime_digest,
@@ -1469,16 +1674,23 @@ def run_association(
             slices={"pooled": {}, "per_basin": {}, "per_season": {}},
             status=STATUS_NOT_SUPPORTED, notes=tuple(notes))
 
-    # --- declared horizon family: every regime x mode cell gets the
-    # full bootstrap; the family is predeclared, never implicit ---
-    family_tables = {mode: _build_table(
-        artifact, groups, negative_controls, basin_units, mode)
-        for mode in family}
-    family_enrichment = {mode: event_group_bootstrap(
-        family_tables[mode], admissible_events,
-        n_boot=n_boot, seed=seed) for mode in family}
-    table = family_tables[family[0]]
-    enrichment = family_enrichment[family[0]]
+    # --- declared inference family: every regime x (look-back
+    # horizon x placement mode) cell gets the full bootstrap; the
+    # family is predeclared, never implicit ---
+    family_tables: dict[tuple[int, str], dict[str, Any]] = {}
+    family_enrichment: dict[tuple[int, str], dict[str, dict]] = {}
+    for h in lookback_days:
+        for mode in family:
+            t = _build_table(artifact, groups, negative_controls,
+                             basin_units, mode, lookback_days=h)
+            family_tables[(h, mode)] = t
+            family_enrichment[(h, mode)] = event_group_bootstrap(
+                t, admissible_events, n_boot=n_boot, seed=seed)
+    # The primary cell — smallest declared look-back, first declared
+    # placement — carries the report's headline enrichment mapping.
+    primary_cell = (lookback_days[0], family[0])
+    table = family_tables[primary_cell]
+    enrichment = family_enrichment[primary_cell]
 
     # --- transition pairs (same resampling machinery) ---
     trans_table = _build_transition_table(artifact, groups,
@@ -1509,6 +1721,8 @@ def run_association(
             n_boot=n_boot, seed=seed),
         "label_shuffle": _label_shuffle_null(
             artifact, groups, negative_controls, basin_units,
+            unit_basins, mode=primary_cell[1],
+            lookback_days=primary_cell[0],
             n_boot=n_boot, seed=seed),
     }
     # the flat controls (placebo, impossible, time-reversed) must
@@ -1520,17 +1734,23 @@ def run_association(
         neg[k].get("flat") for k in flat_nulls)
     shuffle_p = neg["label_shuffle"].get("per_regime", {})
 
-    # --- interval-placement sensitivity ---
-    uniform_table = _build_table(artifact, groups, negative_controls,
-                                 basin_units, "uniform")
-    sensitivity = {
-        "midpoint": _point_ratios(table),
-        "uniform": _point_ratios(uniform_table),
-        "worst_case": _worst_case_ratios(
-            artifact, groups, basin_units,
-            table["control_counts"], table["control_total"],
-            table["labels"]),
-    }
+    # --- interval-placement sensitivity: every placement mode's
+    # point ratios at the primary declared look-back (control frame
+    # identical across modes — it is never look-back extended) ---
+    sensitivity: dict[str, dict[str, Optional[float]]] = {}
+    for mode in PLACEMENT_MODES:
+        if (primary_cell[0], mode) in family_tables:
+            sensitivity[mode] = _point_ratios(
+                family_tables[(primary_cell[0], mode)])
+        elif mode == "worst_case":
+            sensitivity[mode] = _worst_case_ratios(
+                artifact, groups, basin_units,
+                table["control_counts"], table["control_total"],
+                table["labels"], lookback_days=primary_cell[0])
+        else:
+            sensitivity[mode] = _point_ratios(_build_table(
+                artifact, groups, negative_controls, basin_units,
+                mode, lookback_days=primary_cell[0]))
 
     # --- slices ---
     per_basin: dict[str, Any] = {}
@@ -1567,42 +1787,91 @@ def run_association(
 
     # --- decision rule ---
     # Multiplicity: Holm step-down over every declared
-    # regime x placement-mode cell; only corrected-significant cells
-    # may promote the verdict.
+    # regime x look-back-horizon x placement-mode cell; only
+    # corrected-significant cells may promote the verdict.  Only
+    # p_enrich cells computed against the declared family feed the
+    # correction — sensitivity recomputations never enter it.
     family_pvals = {
-        f"{mode}|{rid}": cell.get("p_enrich")
-        for mode, cells in family_enrichment.items()
+        f"{h}d|{mode}|{rid}": cell.get("p_enrich")
+        for (h, mode), cells in family_enrichment.items()
         for rid, cell in cells.items()}
     holm = _holm_significant(family_pvals)
-    corrected_cells = {
-        f"{mode}|{rid}"
-        for mode, cells in family_enrichment.items()
-        for rid in cells if holm.get(f"{mode}|{rid}")}
+    corrected_cells = {k for k, v in holm.items() if v}
     # a regime counts as enriched only if it is Holm-significant in
-    # EVERY declared family mode — a single-mode hit is a post-hoc
+    # EVERY declared family cell — a single-cell hit is a post-hoc
     # cell and cannot promote
     enriched = sorted({
-        rid for mode, cells in family_enrichment.items()
+        rid for (h, mode), cells in family_enrichment.items()
         for rid in cells
-        if all(f"{m}|{rid}" in corrected_cells for m in family)})
+        if all(f"{hh}d|{mm}|{rid}" in corrected_cells
+               for hh in lookback_days for mm in family)})
     direction_ok = all(
-        (sensitivity["uniform"].get(r) is not None
-         and sensitivity["uniform"][r] > 1.0
-         and sensitivity["worst_case"].get(r) is not None
-         and sensitivity["worst_case"][r] > 1.0)
+        all(sensitivity[mode].get(r) is not None
+            and sensitivity[mode][r] > 1.0
+            for mode in sensitivity)
         for r in enriched)
 
-    # --- mandatory sensitivity dispositions: every axis present with
-    # PASS / FAIL / NOT_APPLICABLE-with-reason; absent data can never
-    # silently become a pass ---
+    # --- mandatory sensitivity registry: every axis in
+    # REQUIRED_SENSITIVITY_AXES is dispositioned explicitly with
+    # PASS / FAIL / NOT_APPLICABLE plus a reason; absent data can
+    # never silently become a pass, and any FAIL blocks the
+    # supported verdict ---
     sensitivities: dict[str, Any] = {}
     # (a) interval placement
     sensitivities["interval_placement"] = {
         "status": "PASS" if direction_ok or not enriched else "FAIL",
         "modes": sensitivity,
-        "detail": "enrichment direction must survive every "
-                  "placement mode"}
-    # (b) observation effort: control shares re-weighted by the
+        "reason": "enrichment direction must survive every "
+                  "placement mode at the primary look-back"}
+    # (b) precision: events with non-day precision or unknown timing
+    # are excluded and the pooled direction recomputed
+    precise_events = [e for e in admissible_events
+                      if e.event_time_precision == "day"
+                      and _event_midpoint_date(e) is not None]
+    n_imprecise = len(admissible_events) - len(precise_events)
+    if n_imprecise == 0:
+        sensitivities["precision"] = {
+            "status": "NOT_APPLICABLE",
+            "reason": "every admitted event carries day-resolved "
+                      "timing — nothing to exclude"}
+    elif not enriched:
+        sensitivities["precision"] = {
+            "status": "PASS",
+            "n_excluded": n_imprecise,
+            "reason": "no enriched regimes to sensitize — excluding "
+                      "non-day-precision events only shrinks the "
+                      "universe"}
+    else:
+        p_groups = _group_events(precise_events)
+        n_precise_groups = sum(
+            1 for m in p_groups.values()
+            if any(basin_units.get(x.basin_id) for x in m))
+        if n_precise_groups == 0:
+            sensitivities["precision"] = {
+                "status": "FAIL",
+                "n_excluded": n_imprecise,
+                "reason": "excluding non-day-precision events "
+                          "leaves no precise event group — the "
+                          "direction cannot be verified"}
+        else:
+            p_table = _build_table(
+                artifact, p_groups, negative_controls, basin_units,
+                primary_cell[1], lookback_days=primary_cell[0])
+            p_ratios = _point_ratios(p_table)
+            p_bad = [r for r in enriched
+                     if p_ratios.get(r) is None
+                     or p_ratios[r] <= 1.0]
+            sensitivities["precision"] = {
+                "status": "FAIL" if p_bad else "PASS",
+                "n_excluded": n_imprecise,
+                "precise_ratios": {r: p_ratios.get(r)
+                                   for r in enriched},
+                "reason": ("enriched regimes reversing under "
+                           "day-precision-only recomputation: "
+                           f"{p_bad}" if p_bad else
+                           "enrichment direction survives "
+                           "day-precision-only recomputation")}
+    # (c) observation effort: control shares re-weighted by the
     # number of registry opportunities on each control's unit
     opp_per_unit = Counter(
         opp.unit_id for opp in opportunities.values()
@@ -1627,21 +1896,21 @@ def run_association(
                 r is not None and r > 1.0 for r in w_ratios.values())
                 or not enriched else "FAIL",
             "weighted_ratios": w_ratios,
-            "detail": "control frame re-weighted by verified "
+            "reason": "control frame re-weighted by verified "
                       "opportunity counts per unit"}
     else:
         sensitivities["observation_effort"] = {
             "status": "NOT_APPLICABLE",
-            "detail": "no verified registry opportunities weight "
+            "reason": "no verified registry opportunities weight "
                       "the control frame"}
-    # (c) era: event groups split at the median anchor date
+    # (d) era_boundary: event groups split at the median anchor date
     anchors = sorted(d for d in (_group_anchor_date(m)
                                  for m in groups.values())
                      if d is not None)
     if len(set(a.year for a in anchors)) < 2:
-        sensitivities["era"] = {
+        sensitivities["era_boundary"] = {
             "status": "NOT_APPLICABLE",
-            "detail": "event groups span a single era (one calendar "
+            "reason": "event groups span a single era (one calendar "
                       "year) — no era split exists"}
     else:
         mid = anchors[len(anchors) // 2]
@@ -1655,25 +1924,32 @@ def run_association(
             if not sub:
                 continue
             st = _build_table(artifact, sub, negative_controls,
-                              basin_units, "midpoint")
+                              basin_units, primary_cell[1],
+                              lookback_days=primary_cell[0])
             pr = _point_ratios(st)
             era_ratios[tag] = {r: pr.get(r) for r in enriched}
             for r in enriched:
                 if era_ratios[tag][r] is not None and                         era_ratios[tag][r] <= 1.0:
                     era_fail = True
-        sensitivities["era"] = {
+        sensitivities["era_boundary"] = {
             "status": "FAIL" if era_fail else "PASS",
             "per_era_ratios": era_ratios,
-            "detail": "enriched regimes must hold direction in both "
+            "reason": "enriched regimes must hold direction in both "
                       "era halves"}
-    # (d) missingness: the registry's coverage spectrum — when every
+    # (e) feature_subset: the regime artifact is frozen — feature
+    # ablation lives on the producer side, never here
+    sensitivities["feature_subset"] = {
+        "status": "NOT_APPLICABLE",
+        "reason": "regime artifact frozen — feature ablation is a "
+                  "producer-side axis"}
+    # (f) missingness: the registry's coverage spectrum — when every
     # opportunity is OBSERVED_FULL there is nothing to weight
     states = {opp.state for opp in opportunities.values()
               if type(opp) is ObservationOpportunityV0}
     if states <= {"OBSERVED_FULL"}:
         sensitivities["missingness"] = {
             "status": "NOT_APPLICABLE",
-            "detail": "registry contains only OBSERVED_FULL "
+            "reason": "registry contains only OBSERVED_FULL "
                       "opportunities — no partial coverage to "
                       "sensitize"}
     else:
@@ -1683,8 +1959,50 @@ def run_association(
         sensitivities["missingness"] = {
             "status": "PASS",
             "n_partial": len(partial),
-            "detail": "partial-coverage opportunities are excluded "
+            "reason": "partial-coverage opportunities are excluded "
                       "from NEGATIVE derivation by binding already"}
+    # (g) mechanism: pooled enrichment recomputed per mechanism
+    # slice; a reversal inside any slice with >=3 atomic groups
+    # fails the axis
+    mech_buckets: dict[str, list[str]] = {}
+    for gid in sorted(groups):
+        key = "|".join(sorted({_event_mechanism(e)
+                               for e in groups[gid]}))
+        mech_buckets.setdefault(key, []).append(gid)
+    qualifying_mechs = {k: ids for k, ids in mech_buckets.items()
+                        if len(ids) >= MECHANISM_MIN_GROUPS}
+    if not qualifying_mechs:
+        sensitivities["mechanism"] = {
+            "status": "NOT_APPLICABLE",
+            "reason": f"no mechanism slice reaches the "
+                      f"{MECHANISM_MIN_GROUPS}-group floor"}
+    elif not enriched:
+        sensitivities["mechanism"] = {
+            "status": "PASS",
+            "reason": "no enriched regimes to sensitize across "
+                      "mechanism slices"}
+    else:
+        mech_ratios: dict[str, dict] = {}
+        mech_reversals: list[str] = []
+        for mech in sorted(qualifying_mechs):
+            sub = {gid: groups[gid] for gid in qualifying_mechs[mech]}
+            st = _build_table(artifact, sub, negative_controls,
+                              basin_units, primary_cell[1],
+                              lookback_days=primary_cell[0])
+            pr = _point_ratios(st)
+            mech_ratios[mech] = {r: pr.get(r) for r in enriched}
+            for r in enriched:
+                if pr.get(r) is None or pr[r] <= 1.0:
+                    mech_reversals.append(f"{mech}|{r}")
+        sensitivities["mechanism"] = {
+            "status": "FAIL" if mech_reversals else "PASS",
+            "per_mechanism_ratios": mech_ratios,
+            "reason": ("enriched regimes reversing inside a "
+                       "mechanism slice: "
+                       f"{sorted(mech_reversals)}" if mech_reversals
+                       else "enrichment direction survives every "
+                            f"mechanism slice with >="
+                            f"{MECHANISM_MIN_GROUPS} groups")}
     sens_failed = [k for k, v in sensitivities.items()
                    if v.get("status") == "FAIL"]
 
@@ -1733,10 +2051,13 @@ def run_association(
         interval_sensitivity=sensitivity, slices=slices,
         status=status, notes=tuple(notes),
         horizon_family=tuple(family),
+        lookback_horizons=lookback_names,
         multiplicity={"method": "holm", "alpha": FAMILY_ALPHA,
                       "family_pvals": family_pvals,
                       "holm_rejected": sorted(k for k, v in
-                                              holm.items() if v)},
+                                              holm.items() if v),
+                      "lookback_horizons": list(lookback_names),
+                      "placement_modes": list(family)},
         sensitivities=sensitivities)
 
 
@@ -1827,10 +2148,14 @@ def association_report_text(report: AssociationReport) -> str:
 __all__ = [
     "ASSOCIATION_STATUSES",
     "AssociationReport",
+    "DEFAULT_LOOKBACK_HORIZONS",
+    "MECHANISM_MIN_GROUPS",
     "MIN_EVENT_GROUPS",
     "NOVELTY_SHARE_MAX",
     "PLACEMENT_MODES",
+    "REQUIRED_SENSITIVITY_AXES",
     "RegimeAssignmentArtifact",
+    "SENSITIVITY_DISPOSITIONS",
     "STATUS_DESCRIPTIVE",
     "STATUS_NOT_SUPPORTED",
     "STATUS_SUPPORTED",
