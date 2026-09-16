@@ -1,6 +1,6 @@
 {
  "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
- "content_head": "c5a3d28f3068a732f0b64014af9ea1f0934e30f4",
+ "content_head": "4f7f30b3d50872b11a453c1fbe66f9a340ba66ee",
  "files": [
   {
    "relpath": ".github/workflows/research-v0.yml",
@@ -19,8 +19,8 @@
   },
   {
    "relpath": "docs/science/GAP_REGISTER_V0.md",
-   "sha256": "8251ab0c2c008ff8d5a276a0d5bbcadfb03266019a7599ac66cae72f3f658725",
-   "size_bytes": 43010
+   "sha256": "3fe5d311ea9e68d767c497ea66c66e1b2c3a1990e5e2be3d2d60c2e54766f984",
+   "size_bytes": 47986
   },
   {
    "relpath": "docs/science/HAZARD_EVENT_INVENTORY_DECISION_MATRIX_V0.md",
@@ -134,28 +134,28 @@
   },
   {
    "relpath": "nepal/experiment_v0/adapters.py",
-   "sha256": "e29549af21c8b914717851eebe2f740ea976b103a2f0ddad386677d013e40137",
-   "size_bytes": 26819
+   "sha256": "ea3fed05dd1cad2567f71d7e2ef2f843a05e991bee43d01dc393b2d4148ff200",
+   "size_bytes": 27588
   },
   {
    "relpath": "nepal/experiment_v0/association.py",
-   "sha256": "da90461dcb83ffdee4f68cc03c56523340fa981e167db1900b99f38957631e28",
-   "size_bytes": 95878
+   "sha256": "cc68110c7ff874af277af77ad11aeb7da49a10245062788995b048fb1314bfb2",
+   "size_bytes": 103885
   },
   {
    "relpath": "nepal/experiment_v0/audit.py",
-   "sha256": "8a44c04fadcb9086160cc475e2ff70fde84712000d45ea1e60b3c9b58fbf1bfa",
-   "size_bytes": 63181
+   "sha256": "6ae997e040ef582c25e2179e239e7792aa6af0a70f34b12de504780769ce7361",
+   "size_bytes": 69043
   },
   {
    "relpath": "nepal/experiment_v0/baselines.py",
-   "sha256": "df1a5c51da7c41fe269dab38f6f583d8ce55f4031afc7be9a581351f2c019259",
-   "size_bytes": 19541
+   "sha256": "1733c721c79302a1f54e877445442cba82e548dc9fb101e47fbad3ab35f1552b",
+   "size_bytes": 21201
   },
   {
    "relpath": "nepal/experiment_v0/evaluation.py",
-   "sha256": "c77e15448ae15c14477ae3d7b2723dcb4d40bf71bafa6d911c5fb63da3ce64fe",
-   "size_bytes": 72237
+   "sha256": "444eb42a6a2fce412d6d7d5904f807c1647cb3ed3ead247770c824e311e4d476",
+   "size_bytes": 77004
   },
   {
    "relpath": "nepal/experiment_v0/metrics.py",
@@ -229,8 +229,8 @@
   },
   {
    "relpath": "nepal/science_v0/regimes.py",
-   "sha256": "97d5c726c20c2e0909ba26578f0ad64e188f9dc8771abc9febce5b867a835342",
-   "size_bytes": 70578
+   "sha256": "f7413b39333d18b8ba463def3bf6e3930b27261d4023c3e294e06026627e5276",
+   "size_bytes": 87424
   },
   {
    "relpath": "tests/fixtures/__init__.py",
@@ -254,18 +254,18 @@
   },
   {
    "relpath": "tests/fixtures/synthetic_exp_b4.py",
-   "sha256": "1683eb92bd9cda66748caf7eb0200936bc0aed31a6dedd61b54053a82010c9e8",
-   "size_bytes": 22172
+   "sha256": "86debf895ac97781b2b8dceeb706c3ef7078c6c709b51d8de21c8c2994e25326",
+   "size_bytes": 23105
   },
   {
    "relpath": "tests/test_experiment_v0_adapters.py",
-   "sha256": "a606c3f4547f544f1118a098d45c4d1cfbe0ba12f7089a4cf4ff82aa530f6364",
-   "size_bytes": 19503
+   "sha256": "bc28fb304f7d140928567119a769da60e20ad1348638951b6a99c96a467f3273",
+   "size_bytes": 19716
   },
   {
    "relpath": "tests/test_experiment_v0_b1_association.py",
-   "sha256": "a2689bccbdc77e78f329ba1cd3eb3428774b4d38d5261f4509fc6c09f34103a3",
-   "size_bytes": 56628
+   "sha256": "bae1569558dd2647218d8ab041716b3943503809d403da3c981d1c1a5034846c",
+   "size_bytes": 59916
   },
   {
    "relpath": "tests/test_experiment_v0_b2_vintages.py",
@@ -274,8 +274,8 @@
   },
   {
    "relpath": "tests/test_experiment_v0_b3_evaluation.py",
-   "sha256": "1b35554793dd8a6129e11bab8f6b607308b0561402d20321afef14637f6e8be6",
-   "size_bytes": 56296
+   "sha256": "6d7aedf92f9dd5f3986cd77a5f598ccfd26c91f5c35cc3473d1c66b36b8d5e7f",
+   "size_bytes": 61511
   },
   {
    "relpath": "tests/test_experiment_v0_b3_vintage_timing.py",
@@ -284,13 +284,13 @@
   },
   {
    "relpath": "tests/test_experiment_v0_b4_audit.py",
-   "sha256": "13c8316d7fb6bea38981fce40e6734c183eabaebba963392f2eec754935eb775",
-   "size_bytes": 28633
+   "sha256": "b46bac5d4f14bebebec3f80c17978d1bc18e7a830583b792926b7286324608cf",
+   "size_bytes": 28956
   },
   {
    "relpath": "tests/test_experiment_v0_replay.py",
-   "sha256": "1824bd71aa674978d83018b3ca9f3e9dc78b8fe01cb1ae6e5019c14b794937b1",
-   "size_bytes": 16906
+   "sha256": "9a5a525438671cf0b80f01c47949453f475d3488f34bbdd15a22cb780a50c4d7",
+   "size_bytes": 16943
   },
   {
    "relpath": "tests/test_p5_io_contract.py",
@@ -324,8 +324,8 @@
   },
   {
    "relpath": "tests/test_science_experiment_e2e.py",
-   "sha256": "64ae7faebabc9cbc55cef52d3fa8a0eb695ec78bdeb62f42dce9cb984c1c5465",
-   "size_bytes": 11582
+   "sha256": "79803dc5c6c3323dab5e92e68f750119dfc43bc612b6229b67b0d99c368c33e5",
+   "size_bytes": 11765
   },
   {
    "relpath": "tests/test_science_v0_events.py",
@@ -339,8 +339,8 @@
   },
   {
    "relpath": "tests/test_science_v0_regimes.py",
-   "sha256": "1755d57a3d49d8892f35cfcb890950f8f503f7dc0c7617df3c7fa048497dabe0",
-   "size_bytes": 34116
+   "sha256": "a4fe8f40731b01da8ae7f5652e57bfe24e12c51fe5ca2650f2a841567e7c63eb",
+   "size_bytes": 39872
   },
   {
    "relpath": "docs/science/STATUS_SCOPE_RECONCILIATION_NOTE_20260915.md",
@@ -350,7 +350,7 @@
  ],
  "generated": "2026-09-16",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "manifest-only commit follows content_head",
+ "manifest_commit": "4f7f30b3d50872b11a453c1fbe66f9a340ba66ee",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -358,10 +358,12 @@
  "scope": "governed science artifacts: docs/science, nepal/research_v0, research tests, CI workflow, README \u2014 non-science sources excluded by design",
  "self_excluded": true,
  "test_results": {
-  "full_suite_venv": "1828 passed, 5 skipped (rasterio), 0 failed",
-  "p5_io_contract": "34 passed",
+  "full_suite_venv": "1853 passed, 5 skipped (rasterio), 0 failed",
+  "swarm_focused": "400 passed (regimes 93 + association 59 + evaluation 118 + audit 61 + adapters/replay/e2e)",
+  "adversarial_probes": "P1-P8 pass (ungoverned frame, allowlist, digest, elevation, seed policy)",
+  "claim_scan": "clean on all governed files",
   "research_v0": "116 passed",
-  "run_a_reconciliation": "24 passed",
-  "swarm_focused": "410+ passed (science_v0 + experiment_v0 + adapters + e2e + b4 + adversarial)"
+  "p5_io_contract": "34 passed",
+  "run_a_reconciliation": "24 passed"
  }
 }
