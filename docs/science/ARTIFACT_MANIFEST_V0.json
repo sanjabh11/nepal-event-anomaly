@@ -1,6 +1,6 @@
 {
  "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
- "content_head": "cc5a820d7626b62ac858241b968e5b526a070d41",
+ "content_head": "f1cd581ef028bd4fcdd88b0ea61baf87e4530510",
  "files": [
   {
    "relpath": ".github/workflows/research-v0.yml",
@@ -14,7 +14,7 @@
   },
   {
    "relpath": "README.md",
-   "sha256": "856a4fa593c7fbc2463ed2d9c950edd14389dc613a52a9847d40472a12d570a9",
+   "sha256": "d685019268a2fa484386a03842b8204e6fc430a371fd3e218dd774fab1e24639",
    "size_bytes": 5626
   },
   {
@@ -39,7 +39,7 @@
   },
   {
    "relpath": "docs/science/P0_BASELINE_LEDGER.md",
-   "sha256": "0f5d15e2e83cce864799344e6d201dd0a2ec11d13780a3911278cc50dc2bda6d",
+   "sha256": "3f74a76b2dce4117ceedf3a9d010165c7c4d0399fbce2633bf0a1f381ea6469c",
    "size_bytes": 8394
   },
   {
@@ -229,8 +229,8 @@
   },
   {
    "relpath": "nepal/science_v0/regimes.py",
-   "sha256": "d822bac1ee1e2b6d2a5c6b67de5d7246278dce2772a4ee27ed050b224fd36fc4",
-   "size_bytes": 33824
+   "sha256": "a203f25530ba96fd1c7d91e7ab9a1dbc868dff08b13e2c436b5eca91f72707eb",
+   "size_bytes": 34059
   },
   {
    "relpath": "tests/fixtures/__init__.py",
