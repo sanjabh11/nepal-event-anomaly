@@ -209,22 +209,28 @@ def make_holdout(events: Sequence[EventLabelV0],
         embargo_seconds=kw.get("embargo_seconds", 2592000.0))
 
 
-def planted_artifact(events: Sequence[EventLabelV0]
-                     ) -> RegimeAssignmentArtifact:
-    """Frozen assignment table with ``R_PLANT`` planted on every
-    event-intersected (unit, date) cell plus a sparse background."""
-    rows: dict[tuple[str, str], str] = {}
+_REGIME_IDS = {"R0": 0, "R1": 1, "R2": 2,
+             PLANTED_REGIME: 3, "R_RARE": 4}
+
+
+def planted_artifact_payload(events: Sequence[EventLabelV0]) -> dict:
+    """A serialized frozen producer-shaped regime artifact — real
+    canonical digests, int regime ids — consistent with the planted
+    synthetic partition.  Replay must adapt it through
+    ``regime_assignment_from_artifact``; the payload exists so the
+    replay boundary is exercised, not bypassed."""
+    rows: dict[tuple[str, str], int] = {}
     for unit in sorted(UNIT_BASINS):
         for d in _dates_between(_BASE_DATE, _ASSIGN_END):
             doy = d.timetuple().tm_yday
             if doy % 37 == 0:
-                rows[(unit, d.isoformat())] = PLANTED_REGIME
+                rows[(unit, d.isoformat())] = _REGIME_IDS[
+                    PLANTED_REGIME]
             elif doy % 53 == 0:
-                rows[(unit, d.isoformat())] = "R_RARE"
+                rows[(unit, d.isoformat())] = _REGIME_IDS["R_RARE"]
             else:
-                rows[(unit, d.isoformat())] = "R%d" % (
-                    int(_sha(f"base|{unit}|{d.isoformat()}")[:8], 16)
-                    % 3)
+                rows[(unit, d.isoformat())] = int(
+                    _sha(f"base|{unit}|{d.isoformat()}")[:8], 16) % 3
     basin_units: dict[str, list[str]] = {}
     for u, b in UNIT_BASINS.items():
         basin_units.setdefault(b, []).append(u)
@@ -235,14 +241,45 @@ def planted_artifact(events: Sequence[EventLabelV0]
                               "%Y-%m-%dT%H:%M:%SZ").date()
         for d in _dates_between(s, e):
             for u in basin_units[ev.basin_id]:
-                rows[(u, d.isoformat())] = PLANTED_REGIME
-    assignments = tuple(sorted(
-        (u, d, r) for (u, d), r in rows.items()))
-    return RegimeAssignmentArtifact(
-        artifact_id="regime-syn-b4",
-        regime_digest=_sha("synthetic-regime-partition-b4"),
-        assignments=assignments,
-        seeds=(11, 23, 42))
+                rows[(u, d.isoformat())] = _REGIME_IDS[PLANTED_REGIME]
+    assignments = sorted(
+        (u, d, r) for (u, d), r in rows.items())
+    art = {
+        "mode": "RETROSPECTIVE_REGIME",
+        "data_class": "REANALYSIS",
+        "fitted_on": "TRAIN_ONLY",
+        "label_blinding": True,
+        "k": 5,
+        "seeds": [11, 23, 42],
+        "assignments": assignments,
+        "assignment_digest": sha256_canonical(assignments),
+        "feature_cols": ["synth_f1", "synth_f2"],
+        "feature_matrix_digest": _sha("synthetic-fmx-b4"),
+        "input_bytes_digest": _sha("synthetic-input-bytes-b4"),
+        "config_digest": _sha("synthetic-config-b4"),
+        "fit_groups": sorted({b.split("_")[0] for b in
+                              set(UNIT_BASINS.values())}),
+        "heldout_groups_declared": ["gandaki_eval", "karnali_eval",
+                                    "koshi_eval"],
+        "train_mask_digest": _sha("synthetic-mask-b4"),
+        "status": "CANDIDATE_ONLY",
+        "disclaimer": "synthetic fixture — interface evidence only",
+    }
+    art["regime_artifact_digest"] = sha256_canonical(art)
+    art["freeze_digest"] = sha256_canonical(dict(art))
+    art["frozen"] = True
+    return art
+
+
+def planted_artifact(events: Sequence[EventLabelV0]
+                     ) -> RegimeAssignmentArtifact:
+    """The contract artifact derived from the frozen producer payload
+    through the canonical adapter — identical to what replay
+    reconstructs."""
+    from nepal.experiment_v0.adapters import (
+        regime_assignment_from_artifact)
+    return regime_assignment_from_artifact(
+        planted_artifact_payload(events), artifact_id="regime-syn-b4")
 
 
 # ---------------------------------------------------------------------
@@ -377,6 +414,8 @@ def synthetic_bundle(n_events: int = 21, n_boot: int = 32,
     return {
         "schema": "experiment_v0.replay_bundle/v0",
         "association": {
+            "artifact_id": artifact.artifact_id,
+            "artifact_payload": planted_artifact_payload(events),
             "artifact": artifact.to_dict(),
             "events": [e.to_dict() for e in events],
             "controls": [c.to_dict() for c in controls],
@@ -408,6 +447,7 @@ __all__ = [
     "admitted_vintage_for", "make_controls", "make_event",
     "make_opportunities",
     "make_events", "make_holdout", "planted_artifact",
+    "planted_artifact_payload",
     "synthetic_baseline_probs", "synthetic_bundle",
     "synthetic_forecast_cases", "synthetic_forecast_holdout",
     "synthetic_vintage_requests",

@@ -39,6 +39,7 @@ from nepal.research_v0.records import (ControlWindowV0, EventLabelV0,
                                      ObservationOpportunityV0,
                                      deserialize_record)
 
+from .adapters import regime_assignment_from_artifact
 from .association import (AssociationReport, RegimeAssignmentArtifact,
                           run_association)
 from .baselines import REQUIRED_BASELINE_NAMES
@@ -397,8 +398,24 @@ def _as_holdout(payload: Any, section: str) -> HoldoutPlanV0:
 
 
 def _reconstruct_association(assoc: Mapping[str, Any]):
-    """Rebuild the association lane inputs from a bundle section."""
-    artifact = RegimeAssignmentArtifact.from_dict(assoc["artifact"])
+    """Rebuild the association lane inputs from a bundle section.
+
+    The regime artifact MUST arrive as the serialized frozen producer
+    payload (``artifact_payload``) and is reconstructed through the
+    canonical ``regime_assignment_from_artifact`` adapter — the
+    adapter's digest recomputation, provenance floor, and freeze
+    checks are part of the replay boundary.  A bare contract dict
+    bypasses all of that and is rejected."""
+    payload = assoc.get("artifact_payload")
+    if payload is None:
+        raise ValueError(
+            "association section carries no artifact_payload — "
+            "replay must reconstruct the regime artifact through the "
+            "canonical producer adapter, not from a bare contract "
+            "dict")
+    artifact = regime_assignment_from_artifact(
+        payload, artifact_id=str(
+            assoc.get("artifact_id") or "replay-artifact"))
     events = [deserialize_record(e) for e in assoc.get("events") or []]
     for e in events:
         if type(e) is not EventLabelV0:
@@ -432,6 +449,69 @@ def _reconstruct_association(assoc: Mapping[str, Any]):
             region_basins, opportunities,
             int(assoc.get("n_boot", 200)),
             int(assoc.get("seed", 0)))
+
+
+def audit_producer_payload(payload: Any) -> list[Finding]:
+    """AUD-01 — producer-side audit over a serialized science_v0
+    regime artifact payload.  Independent of the adapter: it checks
+    that every regime-protocol gate is *present and closed* on the
+    artifact itself, so a fabricated-but-internally-consistent
+    payload still fails when protocol evidence is absent."""
+    findings: list[Finding] = []
+    if not isinstance(payload, Mapping):
+        return [Finding("PRODUCER_PAYLOAD_MALFORMED",
+                        "artifact_payload",
+                        "producer payload is not a mapping")]
+    required = ("assignments", "assignment_digest",
+                "regime_artifact_digest", "freeze_digest", "frozen",
+                "label_blinding", "fitted_on", "mode", "status",
+                "data_class", "seeds", "feature_cols",
+                "feature_matrix_digest", "input_bytes_digest",
+                "config_digest", "fit_groups",
+                "heldout_groups_declared", "train_mask_digest")
+    for field in required:
+        if field not in payload:
+            findings.append(Finding(
+                "PRODUCER_PROVENANCE_MISSING", "artifact_payload",
+                f"producer payload lacks {field!r} — a regime "
+                "artifact without complete provenance cannot "
+                "support a terminal descriptive status"))
+    if payload.get("status") == "RUN_ERROR":
+        findings.append(Finding(
+            "PRODUCER_STATUS_ERROR", "artifact_payload",
+            "RUN_ERROR artifact carried into a replay bundle"))
+    if payload.get("status") == "UNSUPERVISED_STRUCTURE_NOT_STABLE":
+        findings.append(Finding(
+            "PRODUCER_STATUS_UNSTABLE", "artifact_payload",
+            "producer declared the structure unstable — its sidecar "
+            "must not be replayed into association"))
+    if payload.get("frozen") is not True:
+        findings.append(Finding(
+            "PRODUCER_NOT_FROZEN", "artifact_payload",
+            "artifact is not frozen"))
+    if payload.get("label_blinding") is not True:
+        findings.append(Finding(
+            "PRODUCER_UNBLINDED", "artifact_payload",
+            "label_blinding is not true"))
+    seeds = payload.get("seeds")
+    if isinstance(seeds, (list, tuple)) and len(seeds) < 3:
+        findings.append(Finding(
+            "PRODUCER_SEED_GATE", "artifact_payload",
+            "fewer than three seeds — the seed-stability gate is "
+            "unmet"))
+    axes = payload.get("axis_results") or payload.get("axes")
+    if axes is not None and isinstance(axes, Mapping):
+        failing = {k: v for k, v in axes.items()
+                   if isinstance(v, Mapping) and
+                   v.get("status") in ("FAIL", "SKIPPED",
+                                       "NONCONVERGED")}
+        if failing and payload.get("status") ==                 "DESCRIPTIVE_REGIME_ONLY":
+            findings.append(Finding(
+                "PRODUCER_GATE_BYPASSED", "artifact_payload",
+                f"stability axes {sorted(failing)} failed/skipped "
+                "yet the artifact claims a terminal descriptive "
+                "status"))
+    return findings
 
 
 def _admit_vintages(requests: Sequence[Any]) -> list[ForecastVintageV0]:
@@ -826,11 +906,14 @@ def replay_bundle(bundle: Mapping[str, Any]) -> dict[str, Any]:
     assoc = bundle.get("association")
     if isinstance(assoc, Mapping):
         for required in ("events", "controls", "unit_basins",
-                         "opportunities", "holdout"):
+                         "opportunities", "holdout",
+                         "artifact_payload"):
             if required not in assoc:
                 out["problems"].append(
                     f"association section is missing {required!r} — "
                     "an absent section is not an empty one")
+        for f in audit_producer_payload(assoc.get("artifact_payload")):
+            out["problems"].append(f"{f.code}: {f.detail}")
         try:
             (artifact, events, controls, unit_basins, holdout,
              region_basins, opportunities, n_boot, seed) = \
@@ -902,6 +985,7 @@ __all__ = [
     "REPLAY_SCHEMA",
     "audit_module_source",
     "audit_output_class",
+    "audit_producer_payload",
     "audit_pipeline",
     "replay_bundle",
     "replay_problems",

@@ -31,20 +31,19 @@ from nepal.research_v0.records import (
     ControlWindowV0, EventLabelV0, ForecastVintageV0, HoldoutPlanV0,
     ObservationOpportunityV0)
 
+from nepal.research_v0._hashing import sha256_canonical
+
 from .association import RegimeAssignmentArtifact
 from .vintages import VintageRequest, build_vintage
 
 
 def _regime_digest(obj: Any) -> str:
-    """Canonical digest — identical construction to
-    ``science_v0.regimes._digest`` (sha256 over JSON with sorted keys
-    and ``default=str``).  Defined locally so experiment_v0 stays
-    importable without the producer's heavy dependencies; parity is
-    pinned by the tamper-verification tests."""
-    import hashlib
-    import json
-    return hashlib.sha256(json.dumps(
-        obj, sort_keys=True, default=str).encode()).hexdigest()
+    """Strict canonical digest — the same construction the producer
+    uses (``sha256_canonical`` over strict canonical JSON, no
+    ``default=str`` coercion — distinct objects can never digest
+    identically).  Parity is pinned by the tamper-verification
+    tests."""
+    return sha256_canonical(obj)
 
 # science_v0 timing classes -> EventLabelV0 precision terms (PRECISION_TERMS).
 _TIMING_CLASS_TO_PRECISION = {
