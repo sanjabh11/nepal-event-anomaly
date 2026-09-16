@@ -102,7 +102,7 @@ Test-suite honesty: the full suite under the pinned `.venv` recorded
 `P0_BASELINE_LEDGER.md` (historical snapshot). Later snapshots: 1306
 at the round-2 reconciliation head, 1641 after the first swarm
 integration. Current verification (swarm-C + post-audit residual fixes,
-HEAD `b1aa8e6`-series): **1699 passed / 5 skipped / 0 failed**. The 5 skips
+HEAD `b1aa8e6`-series): **1700 passed / 5 skipped / 0 failed**. The 5 skips
 are `rasterio`-dependent optional-dependency gates in frozen-package
 tests — disclosed, not waived — and the suite emits warnings that are
 not treated as failures.
