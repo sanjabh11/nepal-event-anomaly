@@ -491,6 +491,28 @@ def regime_assignment_from_artifact(
         raise ValueError("producer declared the regime structure "
                          "unstable — the assignment sidecar cannot "
                          "bind to association")
+    # freeze-gate: a terminal descriptive status is reachable only
+    # when every required stability gate is closed on the frozen
+    # payload itself.  A fabricated status claim cannot outrun the
+    # artifact's own gate evidence — the flat gate map must be
+    # present and every gate must be True.
+    if status == "DESCRIPTIVE_REGIME_ONLY":
+        stability = p.get("stability")
+        gates = stability.get("required_gates") \
+            if isinstance(stability, Mapping) else None
+        if not isinstance(gates, Mapping) or not gates:
+            raise ValueError(
+                "regime artifact claims a terminal descriptive "
+                "status but carries no stability.required_gates "
+                "map — the freeze-gate evidence is absent")
+        open_gates = sorted(str(g) for g, v in gates.items()
+                            if v is not True)
+        if open_gates:
+            raise ValueError(
+                f"regime artifact claims a terminal descriptive "
+                f"status but required_gates {open_gates} are not "
+                "all True — a frozen artifact cannot carry "
+                "DESCRIPTIVE_REGIME_ONLY over open gates")
     if p.get("data_class") != "REANALYSIS":
         raise ValueError(f"regime artifact data_class "
                          f"{p.get('data_class')!r} != 'REANALYSIS'")

@@ -244,6 +244,37 @@ def planted_artifact_payload(events: Sequence[EventLabelV0]) -> dict:
                 rows[(u, d.isoformat())] = _REGIME_IDS[PLANTED_REGIME]
     assignments = sorted(
         (u, d, r) for (u, d), r in rows.items())
+    n_rows = len(assignments)
+    feature_cols = ["synth_f1", "synth_f2"]
+    # The canonical producer schema: exact input-byte binding, the
+    # serialized input schema, the fitted model parameters, the
+    # declared seed set with per-seed coverage, and the flat
+    # required-gates map inside ``stability`` — everything a replay
+    # needs to verify the artifact without re-predicting.
+    required_gates = {
+        "modal_k_unanimous": True,
+        "seed_ari": True,
+        "loro": True,
+        "temporal_bootstrap": True,
+        "season_refits": True,
+        "elevation": True,
+        "missingness": True,
+        "era_drift": True,
+        "shuffled_null": True,
+        # One evidence gate left open keeps the planted
+        # CANDIDATE_ONLY status internally consistent — a
+        # descriptive terminal status may only ride on a fully
+        # closed gate map.
+        "season_matched_null": False,
+    }
+    stability = {
+        "seed_ari_min": 0.91,
+        "seed_ari_max": 0.97,
+        "modal_k_frequency": 1.0,
+        "k_instability": False,
+        "n_bootstrap": 200,
+        "required_gates": required_gates,
+    }
     art = {
         "mode": "RETROSPECTIVE_REGIME",
         "data_class": "REANALYSIS",
@@ -251,17 +282,44 @@ def planted_artifact_payload(events: Sequence[EventLabelV0]) -> dict:
         "label_blinding": True,
         "k": 5,
         "seeds": [11, 23, 42],
+        "seeds_declared": [11, 23, 42],
+        "seed_coverage": {"11": "converged", "23": "converged",
+                          "42": "converged"},
+        "per_seed_best_k": {"11": 5, "23": 5, "42": 5},
+        "modal_k_frequency": 1.0,
+        "occupancy": [0.40, 0.25, 0.15, 0.12, 0.08],
         "assignments": assignments,
         "assignment_digest": sha256_canonical(assignments),
-        "feature_cols": ["synth_f1", "synth_f2"],
+        "feature_cols": feature_cols,
         "feature_matrix_digest": _sha("synthetic-fmx-b4"),
         "input_bytes_digest": _sha("synthetic-input-bytes-b4"),
+        "input_schema": {
+            "feature_cols": list(feature_cols),
+            "n_rows": n_rows,
+            "dtypes": {c: "float64" for c in feature_cols},
+            "shape": [n_rows, len(feature_cols)],
+        },
+        "model": {
+            "weights": [0.40, 0.25, 0.15, 0.12, 0.08],
+            "means": [[4.0, -3.0], [3.2, -2.4], [0.0, 0.0],
+                      [-3.0, 4.0], [-4.0, 3.0]],
+            "covariances": [
+                [[0.16, 0.0], [0.0, 0.16]] for _ in range(5)],
+        },
         "config_digest": _sha("synthetic-config-b4"),
         "fit_groups": sorted({b.split("_")[0] for b in
                               set(UNIT_BASINS.values())}),
         "heldout_groups_declared": ["gandaki_eval", "karnali_eval",
                                     "koshi_eval"],
+        "n_train_rows": (n_rows * 3) // 4,
+        "n_rows": n_rows,
         "train_mask_digest": _sha("synthetic-mask-b4"),
+        "stability": stability,
+        "nulls": {"shuffled_js": 0.31, "season_matched_js": 0.008},
+        "preprocessing_digest": _sha("synthetic-prep-b4"),
+        "k_selection_digest": _sha("synthetic-ksel-b4"),
+        "stability_report_digest": sha256_canonical(stability),
+        "null_model_digest": _sha("synthetic-nullmodel-b4"),
         "status": "CANDIDATE_ONLY",
         "disclaimer": "synthetic fixture — interface evidence only",
     }
