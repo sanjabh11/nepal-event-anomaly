@@ -41,22 +41,25 @@ The empty Git shell is never the implementation root.
   (bound head is the manifest's own field — see
   `ARTIFACT_MANIFEST_V0.json` for the current value).
 
-## Last fully-verified baseline (2026-09-16, round-6 doc residuals)
+## Last fully-verified baseline (2026-09-16, round-6 hardening)
 
-- HEAD: `4e2ef91` — "docs(science): manifest bound to round-5
-  hardened head; 71 files".
+- HEAD: `aceedff` — "Round-6 enforcement hardening" (content
+  commit; the manifest rebind lands as its direct child, same
+  relationship as previous binds).
 - Manifest/HEAD relationship: `ARTIFACT_MANIFEST_V0.json` carries
-  `content_head=99ccec9` — an **ancestor commit whose tree the
-  manifest hashes**; the manifest commit itself (`4e2ef91`) follows
-  the content commit. 71 manifest files.
-- Full suite under pinned `.venv`: **1875 passed, 5 skipped
+  `content_head=aceedff` — the **commit whose tree the manifest
+  hashes**; the manifest commit itself follows the content commit.
+  76 manifest files (71 + GOVERNANCE_EXERCISE_RECORD_V0.md + 4
+  `test_r6_*` hardening files).
+- Full suite under pinned `.venv`: **1993 passed, 5 skipped
   (rasterio), 0 failed, 57 warnings**.
-- Focused lanes: **411 green** (round5-hardening 18 + regimes 93 +
-  association 63 + evaluation 118 + audit 61 +
-  adapters/replay/e2e, per the manifest's `test_results`).
-- **Round-6 hardening in progress** — this census will be refreshed
-  at the next manifest rebind; the figures above are the last
-  verified baseline, not a projected final count.
+- Focused lanes: **540 green** (round5-hardening 18 + round-6
+  hardening 118 + regimes 93 + association 63 + evaluation 118 +
+  audit 61 + adapters/replay/e2e, per the manifest's
+  `test_results`).
+- Prior baseline retained as history below: manifest commit
+  `4e2ef91`, `content_head=99ccec9`, 71 files, 1875/5/0/57, 411
+  focused (round-5).
 
 ## Verification snapshot history (2026-09-15, round 2 and later)
 

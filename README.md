@@ -105,14 +105,14 @@ Test-suite honesty: the full suite under the pinned `.venv` recorded
 `P0_BASELINE_LEDGER.md` (historical snapshot). Later dated snapshots:
 1306 at the round-2 reconciliation head, 1641 after the first swarm
 integration, 1828 at the post-audit residual-repair head. Last
-fully-verified baseline (manifest commit `4e2ef91`; its
-`content_head=99ccec9` is the ancestor commit whose tree the manifest
-hashes — the manifest commit itself follows the content commit; 71
-manifest files): **1875 passed / 5 skipped / 0 failed / 57 warnings**,
-with 411 focused-lane tests green (per the manifest's
-`test_results`). Round-6 hardening is in progress — this census will
-be refreshed at the next manifest rebind; the figures above are the
-last verified baseline, not a projected final count. The 5 skips are `rasterio`-dependent
+fully-verified baseline (round-6 content commit `aceedff`; the
+manifest's `content_head=aceedff` is the commit whose tree the
+manifest hashes — the manifest commit itself follows the content
+commit; 76 manifest files): **1993 passed / 5 skipped / 0 failed /
+57 warnings**, with 540 focused-lane tests green (per the manifest's
+`test_results`). The prior verified baseline (round-5: manifest
+commit `4e2ef91`, `content_head=99ccec9`, 71 files, 1875/5/0/57, 411
+focused) is retained as dated history. The 5 skips are `rasterio`-dependent
 optional-dependency gates in frozen-package tests — disclosed, not
 waived — and warnings are not treated as failures.
 
