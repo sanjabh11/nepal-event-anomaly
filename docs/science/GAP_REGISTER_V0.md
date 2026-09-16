@@ -368,7 +368,7 @@ immutable evidence.
 | DOC-01 historical vs current counts | RESOLVED — README and P0 label 1282 as ledger-time history, 1306 as current; historical evidence retained |
 | DOC-02 stale extractor comments | RESOLVED — both comments now state route-dependent semantics (ARCO increments vs MARS/EDH running accumulation) |
 | RUN-01 derived-run provenance | RESOLVED — derivation ledger carries `run_kind=derived`, `input_run_bundle_sha256`, `acquisition_disk_check=not_applicable_derived_run` |
-| ENV-01 warnings/skips | RESOLVED — 56 warnings classified: all xarray/netCDF4 deprecations in `test_p5_io_contract.py`; skips disclosed |
+| ENV-01 warnings/skips | RESOLVED — 57 warnings at the verified round-5 baseline (supersedes this row's original 2026-09-15 count of 56): 56 xarray/netCDF4 deprecations in `test_p5_io_contract.py` + 1 sklearn `ConvergenceWarning` in `test_science_v0_regimes.py`, all library-level; skips disclosed |
 | SRC-*/DATA-*/FMX-*/REG-*/ASSOC-*/FCST-* | UNCHANGED — remain `GATED_ON_DATA`/`BLOCKED_EXTERNAL` pending authorized real-data intake; no fabricated closure |
 | OPS-01 | UNCHANGED — deferred by design |
 
@@ -405,9 +405,9 @@ only — `EVIDENCE_VERIFIED` posture still requires byte-bound sidecar
 | I-09 case lineage | RESOLVED — ForecastCase carries opportunity_id/outcome_source_id/cutoff_time; evaluate() fails closed when empty |
 | I-10 order-sensitive digest | RESOLVED — canonical (case_id, opportunity_id) sort + baseline realignment before hashing; permutation-invariance tested |
 | I-11 audit scope | RESOLVED — B4 audit labeled experiment-layer; replay bundles now carry the opportunity registry |
-| DOC-01 count drift | RESOLVED — README/P0 record 1282/1306/1641 as dated history; 1687 current at post-audit head |
+| DOC-01 count drift | RESOLVED — README/P0 record 1282/1306/1641 as dated history; 1687 at post-audit head (superseded 2026-09-16 by the round-5 census: 1875/5/0/57 at `content_head` 99ccec9, manifest commit `4e2ef91`) |
 | DOC-02 metadata-only scope | RESOLVED — SOURCE_FEASIBILITY_RECORDS_V0 labeled dated metadata-only snapshot |
-| GOV-01/02 | RESOLVED — P3 design-only vs P5-C acquisition separated; see STATUS_SCOPE_RECONCILIATION_NOTE_20260915 |
+| GOV-01/02 | PARTIAL — the scope-separation part is RESOLVED (P3 design-only vs P5-C acquisition; see STATUS_SCOPE_RECONCILIATION_NOTE_20260915); GOV-02's bounded exercised-governance record now exists (`GOVERNANCE_EXERCISE_RECORD_V0.md`, added 2026-09-16); GOV-01's downstream human approvals remain open-by-design — no code substitutes for owner sign-off |
 | H01/H03 | RESOLVED (wording) — Run A docs state hybrid route, method-only, bounded 5-month overlap, no K/JS transfer |
 
 SRC-*/DATA-*/FMX-*/OPEN-01/GOV-03/OPS-01 remain
@@ -517,10 +517,62 @@ RUN-A-01 ratification, OPS-01) remain open by design.
 | EVAL-02 | Uncertainty bootstrap resamples `event_group_id`-else-`unit+season` clusters — the dependence unit, not raw region+season. |
 | EVAL-03 | `FORECAST_EXPERIMENT_ONLY` requires a complete bound declaration (vintage lineage, ablations, feature digest, threshold) plus byte-bound baseline evidence — fixture-only calls cap at `UNDERPOWERED_DESCRIPTIVE_ONLY`. |
 | EVAL-04 | Slice denominators carry explicit registry attribution via `scope_rule` (`region_owned_basins`, `opportunity_window_midpoint_season`, `linked_opportunities_only`) with verified/censored id tuples. |
-| DOC-01..04, GOAL-01 | Census reconciliation (1853/5/0/57), Run-A wording, license clarification, mission overlay, legacy-path caveats. |
+| DOC-01..04, GOAL-01 | Census reconciliation (1875/5/0/57), Run-A wording, license clarification, mission overlay, legacy-path caveats. |
 | CI-01 | Workflow triggers cover `nepal/science_v0/**`, `nepal/experiment_v0/**`, their tests and fixtures; focused contract-test step added. |
 | ENV-01 | CI runs Python 3.14 with `requirements.txt` pins; the 5 rasterio skips are disclosed as excluded-gate skips (rasterio intentionally outside the supported lock). |
 
 Unchanged boundaries: `NO_QUALIFYING_PILOT_SOURCE`;
 `WARNING_PATH_AUTHORIZED: NO`; synthetic fixtures are contract-only;
 clusters are candidate representations, never forecasts.
+
+## Round-6 hardening (2026-09-16)
+
+Coordinated hardening pass over the round-5 head (`content_head`
+99ccec9; manifest commit `4e2ef91`). Code residuals closed in this
+round's lane commits, each with behavioral tests:
+
+| Gap | Closure |
+|---|---|
+| PROV-01 | Strict boolean gates — non-bool truthy/falsy gate values reject at emit, freeze, adapter, replay, and audit. |
+| PROV-02 | Adapter parity with the producer gate universe; auditor findings now demote replay to `REPLAY_FAILED` instead of passing silently. |
+| PROV-03 | Source evidence is byte-verified — sidecar/payload digests recomputed from real files under the bound evidence root. |
+| PROV-04 | Verified producer binding required for `SUPPORTED` outcomes — an unbound or fabricated producer payload cannot carry support. |
+| REG-02 | Calendar-valid dates enforced — impossible dates (e.g., June-31-class) reject. |
+| REG-03 | Fit-surface intersection — the missingness-selected fit surface is intersected consistently across folds, bootstrap, strata, and nulls. |
+| REG-04 | `first10` effort-split rejects non-numeric effort columns. |
+| REG-05 | Null-replicate input digests bound per replicate; replay recomputes them. |
+| ASSOC-03 | `input_digest` binding on the association report; revalidation runs for every status, not only terminal-success. |
+| EVAL-03 | `forecast_regime_digest` binds the evaluated forecast output to its regime artifact. |
+| EVAL-05 | Bound baselines and feature-row membership required — caller-supplied or unbound evidence cannot satisfy the declaration. |
+| FCST-01 | Executable forecast-regime contract — the declared contract is enforced by an executed gate, not shape-only. |
+
+Documentation/CI residuals closed in this round (docs lane):
+
+- GOAL-01 — `MISSION_SCOPE_OVERLAY_V0.md` §2 now carries binding
+  digests: frozen `preregistration.md` sha256 + P3-attested D1/D2
+  digests, with an explicit additive-only statement.
+- DOC-01 — `SOURCE_FEASIBILITY_RECORDS_V0.md` gains a dated
+  (2026-09-16) supersession note: metadata-license tags resolved by
+  `run_b/SOURCE_EVIDENCE_ADDENDUM_V0.md`; payload qualification and
+  intake items remain gated.
+- DOC-02 — stale live-state blocks refreshed to the round-5 rebind
+  (HEAD `4e2ef91`, `content_head` 99ccec9, 71 manifest files,
+  1875/5/0/57, 411 focused-lane green) in `P0_BASELINE_LEDGER.md`,
+  `README.md`, and this register; the internal 56-vs-57 warnings
+  inconsistency and the GOV-01/02 open-by-design wording reconciled.
+- DOC-02b — `manifest_commit` field semantics reviewed; convention
+  recommendation recorded for the integrator (the field equals the
+  content commit this manifest revision was generated against; the
+  carrying commit is recoverable from git history).
+- GOV-02 — `GOVERNANCE_EXERCISE_RECORD_V0.md` added: bounded
+  exercised-governance record (design-level, honestly bounded).
+- PROV-DOC-01 — `run_a/RUN_A_EVIDENCE_SUMMARY_V0.md` §3 now binds the
+  sha256 of `provenance_receipts.json` (verified against the run
+  root's `rehash_report.json`).
+- CI-01 — `.github/workflows/research-v0.yml` trigger paths extended
+  (round-5/round-6/Run-A/framework-v1 test globs, hybrid fetcher,
+  ledger repair, `requirements.txt`) and a step added running the
+  previously-unrun manifest-governed test lanes.
+
+The open-by-design table and `NO_QUALIFYING_PILOT_SOURCE` /
+`WARNING_PATH_AUTHORIZED: NO` postures are unchanged.

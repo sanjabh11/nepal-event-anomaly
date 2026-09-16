@@ -361,6 +361,22 @@ def planted_artifact(events: Sequence[EventLabelV0]
         planted_artifact_payload(events), artifact_id="regime-syn-b4")
 
 
+def planted_artifact_and_payload(
+        events: Sequence[EventLabelV0]
+        ) -> tuple[RegimeAssignmentArtifact, dict]:
+    """The ``(artifact, producer_payload)`` verified-binding pair —
+    PROV-04 (R6): ``run_association`` reaches the supported verdict
+    only when the serialized frozen producer payload rides along and
+    verifies; this helper keeps fixture-built artifacts on the
+    verified path."""
+    payload = planted_artifact_payload(events)
+    from nepal.experiment_v0.adapters import (
+        regime_assignment_from_artifact)
+    artifact = regime_assignment_from_artifact(
+        payload, artifact_id="regime-syn-b4")
+    return artifact, payload
+
+
 # ---------------------------------------------------------------------
 # Forecast lane
 # ---------------------------------------------------------------------

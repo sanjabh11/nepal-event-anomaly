@@ -41,8 +41,10 @@ fail-closed, deterministic, synthetic-only evaluator:
   degradation, never imputation.
 * ``missing_feed_degradation`` drops cases under declared dropout
   scenarios and recomputes with registry-derived denominators.
-* ``uncertainty_report`` runs a seeded (region, season) block
-  bootstrap and reports percentile intervals per metric.
+* ``uncertainty_report`` runs a seeded cluster block bootstrap over
+  each case's dependence unit — its atomic ``event_group_id`` when
+  carried, else the ``(unit_id, season)`` cell — and reports
+  percentile intervals per metric.
 * ``experiment`` optionally binds a ``ForecastExperimentDeclaration``
   (or a convertible mapping); when absent the report records
   ``mode="fixture_only"`` — a standalone probability mapping can never
@@ -63,7 +65,8 @@ import re
 from dataclasses import MISSING as _MISSING
 from dataclasses import asdict, dataclass, field, fields
 from statistics import NormalDist
-from typing import Any, Collection, Mapping, Optional, Sequence
+from typing import (Any, Collection, Iterable, Mapping, Optional,
+                    Sequence)
 
 from nepal.research_v0._hashing import sha256_canonical
 from nepal.research_v0.policy import (HORIZON_SECONDS, TargetState,
@@ -215,6 +218,17 @@ _DECLARATION_KEYS = frozenset({
     "declaration_id", "feature_artifact_digest", "threshold_record",
     "ablations", "vintage_lineage"})
 
+#: Optional declaration keys — admitted by ``from_mapping`` but never
+#: required for admission.  ``forecast_regime_digest`` binds the
+#: declaration to the declared forecast-regime artifact (EVAL-03) and
+#: ``feature_row_keys_digest`` binds the canonical feature-row universe
+#: the bound baselines' fit membership is cross-checked against
+#: (EVAL-05b); both are required for the forecast-experiment status by
+#: ``_decl_complete`` even though ``problems()`` keeps them optional.
+_DECLARATION_OPTIONAL_KEYS = frozenset({
+    "power_design", "forecast_regime_digest",
+    "feature_row_keys_digest"})
+
 
 @dataclass(frozen=True)
 class ForecastExperimentDeclaration:
@@ -224,8 +238,13 @@ class ForecastExperimentDeclaration:
     declaration id, the feature-artifact digest, the decision
     ``threshold_record``, the ablation list, and the vintage lineage
     (the canonical digests of every admitted vintage the cases score
-    under).  ``problems()`` is the admission surface — a declaration
-    missing any key is inadmissible.  ``from_mapping`` performs the
+    under).  ``forecast_regime_digest`` optionally binds the declared
+    forecast-regime artifact and ``feature_row_keys_digest`` the
+    canonical "unit_id|date" feature-row universe; both are optional
+    for admission but are required — non-empty 64-hex and verified —
+    before the report can emit ``FORECAST_EXPERIMENT_ONLY``.
+    ``problems()`` is the admission surface — a declaration missing
+    any required key is inadmissible.  ``from_mapping`` performs the
     strict mapping conversion ``evaluate`` accepts.
     """
 
@@ -235,6 +254,8 @@ class ForecastExperimentDeclaration:
     ablations: Any = ()
     vintage_lineage: Any = ()
     power_design: Any = None
+    forecast_regime_digest: str = ""
+    feature_row_keys_digest: str = ""
 
     def problems(self) -> list[str]:
         problems: list[str] = []
@@ -276,6 +297,21 @@ class ForecastExperimentDeclaration:
                  for v in lin):
             problems.append("vintage_lineage entries must be 64-hex "
                             "canonical vintage digests")
+        # EVAL-03 / EVAL-05b: optional digest bindings — never
+        # required for admission, but when carried they must be
+        # well-formed 64-hex (a malformed bound digest is a defect,
+        # not an absence).
+        for name in ("forecast_regime_digest",
+                     "feature_row_keys_digest"):
+            value = getattr(self, name)
+            if value is None or value == "":
+                continue
+            if not isinstance(value, str) or \
+                    not _SHA256_RE.match(value):
+                problems.append(
+                    f"{name} must be a 64-hex sha256 digest when "
+                    "provided — the bound artifact identity is "
+                    "tamper evidence, not a label")
         return problems
 
     def to_dict(self) -> dict:
@@ -294,12 +330,12 @@ class ForecastExperimentDeclaration:
         if not isinstance(m, Mapping):
             raise ValueError(
                 "experiment declaration must be a mapping")
-        extra = set(m) - _DECLARATION_KEYS - {"power_design"}
+        extra = (set(m) - _DECLARATION_KEYS
+                 - _DECLARATION_OPTIONAL_KEYS)
         if extra:
             raise ValueError(
                 f"experiment declaration: unknown keys "
                 f"{sorted(extra)}")
-        _OPT_DECLARATION_KEYS = {"power_design"}
         missing = _DECLARATION_KEYS - set(m)
         if missing:
             raise ValueError(
@@ -317,7 +353,11 @@ class ForecastExperimentDeclaration:
             if isinstance(m["vintage_lineage"], Collection)
             and not isinstance(m["vintage_lineage"], (str, bytes))
             else m["vintage_lineage"],
-            power_design=m.get("power_design"))
+            power_design=m.get("power_design"),
+            forecast_regime_digest=
+            m.get("forecast_regime_digest", "") or "",
+            feature_row_keys_digest=
+            m.get("feature_row_keys_digest", "") or "")
 
 
 def locked_region_problems(regions: Collection[str],
@@ -773,10 +813,13 @@ def uncertainty_report(cases: Sequence[ForecastCase],
                        eligible: Optional[Collection[str]] = None,
                        n_opportunities: Optional[int] = None,
                        threshold: float = 0.5) -> dict:
-    """Seeded (region, season) block bootstrap intervals.
+    """Seeded cluster block bootstrap intervals.
 
-    Clusters of *all* cases are resampled with replacement ``n_boot``
-    times; each replicate recomputes the core metrics on the
+    The resampling unit is each case's dependence cluster — its atomic
+    ``event_group_id`` when carried, else the ``(unit_id, season)``
+    cell (``_case_cluster_key``).  Clusters of *all* cases are
+    resampled with replacement ``n_boot`` times; each replicate
+    recomputes the core metrics on the
     resampled scored (unambiguous, verified-basis) subset.  The point
     denominator is the registry-derived in-scope opportunity count
     (``n_opportunities`` when bound, else the count of distinct linked
@@ -1219,6 +1262,8 @@ def evaluate(  # noqa: C901
              baseline_evidence: Optional[Mapping[str, Any]]
              = None,
              degradation_scenarios: Optional[Sequence[Mapping]]
+             = None,
+             feature_row_keys: Optional[Iterable[str]]
              = None) -> EvaluationReport:
     """Validate the contract and emit the full descriptive report.
 
@@ -1260,7 +1305,21 @@ def evaluate(  # noqa: C901
     ``ForecastExperimentDeclaration`` — as the typed record or a
     strictly-convertible mapping — whose ``problems()`` and whose
     ``vintage_lineage``/``threshold_record`` bindings are validated;
-    when absent the report records ``mode="fixture_only"``.
+    when absent the report records ``mode="fixture_only"``.  Under a
+    bound declaration the evaluation fails closed on unbound
+    caller-supplied evidence: ``baseline_evidence`` is then required —
+    a mapping covering every supplied baseline name, each entry's
+    ``digest`` recomputing over the aligned probability vector and its
+    ``fit_provenance`` equal to ``"bound"`` (EVAL-05a).
+
+    ``feature_row_keys`` optionally supplies the canonical
+    ``"unit_id|date"`` universe of real feature rows (EVAL-05b).  When
+    given it must be a duplicate-free iterable of well-formed keys;
+    under a bound declaration ``sha256_canonical`` over the sorted key
+    list must equal ``decl.feature_row_keys_digest``, and every
+    baseline evidence entry carrying ``row_keys`` must assert fit rows
+    drawn from that universe — a fit row outside it can never be a
+    real feature row.
 
     Censored cases are excluded from every metric numerator and
     counted in ``n_censored``; the false-alarm rate divides by the
@@ -1512,6 +1571,57 @@ def evaluate(  # noqa: C901
                         f"{tv!r} does not equal the evaluation "
                         f"threshold {threshold!r} — the decision "
                         "threshold is bound by the declaration")
+
+    # ---- declared feature-row universe (EVAL-05b) ------------------
+    # ``feature_row_keys`` is the caller-supplied universe of real
+    # feature-row identities ("unit_id|date").  Under a bound
+    # declaration the sorted key list must recompute to
+    # ``decl.feature_row_keys_digest`` — the row universe is tamper
+    # evidence, not a caller claim — and every bound baseline's
+    # declared fit ``row_keys`` must be drawn from it (checked where
+    # the evidence is verified below).
+    feature_row_universe: Optional[set] = None
+    feature_rows_verified = False
+    if feature_row_keys is not None:
+        if isinstance(feature_row_keys, (str, bytes)) or \
+                not isinstance(feature_row_keys, Iterable):
+            problems.append(
+                "feature_row_keys must be an iterable of "
+                '"unit_id|date" strings')
+        else:
+            keys = [str(k) for k in feature_row_keys]
+            if any(k.count("|") != 1 or not all(
+                    part.strip() for part in k.split("|"))
+                   for k in keys):
+                problems.append(
+                    'feature_row_keys entries must be '
+                    '"unit_id|date" strings with both parts '
+                    "non-empty")
+            elif len(set(keys)) != len(keys):
+                problems.append(
+                    "feature_row_keys contain duplicates — the "
+                    "feature-row universe must be unique")
+            else:
+                feature_row_universe = set(keys)
+                if decl is not None:
+                    declared = decl.feature_row_keys_digest or ""
+                    if not (isinstance(declared, str)
+                            and _SHA256_RE.match(declared)):
+                        problems.append(
+                            "experiment: feature_row_keys supplied "
+                            "but the declaration binds no "
+                            "feature_row_keys_digest — a declared "
+                            "evaluation cannot carry an unbound "
+                            "row-key universe")
+                    elif sha256_canonical(sorted(keys)) != declared:
+                        problems.append(
+                            "experiment: feature_row_keys do not "
+                            "recompute to the declared "
+                            "feature_row_keys_digest — the bound "
+                            "row universe is tamper evidence, not "
+                            "a caller claim")
+                    else:
+                        feature_rows_verified = True
     if problems:
         raise ValueError("forecast evaluation rejected: "
                          + "; ".join(problems))
@@ -1551,8 +1661,25 @@ def evaluate(  # noqa: C901
     # FCST-02: baseline provenance — bound evidence digests must
     # recompute over the supplied probability vectors; unbound
     # baselines are recorded as caller-supplied fixture inputs.
+    # EVAL-05a: under a bound declaration the evaluation fails closed —
+    # baseline_evidence is required, must cover every supplied baseline
+    # name, and every entry must carry "bound" fit provenance; a
+    # declared experiment can never carry unbound caller vectors.
     baseline_provenance: dict[str, Any] = {}
-    if baseline_evidence is not None:
+    if baseline_evidence is None:
+        if decl is not None:
+            problems.append(
+                "baseline_evidence is required under an experiment "
+                "declaration — a declared experiment fails closed on "
+                "unbound caller-supplied baseline vectors")
+        baseline_provenance = {
+            name: {"fit_provenance": "caller_supplied_fixture"}
+            for name in aligned_baselines}
+    elif not isinstance(baseline_evidence, Mapping):
+        problems.append(
+            "baseline_evidence must be a mapping of baseline name "
+            "-> evidence record")
+    else:
         for name, probs in aligned_baselines.items():
             ev = baseline_evidence.get(name)
             if not isinstance(ev, Mapping):
@@ -1564,16 +1691,44 @@ def evaluate(  # noqa: C901
                 problems.append(
                     f"baseline_evidence digest for {name!r} does "
                     "not recompute over the supplied vector")
-            if ev.get("fit_provenance") not in (
-                    "bound", "unbound_fixture"):
+            prov = ev.get("fit_provenance")
+            if decl is not None:
+                if prov != "bound":
+                    problems.append(
+                        f"baseline_evidence fit_provenance for "
+                        f"{name!r} must be 'bound' under an "
+                        "experiment declaration — a declared "
+                        "experiment cannot carry unbound "
+                        "caller-supplied vectors")
+            elif prov not in ("bound", "unbound_fixture"):
                 problems.append(
                     f"baseline_evidence fit_provenance for "
                     f"{name!r} is not bound/unbound_fixture")
+            # EVAL-05b: when the feature-row universe is supplied,
+            # every baseline's declared fit row_keys must be drawn
+            # from it — fit rows outside the universe can never be
+            # real feature rows.
+            if feature_row_universe is not None:
+                ev_rows = ev.get("row_keys")
+                if ev_rows not in (None, (), [], ""):
+                    if isinstance(ev_rows, (str, bytes)) or \
+                            not isinstance(ev_rows, Iterable):
+                        problems.append(
+                            f"baseline_evidence row_keys for "
+                            f"{name!r} must be an iterable of "
+                            '"unit_id|date" strings')
+                    else:
+                        outside = sorted(
+                            {str(k) for k in ev_rows}
+                            - feature_row_universe)
+                        if outside:
+                            problems.append(
+                                f"baseline_evidence row_keys for "
+                                f"{name!r} assert fit rows outside "
+                                "the declared feature-row universe "
+                                f"({outside[:5]}) — fit membership "
+                                "must be real feature rows")
             baseline_provenance[name] = dict(ev)
-    else:
-        baseline_provenance = {
-            name: {"fit_provenance": "caller_supplied_fixture"}
-            for name in aligned_baselines}
     if problems:
         raise ValueError("forecast evaluation rejected: "
                          + "; ".join(problems))
@@ -1701,18 +1856,24 @@ def evaluate(  # noqa: C901
         n_opportunities=n_opportunities, threshold=threshold)
     # EVAL-03: a forecast-experiment status requires a complete bound
     # declaration — real vintage lineage, declared ablations, a bound
-    # feature artifact, and byte-bound baseline evidence.  A
-    # fixture-only call can never emit it, however high synthetic
-    # power is.
+    # feature artifact, byte-bound baseline evidence, the bound
+    # forecast-regime artifact digest, and the verified feature-row
+    # universe.  A fixture-only call can never emit it, however high
+    # synthetic power is.
     _baseline_bound = baseline_evidence is not None and all(
         isinstance(v, Mapping)
         and v.get("fit_provenance") == "bound"
         for v in baseline_provenance.values())
+    _regime_bound = decl is not None and isinstance(
+        decl.forecast_regime_digest, str) and bool(
+            _SHA256_RE.match(decl.forecast_regime_digest))
     _decl_complete = (
         decl is not None
         and not decl.problems()
         and len(tuple(decl.vintage_lineage or ())) > 0
-        and _baseline_bound)
+        and _baseline_bound
+        and _regime_bound
+        and feature_rows_verified)
     status = ("FORECAST_EXPERIMENT_ONLY"
               if power["powered"] and _decl_complete
               else "UNDERPOWERED_DESCRIPTIVE_ONLY")
@@ -1729,6 +1890,12 @@ def evaluate(  # noqa: C901
             "mode": "declared",
             "declaration_id": decl.declaration_id,
             "feature_artifact_digest": decl.feature_artifact_digest,
+            "forecast_regime_digest":
+                decl.forecast_regime_digest or "",
+            "forecast_regime_bound": _regime_bound,
+            "feature_row_keys_digest":
+                decl.feature_row_keys_digest or "",
+            "feature_row_keys_bound": feature_rows_verified,
             "threshold_record_digest":
                 sha256_canonical(dict(tr)) if isinstance(tr, Mapping)
                 else str(tr),

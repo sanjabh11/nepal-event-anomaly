@@ -31,7 +31,7 @@ from nepal.research_v0.records import (
     ControlWindowV0, EventLabelV0, ForecastVintageV0, HoldoutPlanV0,
     ObservationOpportunityV0)
 
-from nepal.research_v0._hashing import sha256_canonical
+from nepal.research_v0._hashing import sha256_bytes, sha256_canonical
 from nepal.research_v0.gates import REQUIRED_REGIME_GATE_NAMES
 
 from .association import RegimeAssignmentArtifact
@@ -45,6 +45,31 @@ def _regime_digest(obj: Any) -> str:
     identically).  Parity is pinned by the tamper-verification
     tests."""
     return sha256_canonical(obj)
+
+
+def _decode_input_values(vals: Any):
+    """Mirror of the producer's ``input_values`` byte-domain decode
+    (PROV-C03): ``None`` is NaN and ``"Infinity"``/``"-Infinity"``
+    are the non-finite tokens; everything else must coerce to
+    float.  Reimplemented here rather than imported — experiment_v0
+    imports nothing from ``nepal.science_v0``, so the boundary
+    reconstructs the byte domain itself.  Returns the float64 array
+    whose C-order bytes ``input_bytes_digest`` binds."""
+    import numpy as np
+    out = []
+    for row in vals:
+        dec = []
+        for v in row:
+            if v is None:
+                dec.append(np.nan)
+            elif v == "Infinity":
+                dec.append(np.inf)
+            elif v == "-Infinity":
+                dec.append(-np.inf)
+            else:
+                dec.append(float(v))
+        out.append(dec)
+    return np.asarray(out, dtype=np.float64)
 
 # science_v0 timing classes -> EventLabelV0 precision terms (PRECISION_TERMS).
 _TIMING_CLASS_TO_PRECISION = {
@@ -477,6 +502,14 @@ def regime_assignment_from_artifact(
     if p["fitted_on"] != "TRAIN_ONLY":
         raise ValueError(f"regime artifact fitted_on "
                          f"{p['fitted_on']!r} != 'TRAIN_ONLY'")
+    # FCST-01 no-transfer rule: a forecast-mode regime artifact is
+    # never associable to event labels — association admits
+    # retrospective partitions only.
+    if p["mode"] == "FORECAST_REGIME":
+        raise ValueError("regime artifact mode 'FORECAST_REGIME' "
+                         "cannot bind to association — "
+                         "forecast-mode partitions never transfer "
+                         "to event-label association")
     if p["mode"] != "RETROSPECTIVE_REGIME":
         raise ValueError(f"regime artifact mode {p['mode']!r} != "
                          f"'RETROSPECTIVE_REGIME'")
@@ -548,6 +581,52 @@ def regime_assignment_from_artifact(
         raise ValueError("assignment_digest does not match the "
                          "payload's assignment sidecar — tampered or "
                          "mislabeled artifact")
+    # PROV-02a — adapter/freeze parity: the raw bound sections the
+    # payload carries are re-digested here exactly as
+    # ``science_v0.freeze_regime_artifact`` does, in the same order,
+    # so any payload freeze would reject is rejected at this
+    # boundary too.  Sections absent from pre-canonical payloads
+    # keep their presence/digest-shape checks only.
+    if "config" in p:
+        if _regime_digest(p["config"]) != p.get("config_digest"):
+            raise ValueError("config_digest does not recompute "
+                             "over the payload's config — the "
+                             "bound configuration was altered")
+    if "input_values" in p:
+        import numpy as np
+        try:
+            arr = np.ascontiguousarray(
+                _decode_input_values(p["input_values"]),
+                dtype=np.float64)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"input_values cannot be decoded to the raw "
+                f"feature byte domain: {exc}") from None
+        schema = p.get("input_schema")
+        declared_shape = schema.get("shape") \
+            if isinstance(schema, Mapping) else None
+        if declared_shape and \
+                list(arr.shape) != list(declared_shape):
+            raise ValueError("input_values shape is inconsistent "
+                             "with the bound input_schema")
+        if sha256_bytes(arr.tobytes()) != \
+                p.get("input_bytes_digest"):
+            raise ValueError("input_bytes_digest is absent or does "
+                             "not recompute over the decoded "
+                             "input_values — the bound raw feature "
+                             "bytes were altered")
+    if "preprocessing" in p:
+        pre = p["preprocessing"]
+        if not isinstance(pre, Mapping) or \
+                not pre.get("row_keys_digest"):
+            raise ValueError("regime artifact preprocessing "
+                             "binding lacks row_keys_digest — the "
+                             "train surface is unrecoverable")
+        if _regime_digest(pre) != p.get("preprocessing_digest"):
+            raise ValueError("preprocessing_digest does not "
+                             "recompute over the payload's "
+                             "preprocessing block — the bound "
+                             "train surface was altered")
     pre_freeze = {k: v for k, v in p.items()
                   if k not in ("freeze_digest", "frozen")}
     if _regime_digest({k: v for k, v in pre_freeze.items()
@@ -589,6 +668,11 @@ def regime_assignment_from_artifact(
         # — replay/audit can cross-check the artifact's claimed
         # provenance against the payload's freeze_digest.
         "producer_payload_digest": p["freeze_digest"],
+        # PROV-04: the recomputably-bound self-digest over the
+        # canonical (sorted, string-typed) assignment rows —
+        # association.problems() recomputes the identical value, so
+        # stamping it here keeps the artifact self-consistent.
+        "assignment_digest": _regime_digest(sorted(triples)),
         "assignments": triples,
         "fitted_on": p["fitted_on"],
         "label_blinding": p["label_blinding"],

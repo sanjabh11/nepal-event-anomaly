@@ -13,10 +13,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+from collections import Counter
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 _CHUNK = 1 << 20
+
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -82,6 +87,99 @@ def hash_artifact(path: str | Path,
             size += len(chunk)
     return {"relpath": str(relpath), "size_bytes": size,
             "sha256": digest.hexdigest()}
+
+
+def verify_source_evidence(manifest: Any) -> list[str]:
+    """Byte-verify a non-fixture source manifest's evidence binding.
+
+    Fail-closed contract for governed inputs (PROV-03):
+    ``evidence_root`` must be a non-empty string naming a directory
+    that exists on disk; ``source_files`` must be a non-empty list of
+    ``{relpath, sha256}`` entries; every relpath must resolve INSIDE
+    the root (absolute paths and ``..`` escapes reject), name a real
+    non-symlink file, and hash to its declared digest; and the
+    multiset of verified file digests must equal the manifest's
+    ``source_digests``.  ``{"fixture": true}`` manifests carry no
+    on-disk evidence by declaration and bypass byte verification.
+
+    Returns human-readable problem strings — an empty list means
+    verified.  Never raises.
+    """
+    if not isinstance(manifest, Mapping):
+        return ["source manifest is not a mapping"]
+    if manifest.get("fixture"):
+        return []
+    root_raw = manifest.get("evidence_root")
+    if not isinstance(root_raw, str) or not root_raw.strip():
+        return ["evidence_root must be a non-empty string naming a "
+                "directory"]
+    root = Path(root_raw)
+    if not root.is_dir():
+        return [f"evidence_root {root} is not a directory"]
+    try:
+        root_resolved = root.resolve()
+    except OSError as exc:
+        return [f"cannot resolve evidence_root {root}: {exc}"]
+    files = manifest.get("source_files")
+    if not isinstance(files, (list, tuple)) or not files:
+        return ["source_files must be a non-empty list of "
+                "{relpath, sha256} bindings"]
+    problems: list[str] = []
+    verified: list[str] = []
+    for i, entry in enumerate(files):
+        if not isinstance(entry, Mapping):
+            problems.append(f"source_files[{i}] is not a "
+                            "{relpath, sha256} mapping")
+            continue
+        rel = entry.get("relpath")
+        declared = entry.get("sha256")
+        if not isinstance(rel, str) or not rel.strip():
+            problems.append(f"source_files[{i}].relpath must be a "
+                            "non-empty relative path")
+            continue
+        if Path(rel).is_absolute():
+            problems.append(f"source_files[{i}] relpath {rel!r} is "
+                            "absolute — it must resolve inside "
+                            "evidence_root")
+            continue
+        if not isinstance(declared, str) or \
+                not _SHA256_RE.match(declared):
+            problems.append(f"source_files[{i}].sha256 must be a "
+                            "64-hex sha256")
+            continue
+        try:
+            resolved = (root_resolved / rel).resolve()
+        except OSError as exc:
+            problems.append(f"source_files[{i}] {rel!r} cannot be "
+                            f"resolved: {exc}")
+            continue
+        try:
+            resolved.relative_to(root_resolved)
+        except ValueError:
+            problems.append(f"source_files[{i}] relpath {rel!r} "
+                            "resolves outside evidence_root")
+            continue
+        try:
+            actual = sha256_file(resolved)
+        except ValueError as exc:
+            problems.append(f"source_files[{i}] {rel!r}: {exc}")
+            continue
+        if actual != declared:
+            problems.append(
+                f"source_files[{i}] {rel!r}: sha256 mismatch — "
+                f"declared {declared[:16]}… != file "
+                f"{actual[:16]}…")
+            continue
+        verified.append(actual)
+    declared_set = manifest.get("source_digests")
+    if not isinstance(declared_set, (list, tuple)) or \
+            not declared_set:
+        problems.append("source_digests must be a non-empty list of "
+                        "declared file digests")
+    elif Counter(verified) != Counter(str(d) for d in declared_set):
+        problems.append("source_digests does not equal the multiset "
+                        "of verified source_files digests")
+    return problems
 
 
 def _reject_nonjson(payload: Any, path: str = "$") -> None:

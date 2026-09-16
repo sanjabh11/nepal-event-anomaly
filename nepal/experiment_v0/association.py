@@ -71,6 +71,17 @@ STATUS_DESCRIPTIVE = "DESCRIPTIVE_REGIME_ONLY"
 STATUS_UNDERPOWERED = "UNDERPOWERED_DESCRIPTIVE_ONLY"
 STATUS_NOT_SUPPORTED = "UNSUPERVISED_PATH_NOT_SUPPORTED"
 
+#: Producer-binding modes the report may carry (PROV-04): the
+#: artifact's binding to its frozen producer payload is either
+#: recomputed end-to-end and matched field-by-field
+#: ("verified_producer_payload") or unverified — a local artifact
+#: admitted for descriptive use only.  ``REGIME_ASSOCIATION_SUPPORTED``
+#: is reachable only under a verified binding.
+BINDING_VERIFIED = "verified_producer_payload"
+BINDING_UNVERIFIED = "local_artifact_unverified"
+ASSOCIATION_BINDINGS = frozenset(
+    {BINDING_VERIFIED, BINDING_UNVERIFIED})
+
 #: Event-time interval placements recomputed for sensitivity reporting.
 #: These are also the only members a declared ``horizon_family`` may
 #: name — the analysis family is predeclared, never implicit.
@@ -371,6 +382,29 @@ def _round12(x: Optional[float]) -> Optional[float]:
 # Frozen regime-assignment artifact (synthetic stand-in)
 # ---------------------------------------------------------------------
 
+def _canonical_assignment_rows(assignments) -> list:
+    """The canonical serialized form of the assignment sidecar —
+    sorted ``[unit_id, date, regime_id]`` string triples.  This is
+    exactly the surface ``to_dict`` emits, so its digest is
+    independent of input row order.  Malformed rows contribute
+    nothing here; they surface via ``problems()``."""
+    rows = []
+    for r in assignments or ():
+        if isinstance(r, (tuple, list)) and len(r) == 3 and \
+                all(isinstance(x, str) for x in r):
+            rows.append([r[0], r[1], r[2]])
+    return sorted(rows)
+
+
+def _assignment_digest(assignments) -> str:
+    """``sha256_canonical`` over the canonical assignment rows — the
+    recomputably-bound self-digest the artifact's
+    ``assignment_digest`` field carries.  Distinct from the producer
+    payload's ``assignment_digest``, which is computed over the raw
+    (int-labelled) sidecar."""
+    return sha256_canonical(_canonical_assignment_rows(assignments))
+
+
 @dataclass(frozen=True)
 class RegimeAssignmentArtifact:
     """Frozen synthetic regime-assignment artifact (stand-in for a real
@@ -389,6 +423,12 @@ class RegimeAssignmentArtifact:
     # stamps it; a direct construction must declare its binding —
     # there is no anonymous path into association.
     producer_payload_digest: str = ""
+    # PROV-04 (R6): recomputably-bound self-digest over the canonical
+    # assignment rows (``_assignment_digest``).  ``__post_init__``
+    # fills it when empty so fixture/adapter construction stays
+    # simple; ``problems()`` recomputes and compares — a stamped
+    # value that disagrees with the rows is tampering.
+    assignment_digest: str = ""
     fitted_on: str = "TRAIN_ONLY"
     label_blinding: bool = True
     seeds: tuple[int, ...] = ()
@@ -403,6 +443,10 @@ class RegimeAssignmentArtifact:
                 continue  # malformed rows surface via problems()
             index[(str(unit_id), str(day))] = str(regime_id)
         object.__setattr__(self, "_index", index)
+        if not self.assignment_digest:
+            object.__setattr__(
+                self, "assignment_digest",
+                _assignment_digest(self.assignments))
 
     def problems(self) -> list[str]:
         problems: list[str] = []
@@ -451,6 +495,17 @@ class RegimeAssignmentArtifact:
                 "construct via "
                 "adapters.regime_assignment_from_artifact; a bare "
                 "hand-built artifact cannot bind to association")
+        if not isinstance(self.assignment_digest, str) or \
+                not _SHA256_RE.match(self.assignment_digest):
+            problems.append("assignment_digest must be a 64-hex "
+                            "sha256 over the canonical assignment "
+                            "rows")
+        elif self.assignment_digest != _assignment_digest(
+                self.assignments):
+            problems.append("assignment_digest does not recompute "
+                            "from the canonical assignment rows — "
+                            "the frozen rows were altered after "
+                            "stamping")
         if self.fitted_on != "TRAIN_ONLY":
             problems.append("assignments must be fitted on training "
                             "groups only")
@@ -490,6 +545,7 @@ class RegimeAssignmentArtifact:
             "assignments": sorted(
                 [list(r) for r in self.assignments]),
             "producer_payload_digest": self.producer_payload_digest,
+            "assignment_digest": self.assignment_digest,
             "fitted_on": self.fitted_on,
             "label_blinding": self.label_blinding,
             "seeds": list(self.seeds),
@@ -512,6 +568,7 @@ class RegimeAssignmentArtifact:
             assignments=tuple(tuple(row) for row in d["assignments"]),
             producer_payload_digest=d.get(
                 "producer_payload_digest", ""),
+            assignment_digest=d.get("assignment_digest", ""),
             fitted_on=d.get("fitted_on", "TRAIN_ONLY"),
             label_blinding=d.get("label_blinding", True),
             seeds=tuple(d.get("seeds", ())),
@@ -526,8 +583,8 @@ def _strict_artifact_payload_problems(d: Any) -> list[str]:
     seeds, ``str`` only for text fields, real sequences for tuple
     fields), and assignment dates calendar-valid."""
     fields = ("artifact_id", "regime_digest", "assignments",
-              "producer_payload_digest", "fitted_on",
-              "label_blinding", "seeds", "mode")
+              "producer_payload_digest", "assignment_digest",
+              "fitted_on", "label_blinding", "seeds", "mode")
     problems: list[str] = []
     if not isinstance(d, Mapping):
         return ["payload must be a JSON-object mapping"]
@@ -542,7 +599,8 @@ def _strict_artifact_payload_problems(d: Any) -> list[str]:
         if name not in d:
             problems.append(f"missing required field {name!r}")
     for name in ("artifact_id", "regime_digest",
-                 "producer_payload_digest", "fitted_on", "mode"):
+                 "producer_payload_digest", "assignment_digest",
+                 "fitted_on", "mode"):
         if name in d and type(d[name]) is not str:
             problems.append(f"field {name!r} must be a string")
     if "label_blinding" in d and type(d["label_blinding"]) is not bool:
@@ -1398,6 +1456,20 @@ class AssociationReport:
     lookback_horizons: tuple[str, ...] = ()
     multiplicity: dict = field(default_factory=dict)
     sensitivities: dict = field(default_factory=dict)
+    # PROV-04 (R6): the producer-binding mode the report was computed
+    # under — BINDING_VERIFIED only when run_association recomputed
+    # the serialized frozen producer payload's digest chain and
+    # bound it to the artifact field-by-field; the supported verdict
+    # is unreachable under BINDING_UNVERIFIED.
+    binding: str = BINDING_UNVERIFIED
+    # ASSOC-03 (R6): the canonical input manifest
+    # (``association_input_manifest/v0``) this report was digested
+    # over, and its ``sha256_canonical``.  A report claiming
+    # different inputs digests differently; ``problems()``
+    # revalidates manifest, digest, and the manifest's carried
+    # references against the report's own fields for every status.
+    inputs: dict = field(default_factory=dict)
+    input_digest: str = ""
 
     def problems(self) -> list[str]:
         problems: list[str] = []
@@ -1407,13 +1479,128 @@ class AssociationReport:
         for name in ("artifact_id", "regime_digest"):
             if not getattr(self, name):
                 problems.append(f"{name} is required")
+        # ASSOC-03 (R6): input binding and carried-digest
+        # revalidation apply to EVERY status — a tampered
+        # descriptive report fails exactly like a tampered
+        # supported one.
+        if not isinstance(self.regime_digest, str) or \
+                not _SHA256_RE.match(self.regime_digest):
+            problems.append("regime_digest must be a 64-hex sha256 "
+                            "digest")
+        if self.binding not in ASSOCIATION_BINDINGS:
+            problems.append(f"binding {self.binding!r} is not a "
+                            "declared association binding mode")
+        if self.status == STATUS_SUPPORTED and \
+                self.binding != BINDING_VERIFIED:
+            problems.append(
+                "REGIME_ASSOCIATION_SUPPORTED requires "
+                "binding='verified_producer_payload' — an "
+                "unverified local artifact can never carry the "
+                "supported verdict")
+        if not isinstance(self.input_digest, str) or \
+                not _SHA256_RE.match(self.input_digest):
+            problems.append("input_digest is required and must be a "
+                            "64-hex sha256 over the report's "
+                            "canonical input manifest")
+        if not isinstance(self.inputs, Mapping) or not self.inputs:
+            problems.append("inputs must carry the canonical "
+                            "association_input_manifest/v0 mapping "
+                            "the input_digest was computed over")
+        else:
+            try:
+                recomputed_inputs = sha256_canonical(self.inputs)
+            except (TypeError, ValueError):
+                problems.append("inputs manifest cannot be "
+                                "canonically re-hashed")
+            else:
+                if _SHA256_RE.match(str(self.input_digest)) and \
+                        recomputed_inputs != self.input_digest:
+                    problems.append("input_digest does not recompute "
+                                    "from the carried inputs "
+                                    "manifest")
+                # The manifest's carried references must agree with
+                # the report's own fields — a swapped manifest and a
+                # swapped field both surface here.
+                for key, expected in (
+                        ("artifact_id", self.artifact_id),
+                        ("regime_digest", self.regime_digest),
+                        ("horizon_family",
+                         list(self.horizon_family)),
+                        ("lookback_horizons",
+                         list(self.lookback_horizons)),
+                        ("alpha", FAMILY_ALPHA)):
+                    if key in self.inputs and \
+                            self.inputs[key] != expected:
+                        problems.append(
+                            f"inputs manifest {key!r} does not "
+                            "match the report's own field — the "
+                            "manifest and the report disagree")
+                for key in ("event_digests", "control_digests",
+                            "opportunity_digests"):
+                    carried = self.inputs.get(key)
+                    if carried is not None and (
+                            not isinstance(carried, (list, tuple))
+                            or any(not isinstance(d, str)
+                                   or not _SHA256_RE.match(d)
+                                   for d in carried)):
+                        problems.append(
+                            f"inputs manifest {key!r} must be a "
+                            "list of 64-hex digests")
+        # Sensitivity dispositions must be complete and well-formed
+        # for EVERY status — a stripped or malformed registry is a
+        # tamper signal, not a descriptive omission.
+        for axis in REQUIRED_SENSITIVITY_AXES:
+            entry = (self.sensitivities or {}).get(axis)
+            if not isinstance(entry, Mapping) or \
+                    entry.get("status") not in \
+                    SENSITIVITY_DISPOSITIONS \
+                    or not entry.get("reason"):
+                problems.append(f"sensitivity disposition "
+                                f"{axis!r} is missing or malformed")
+        # ASSOC-03: negative-control digest revalidation — every
+        # null record carrying a "digest" is re-hashed over the
+        # exact payload bound at creation and compared.  A record
+        # altered after signing can never stand behind ANY status.
+        for nc_name, entry in (
+                self.negative_controls or {}).items():
+            if not isinstance(entry, Mapping) \
+                    or "digest" not in entry:
+                continue
+            digest = entry.get("digest")
+            if not isinstance(digest, str) \
+                    or not _SHA256_RE.match(digest):
+                problems.append(f"negative control {nc_name!r} "
+                                "carries a malformed digest")
+                continue
+            if entry.get("kind") == "label_shuffle":
+                # Created as sha256_canonical over exactly this
+                # key subset — never the whole record.
+                payload = {
+                    "null": "label_shuffle",
+                    "seed": entry.get("seed"),
+                    "n_replicates": entry.get("n_replicates"),
+                    "per_regime": entry.get("per_regime")}
+            else:
+                # Created as sha256_canonical(rec) before the
+                # "digest" key was attached — the digest never
+                # covers itself.
+                payload = {k: v for k, v in entry.items()
+                           if k != "digest"}
+            try:
+                recomputed = sha256_canonical(payload)
+            except (TypeError, ValueError):
+                problems.append(f"negative control {nc_name!r} "
+                                "payload cannot be canonically "
+                                "re-hashed")
+                continue
+            if recomputed != digest:
+                problems.append(
+                    f"negative control {nc_name!r} digest does "
+                    "not match its recorded payload")
         if self.status == STATUS_SUPPORTED:
             # The top status may never stand on an empty or partial
             # evidence surface — every declared-family, null, and
             # sensitivity requirement must be visibly discharged.
-            if not _SHA256_RE.match(str(self.regime_digest)):
-                problems.append("a supported verdict requires a "
-                                "64-hex regime_digest")
             if not self.enrichment:
                 problems.append("REGIME_ASSOCIATION_SUPPORTED "
                                 "requires a non-empty enrichment "
@@ -1493,47 +1680,6 @@ class AssociationReport:
                 problems.append("a supported verdict requires at "
                                 "least one regime Holm-significant "
                                 "in every declared family cell")
-            # ASSOC-03: negative-control digest revalidation — every
-            # null record carrying a "digest" is re-hashed over the
-            # exact payload bound at creation and compared.  A
-            # record altered after signing can never stand behind a
-            # supported verdict.
-            for nc_name, entry in (
-                    self.negative_controls or {}).items():
-                if not isinstance(entry, Mapping) \
-                        or "digest" not in entry:
-                    continue
-                digest = entry.get("digest")
-                if not isinstance(digest, str) \
-                        or not _SHA256_RE.match(digest):
-                    problems.append(f"negative control {nc_name!r} "
-                                    "carries a malformed digest")
-                    continue
-                if entry.get("kind") == "label_shuffle":
-                    # Created as sha256_canonical over exactly this
-                    # key subset — never the whole record.
-                    payload = {
-                        "null": "label_shuffle",
-                        "seed": entry.get("seed"),
-                        "n_replicates": entry.get("n_replicates"),
-                        "per_regime": entry.get("per_regime")}
-                else:
-                    # Created as sha256_canonical(rec) before the
-                    # "digest" key was attached — the digest never
-                    # covers itself.
-                    payload = {k: v for k, v in entry.items()
-                               if k != "digest"}
-                try:
-                    recomputed = sha256_canonical(payload)
-                except (TypeError, ValueError):
-                    problems.append(f"negative control {nc_name!r} "
-                                    "payload cannot be canonically "
-                                    "re-hashed")
-                    continue
-                if recomputed != digest:
-                    problems.append(
-                        f"negative control {nc_name!r} digest does "
-                        "not match its recorded payload")
         return problems
 
     def to_dict(self) -> dict:
@@ -1746,6 +1892,203 @@ def _holdout_binding_problems(
 
 
 # ---------------------------------------------------------------------
+# Producer-payload binding + canonical input manifest
+# ---------------------------------------------------------------------
+
+def _producer_payload_binding_problems(
+        artifact: RegimeAssignmentArtifact,
+        payload: Any) -> list[str]:
+    """PROV-04 (R6): verify a serialized frozen producer payload
+    against the artifact it claims to have produced.
+
+    The check is enforceable purely from ``(artifact, payload)`` and
+    is fail-closed at both ends:
+
+    * **Payload internal consistency** — the freeze digest chain is
+      recomputed exactly as
+      ``science_v0.regimes.freeze_regime_artifact`` and
+      ``adapters.regime_assignment_from_artifact`` do:
+      ``assignment_digest`` over the raw ``assignments`` sidecar,
+      ``regime_artifact_digest`` over the payload minus
+      ``{regime_artifact_digest, freeze_digest, frozen}``, and
+      ``freeze_digest`` over the payload minus
+      ``{freeze_digest, frozen}``.  ``frozen`` must be ``True``.
+      A carried digest is verified, never trusted.
+    * **Artifact binding** — the adapter stamps
+      ``regime_digest`` and ``producer_payload_digest`` to the
+      payload's ``freeze_digest``; both must equal it.  The
+      normalized sidecar rows (the single permitted conversion is
+      int -> str ``regime_id``) must equal the artifact's canonical
+      assignment rows, and the provenance fields the adapter copies
+      verbatim (``fitted_on``/``label_blinding``/``mode``/``seeds``)
+      must agree.
+    """
+    problems: list[str] = []
+    if not isinstance(payload, Mapping):
+        return ["producer_payload must be a JSON-object mapping — "
+                "the serialized frozen producer artifact"]
+    freeze = payload.get("freeze_digest")
+    raw = payload.get("assignments")
+    raw_ok = isinstance(raw, (list, tuple)) and bool(raw)
+    # --- payload internal consistency: recompute the freeze
+    # digest chain, never trust a carried digest ---
+    try:
+        pre_freeze = {k: v for k, v in payload.items()
+                      if k not in ("freeze_digest", "frozen")}
+        if not isinstance(freeze, str) or not _SHA256_RE.match(freeze):
+            problems.append("producer_payload freeze_digest is "
+                            "missing or not a 64-hex sha256")
+        elif sha256_canonical(pre_freeze) != freeze:
+            problems.append("producer_payload freeze_digest does not "
+                            "recompute from the payload — post-freeze "
+                            "mutation or a mislabeled artifact")
+        rad = payload.get("regime_artifact_digest")
+        if not isinstance(rad, str) or not _SHA256_RE.match(rad):
+            problems.append("producer_payload regime_artifact_digest "
+                            "is missing or not a 64-hex sha256")
+        elif sha256_canonical(
+                {k: v for k, v in pre_freeze.items()
+                 if k != "regime_artifact_digest"}) != rad:
+            problems.append("producer_payload regime_artifact_digest "
+                            "does not recompute from the payload — "
+                            "mutated after production")
+        if not raw_ok:
+            problems.append("producer_payload carries no assignment "
+                            "sidecar — a summary-only payload cannot "
+                            "bind the artifact")
+        elif sha256_canonical(list(raw)) != \
+                payload.get("assignment_digest"):
+            problems.append("producer_payload assignment_digest does "
+                            "not recompute over the assignment "
+                            "sidecar")
+    except (TypeError, ValueError):
+        problems.append("producer_payload cannot be canonically "
+                        "re-hashed — non-JSON-native content")
+        raw_ok = False
+    if payload.get("frozen") is not True:
+        problems.append("producer_payload must carry frozen: true — "
+                        "an unfrozen surface cannot bind")
+    # --- artifact <-> payload binding ---
+    if freeze != artifact.producer_payload_digest:
+        problems.append("producer_payload freeze_digest does not "
+                        "equal the artifact's producer_payload_digest "
+                        "— the payload is not the producer this "
+                        "artifact declares")
+    if freeze != artifact.regime_digest:
+        problems.append("producer_payload freeze_digest does not "
+                        "equal the artifact's regime_digest — the "
+                        "adapter stamps regime_digest = freeze_digest")
+    if raw_ok:
+        norm: list = []
+        bad_row = False
+        for row in raw:
+            if isinstance(row, (list, tuple)) and len(row) == 3 and \
+                    isinstance(row[0], str) and \
+                    isinstance(row[1], str) and \
+                    isinstance(row[2], (str, int)) and \
+                    not isinstance(row[2], bool):
+                norm.append([row[0], row[1], str(row[2])])
+            else:
+                bad_row = True
+                break
+        if bad_row:
+            problems.append("producer_payload assignment rows must "
+                            "be (str, str, str|int) triples — the "
+                            "producer's raw labels admit only the "
+                            "int -> str conversion")
+        elif sorted(norm) != _canonical_assignment_rows(
+                artifact.assignments):
+            problems.append("producer_payload assignment sidecar "
+                            "does not match the artifact's canonical "
+                            "assignment rows — the payload binds a "
+                            "different partition")
+    for f in ("fitted_on", "label_blinding", "mode"):
+        if payload.get(f) != getattr(artifact, f):
+            problems.append(f"producer_payload {f} does not match "
+                            "the artifact's stamped provenance")
+    seeds = payload.get("seeds")
+    if not isinstance(seeds, (list, tuple)) or \
+            list(seeds) != list(artifact.seeds):
+        problems.append("producer_payload seeds do not match the "
+                        "artifact's declared seeds")
+    return problems
+
+
+def _record_input_digest(rec: Any) -> str:
+    """Canonical digest of one bound input record.  Non-record
+    inputs digest to their type tag so they are still bound into the
+    manifest — censored inputs are inputs too."""
+    to_dict = getattr(rec, "to_dict", None)
+    if callable(to_dict):
+        try:
+            return sha256_canonical(to_dict())
+        except (TypeError, ValueError):
+            pass
+    return sha256_canonical(
+        {"non_record_type": type(rec).__name__})
+
+
+def _association_input_manifest(
+        artifact: RegimeAssignmentArtifact,
+        events: Sequence[EventLabelV0],
+        controls: Sequence[ControlWindowV0],
+        unit_basins: Any,
+        holdout: Any,
+        region_basins: Any,
+        opportunities: Any,
+        lookback_names: Sequence[str],
+        family: Sequence[str],
+        n_boot: int, seed: int) -> dict:
+    """The canonical ``association_input_manifest/v0`` a report's
+    ``input_digest`` is computed over.  Every input the harness
+    consumes is bound: the artifact's digests, per-record digests of
+    every passed event/control/registry opportunity (censored
+    inputs included), the basin maps, the holdout digest, and the
+    declared family parameters.  A report claiming different inputs
+    produces a different ``input_digest``."""
+    def _map_str(m: Any) -> dict:
+        if not isinstance(m, Mapping):
+            return {}
+        return {str(k): str(v) for k, v in
+                sorted(m.items(), key=lambda kv: str(kv[0]))}
+
+    def _basin_list(v: Any) -> list:
+        if isinstance(v, (list, tuple, set, frozenset)):
+            return sorted(str(b) for b in v)
+        return [str(v)]
+
+    return {
+        "record": "association_input_manifest/v0",
+        "artifact_id": artifact.artifact_id,
+        "regime_digest": artifact.regime_digest,
+        "assignment_digest": artifact.assignment_digest,
+        "producer_payload_digest": artifact.producer_payload_digest,
+        "event_digests": sorted(
+            _record_input_digest(e) for e in events),
+        "control_digests": sorted(
+            _record_input_digest(c) for c in controls),
+        "opportunity_digests": sorted(
+            _record_input_digest(o)
+            for o in (opportunities.values()
+                      if isinstance(opportunities, Mapping)
+                      else ())),
+        "unit_basins": _map_str(unit_basins),
+        "region_basins": {
+            str(k): _basin_list(v)
+            for k, v in sorted(
+                (region_basins or {}).items(),
+                key=lambda kv: str(kv[0]))}
+            if isinstance(region_basins, Mapping) else {},
+        "holdout_digest": _record_input_digest(holdout),
+        "lookback_horizons": [str(h) for h in lookback_names],
+        "horizon_family": [str(m) for m in family],
+        "alpha": FAMILY_ALPHA,
+        "n_boot": int(n_boot),
+        "seed": int(seed),
+    }
+
+
+# ---------------------------------------------------------------------
 # Driver
 # ---------------------------------------------------------------------
 
@@ -1760,7 +2103,9 @@ def run_association(
         lookback_horizons: Collection[str]
         = DEFAULT_LOOKBACK_HORIZONS,
         horizon_family: Collection[str] = PLACEMENT_MODES,
-        n_boot: int = 200, seed: int = 0) -> AssociationReport:
+        n_boot: int = 200, seed: int = 0,
+        producer_payload: Optional[Mapping] = None
+        ) -> AssociationReport:
     """Run the held-out event–regime association harness.
 
     The ``holdout``/``region_basins`` binding scopes which labels and
@@ -1793,6 +2138,15 @@ def run_association(
     regime x (look-back horizon x placement mode) cell, and the Holm
     family spans exactly those declared cells.
 
+    ``producer_payload`` (PROV-04) is the serialized frozen producer
+    artifact (``artifact_payload``) the regime artifact was adapted
+    from.  When supplied, its freeze digest chain is recomputed and
+    bound to the artifact field-by-field — a supplied payload that
+    fails verification rejects outright.  When absent, the artifact
+    is admitted as a local record for descriptive use only: the
+    report carries ``binding="local_artifact_unverified"`` and
+    ``REGIME_ASSOCIATION_SUPPORTED`` is unreachable.
+
     Pure and deterministic: identical inputs plus ``seed`` give a
     byte-identical ``canonical_json(report.to_dict())``.
     """
@@ -1811,6 +2165,22 @@ def run_association(
         raise ValueError("association regime artifact rejected — "
                          "provenance floor unmet: "
                          + "; ".join(art_problems))
+    # PROV-04 (R6): verified producer binding.  A supplied
+    # producer_payload is recomputed end-to-end and bound to the
+    # artifact; one that fails to verify rejects outright — a forged
+    # binding is a binding violation, not a descriptive fallback.
+    # Without it the artifact is a local record: admitted for
+    # descriptive use, never for the supported verdict.
+    if producer_payload is None:
+        binding_mode = BINDING_UNVERIFIED
+    else:
+        pp_problems = _producer_payload_binding_problems(
+            artifact, producer_payload)
+        if pp_problems:
+            raise ValueError(
+                "association producer-payload binding rejected: "
+                + "; ".join(pp_problems))
+        binding_mode = BINDING_VERIFIED
     binding = _holdout_binding_problems(
         artifact, events, controls, unit_basins, holdout,
         region_basins, opportunities)
@@ -1820,6 +2190,11 @@ def run_association(
     notes: list[str] = [
         "claim_scope=research_only_no_operational_authorization",
     ]
+    if binding_mode != BINDING_VERIFIED:
+        notes.append("no verified producer payload — the artifact "
+                     "is admitted as a local record for descriptive "
+                     "use; REGIME_ASSOCIATION_SUPPORTED is "
+                     "unreachable")
     # Declared placement family — canonicalized to PLACEMENT_MODES
     # order so caller ordering cannot perturb the family.
     declared_modes = tuple(horizon_family or ())
@@ -1854,6 +2229,17 @@ def run_association(
             "counts may enter the inference family")
     lookback_names = tuple(f"{d}d" for d in lookback_days)
     regime_ids = artifact.regime_ids()
+
+    # ASSOC-03 (R6): bind the report to its inputs — the canonical
+    # manifest covers the artifact's digests, every passed event /
+    # control / registry-opportunity record, the basin maps, the
+    # holdout digest, and the declared family parameters.  A report
+    # claiming different inputs digests differently.
+    inputs_manifest = _association_input_manifest(
+        artifact, events, controls, unit_basins, holdout,
+        region_basins, opportunities, lookback_names, family,
+        n_boot, seed)
+    input_digest = sha256_canonical(inputs_manifest)
 
     # Three-valued discipline: only clean adjudicated labels enter
     # positive cells; only derived-NEGATIVE controls enter the control
@@ -1901,7 +2287,14 @@ def run_association(
             enrichment={}, transitions={}, novelty={},
             negative_controls={}, interval_sensitivity={},
             slices={"pooled": {}, "per_basin": {}, "per_season": {}},
-            status=STATUS_NOT_SUPPORTED, notes=tuple(notes))
+            status=STATUS_NOT_SUPPORTED, notes=tuple(notes),
+            sensitivities={
+                a: {"status": "NOT_APPLICABLE",
+                    "reason": "degenerate single-regime partition — "
+                              "no sensitivity surface exists"}
+                for a in REQUIRED_SENSITIVITY_AXES},
+            binding=binding_mode,
+            inputs=inputs_manifest, input_digest=input_digest)
 
     # --- declared inference family: every regime x (look-back
     # horizon x placement mode) cell gets the full bootstrap; the
@@ -2297,11 +2690,24 @@ def run_association(
                 (shift_p.get(r) or {}).get("p") is not None
                 and shift_p[r]["p"] <= FAMILY_ALPHA
                 for r in enriched):
-        status = STATUS_SUPPORTED
-        notes.append("one or more frozen regimes show a non-random "
-                     "correspondence with held-out adjudicated events "
-                     "under predeclared associational tests — an "
-                     "association result only")
+        if binding_mode == BINDING_VERIFIED:
+            status = STATUS_SUPPORTED
+            notes.append("one or more frozen regimes show a "
+                         "non-random correspondence with held-out "
+                         "adjudicated events under predeclared "
+                         "associational tests — an association "
+                         "result only")
+        else:
+            # PROV-04: the supported verdict can never ride on an
+            # unverified local artifact — demote to descriptive,
+            # mirroring the non-associable demotion below.
+            status = STATUS_DESCRIPTIVE
+            notes.append("the evidence surface otherwise qualifies "
+                         "for the supported verdict, but the "
+                         "artifact's producer binding is unverified "
+                         "— a local artifact without its frozen "
+                         "producer payload can never carry "
+                         "REGIME_ASSOCIATION_SUPPORTED")
     else:
         status = STATUS_DESCRIPTIVE
         if not enriched:
@@ -2341,7 +2747,9 @@ def run_association(
                       "inference": "stratified_permutation_p",
                       "null_coverage": null_coverage,
                       "precision_exclusions": precision_exclusions},
-        sensitivities=sensitivities)
+        sensitivities=sensitivities,
+        binding=binding_mode,
+        inputs=inputs_manifest, input_digest=input_digest)
 
 
 # ---------------------------------------------------------------------
@@ -2430,8 +2838,11 @@ def association_report_text(report: AssociationReport) -> str:
 
 __all__ = [
     "ALLOWED_LOOKBACK_DAYS",
+    "ASSOCIATION_BINDINGS",
     "ASSOCIATION_STATUSES",
     "AssociationReport",
+    "BINDING_UNVERIFIED",
+    "BINDING_VERIFIED",
     "DEFAULT_LOOKBACK_HORIZONS",
     "MECHANISM_MIN_GROUPS",
     "MIN_EVENT_GROUPS",

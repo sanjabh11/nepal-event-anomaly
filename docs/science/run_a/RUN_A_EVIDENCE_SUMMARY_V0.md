@@ -54,6 +54,20 @@ the monthly payloads, the merged file, or the feature matrix.
 | `features/features_nepal_hourly_jja_2001_2026.csv` | `391bf92a2b75488862af91546e25672011e6385e49915e3dc8030723ddf2d756` | matches bundle `input_digests` |
 | `features/feature_units.json` | `7eda9e147b9fc880aea2892855eb169676225599f21407137aefeb18b65ab9a6` | matches bundle `feature_units_digest` |
 | `features/run_metadata.json` | `fc556fa3f2e06633e5a9b0755dafa432ed60eb03a6ff3ff8964942f4774f27e6` | matches bundle `input_digests` |
+| `provenance_receipts.json` *(addendum 2026-09-16)* | `8f22d3c17b940e5e789e6428b9758d6bafdc0182af3fb4f2eaf60fcd2963d635` | recomputed by this lane; matches `rehash_report.json` entry (21,607 bytes); written by `nepal/run_ledger_repair.py` `write_provenance_receipts` |
+
+**Addendum (2026-09-16).** The row above binds the H02 provenance
+receipts file for run root `research_runs/gmm_hybrid_20260915/` — it
+existed on disk and was re-hashed; the digest agrees with the
+independent `rehash_report.json` record in the same root. For
+completeness: the corrected derivative root
+`research_runs/gmm_hybrid_corrected_20260915/` also carries a
+`provenance_receipts.json` — sha256
+`e757207b6d1616b982d53ec4984a46dc29aaceebefd84e2fcdb849ba6ce080dc`
+(200 bytes) — a near-empty stub (`routes`/`assembly_artifacts`/
+`unattributed` all empty, `dataset: "UNVERIFIED"`) because the
+derived run produced no new retrievals. Both files are gitignored
+working-tree artifacts bound here by digest only.
 
 All 78 per-month `payload_sha256` values in the ledger are distinct and
 match the bundle manifest's `assembled_YYYY_MM.nc` raw digests

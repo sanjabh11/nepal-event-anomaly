@@ -27,12 +27,18 @@ from __future__ import annotations
 
 import ast
 import dataclasses
+import inspect
 import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
 
 from nepal.research_v0._hashing import sha256_canonical
+
+try:  # PROV-03: lands with the research_v0 byte-verification helper
+    from nepal.research_v0._hashing import verify_source_evidence
+except ImportError:  # pragma: no cover - contract pending
+    verify_source_evidence = None
 from nepal.research_v0.gates import (REQUIRED_REGIME_GATE_NAMES,
                                    scan_claims_text)
 from nepal.research_v0.records import (ControlWindowV0, EventLabelV0,
@@ -506,7 +512,25 @@ def _reconstruct_association(assoc: Mapping[str, Any]):
     return (artifact, events, controls, unit_basins, holdout,
             region_basins, opportunities,
             int(assoc.get("n_boot", 200)),
-            int(assoc.get("seed", 0)))
+            int(assoc.get("seed", 0)), payload)
+
+
+def _call_run_association(artifact, events, controls, unit_basins, *,
+                          holdout, region_basins, opportunities,
+                          n_boot, seed, producer_payload=None):
+    """Invoke ``run_association``, forwarding the serialized producer
+    payload when its signature binds the ``producer_payload`` keyword
+    (PROV-04 — replayed associations get the same verified binding
+    the adapter stamped)."""
+    kwargs: dict[str, Any] = {
+        "holdout": holdout, "region_basins": region_basins,
+        "opportunities": opportunities, "n_boot": n_boot,
+        "seed": seed}
+    if "producer_payload" in inspect.signature(
+            run_association).parameters:
+        kwargs["producer_payload"] = producer_payload
+    return run_association(artifact, events, controls, unit_basins,
+                           **kwargs)
 
 
 #: The canonical producer schema — every field a serialized
@@ -896,6 +920,91 @@ def _producer_gate_findings(payload: Mapping[str, Any]
     return findings
 
 
+def _producer_null_findings(payload: Mapping[str, Any]
+                            ) -> list[Finding]:
+    """REG-05b — recompute the carried null-family digests over the
+    serialized replicate records.
+
+    Each null family record the producer serializes binds a
+    ``family_digest`` = ``sha256_canonical`` over the documented
+    dict ``{family, seed_cycle, n_replicates, statistic, p_value,
+    null_stat_min, null_stat_max, null_k_distribution,
+    replicates}`` — recompute it over exactly what is carried (the
+    generator is never re-run).  ``seed_cycle`` is the declared
+    seed set (``seeds_declared``, falling back to ``seeds``).  When
+    the nulls section also carries ``k1_bic`` plus a
+    ``null_model_digest``, the envelope digest is recomputed the
+    same way.  Family records without a ``family_digest`` carry no
+    bound claim and are skipped."""
+    findings: list[Finding] = []
+    nulls = payload.get("nulls")
+    if not isinstance(nulls, Mapping):
+        return findings
+    declared = payload.get("seeds_declared")
+    if not isinstance(declared, (list, tuple)):
+        declared = payload.get("seeds")
+    seed_cycle = list(declared) \
+        if isinstance(declared, (list, tuple)) else declared
+    families: dict[str, Any] = {}
+    for fam in sorted(nulls, key=str):
+        rec = nulls[fam]
+        if not isinstance(rec, Mapping) or \
+                "family_digest" not in rec:
+            continue
+        families[str(fam)] = rec
+        path = f"artifact_payload.nulls.{fam}"
+        try:
+            expected = sha256_canonical({
+                "family": fam,
+                "seed_cycle": seed_cycle,
+                "n_replicates": rec["n_replicates"],
+                "statistic": rec["statistic"],
+                "p_value": rec["p_value"],
+                "null_stat_min": rec.get("null_stat_min"),
+                "null_stat_max": rec.get("null_stat_max"),
+                "null_k_distribution":
+                    rec.get("null_k_distribution", {}),
+                "replicates": rec.get("replicates", [])})
+        except (KeyError, TypeError, ValueError) as exc:
+            findings.append(Finding(
+                "PRODUCER_PAYLOAD_MALFORMED", path,
+                f"null family record cannot be canonically "
+                f"rehashed: {exc} — a bound digest over an "
+                "incomplete record is not evidence"))
+            continue
+        if rec["family_digest"] != expected:
+            findings.append(Finding(
+                "PRODUCER_DIGEST_MISMATCH", path,
+                "family_digest does not recompute over the "
+                "carried null-family record — the serialized "
+                "replicate evidence was rewritten post-bind"))
+    k1_bic = nulls.get("k1_bic")
+    declared_nm = payload.get("null_model_digest")
+    if isinstance(k1_bic, (list, tuple)) and \
+            _is_sha256(declared_nm):
+        try:
+            expected_nm = sha256_canonical({
+                "k1_bic": list(k1_bic),
+                "null_families": {fam: rec.get("family_digest")
+                                  for fam, rec in
+                                  families.items()}})
+        except (TypeError, ValueError) as exc:
+            findings.append(Finding(
+                "PRODUCER_PAYLOAD_MALFORMED",
+                "artifact_payload.nulls",
+                f"null_model_digest inputs cannot be canonically "
+                f"rehashed: {exc}"))
+        else:
+            if expected_nm != declared_nm:
+                findings.append(Finding(
+                    "PRODUCER_DIGEST_MISMATCH",
+                    "artifact_payload.null_model_digest",
+                    "null_model_digest does not recompute over the "
+                    "carried k1_bic list and family digests — the "
+                    "null-model binding was rewritten post-bind"))
+    return findings
+
+
 def audit_producer_payload(payload: Any) -> list[Finding]:
     """AUD-01 — producer-side audit over a serialized science_v0
     regime artifact payload.  Independent of the adapter: it checks
@@ -977,6 +1086,7 @@ def audit_producer_payload(payload: Any) -> list[Finding]:
         findings.extend(_producer_input_schema_findings(payload))
     findings.extend(_producer_seed_findings(payload))
     findings.extend(_producer_gate_findings(payload))
+    findings.extend(_producer_null_findings(payload))
     # PROV-01: source manifest — fixture or fully-bound real source
     sm = payload.get("source_manifest")
     if sm is not None:
@@ -1002,6 +1112,23 @@ def audit_producer_payload(payload: Any) -> list[Finding]:
                             "source_manifest.source_digests entry is "
                             "not a 64-hex sha256"))
                         break
+            # PROV-03: byte-verify the declared source evidence under
+            # evidence_root — declared digests are verified against
+            # real file bytes, never trusted.  Fixture manifests
+            # carry no files and return no problems.
+            if verify_source_evidence is None:
+                findings.append(Finding(
+                    "PRODUCER_PROVENANCE_MISSING",
+                    "artifact_payload",
+                    "source-evidence byte verification is "
+                    "unavailable — a non-fixture source_manifest "
+                    "cannot be byte-verified"))
+            else:
+                for prob in verify_source_evidence(sm):
+                    findings.append(Finding(
+                        "PRODUCER_EVIDENCE_UNVERIFIED",
+                        "artifact_payload.source_manifest",
+                        prob))
     # REG-13/PROV-02: terminal/associable consistency
     status = payload.get("status")
     if payload.get("associable") is True and             status != "DESCRIPTIVE_REGIME_ONLY":
@@ -1335,8 +1462,8 @@ def _order_probe_findings(assoc: Mapping[str, Any]) -> list[Finding]:
     findings: list[Finding] = []
     try:
         (artifact, events, controls, unit_basins, holdout,
-         region_basins, opportunities, n_boot, seed) = \
-            _reconstruct_association(assoc)
+         region_basins, opportunities, n_boot, seed,
+         producer_payload) = _reconstruct_association(assoc)
     except Exception as exc:
         return [Finding("RECONSTRUCTION_DEFECT",
                         "association",
@@ -1352,14 +1479,16 @@ def _order_probe_findings(assoc: Mapping[str, Any]) -> list[Finding]:
             "permutation — the frozen partition must be "
             "order-canonical"))
     try:
-        forward = run_association(
+        forward = _call_run_association(
             artifact, events, controls, unit_basins, holdout=holdout,
             region_basins=region_basins, opportunities=opportunities,
-            n_boot=n_boot, seed=seed)
-        reversed_run = run_association(
+            n_boot=n_boot, seed=seed,
+            producer_payload=producer_payload)
+        reversed_run = _call_run_association(
             artifact, list(reversed(events)), controls, unit_basins,
             holdout=holdout, region_basins=region_basins,
-            opportunities=opportunities, n_boot=n_boot, seed=seed)
+            opportunities=opportunities, n_boot=n_boot, seed=seed,
+            producer_payload=producer_payload)
     except Exception as exc:
         findings.append(Finding(
             "ASSOCIATION_REJECTED", "association",
@@ -1454,22 +1583,32 @@ def replay_bundle(bundle: Mapping[str, Any]) -> dict[str, Any]:
                 out["problems"].append(
                     f"association section is missing {required!r} — "
                     "an absent section is not an empty one")
-        for f in audit_producer_payload(assoc.get("artifact_payload")):
+        producer_findings = audit_producer_payload(
+            assoc.get("artifact_payload"))
+        for f in producer_findings:
             out["problems"].append(f"{f.code}: {f.detail}")
-        try:
-            (artifact, events, controls, unit_basins, holdout,
-             region_basins, opportunities, n_boot, seed) = \
-                _reconstruct_association(assoc)
-            report = run_association(
-                artifact, events, controls, unit_basins,
-                holdout=holdout, region_basins=region_basins,
-                opportunities=opportunities, n_boot=n_boot, seed=seed)
-            out["association_status"] = report.status
-            out["association_digest"] = sha256_canonical(
-                report.to_dict())
-        except Exception as exc:
+        if producer_findings:
+            # PROV-02b — a payload that fails the producer audit must
+            # not replay into a supported-looking status: findings
+            # block the association lane outright (the findings are
+            # still recorded in problems above).
             out["association_status"] = "REPLAY_FAILED"
-            out["problems"].append(f"association: {exc}")
+        else:
+            try:
+                (artifact, events, controls, unit_basins, holdout,
+                 region_basins, opportunities, n_boot, seed,
+                 producer_payload) = _reconstruct_association(assoc)
+                report = _call_run_association(
+                    artifact, events, controls, unit_basins,
+                    holdout=holdout, region_basins=region_basins,
+                    opportunities=opportunities, n_boot=n_boot,
+                    seed=seed, producer_payload=producer_payload)
+                out["association_status"] = report.status
+                out["association_digest"] = sha256_canonical(
+                    report.to_dict())
+            except Exception as exc:
+                out["association_status"] = "REPLAY_FAILED"
+                out["problems"].append(f"association: {exc}")
 
     fc = bundle.get("forecast")
     if isinstance(fc, Mapping):

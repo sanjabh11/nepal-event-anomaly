@@ -250,6 +250,17 @@ def _eval_kwargs(design):
             "n_boot": 50, "seed": 7}
 
 
+def _bound_evidence(cases):
+    """byte-bound baseline_evidence for ``cases`` — each entry's
+    digest recomputes over the supplied vector with fit_provenance
+    ``"bound"`` (required under a declaration since EVAL-05a)."""
+    probs = fx.make_baseline_probs(cases)
+    return {name: {"digest": sha256_canonical(
+                       [round(float(v), 9) for v in vec]),
+                   "fit_provenance": "bound"}
+            for name, vec in probs.items()}
+
+
 class TestEvaluate:
     def test_full_metric_table_and_planted_signal(self):
         design = fx.powered_design()
@@ -278,22 +289,23 @@ class TestEvaluate:
             "research_only_no_operational_authorization"
         # the same powered design reaches FORECAST_EXPERIMENT_ONLY
         # only when the declaration and baseline evidence are bound
-        from nepal.research_v0._hashing import sha256_canonical
+        # — including the regime digest and verified feature-row
+        # universe (EVAL-03 / EVAL-05b).
         cases = design["cases"]
-        probs = fx.make_baseline_probs(cases)
+        row_keys = fx.feature_row_keys_for(cases)
         kw = _eval_kwargs(design)
-        kw["baseline_evidence"] = {
-            name: {"digest": sha256_canonical(
-                       [round(float(v), 9) for v in v_]),
-                   "fit_provenance": "bound"}
-            for name, v_ in probs.items()}
+        kw["baseline_evidence"] = _bound_evidence(cases)
+        kw["feature_row_keys"] = row_keys
         kw["experiment"] = ForecastExperimentDeclaration(
             declaration_id="decl-powered",
             feature_artifact_digest="a" * 64,
             threshold_record={"threshold": 0.5},
             ablations=("model",),
             vintage_lineage=tuple(
-                sorted({c.vintage_digest for c in cases})))
+                sorted({c.vintage_digest for c in cases})),
+            forecast_regime_digest="c" * 64,
+            feature_row_keys_digest=sha256_canonical(
+                sorted(row_keys)))
         declared = evaluate(cases, **kw)
         assert declared.status == "FORECAST_EXPERIMENT_ONLY"
 
@@ -661,22 +673,21 @@ class TestPower:
         cases = design["cases"]
         kw = _eval_kwargs(design)
         # EVAL-03: power alone no longer promotes a fixture-only call;
-        # bind the declaration + baseline evidence for the forecast
-        # status.
-        from nepal.research_v0._hashing import sha256_canonical
-        probs = fx.make_baseline_probs(cases)
-        kw["baseline_evidence"] = {
-            name: {"digest": sha256_canonical(
-                       [round(float(v), 9) for v in v_]),
-                   "fit_provenance": "bound"}
-            for name, v_ in probs.items()}
+        # bind the declaration + baseline evidence + regime digest +
+        # verified feature-row universe for the forecast status.
+        row_keys = fx.feature_row_keys_for(cases)
+        kw["baseline_evidence"] = _bound_evidence(cases)
+        kw["feature_row_keys"] = row_keys
         kw["experiment"] = ForecastExperimentDeclaration(
             declaration_id="decl-powered",
             feature_artifact_digest="a" * 64,
             threshold_record={"threshold": 0.5},
             ablations=("model",),
             vintage_lineage=tuple(
-                sorted({c.vintage_digest for c in cases})))
+                sorted({c.vintage_digest for c in cases})),
+            forecast_regime_digest="c" * 64,
+            feature_row_keys_digest=sha256_canonical(
+                sorted(row_keys)))
         report = evaluate(cases, **kw)
         assert report.power["powered"] is True
         assert report.power["effective_n"] >= report.power["required_n"]
@@ -1188,6 +1199,9 @@ class TestExperimentDeclaration:
         cases = design["cases"]
         kwargs = _eval_kwargs(design)
         kwargs["experiment"] = fx.experiment_declaration(cases)
+        # EVAL-05a: declared mode fails closed without bound
+        # baseline evidence.
+        kwargs["baseline_evidence"] = _bound_evidence(cases)
         report = evaluate(cases, **kwargs)
         assert report.declaration["mode"] == "declared"
         assert report.declaration["declaration_id"] == \
@@ -1203,6 +1217,7 @@ class TestExperimentDeclaration:
         assert decl.problems() == []
         kwargs = _eval_kwargs(design)
         kwargs["experiment"] = decl
+        kwargs["baseline_evidence"] = _bound_evidence(cases)
         report = evaluate(cases, **kwargs)
         assert report.declaration["mode"] == "declared"
 
@@ -1425,6 +1440,9 @@ class TestRound4EvaluationHardening:
         kw = _eval_kwargs(design)
         kw["threshold"] = 0.5
         kw["experiment"] = decl
+        # EVAL-05a: a bound declaration requires bound baseline
+        # evidence — the call fails closed without it.
+        kw["baseline_evidence"] = _bound_evidence(cases)
         report = evaluate(cases, **kw)
         assert report.declaration["declaration_id"] == "decl-pd"
 

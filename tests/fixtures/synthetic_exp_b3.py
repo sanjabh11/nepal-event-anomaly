@@ -370,15 +370,36 @@ def train_partition(cases: Sequence[ForecastCase], *,
         **provenance)
 
 
+def feature_row_keys_for(
+        cases: Sequence[ForecastCase],
+        *, extra: Sequence[str] = ()) -> tuple[str, ...]:
+    """The canonical ``"unit_id|date"`` feature-row universe covering
+    ``cases`` — one key per (unit, valid-start date) pair, plus any
+    ``extra`` caller-supplied keys (e.g. train rows).  Deterministic
+    and duplicate-free; matches the ``FitPartition.row_keys`` format.
+    """
+    keys = {f"{c.unit_id}|{c.valid_start[:10]}" for c in cases}
+    keys.update(str(k) for k in extra)
+    return tuple(sorted(keys))
+
+
 def experiment_declaration(
         cases: Sequence[ForecastCase], *,
         declaration_id: str = "decl-synth-b3",
-        threshold: float = 0.5) -> dict:
+        threshold: float = 0.5,
+        forecast_regime_digest: str = "",
+        feature_row_keys: Any = None) -> dict:
     """A valid experiment-declaration mapping for ``cases``: every
     required key present, vintage lineage covering the cases'
     admitted digests, and the threshold record bound to
-    ``threshold``."""
-    return {
+    ``threshold``.
+
+    ``forecast_regime_digest`` (when non-empty) emits the optional
+    EVAL-03 regime binding; ``feature_row_keys`` (when given) emits
+    ``feature_row_keys_digest`` as ``sha256_canonical`` over the
+    sorted key list — the same recompute ``evaluate`` performs.
+    """
+    payload = {
         "declaration_id": declaration_id,
         "feature_artifact_digest": _sha("feature-artifact"),
         "threshold_record": {"threshold": threshold,
@@ -386,6 +407,12 @@ def experiment_declaration(
         "ablations": ["ablation-no-rule"],
         "vintage_lineage": sorted({c.vintage_digest for c in cases}),
     }
+    if forecast_regime_digest:
+        payload["forecast_regime_digest"] = forecast_regime_digest
+    if feature_row_keys is not None:
+        payload["feature_row_keys_digest"] = sha256_canonical(
+            sorted(str(k) for k in feature_row_keys))
+    return payload
 
 
 def make_baseline_probs(

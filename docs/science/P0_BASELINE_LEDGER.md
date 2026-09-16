@@ -41,19 +41,21 @@ The empty Git shell is never the implementation root.
   (bound head is the manifest's own field — see
   `ARTIFACT_MANIFEST_V0.json` for the current value).
 
-## Last fully-verified baseline (2026-09-16, round-5 doc residuals)
+## Last fully-verified baseline (2026-09-16, round-6 doc residuals)
 
-- HEAD: `442d966` — "docs(science): manifest bound to round-4
-  hardened head; 69 files".
+- HEAD: `4e2ef91` — "docs(science): manifest bound to round-5
+  hardened head; 71 files".
 - Manifest/HEAD relationship: `ARTIFACT_MANIFEST_V0.json` carries
-  `content_head=4f7f30b` — an **ancestor commit whose tree the
-  manifest hashes**; the manifest commit itself (`442d966`) follows
-  the content commit. 69 manifest files.
-- Full suite under pinned `.venv`: **1853 passed, 5 skipped
+  `content_head=99ccec9` — an **ancestor commit whose tree the
+  manifest hashes**; the manifest commit itself (`4e2ef91`) follows
+  the content commit. 71 manifest files.
+- Full suite under pinned `.venv`: **1875 passed, 5 skipped
   (rasterio), 0 failed, 57 warnings**.
-- Focused lanes: **400 green**.
-- **Round-5 remediation in progress** — this census will be refreshed
-  at the final manifest rebind; the figures above are the last
+- Focused lanes: **411 green** (round5-hardening 18 + regimes 93 +
+  association 63 + evaluation 118 + audit 61 +
+  adapters/replay/e2e, per the manifest's `test_results`).
+- **Round-6 hardening in progress** — this census will be refreshed
+  at the next manifest rebind; the figures above are the last
   verified baseline, not a projected final count.
 
 ## Verification snapshot history (2026-09-15, round 2 and later)
@@ -70,10 +72,13 @@ The empty Git shell is never the implementation root.
   dated history. 24 Run-A-reconciliation tests (calendar validity,
   claim-scan recursion, ledger repair, canonical JSON, accumulation
   semantics).
-- Warnings: all 56 are xarray/netCDF4 `DeprecationWarning`s in
-  `test_p5_io_contract.py` — library-level, none in the research
-  namespace. 5 skips are `rasterio` optional-dependency gates —
-  disclosed, not waived.
+- Warnings: 57 total at the verified baseline (this block earlier
+  said 56 — corrected 2026-09-16 to match the verified census and
+  the count already recorded above): 56 are xarray/netCDF4
+  `DeprecationWarning`s in `test_p5_io_contract.py` and 1 is a
+  sklearn `ConvergenceWarning` in `test_science_v0_regimes.py` —
+  all library-level, none in the research namespace. 5 skips are
+  `rasterio` optional-dependency gates — disclosed, not waived.
 - Run A corrected derivative: `research_runs/
   gmm_hybrid_corrected_20260915/` — sf running-accumulation defect
   (RA-01) corrected via closing-value aggregation; modal K=5

@@ -196,7 +196,14 @@ def run_assoc(artifact, events, controls, unit_basins=UNIT_BASINS,
               **kw):
     """``run_association`` with the matching synthetic opportunity
     registry auto-derived from the passed controls — tests that need
-    a doctored registry pass ``opportunities=`` explicitly."""
+    a doctored registry pass ``opportunities=`` explicitly.  Fixture
+    artifacts built via ``_rows_to_artifact`` ride the verified
+    producer-payload path automatically (PROV-04); pass
+    ``producer_payload=None`` explicitly to exercise the unverified
+    local-artifact lane."""
+    kw.setdefault("producer_payload",
+                  _ARTIFACT_PAYLOADS.get(
+                      _artifact_payload_key(artifact)))
     kw.setdefault("opportunities", make_opportunities(controls))
     return run_association(artifact, events, controls, unit_basins,
                            **kw)
@@ -237,20 +244,75 @@ def make_holdout(events: list[EventLabelV0],
     return plan
 
 
+# PROV-04 (R6): fixture-built artifacts keep the verified
+# producer-payload path — every ``_rows_to_artifact`` artifact is
+# stamped from a minimal internally-consistent frozen producer
+# payload whose ``freeze_digest`` binds the artifact; the payload is
+# registered here so ``run_assoc`` can pass it through.
+_ARTIFACT_PAYLOADS: dict = {}
+
+
+def _artifact_payload_key(artifact) -> tuple:
+    """The digest/provenance tuple a producer payload binds —
+    row-order-canonical, so a ``dataclasses.replace`` permutation of
+    the same partition finds the same registered payload."""
+    return (artifact.regime_digest,
+            artifact.producer_payload_digest,
+            artifact.assignment_digest,
+            artifact.fitted_on, artifact.label_blinding,
+            tuple(artifact.seeds), artifact.mode)
+
+
+def _producer_payload_for(assignments,
+                          seeds=(11, 23, 42)) -> dict:
+    """A minimal frozen producer-shaped payload binding ``assignments``
+    — the same digest chain ``freeze_regime_artifact`` /
+    ``regime_assignment_from_artifact`` recompute:
+    ``assignment_digest`` over the raw sidecar,
+    ``regime_artifact_digest`` over the payload minus
+    ``{regime_artifact_digest, freeze_digest, frozen}``, and
+    ``freeze_digest`` over the payload minus ``{freeze_digest,
+    frozen}``."""
+    rows = [list(r) for r in sorted(assignments)]
+    payload = {
+        "record_type": "FrozenRegimeArtifactV0",
+        "assignments": rows,
+        "frozen": True,
+        "mode": "RETROSPECTIVE_REGIME",
+        "fitted_on": "TRAIN_ONLY",
+        "label_blinding": True,
+        "data_class": "REANALYSIS",
+        "status": "DESCRIPTIVE_REGIME_ONLY",
+        "seeds": list(seeds),
+    }
+    payload["assignment_digest"] = sha256_canonical(rows)
+    payload["regime_artifact_digest"] = sha256_canonical(
+        {k: v for k, v in payload.items() if k != "frozen"})
+    payload["freeze_digest"] = sha256_canonical(
+        {k: v for k, v in payload.items() if k != "frozen"})
+    return payload
+
+
 def _rows_to_artifact(rows: dict[tuple[str, str], str],
                       artifact_id: str = "regime-syn-b1",
                       **kw) -> RegimeAssignmentArtifact:
     assignments = tuple(sorted(
         (u, d, r) for (u, d), r in rows.items()))
-    kw.setdefault(
-        "producer_payload_digest",
-        hashlib.sha256(b"synthetic-direct-fixture").hexdigest())
-    return RegimeAssignmentArtifact(
+    seeds = kw.pop("seeds", (11, 23, 42))
+    payload = _producer_payload_for(assignments, seeds=seeds)
+    kw.setdefault("regime_digest", payload["freeze_digest"])
+    kw.setdefault("producer_payload_digest",
+                  payload["freeze_digest"])
+    artifact = RegimeAssignmentArtifact(
         artifact_id=artifact_id,
-        regime_digest=hashlib.sha256(
-            b"synthetic-regime-partition").hexdigest(),
         assignments=assignments,
-        seeds=(11, 23, 42), **kw)
+        seeds=tuple(seeds), **kw)
+    if artifact.regime_digest == payload["freeze_digest"] and \
+            artifact.producer_payload_digest == \
+            payload["freeze_digest"]:
+        _ARTIFACT_PAYLOADS[_artifact_payload_key(artifact)] = \
+            payload
+    return artifact
 
 
 def planted_artifact(events: list[EventLabelV0]

@@ -10,6 +10,8 @@ on:
       - "nepal/science_v0/**"
       - "nepal/experiment_v0/**"
       - "nepal/era5_download.py"
+      - "nepal/era5_hybrid_fetch.py"
+      - "nepal/run_ledger_repair.py"
       - "nepal/feature_extraction.py"
       - "nepal/gmm_descriptive.py"
       - "tests/test_research_v0_*.py"
@@ -18,6 +20,11 @@ on:
       - "tests/test_science_experiment_e2e.py"
       - "tests/fixtures/**"
       - "tests/test_p5_io_contract.py"
+      - "tests/test_round5_hardening.py"
+      - "tests/test_run_a_reconciliation.py"
+      - "tests/test_r6_*.py"
+      - "tests/test_framework_v1_*.py"
+      - "requirements.txt"
       - "docs/science/**"
       - ".github/workflows/research-v0.yml"
   pull_request:
@@ -26,6 +33,8 @@ on:
       - "nepal/science_v0/**"
       - "nepal/experiment_v0/**"
       - "nepal/era5_download.py"
+      - "nepal/era5_hybrid_fetch.py"
+      - "nepal/run_ledger_repair.py"
       - "nepal/feature_extraction.py"
       - "nepal/gmm_descriptive.py"
       - "tests/test_research_v0_*.py"
@@ -34,6 +43,11 @@ on:
       - "tests/test_science_experiment_e2e.py"
       - "tests/fixtures/**"
       - "tests/test_p5_io_contract.py"
+      - "tests/test_round5_hardening.py"
+      - "tests/test_run_a_reconciliation.py"
+      - "tests/test_r6_*.py"
+      - "tests/test_framework_v1_*.py"
+      - "requirements.txt"
       - "docs/science/**"
       - ".github/workflows/research-v0.yml"
 
@@ -126,6 +140,39 @@ jobs:
         run: |
           PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
             python -B -m pytest tests/test_p5_io_contract.py -q -rs
+
+      - name: Round-5 hardening + Run-A reconciliation tests
+        # CI-01 (round 6): these manifest-governed lanes were carried
+        # by the manifest but never executed in this workflow.  The
+        # tests/test_r6_*.py glob covers future round-N hardening
+        # lanes; nullglob keeps an empty match from failing the step.
+        run: |
+          set -e
+          PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
+            python -B -m pytest \
+            tests/test_round5_hardening.py \
+            tests/test_run_a_reconciliation.py \
+            -q -rs
+          shopt -s nullglob
+          r6=(tests/test_r6_*.py)
+          if [ ${#r6[@]} -gt 0 ]; then
+            PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
+              python -B -m pytest "${r6[@]}" -q -rs
+          else
+            echo "no tests/test_r6_*.py files present yet"
+          fi
+
+      - name: Frozen framework_v1 contract tests
+        # tests/test_framework_v1_*.py exercise the frozen
+        # nepal/framework_v1 package read-only; the package itself is
+        # protected by the frozen-boundary diff guards above, so these
+        # tests can only ever run against unchanged frozen bytes.  The
+        # 5 rasterio-gated tests skip here (rasterio is intentionally
+        # outside the supported lock — ENV-01); -rs keeps skip reasons
+        # visible.
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
+            python -B -m pytest tests/test_framework_v1_*.py -q -rs
 
       - name: ERA5 download dry-run gate
         run: python -B nepal/era5_download.py --dry-run

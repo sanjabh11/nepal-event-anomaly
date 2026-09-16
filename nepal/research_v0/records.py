@@ -47,6 +47,14 @@ POSITIVE_ADMISSIBLE_ADJUDICATION = frozenset(
 FEATURE_NAMESPACES = ("occurrence", "exposure", "impact", "context")
 EVIDENCE_REVIEW_STATES = ("UNREVIEWED", "REVIEWED", "INDEPENDENTLY_VERIFIED")
 
+#: Data classes admissible for a forecast-mode regime artifact
+#: (FCST-01): the issue-time forecast archive classes only —
+#: reanalysis is retrospective and a rolling feed is not a
+#: historical archive.
+FORECAST_REGIME_DATA_CLASSES = frozenset({
+    ForecastDataClass.REFORECAST.value,
+    ForecastDataClass.ARCHIVED_OPERATIONAL.value})
+
 # Controlled vertical ontology (G03): a spec may only claim a declared
 # vertical and one of its compatible mechanisms — arbitrary pairs reject.
 VERTICAL_IDS = frozenset({
@@ -872,18 +880,53 @@ class RegimeArtifactV0:
     k: int = 1                       # K=1 null is mandatory
     seeds: tuple[int, ...] = ()
     label_blinding: bool = True      # no event labels in fitting/selection
+    # FCST-01: forecast-mode bindings — mandatory when
+    # mode == "FORECAST_REGIME" (the bound forecast archive vintages
+    # and the declared forecast feature set), forbidden otherwise.
+    forecast_vintage_digests: tuple[str, ...] = ()
+    forecast_feature_set: tuple[str, ...] = ()
 
     def problems(self) -> list[str]:
         problems: list[str] = []
         _req(problems, "regime_id", self.regime_id)
         if self.mode not in {m.value for m in RegimeMode}:
             problems.append(f"mode {self.mode!r} invalid")
+        elif self.mode == RegimeMode.RETROSPECTIVE_REGIME.value:
+            if self.data_class != ForecastDataClass.REANALYSIS.value:
+                problems.append("retrospective regime discovery runs "
+                                "on reanalysis data only — never "
+                                "forecast archives or feeds")
+            if self.forecast_vintage_digests or \
+                    self.forecast_feature_set:
+                problems.append(
+                    "RETROSPECTIVE_REGIME forbids "
+                    "forecast_vintage_digests/forecast_feature_set "
+                    "— forecast bindings may not cross into the "
+                    "retrospective lane")
+        elif self.mode == RegimeMode.FORECAST_REGIME.value:
+            if self.data_class not in FORECAST_REGIME_DATA_CLASSES:
+                problems.append(
+                    f"FORECAST_REGIME requires a forecast archive "
+                    f"data_class in "
+                    f"{sorted(FORECAST_REGIME_DATA_CLASSES)} — got "
+                    f"{self.data_class!r}")
+            if not self.forecast_vintage_digests:
+                problems.append(
+                    "FORECAST_REGIME requires non-empty "
+                    "forecast_vintage_digests — the forecast "
+                    "archive vintages the regime was fit on must "
+                    "be bound")
+            elif any(not SHA256_RE.match(str(d))
+                     for d in self.forecast_vintage_digests):
+                problems.append("every forecast_vintage_digest must "
+                                "be 64-hex sha256")
+            if not self.forecast_feature_set:
+                problems.append(
+                    "FORECAST_REGIME requires a non-empty "
+                    "forecast_feature_set — the forecast features "
+                    "the regime was fit on must be declared")
         if self.fitted_on != "TRAIN_ONLY":
             problems.append("regimes must be fit on training groups only")
-        if self.data_class != "REANALYSIS":
-            problems.append("regime discovery runs on retrospective "
-                            "reanalysis data only — never forecast "
-                            "archives or feeds")
         if not isinstance(self.k, int) or isinstance(
                 self.k, bool) or self.k < 1:
             problems.append("k must be an integer >= 1; K=1 null is "

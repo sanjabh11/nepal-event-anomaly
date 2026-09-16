@@ -47,6 +47,31 @@ Round-3 hardening implemented here:
   consistency; a direct freeze call cannot bypass the producer
   audit.
 
+Round-6 hardening implemented here:
+
+* PROV-01 — freeze rejects truthy non-bool ``required_gates``
+  values; every gate value must be a real boolean.
+* REG-02 — ``_iso_date_ok`` is calendar-valid (strptime), not just
+  shape-valid: ``2020-13-99`` rejects.
+* REG-03 — every stability refit (missingness, effort, era) is
+  intersected with the policy-selected fit surface; dropped rows
+  can never re-enter a refit.
+* REG-04 — declared ``effort_split="first10"`` fails closed on a
+  numeric effort column; the token executes as named or not at all.
+* REG-05a — each null replicate binds ``input_digest`` (sha256 of
+  the generated float64 matrix) inside the hashed ``family_digest``
+  material.
+* FCST-01 — declared ``mode`` is a RegimeMode value;
+  FORECAST_REGIME requires bound ``forecast_vintage_digests`` and
+  ``forecast_feature_set`` and emits data_class
+  ARCHIVED_OPERATIONAL; RETROSPECTIVE_REGIME emits REANALYSIS and
+  must carry no forecast fields — enforced at config validation and
+  again at freeze.
+* PROV-03 — non-fixture source manifests are byte-verified
+  (``verify_source_evidence``): every ``source_files`` entry must
+  resolve inside ``evidence_root`` and hash to its declared digest,
+  and the verified multiset must equal ``source_digests``.
+
 This module never reads event labels, never emits forecast or
 precursor language, and never tunes on locked test basins.
 """
@@ -61,6 +86,7 @@ import itertools
 import re
 import sys
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Mapping, Sequence
 
 import numpy as np
@@ -69,8 +95,10 @@ from sklearn.mixture import GaussianMixture
 from sklearn.preprocessing import StandardScaler
 from sklearn.impute import SimpleImputer
 
-from nepal.research_v0._hashing import sha256_canonical
+from nepal.research_v0._hashing import (
+    sha256_canonical, verify_source_evidence)
 from nepal.research_v0.gates import REQUIRED_REGIME_GATE_NAMES
+from nepal.research_v0.policy import ForecastDataClass, RegimeMode
 
 STATUSES = frozenset({
     "DESCRIPTIVE_REGIME_ONLY",
@@ -423,7 +451,8 @@ def _null_envelope(observed_stat, generator, modal_k: int,
         gen_seed = int(decl_seeds[0]) + 1000003 * (i + 1)
         fit_seed = int(decl_seeds[i % len(decl_seeds)])
         rep = {"i": i, "gen_seed": gen_seed, "fit_seed": fit_seed,
-               "k": None, "stat": None, "ok": False}
+               "k": None, "stat": None, "ok": False,
+               "input_digest": None}
         rec["replicates"].append(rep)
         try:
             X_n = generator(i, gen_seed)
@@ -432,6 +461,11 @@ def _null_envelope(observed_stat, generator, modal_k: int,
         if X_n is None or not np.isfinite(X_n).all():
             rec["n_failed"] += 1
             continue
+        # REG-05a: the exact generated input surface is bound per
+        # replicate — the family digest hashes this record, so an
+        # altered null input can never replay under the same digest.
+        rep["input_digest"] = _sha_bytes(
+            np.ascontiguousarray(X_n, dtype=np.float64).tobytes())
         # REG-05 selection consistency: the null replicate replays
         # the declared K sweep and takes the BIC-best converged fit —
         # the null is not privileged with the observed modal K.
@@ -475,11 +509,20 @@ _ISO_DATE_RE = None  # compiled lazily
 
 
 def _iso_date_ok(s: str) -> bool:
-    import re
+    """Calendar-valid canonical YYYY-MM-DD check — the shape regex
+    admits `2020-13-99`, so calendar validity is verified by
+    strptime (same pattern as research_v0.gates._valid_calendar_date).
+    """
     global _ISO_DATE_RE
     if _ISO_DATE_RE is None:
         _ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-    return bool(_ISO_DATE_RE.match(str(s)))
+    if not _ISO_DATE_RE.match(str(s)):
+        return False
+    try:
+        datetime.strptime(str(s), "%Y-%m-%d")
+        return True
+    except ValueError:
+        return False
 
 
 @dataclass(frozen=True)
@@ -521,8 +564,17 @@ class RegimeRunConfig:
     # REG-10 elevation ablation threshold
     elev_ablation_ari_max: float = 0.8
     # REG-11 input manifest: {"source_id", "source_digests",
-    # "units", "feature_allowlist", "lineage"} or {"fixture": True}.
+    # "units", "feature_allowlist", "lineage", "evidence_root",
+    # "source_files"} or {"fixture": True}.
     source_manifest: object = None
+    # FCST-01: the run mode is declared, never derived.
+    # FORECAST_REGIME must bind archive-vintage evidence
+    # (forecast_vintage_digests, all 64-hex) and a declared
+    # forecast_feature_set contained in the feature columns; a
+    # RETROSPECTIVE run must carry neither.
+    mode: str = "RETROSPECTIVE_REGIME"
+    forecast_vintage_digests: tuple = ()
+    forecast_feature_set: tuple = ()
 
 
 def _modal_k(ks: list[int]) -> int:
@@ -664,6 +716,56 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
                 "reason": f"effort_split {config.effort_split!r} "
                           "unsupported — declare 'median', 'tercile', "
                           "'first10', or 'quantile:<q in (0,1)>'"}
+    # FCST-01: mode is a declared RegimeMode value.
+    # FORECAST_REGIME requires bound archive-vintage digests and a
+    # forecast feature set contained in the declared feature columns;
+    # RETROSPECTIVE_REGIME must never silently carry forecast fields.
+    if config.mode not in {m.value for m in RegimeMode}:
+        return {"status": "RUN_ERROR",
+                "reason": f"mode {config.mode!r} is not a declared "
+                          "RegimeMode value"}
+    if config.mode == RegimeMode.FORECAST_REGIME.value:
+        fvd = config.forecast_vintage_digests
+        if not isinstance(fvd, (list, tuple)) or not fvd or \
+                any(not isinstance(d, str) or
+                    not re.fullmatch(r"[0-9a-f]{64}", d)
+                    for d in fvd):
+            return {"status": "RUN_ERROR",
+                    "reason": "FORECAST_REGIME requires non-empty "
+                              "forecast_vintage_digests — every "
+                              "vintage digest must be 64-hex sha256"}
+        ffs = config.forecast_feature_set
+        if not isinstance(ffs, (list, tuple)) or not ffs or \
+                any(not isinstance(c, str) or not c.strip()
+                    for c in ffs):
+            return {"status": "RUN_ERROR",
+                    "reason": "FORECAST_REGIME requires a non-empty "
+                              "forecast_feature_set"}
+        outside = sorted(set(ffs) - set(feature_cols))
+        if outside:
+            return {"status": "RUN_ERROR",
+                    "reason": f"forecast_feature_set members "
+                              f"{outside} are outside the declared "
+                              "feature columns"}
+    elif config.forecast_vintage_digests or \
+            config.forecast_feature_set:
+        return {"status": "RUN_ERROR",
+                "reason": "RETROSPECTIVE_REGIME must not carry "
+                          "forecast_vintage_digests or "
+                          "forecast_feature_set — forecast evidence "
+                          "cannot silently transfer into a "
+                          "retrospective artifact"}
+    # REG-04: 'first10' is an ordinal/categorical stratification — a
+    # numeric effort column must declare an explicit numeric split;
+    # the declared token executes as named or not at all.
+    if config.effort_col is not None and _es == "first10" and \
+            pd.api.types.is_numeric_dtype(df[config.effort_col]):
+        return {"status": "RUN_ERROR",
+                "reason": "effort_split 'first10' cannot execute on "
+                          f"numeric effort column "
+                          f"{config.effort_col!r} — declare 'median', "
+                          "'tercile', or 'quantile:<q>' for numeric "
+                          "effort"}
     if isinstance(config.n_null_replicates, bool) or \
             not isinstance(config.n_null_replicates, int) or \
             config.n_null_replicates < MIN_NULL_REPLICATES:
@@ -736,6 +838,16 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
                         "reason": f"feature columns {not_allowed} "
                                   "are outside the declared "
                                   "source_manifest.feature_allowlist"}
+        # PROV-03: byte-verify the declared evidence binding — every
+        # source_files entry must resolve inside evidence_root and
+        # hash to its declared digest, and the verified multiset must
+        # equal source_digests.  A manifest that names evidence it
+        # cannot produce fails closed before any fit.
+        ev_problems = verify_source_evidence(sm)
+        if ev_problems:
+            return {"status": "RUN_ERROR",
+                    "reason": "source_manifest evidence verification "
+                              f"failed: {ev_problems}"}
 
     # REG-C06: era boundaries are either uniformly ISO dates (a
     # date-defined partition) or uniformly era labels matching the
@@ -1460,6 +1572,11 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
             miss_ax["n_rows_used"] = int(sel.sum())
             miss_ax["max_missingness"] = float(
                 config.max_missingness)
+        # REG-03: the axis refits only the policy-selected fit
+        # surface — intersect the recomputed selection with fit_sel
+        # so a policy-dropped row can never re-enter a refit.
+        sel = np.asarray(sel, dtype=bool) & \
+            np.asarray(fit_sel, dtype=bool)
         sub_idx = train_rows_index[sel]
         sub = df.loc[sub_idx, feature_cols]
         if len(sub) < 50:
@@ -1486,7 +1603,11 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
         }
         bands = {}
         for bname, bsel in band_defs.items():
-            sub_idx = train_rows_index[bsel]
+            # REG-03: bands are intersected with the policy-selected
+            # fit surface — dropped rows never re-enter a band refit.
+            sub_idx = train_rows_index[
+                np.asarray(bsel, dtype=bool) &
+                np.asarray(fit_sel, dtype=bool)]
             sub = df.loc[sub_idx, feature_cols]
             brec = {"n_rows": int(len(sub)), "status": None,
                     "js": None}
@@ -1578,7 +1699,12 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
             strata_policy = {"kind": "categorical",
                              "values": uniques[:10]}
         for bname, bsel in band_sel.items():
-            sub_idx = train_rows_index[np.asarray(bsel)]
+            # REG-03: effort bands are intersected with the
+            # policy-selected fit surface — a missingness-dropped row
+            # can never re-enter a band refit.
+            sub_idx = train_rows_index[
+                np.asarray(bsel, dtype=bool) &
+                np.asarray(fit_sel, dtype=bool)]
             sub = df.loc[sub_idx, feature_cols]
             brec = {"n_rows": int(len(sub)), "status": None,
                     "js": None}
@@ -1637,7 +1763,10 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
     else:
         boundaries = [str(x) for x in config.era_boundaries]
         era_ax["boundaries"] = list(boundaries)
-        train_dates_str = df.loc[train_mask,
+        # REG-03: era assignment is computed over the policy-selected
+        # fit surface — X_train is indexed by fit rows only, so a
+        # dropped-row era/dates vector cannot index it.
+        train_dates_str = df.loc[fit_rows_index,
                                  config.date_col].astype(str)
         if all(_iso_date_ok(x) for x in boundaries):
             bounds = sorted(boundaries)
@@ -1661,7 +1790,8 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
                     f"match observed train eras {sorted(observed)}")
             else:
                 era_assign = df.loc[
-                    train_mask, config.era_col].astype(str).to_numpy()
+                    fit_sel_full,
+                    config.era_col].astype(str).to_numpy()
         if era_assign is not None:
             eras = sorted(set(era_assign.tolist()))
             if len(eras) < 2:
@@ -1748,6 +1878,11 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
              "n_replicates": int(config.n_null_replicates),
              "season_era_stratified": bool(
                  config.era_col and config.era_col in df.columns),
+             # REG-05b: serialize the K=1 BIC list so replay can
+             # recompute null_model_digest over exactly the carried
+             # material instead of trusting the envelope.
+             "k1_bic": [_finite_or_token(f["bic"])
+                        for f in null_fits],
              "shuffled": null_shuf,
              "season_matched": null_seas}
 
@@ -1792,8 +1927,19 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
         status = "CANDIDATE_ONLY"
 
     artifact = {
-        "mode": "RETROSPECTIVE_REGIME",
-        "data_class": "REANALYSIS",
+        "mode": config.mode,
+        # FCST-01: FORECAST_REGIME binds issue-time archive vintages
+        # — ARCHIVED_OPERATIONAL is the ForecastDataClass archive
+        # class; REANALYSIS is retrospective-only and can never be
+        # emitted as forecast evidence.
+        "data_class": (
+            "REANALYSIS"
+            if config.mode == RegimeMode.RETROSPECTIVE_REGIME.value
+            else ForecastDataClass.ARCHIVED_OPERATIONAL.value),
+        "forecast_vintage_digests": sorted(
+            str(d) for d in config.forecast_vintage_digests),
+        "forecast_feature_set": sorted(
+            str(c) for c in config.forecast_feature_set),
         "fitted_on": "TRAIN_ONLY",
         "label_blinding": True,
         # provenance binding (I-05): feature order, frame digest,
@@ -1976,6 +2122,12 @@ def freeze_regime_artifact(artifact: dict) -> dict:
             "declared gate universe — missing gates "
             f"{sorted(REQUIRED_REGIME_GATE_NAMES - set(gates))}, "
             f"extra gates {sorted(set(gates) - REQUIRED_REGIME_GATE_NAMES)}")
+    # PROV-01: gate values must be real booleans — a truthy non-bool
+    # (e.g. the string "PASS") can never certify a terminal status.
+    if any(not isinstance(v, bool) for v in gates.values()):
+        raise ValueError("stability.required_gates values must be "
+                         "booleans — a truthy non-bool gate value "
+                         "cannot certify a terminal status")
     if status == "DESCRIPTIVE_REGIME_ONLY" and \
             not all(bool(v) for v in gates.values()):
         raise ValueError("DESCRIPTIVE_REGIME_ONLY requires every "
@@ -1991,6 +2143,34 @@ def freeze_regime_artifact(artifact: dict) -> dict:
         raise ValueError("UNSUPERVISED_STRUCTURE_NOT_STABLE without "
                          "any recorded required_gates failure is "
                          "inconsistent")
+    # FCST-01: mode ↔ data_class ↔ forecast-field consistency is
+    # bound state — a frozen artifact can never claim a mode its
+    # evidence fields do not support.
+    mode = artifact.get("mode")
+    fc_vd = artifact.get("forecast_vintage_digests") or ()
+    fc_fs = artifact.get("forecast_feature_set") or ()
+    if mode == RegimeMode.FORECAST_REGIME.value:
+        if artifact.get("data_class") != \
+                ForecastDataClass.ARCHIVED_OPERATIONAL.value:
+            raise ValueError(
+                "FORECAST_REGIME requires data_class "
+                "ARCHIVED_OPERATIONAL — issue-time archive vintages "
+                "are the only admissible forecast evidence")
+        if not fc_vd or not fc_fs:
+            raise ValueError("FORECAST_REGIME requires bound "
+                             "forecast_vintage_digests and "
+                             "forecast_feature_set")
+    elif mode == RegimeMode.RETROSPECTIVE_REGIME.value:
+        if artifact.get("data_class") != "REANALYSIS":
+            raise ValueError("RETROSPECTIVE_REGIME requires "
+                             "data_class REANALYSIS")
+        if fc_vd or fc_fs:
+            raise ValueError("RETROSPECTIVE_REGIME must not carry "
+                             "forecast_vintage_digests or "
+                             "forecast_feature_set")
+    else:
+        raise ValueError(f"mode {mode!r} is not a declared "
+                         "RegimeMode value")
     # Deep copy (I-06): a shallow dict() leaves nested payloads shared —
     # mutating the source artifact's nested lists/dicts would silently
     # change the "frozen" surface.  Digest verification above makes any
