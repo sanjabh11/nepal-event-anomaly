@@ -113,12 +113,25 @@ class TestReplayDefects:
         assert any(f.code == "MISSING_BASELINE"
                    for f in audit_pipeline(bundle))
 
-    def test_undersized_opportunity_count_collects_problem(self):
+    def test_shrunk_opportunity_registry_collects_problem(self):
+        """EVAL-01: removing a case's opportunity from the registry
+        must fail replay — the denominator is registry-derived, and
+        a bare integer in the bundle is inert (verified below)."""
         bundle = fx.synthetic_bundle()
-        bundle["forecast"]["n_opportunities"] = 1
+        first = sorted(bundle["forecast"]["opportunities"])[0]
+        del bundle["forecast"]["opportunities"][first]
         result = replay_bundle(bundle)
         assert result["evaluation_status"] == "REPLAY_FAILED"
         assert result["problems"]
+
+    def test_stray_integer_denominator_is_inert(self):
+        """A planted n_opportunities field cannot manipulate the
+        evaluation — replay derives the denominator from the
+        registry."""
+        bundle = fx.synthetic_bundle()
+        bundle["forecast"]["n_opportunities"] = 10 ** 6
+        result = replay_bundle(bundle)
+        assert result["evaluation_status"] != "REPLAY_FAILED"
 
 
 # ---------------------------------------------------------------------

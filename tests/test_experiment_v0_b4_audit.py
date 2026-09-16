@@ -311,7 +311,10 @@ class TestMutableOutputs:
             cases, holdout=fx.synthetic_forecast_holdout(),
             baseline_probs=fx.synthetic_baseline_probs(cases),
             admitted_vintages=admitted,
-            n_opportunities=len(cases), n_boot=16, seed=3)
+            opportunities=fx.forecast_opportunities(cases),
+            unit_basins=fx.forecast_unit_basins(cases),
+            region_basins=fx.forecast_region_basins(cases),
+            n_boot=16, seed=3)
         with pytest.raises(dataclasses.FrozenInstanceError):
             evaluation.status = "X"  # type: ignore[misc]
 

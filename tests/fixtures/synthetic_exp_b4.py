@@ -434,11 +434,55 @@ def synthetic_bundle(n_events: int = 21, n_boot: int = 32,
             "cases": [c.to_dict() for c in cases],
             "holdout": f_holdout.to_dict(),
             "baseline_probs": synthetic_baseline_probs(cases),
-            "n_opportunities": len(cases),
+            "opportunities": {
+                oid: o.to_dict() for oid, o in
+                forecast_opportunities(cases).items()},
+            "unit_basins": forecast_unit_basins(cases),
+            "region_basins": {k: list(v) for k, v in
+                              forecast_region_basins(cases).items()},
             "n_boot": n_boot,
             "seed": seed,
         },
     }
+
+
+def forecast_opportunities(
+        cases: Sequence[ForecastCase]
+        ) -> dict[str, ObservationOpportunityV0]:
+    """The verified opportunity registry backing the forecast
+    evaluation — one OBSERVED_FULL record per case opportunity, on
+    the case's own unit and valid window."""
+    out: dict[str, ObservationOpportunityV0] = {}
+    for c in cases:
+        out[c.opportunity_id] = ObservationOpportunityV0(
+            opportunity_id=c.opportunity_id,
+            unit_id=c.unit_id,
+            platform="SYNTHETIC",
+            window_start=c.valid_start,
+            window_end=c.valid_end,
+            coverage_fraction=1.0,
+            coverage_quality="synthetic-complete",
+            detection_threshold="synthetic",
+            state="OBSERVED_FULL",
+            source_id="synthetic_forecast_archive_v0",
+            source_as_of="2021-02-01",
+            frame_ids=(f"frame-{c.opportunity_id}-a",))
+    return out
+
+
+def forecast_unit_basins(
+        cases: Sequence[ForecastCase]) -> dict[str, str]:
+    """unit_id -> basin for the forecast scope: one synthetic basin
+    per evaluation region."""
+    return {c.unit_id: f"{c.region}-basin" for c in cases}
+
+
+def forecast_region_basins(
+        cases: Sequence[ForecastCase]) -> dict[str, tuple[str, ...]]:
+    """region -> basins — keys equal the holdout's declared
+    evaluation regions exactly."""
+    regions = sorted({c.region for c in cases})
+    return {r: (f"{r}-basin",) for r in regions}
 
 
 __all__ = [

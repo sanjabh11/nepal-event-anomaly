@@ -705,9 +705,14 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
         status = "DESCRIPTIVE_REGIME_ONLY"
     elif k_freq < 1.0 or (seed_ari and min(seed_ari) <= 0.6) \
             or not loro_pass:
+        # structural instability — the partition itself does not
+        # reproduce under seeds/regions
         status = "UNSUPERVISED_STRUCTURE_NOT_STABLE"
     else:
-        status = "UNSUPERVISED_STRUCTURE_NOT_STABLE"
+        # structure reproduces but an evidence gate (bootstrap,
+        # season/elevation/missingness/era axis, or a null family)
+        # failed — candidate structure only, never descriptive-stable
+        status = "CANDIDATE_ONLY"
 
     artifact = {
         "mode": "RETROSPECTIVE_REGIME",

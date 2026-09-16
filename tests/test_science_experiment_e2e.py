@@ -39,6 +39,7 @@ from nepal.experiment_v0.baselines import (ThresholdRule,
 from nepal.experiment_v0.evaluation import ForecastCase, evaluate
 from nepal.experiment_v0.vintages import VintageRequest
 from nepal.research_v0._hashing import sha256_canonical
+from nepal.research_v0.records import ObservationOpportunityV0
 
 _BASINS = ("koshi", "bagmati", "gandaki", "seti", "karnali",
            "mahakali")
@@ -225,9 +226,27 @@ def test_synthetic_end_to_end_path():
         "regularized_supervised": [c.y_prob for c in cases],
     }
     admitted = {sha256_canonical(vintage.to_dict()): vintage}
+    eval_opps = {
+        c.opportunity_id: ObservationOpportunityV0(
+            opportunity_id=c.opportunity_id, unit_id=c.unit_id,
+            platform="SYNTHETIC", window_start=c.valid_start,
+            window_end=c.valid_end, coverage_fraction=1.0,
+            coverage_quality="synthetic-complete",
+            detection_threshold="synthetic", state="OBSERVED_FULL",
+            source_id="synthetic_forecast_archive_v0",
+            source_as_of="2021-02-01",
+            frame_ids=(f"frame-{c.opportunity_id}",))
+        for c in cases}
+    eval_unit_basins = {c.unit_id: c.unit_id for c in cases}
+    eval_region_basins = {
+        r: tuple(sorted({c.unit_id for c in cases
+                         if c.region == r}))
+        for r in holdout_v0.evaluation_region_names}
     eval_report = evaluate(
         cases, holdout=holdout_v0, baseline_probs=baseline_probs,
-        admitted_vintages=admitted, n_opportunities=len(cases),
+        admitted_vintages=admitted, opportunities=eval_opps,
+        unit_basins=eval_unit_basins,
+        region_basins=eval_region_basins,
         n_boot=50, seed=5)
     assert set(eval_report.metrics) >= {"model", "null"}
     assert eval_report is not None

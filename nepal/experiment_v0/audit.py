@@ -942,11 +942,33 @@ def replay_bundle(bundle: Mapping[str, Any]) -> dict[str, Any]:
             cases = [ForecastCase.from_dict(c)
                      for c in fc.get("cases") or []]
             holdout = _as_holdout(fc.get("holdout"), "forecast")
+            # the forecast evaluation scope is registry-derived —
+            # opportunities, unit->basin, and region->basin maps ride
+            # in the bundle, never a caller-chosen integer
+            f_opps = {}
+            for oid, op in (fc.get("opportunities") or {}).items():
+                rec = deserialize_record(op)
+                if type(rec) is not ObservationOpportunityV0:
+                    raise ValueError(
+                        f"forecast opportunity deserialized to "
+                        f"{type(rec).__name__!r}, not "
+                        "ObservationOpportunityV0")
+                if rec.opportunity_id != str(oid):
+                    raise ValueError(
+                        f"forecast opportunity registry key {oid!r} "
+                        f"does not match record id "
+                        f"{rec.opportunity_id!r}")
+                f_opps[str(oid)] = rec
+            f_unit_basins = {str(k): str(v) for k, v in
+                             (fc.get("unit_basins") or {}).items()}
+            f_region_basins = fc.get("region_basins") or {}
             report = evaluate(
                 cases, holdout=holdout,
                 baseline_probs=fc.get("baseline_probs") or {},
                 admitted_vintages=admitted,
-                n_opportunities=fc.get("n_opportunities", -1),
+                opportunities=f_opps,
+                unit_basins=f_unit_basins,
+                region_basins=f_region_basins,
                 n_boot=int(fc.get("n_boot", 200)),
                 seed=int(fc.get("seed", 0)))
             out["evaluation_status"] = report.status

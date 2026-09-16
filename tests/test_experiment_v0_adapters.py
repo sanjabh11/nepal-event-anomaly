@@ -302,10 +302,6 @@ def test_regime_artifact_adapts_cleanly():
     assert rec.label_blinding is True
 
 
-@pytest.mark.xfail(
-    reason="producer _digest migrates to sha256_canonical in the "
-           "parallel regimes lane — parity asserts post-merge",
-    strict=False)
 def test_regime_digest_parity_with_producer():
     """The local canonical digest must match the producer's digest
     construction — both are sha256_canonical over strict canonical
