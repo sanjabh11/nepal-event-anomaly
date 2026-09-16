@@ -49,7 +49,7 @@ The empty Git shell is never the implementation root.
   1311 nodes (1306 + 5). An external audit observed 1300 in an earlier
   environment; the manifest's 1306 was verified correct at that HEAD.
 - Post-swarm snapshots: **1641** after the first science_v0 +
-  experiment_v0 integration; **1700 passed, 5 skipped (rasterio), 0
+  experiment_v0 integration; **1828 passed, 5 skipped (rasterio), 0
   failed** at the post-audit residual-repair head (current).
   Earlier counts are retained as dated history. 24
   Run-A-reconciliation tests (calendar validity, claim-scan recursion,

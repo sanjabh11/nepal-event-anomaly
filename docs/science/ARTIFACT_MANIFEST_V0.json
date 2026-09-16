@@ -358,7 +358,7 @@
  "scope": "governed science artifacts: docs/science, nepal/research_v0, research tests, CI workflow, README \u2014 non-science sources excluded by design",
  "self_excluded": true,
  "test_results": {
-  "full_suite_venv": "1700 passed, 5 skipped (rasterio), 0 failed",
+  "full_suite_venv": "1828 passed, 5 skipped (rasterio), 0 failed",
   "p5_io_contract": "34 passed",
   "research_v0": "116 passed",
   "run_a_reconciliation": "24 passed",
