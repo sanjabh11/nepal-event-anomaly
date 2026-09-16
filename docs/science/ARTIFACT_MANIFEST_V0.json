@@ -1,11 +1,11 @@
 {
  "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
- "content_head": "4f7f30b3d50872b11a453c1fbe66f9a340ba66ee",
+ "content_head": "99ccec968e4d8decaee3e594faa3b67e3a19b5c1",
  "files": [
   {
    "relpath": ".github/workflows/research-v0.yml",
-   "sha256": "c01633d800d12c45948f7ca65f55e2d55cdc5f2e4b8e0173e3c75bb27311cadc",
-   "size_bytes": 4900
+   "sha256": "446bb26c21b16f5d3cb11bbf9f846921a2e79a05236b2e19497e889d5be5fcdf",
+   "size_bytes": 6245
   },
   {
    "relpath": ".gitignore",
@@ -14,13 +14,13 @@
   },
   {
    "relpath": "README.md",
-   "sha256": "6f9fdf398cdb0de5463ebce902d8a2765ad2b951cdf30253fd77deba1e997c82",
-   "size_bytes": 5626
+   "sha256": "c298f5f163d9073cfb06e1c764aa4dec1049c1f239b44ff138abe0285efc879c",
+   "size_bytes": 6191
   },
   {
    "relpath": "docs/science/GAP_REGISTER_V0.md",
-   "sha256": "3fe5d311ea9e68d767c497ea66c66e1b2c3a1990e5e2be3d2d60c2e54766f984",
-   "size_bytes": 47986
+   "sha256": "405ad1d385bbc0af985735932149f932ab09a967d2baf74728d0f62f20f754d2",
+   "size_bytes": 52982
   },
   {
    "relpath": "docs/science/HAZARD_EVENT_INVENTORY_DECISION_MATRIX_V0.md",
@@ -33,14 +33,19 @@
    "size_bytes": 9062
   },
   {
+   "relpath": "docs/science/MISSION_SCOPE_OVERLAY_V0.md",
+   "sha256": "9420aca3daa14e1bac8a36e97420de5404f18d21b8de92ed69ebec3d461cd5ad",
+   "size_bytes": 4007
+  },
+  {
    "relpath": "docs/science/OPEN_DISTRIBUTION_NOTE_V0.md",
    "sha256": "361706d99fcbf65360bd320417dd5b252f66f39e7b4429a4da36a7269f347334",
    "size_bytes": 6732
   },
   {
    "relpath": "docs/science/P0_BASELINE_LEDGER.md",
-   "sha256": "e123f194924b9eee6302b3d9c474ba43495d67bb2691e267a5371596adad933f",
-   "size_bytes": 8394
+   "sha256": "8283109939c27b611380ea28e123e05c055f4d478d52d34192ed5d17ffb3f224",
+   "size_bytes": 9417
   },
   {
    "relpath": "docs/science/P3_ATTESTATION_RECORD_V0.md",
@@ -56,6 +61,11 @@
    "relpath": "docs/science/SOURCE_FEASIBILITY_RECORDS_V0.md",
    "sha256": "ea8ca6c57c4eefb40206d2fc0cd254bef68231ec8796f17aef1f53e020229a08",
    "size_bytes": 10102
+  },
+  {
+   "relpath": "docs/science/STATUS_SCOPE_RECONCILIATION_NOTE_20260915.md",
+   "sha256": "21af5dd057fb3febae408a525ab1263c897c225d711fa8409e9726f84e7a16f6",
+   "size_bytes": 3722
   },
   {
    "relpath": "docs/science/run_a/HYBRID_ROUTE_RECONCILIATION_V0.md",
@@ -84,8 +94,8 @@
   },
   {
    "relpath": "docs/science/run_b/REGIME_PROTOCOL_V0.md",
-   "sha256": "fc7d290b84db598ce9e1278600461a7c80c8554b61a64532a9ce50cd0225b11e",
-   "size_bytes": 6889
+   "sha256": "560f3899743a1987a3d99734cd6c0cf9ba1f8eafd2adb391f10e76ec1582cec1",
+   "size_bytes": 7568
   },
   {
    "relpath": "docs/science/run_b/SOURCE_EVIDENCE_ADDENDUM_V0.md",
@@ -134,18 +144,18 @@
   },
   {
    "relpath": "nepal/experiment_v0/adapters.py",
-   "sha256": "ea3fed05dd1cad2567f71d7e2ef2f843a05e991bee43d01dc393b2d4148ff200",
-   "size_bytes": 27588
+   "sha256": "4d7ad428b699281c455e3cd0a3fd7593a8bfa373cf9066768109a7575e82f066",
+   "size_bytes": 28255
   },
   {
    "relpath": "nepal/experiment_v0/association.py",
-   "sha256": "cc68110c7ff874af277af77ad11aeb7da49a10245062788995b048fb1314bfb2",
-   "size_bytes": 103885
+   "sha256": "b2ffad946ef340edec64473bac80e6561cdd7edb510855e23303c005d39d6894",
+   "size_bytes": 109880
   },
   {
    "relpath": "nepal/experiment_v0/audit.py",
-   "sha256": "6ae997e040ef582c25e2179e239e7792aa6af0a70f34b12de504780769ce7361",
-   "size_bytes": 69043
+   "sha256": "6740305994aa6c6a939c68f79302115d99c220226e75f2de62e181da31fbc5fe",
+   "size_bytes": 69453
   },
   {
    "relpath": "nepal/experiment_v0/baselines.py",
@@ -154,8 +164,8 @@
   },
   {
    "relpath": "nepal/experiment_v0/evaluation.py",
-   "sha256": "444eb42a6a2fce412d6d7d5904f807c1647cb3ed3ead247770c824e311e4d476",
-   "size_bytes": 77004
+   "sha256": "609e64ac00102fa41659c83751bf3f1b1f71b9f5f12d878a314ec08b9c0d3b84",
+   "size_bytes": 79114
   },
   {
    "relpath": "nepal/experiment_v0/metrics.py",
@@ -194,8 +204,8 @@
   },
   {
    "relpath": "nepal/research_v0/gates.py",
-   "sha256": "98ec610f787cadab60f64bfbdcf8da56ee8aead8ed1310f36229d99b78fcab5d",
-   "size_bytes": 50129
+   "sha256": "e96abfe888204e36e109bda62581d4b26e5773380c7d4ad6fe596e825f980e2f",
+   "size_bytes": 50673
   },
   {
    "relpath": "nepal/research_v0/policy.py",
@@ -229,8 +239,8 @@
   },
   {
    "relpath": "nepal/science_v0/regimes.py",
-   "sha256": "f7413b39333d18b8ba463def3bf6e3930b27261d4023c3e294e06026627e5276",
-   "size_bytes": 87424
+   "sha256": "b4bce6f4424eff542df08f6eba9e66c0cd6683486d36af4cdddcadb3d5faa99b",
+   "size_bytes": 92781
   },
   {
    "relpath": "tests/fixtures/__init__.py",
@@ -264,8 +274,8 @@
   },
   {
    "relpath": "tests/test_experiment_v0_b1_association.py",
-   "sha256": "bae1569558dd2647218d8ab041716b3943503809d403da3c981d1c1a5034846c",
-   "size_bytes": 59916
+   "sha256": "059b68ab8398607af8fcd0ceb1c3477c7038f401a1d0de806df5385cc202bc73",
+   "size_bytes": 65859
   },
   {
    "relpath": "tests/test_experiment_v0_b2_vintages.py",
@@ -274,8 +284,8 @@
   },
   {
    "relpath": "tests/test_experiment_v0_b3_evaluation.py",
-   "sha256": "6d7aedf92f9dd5f3986cd77a5f598ccfd26c91f5c35cc3473d1c66b36b8d5e7f",
-   "size_bytes": 61511
+   "sha256": "6efee1439e3088eb7ef3cdd016250bea0587170b151d58883c0a00ac85a8792e",
+   "size_bytes": 63966
   },
   {
    "relpath": "tests/test_experiment_v0_b3_vintage_timing.py",
@@ -284,8 +294,8 @@
   },
   {
    "relpath": "tests/test_experiment_v0_b4_audit.py",
-   "sha256": "b46bac5d4f14bebebec3f80c17978d1bc18e7a830583b792926b7286324608cf",
-   "size_bytes": 28956
+   "sha256": "65bf55c9bc30f902c492199da2478f8c71f513b622df7e584a94c249574f0674",
+   "size_bytes": 28988
   },
   {
    "relpath": "tests/test_experiment_v0_replay.py",
@@ -318,14 +328,19 @@
    "size_bytes": 9933
   },
   {
+   "relpath": "tests/test_round5_hardening.py",
+   "sha256": "07570843925834dd9f24742bd76a9e2c40ab4f849a38f7ebc540ff36f2aeda20",
+   "size_bytes": 11010
+  },
+  {
    "relpath": "tests/test_run_a_reconciliation.py",
    "sha256": "da4d29f60fc2c4d05732f79708c7be5d8ff957b67fe54daf77e0213d86728b7e",
    "size_bytes": 10806
   },
   {
    "relpath": "tests/test_science_experiment_e2e.py",
-   "sha256": "79803dc5c6c3323dab5e92e68f750119dfc43bc612b6229b67b0d99c368c33e5",
-   "size_bytes": 11765
+   "sha256": "6f677bbdeb78e8170a09700ef36574dbe192936b4e2166e61f0dbad65b16d5cf",
+   "size_bytes": 11797
   },
   {
    "relpath": "tests/test_science_v0_events.py",
@@ -339,18 +354,13 @@
   },
   {
    "relpath": "tests/test_science_v0_regimes.py",
-   "sha256": "a4fe8f40731b01da8ae7f5652e57bfe24e12c51fe5ca2650f2a841567e7c63eb",
-   "size_bytes": 39872
-  },
-  {
-   "relpath": "docs/science/STATUS_SCOPE_RECONCILIATION_NOTE_20260915.md",
-   "sha256": "21af5dd057fb3febae408a525ab1263c897c225d711fa8409e9726f84e7a16f6",
-   "size_bytes": 3722
+   "sha256": "f03328cc0250b968aea77b672a011e5369cc0ee77eee6878d77aa3b89146c8ca",
+   "size_bytes": 40161
   }
  ],
  "generated": "2026-09-16",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "4f7f30b3d50872b11a453c1fbe66f9a340ba66ee",
+ "manifest_commit": "99ccec968e4d8decaee3e594faa3b67e3a19b5c1",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -358,9 +368,9 @@
  "scope": "governed science artifacts: docs/science, nepal/research_v0, research tests, CI workflow, README \u2014 non-science sources excluded by design",
  "self_excluded": true,
  "test_results": {
-  "full_suite_venv": "1853 passed, 5 skipped (rasterio), 0 failed",
-  "swarm_focused": "400 passed (regimes 93 + association 59 + evaluation 118 + audit 61 + adapters/replay/e2e)",
-  "adversarial_probes": "P1-P8 pass (ungoverned frame, allowlist, digest, elevation, seed policy)",
+  "full_suite_venv": "1875 passed, 5 skipped (rasterio), 0 failed",
+  "swarm_focused": "411 passed (round5 hardening 18 + regimes 93 + association 63 + evaluation 118 + audit 61 + adapters/replay/e2e)",
+  "adversarial_probes": "18 pass (unit-basin partition, cadence grid, block len, effort policy, evidence_root, gate universe, null replicates, degradation, event-group clustering, fixture status barrier)",
   "claim_scan": "clean on all governed files",
   "research_v0": "116 passed",
   "p5_io_contract": "34 passed",
