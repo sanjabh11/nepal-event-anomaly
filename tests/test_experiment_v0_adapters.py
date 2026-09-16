@@ -284,10 +284,12 @@ def _frozen_regime_payload(**overrides):
         "occupancy": [0.6, 0.4],
         "stability": {
             "required_gates": {
-                "modal_k_unanimous": True, "seed_ari": True,
+                "seed_policy": True, "modal_k_unanimous": True,
+                "seed_ari": True, "seed_coverage": True,
                 "loro": True, "temporal_bootstrap": True,
                 "season_refits": True, "elevation": True,
-                "missingness": True, "era_drift": True,
+                "missingness": True, "effort": True,
+                "era_drift": True,
                 "shuffled_null": True, "season_matched_null": True,
             },
         },
@@ -486,13 +488,16 @@ def test_regime_descriptive_with_nonbool_gate_rejected():
 
 def test_regime_candidate_status_with_open_gate_adapts():
     """An honestly-demoted artifact — open evidence gate, candidate
-    status — binds cleanly: the freeze-gate constrains the
-    descriptive claim, not the sidecar itself."""
+    status — is NONASSOCIABLE (REG-13): only a fully-gated
+    descriptive artifact may enter held-out association."""
     p = _frozen_regime_payload(status="CANDIDATE_ONLY")
     p["stability"]["required_gates"]["season_matched_null"] = False
     _repair_digests(p)
-    rec = regime_assignment_from_artifact(p, artifact_id="ra-cand")
-    assert rec.problems() == []
+    try:
+        regime_assignment_from_artifact(p, artifact_id="ra-cand")
+        raise AssertionError("CANDIDATE_ONLY must not adapt")
+    except ValueError as exc:
+        assert "CANDIDATE_ONLY" in str(exc)
 
 
 def test_holdout_asymmetric_universe_rejected():

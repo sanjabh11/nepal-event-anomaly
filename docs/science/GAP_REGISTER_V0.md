@@ -410,8 +410,49 @@ only — `EVIDENCE_VERIFIED` posture still requires byte-bound sidecar
 | GOV-01/02 | RESOLVED — P3 design-only vs P5-C acquisition separated; see STATUS_SCOPE_RECONCILIATION_NOTE_20260915 |
 | H01/H03 | RESOLVED (wording) — Run A docs state hybrid route, method-only, bounded 5-month overlap, no K/JS transfer |
 
-SRC-*/DATA-*/FMX-*/REG-*/ASSOC-*/FCST-*/OPEN-01/GOV-03/OPS-01 remain
+SRC-*/DATA-*/FMX-*/OPEN-01/GOV-03/OPS-01 remain
 `GATED_ON_DATA` / `BLOCKED_EXTERNAL` / deferred — unchanged by design.
+
+## Swarm-D convergence dispositions (2026-09-15, Round-4 audit)
+
+| ID | Disposition |
+|---|---|
+| REG-01 calendar-bridging blocks | RESOLVED — bootstrap blocks are calendar ranges at declared cadence; `gap_policy="calendar"` only; cadence/gap/block-len bound in config digest + bootstrap record |
+| REG-02 LORO semantics | RESOLVED — decisive metric is `ari_eval`: label-invariant agreement between reference and fold models on the excluded group's rows; locked-group coverage reported |
+| REG-03 one-seed bypass | RESOLVED — `seed_policy` gate requires `fold_seed_policy="all"` for terminal stability; failed seeds demote |
+| REG-04 era-blind nulls | RESOLVED — season-matched null resamples within (season, era) joint strata when era_col bound |
+| REG-05 selection-inconsistent nulls | RESOLVED — every null replicate replays the declared BIC K-sweep; `null_k_distribution` recorded |
+| REG-06 partial null digest | RESOLVED — null digests cover both families, seeds, replicate stats, selection metadata |
+| REG-07 declared missingness unused | RESOLVED — policy applies to primary fit surface; stratified bands REFIT preprocessing+GMM per band |
+| REG-08 silent effort NA | RESOLVED — undeclared effort without waiver FAILs; declared effort refits per declared strata policy |
+| REG-09 era bypass | RESOLVED — era column without declared boundaries FAILs; era_col=None requires explicit waiver |
+| REG-10 elevation escape | RESOLVED — numeric unit-bound elevation required; 1-D elevation ablation gates promotion (`elev_ablation_ari_max`) |
+| REG-11 ungoverned frames | RESOLVED — `source_manifest` mandatory: `{fixture: true}` or bound `{source_id, source_digests, units, feature_allowlist, lineage}`; allowlist enforced against requested features |
+| REG-12 preprocessing binding | RESOLVED — row_keys_digest + imputer/scaler + train mask bound; freeze rejects missing preprocessing |
+| REG-13 CANDIDATE associable | RESOLVED — CANDIDATE_ONLY non-terminal for association; adapter rejects it; `terminal`/`associable` fields bound |
+| REG-14 self-consistent forgery | RESOLVED — auditor requires the full declared gate universe; freeze recomputes every bound digest; fabricated gates cannot close |
+| PROV-01 source/env/run binding | RESOLVED — source_manifest + environment_digest + run_manifest_digest required fields; non-fixture manifests need digests/units/allowlist/lineage |
+| PROV-02 local-artifact bypass | RESOLVED — association consumes only serialized producer payloads; CANDIDATE/UNSTABLE rejected at adapter |
+| PROV-03 malformed model | RESOLVED — finite non-negative summing-to-1 weights, finite means, square symmetric PSD covariances, k-consistency |
+| ASSOC-01 arbitrary horizons | RESOLVED — look-back horizons strictly parsed; events wider than the horizon are excluded per cell with counted `precision_exclusions` |
+| ASSOC-02 bootstrap-as-p | RESOLVED — Holm family runs on stratified label-shuffle permutation p-values; bootstrap intervals stay uncertainty-only |
+| ASSOC-03 incomplete correction | RESOLVED — per-cell permutation p-values feed the single Holm family over regime x horizon x placement |
+| ASSOC-04 missing spatial null | RESOLVED — geography-preserving date-shift null (`spatial_shift`) required; enriched regimes must beat it |
+| ASSOC-05 per-cell null coverage | RESOLVED — every family cell carries an executed null (`null_coverage` bound in multiplicity) |
+| ASSOC-06 diagnostic sensitivities | RESOLVED — axes dispositioned PASS/FAIL/NA with reasons; FAIL blocks support |
+| ASSOC-07 hollow supported | RESOLVED — problems() revalidates family_pvals ranges, null coverage, Holm rejection per promoted regime, event-group floor |
+| ASSOC-08 interval precision | RESOLVED — interval width propagated; precision-inadmissible events excluded per cell |
+| EVAL-01 slice denominators | RESOLVED — met-season slices use opportunity window-midpoint membership; non-attributable axes count linked opportunities only |
+| EVAL-02 missing-feed | RESOLVED — declared scenarios execute; scenario-specific denominators/metrics recorded |
+| EVAL-03 clustering | RESOLVED — bootstrap clusters by `event_group_id` else (unit, season); `clustering_unit` exposed |
+| EVAL-04 unbound power | RESOLVED — `power_design` binds to the declaration; diagnostic-only when absent |
+| EVAL-05 direct construction | RESOLVED — typed `ForecastExperimentDeclaration` required for bound status; mappings convert strictly |
+| FCST-01 caller-asserted groups | RESOLVED — `row_keys` ("unit_id|date") bind membership; uniqueness/alignment enforced at fit boundary |
+| FCST-02 caller-supplied baselines | RESOLVED — `baseline_evidence` digests recompute over supplied vectors; unbound baselines marked `caller_supplied_fixture` |
+
+SRC-01..07, DATA-01..07, RUN-01, REVIEW-01, GOV-01, ENV-01, PILOT-01
+remain `GATED_ON_DATA`/`BLOCKED_EXTERNAL`/decision-pending —
+unchanged by design; `NO_QUALIFYING_PILOT_SOURCE` stands.
 
 ## Honest residual risks
 

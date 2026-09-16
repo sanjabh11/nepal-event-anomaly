@@ -56,6 +56,7 @@ finding or an authorization of any kind.
 from __future__ import annotations
 
 import hashlib
+from datetime import datetime
 import math
 import random
 import re
@@ -76,6 +77,10 @@ from . import metrics as _metrics
 from .baselines import REQUIRED_BASELINE_NAMES
 
 _CENSORED = TargetState.CENSORED_OR_AMBIGUOUS.value
+_MET_SEASON = {12: "DJF", 1: "DJF", 2: "DJF", 3: "MAM", 4: "MAM",
+               5: "MAM", 6: "JJA", 7: "JJA", 8: "JJA", 9: "SON",
+               10: "SON", 11: "SON"}
+_MET_SEASON_SET = frozenset(_MET_SEASON.values())
 _TARGET_VALUES = frozenset(s.value for s in TargetState)
 _TIME_EPS = 1e-6
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -229,6 +234,7 @@ class ForecastExperimentDeclaration:
     threshold_record: Any = None
     ablations: Any = ()
     vintage_lineage: Any = ()
+    power_design: Any = None
 
     def problems(self) -> list[str]:
         problems: list[str] = []
@@ -288,11 +294,12 @@ class ForecastExperimentDeclaration:
         if not isinstance(m, Mapping):
             raise ValueError(
                 "experiment declaration must be a mapping")
-        extra = set(m) - _DECLARATION_KEYS
+        extra = set(m) - _DECLARATION_KEYS - {"power_design"}
         if extra:
             raise ValueError(
                 f"experiment declaration: unknown keys "
                 f"{sorted(extra)}")
+        _OPT_DECLARATION_KEYS = {"power_design"}
         missing = _DECLARATION_KEYS - set(m)
         if missing:
             raise ValueError(
@@ -309,7 +316,8 @@ class ForecastExperimentDeclaration:
             vintage_lineage=tuple(m["vintage_lineage"])
             if isinstance(m["vintage_lineage"], Collection)
             and not isinstance(m["vintage_lineage"], (str, bytes))
-            else m["vintage_lineage"])
+            else m["vintage_lineage"],
+            power_design=m.get("power_design"))
 
 
 def locked_region_problems(regions: Collection[str],
@@ -425,7 +433,8 @@ def _scoped_opportunity_count(
         *,
         regions: Optional[Collection[str]] = None,
         linked_ids: Optional[Collection[str]] = None,
-        all_linked_ids: Optional[Collection[str]] = None) -> dict:
+        all_linked_ids: Optional[Collection[str]] = None,
+        include_unlinked: bool = True) -> dict:
     """Verified and censored opportunity counts inside one scope.
 
     This is the single denominator-derivation surface shared by the
@@ -439,7 +448,10 @@ def _scoped_opportunity_count(
       linked by *no* case (``all_linked_ids`` supplies the full
       case-linkage set), because registry entries carry no intrinsic
       season/mechanism/horizon attribution.  ``linked_ids=None``
-      counts every in-scope entry.
+      counts every in-scope entry.  ``include_unlinked=False``
+      drops unattributed unlinked entries entirely — the only
+      honest contract for axes the registry cannot attribute
+      (EVAL-01).
     * An entry is *verified* when it is an ``ObservationOpportunityV0``
       whose id equals its registry key, whose ``problems()`` is empty,
       and whose ``state`` is ``OBSERVED_FULL``; anything else in scope
@@ -468,9 +480,13 @@ def _scoped_opportunity_count(
         if basin not in allowed_basins:
             continue
         if linked is not None:
-            pool = all_linked if all_linked is not None else linked
-            if key not in linked and key in pool:
-                continue
+            if key not in linked:
+                if not include_unlinked:
+                    continue
+                pool = (all_linked if all_linked is not None
+                        else linked)
+                if key in pool:
+                    continue
         ok = (rec.opportunity_id == key
               and rec.state == "OBSERVED_FULL"
               and not rec.problems())
@@ -479,6 +495,20 @@ def _scoped_opportunity_count(
             "n_censored_opportunities": len(censored),
             "verified_ids": tuple(sorted(verified)),
             "censored_ids": tuple(sorted(censored))}
+
+
+def _opp_midpoint_season(rec) -> Optional[str]:
+    """Meteorological season of an opportunity's window midpoint,
+    or None when the window cannot be parsed — EVAL-01."""
+    try:
+        ws = datetime.fromisoformat(
+            str(rec.window_start).replace("Z", "+00:00"))
+        we = datetime.fromisoformat(
+            str(rec.window_end).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    mid = ws + (we - ws) / 2
+    return _MET_SEASON[mid.month]
 
 
 def _slice_bundle(cases: Sequence[ForecastCase],
@@ -664,7 +694,9 @@ def _case_cluster_key(c: ForecastCase) -> tuple:
 def power_report(cases: Sequence[ForecastCase], *,
                  target_precision: float = 0.1,
                  alpha: float = 0.05,
-                 eligible: Optional[Collection[str]] = None) -> dict:
+                 eligible: Optional[Collection[str]] = None,
+                 power_design: Optional[Mapping[str, Any]]
+                 = None) -> dict:
     """Prospective precision/power computation on the declared design.
 
     The effective sample size is the number of independent clusters
@@ -694,7 +726,18 @@ def power_report(cases: Sequence[ForecastCase], *,
         required_n = -1  # degenerate target: never powered
     powered = (bool(sub) and required_n > 0 and n_clusters >= 2
                and n_clusters >= required_n)
+    # EVAL-04: power is a diagnostic unless bound to a declared
+    # design — a power number can never promote a forecast result by
+    # itself.
+    binding = "diagnostic_only"
+    if power_design is not None:
+        req = {"metric", "expected_rate", "mde", "design_digest"}
+        if req.issubset(set(power_design)) and                 _is_sha256(str(power_design["design_digest"])):
+            binding = "design_bound"
+        else:
+            binding = "diagnostic_only_malformed_design"
     return {
+        "binding": binding,
         "n_cases": len(cases),
         "n_unambiguous": len(sub),
         "n_scored": len(sub),
@@ -840,6 +883,7 @@ class EvaluationReport:
     n_censored_out_of_scope: int = 0
     opportunity_scope: dict = field(default_factory=dict)
     declaration: dict = field(default_factory=dict)
+    baseline_provenance: dict = field(default_factory=dict)
     claim_scope: str = "research_only_no_operational_authorization"
 
     def to_dict(self) -> dict:
@@ -1153,7 +1197,8 @@ def _region_basin_problems(holdout: Any, region_basins: Any,
     return problems, basin_owner
 
 
-def evaluate(cases: Sequence[ForecastCase], *,
+def evaluate(  # noqa: C901
+        cases: Sequence[ForecastCase], *,
              holdout: HoldoutPlanV0,
              baseline_probs: Mapping[str, Sequence[float]],
              admitted_vintages: Mapping[str, ForecastVintageV0],
@@ -1165,7 +1210,9 @@ def evaluate(cases: Sequence[ForecastCase], *,
              n_boot: int = 200,
              seed: int = 0,
              scenarios: Collection[str] = DEFAULT_SCENARIOS,
-             experiment: Any = None) -> EvaluationReport:
+             experiment: Any = None,
+             baseline_evidence: Optional[Mapping[str, Any]]
+             = None) -> EvaluationReport:
     """Validate the contract and emit the full descriptive report.
 
     Raises ``ValueError`` listing *every* problem: unlocked or unmapped
@@ -1494,6 +1541,36 @@ def evaluate(cases: Sequence[ForecastCase], *,
         1 for c in cases if c.y_state != _CENSORED
         and link_status.get(c.case_id) == "out_of_scope")
 
+    # FCST-02: baseline provenance — bound evidence digests must
+    # recompute over the supplied probability vectors; unbound
+    # baselines are recorded as caller-supplied fixture inputs.
+    baseline_provenance: dict[str, Any] = {}
+    if baseline_evidence is not None:
+        for name, probs in aligned_baselines.items():
+            ev = baseline_evidence.get(name)
+            if not isinstance(ev, Mapping):
+                problems.append(
+                    f"baseline_evidence missing entry for {name!r}")
+                continue
+            if ev.get("digest") != sha256_canonical(
+                    [round(float(v), 9) for v in probs]):
+                problems.append(
+                    f"baseline_evidence digest for {name!r} does "
+                    "not recompute over the supplied vector")
+            if ev.get("fit_provenance") not in (
+                    "bound", "unbound_fixture"):
+                problems.append(
+                    f"baseline_evidence fit_provenance for "
+                    f"{name!r} is not bound/unbound_fixture")
+            baseline_provenance[name] = dict(ev)
+    else:
+        baseline_provenance = {
+            name: {"fit_provenance": "caller_supplied_fixture"}
+            for name in aligned_baselines}
+    if problems:
+        raise ValueError("forecast evaluation rejected: "
+                         + "; ".join(problems))
+
     scorers: dict[str, Sequence[float]] = {
         "model": [c.y_prob for c in cases]}
     scorers.update(aligned_baselines)
@@ -1520,13 +1597,35 @@ def evaluate(cases: Sequence[ForecastCase], *,
             return _scoped_opportunity_count(
                 registry, ub, region_basins,
                 regions={value}), "region_owned_basins"
+        if axis == "season" and value in _MET_SEASON_SET:
+            # EVAL-01 true slice membership: only opportunities whose
+            # window midpoint falls inside this meteorological season
+            # count — never an inflated region-level pool.
+            scope = _scoped_opportunity_count(
+                registry, ub, region_basins,
+                regions={cases[i].region for i in idx})
+            keep = set(scope["verified_ids"])
+            cens = set(scope["censored_ids"])
+            if isinstance(registry, Mapping):
+                for key, rec in registry.items():
+                    if key not in keep and key not in cens:
+                        continue
+                    if _opp_midpoint_season(rec) != value:
+                        keep.discard(key)
+                        cens.discard(key)
+            return {"n_opportunities": len(keep),
+                    "n_censored_opportunities": len(cens),
+                    "verified_ids": tuple(sorted(keep)),
+                    "censored_ids": tuple(sorted(cens))}, \
+                "opportunity_window_midpoint_season"
         return _scoped_opportunity_count(
             registry, ub, region_basins,
             regions={cases[i].region for i in idx},
             linked_ids={cases[i].opportunity_id
                         for i in idx if cases[i].opportunity_id},
-            all_linked_ids=all_linked_ids), \
-            "linked_case_opportunities_plus_unlinked_in_case_regions"
+            all_linked_ids=all_linked_ids,
+            include_unlinked=False), \
+            "linked_opportunities_only"
 
     slices: dict[str, Any] = {}
     for axis, key in (("region", lambda c: c.region),
@@ -1551,7 +1650,12 @@ def evaluate(cases: Sequence[ForecastCase], *,
             scope=scope, scope_rule=rule)
 
     scored_ids = {cases[i].case_id for i in scored_idx}
-    power = power_report(cases, eligible=scored_ids)
+    power_design = None
+    if decl is not None and isinstance(
+            getattr(decl, "power_design", None), Mapping):
+        power_design = decl.power_design
+    power = power_report(cases, eligible=scored_ids,
+                         power_design=power_design)
     degradation = missing_feed_degradation(
         cases, (), opportunities=registry, unit_basins=ub,
         region_basins=region_basins, eligible=scored_ids,
@@ -1624,7 +1728,8 @@ def evaluate(cases: Sequence[ForecastCase], *,
             "verified_ids": list(scope_result["verified_ids"]),
             "censored_ids": list(scope_result["censored_ids"]),
         },
-        declaration=declaration)
+        declaration=declaration,
+        baseline_provenance=baseline_provenance)
 
 
 __all__ = [

@@ -522,8 +522,10 @@ _PRODUCER_REQUIRED_FIELDS = (
     "heldout_groups_declared", "n_train_rows", "n_rows",
     "train_mask_digest", "k", "per_seed_best_k",
     "modal_k_frequency", "occupancy", "stability", "nulls",
-    "preprocessing_digest", "k_selection_digest",
-    "stability_report_digest", "null_model_digest", "disclaimer")
+    "preprocessing", "preprocessing_digest", "k_selection_digest",
+    "stability_report_digest", "null_model_digest", "disclaimer",
+    "source_manifest", "missingness_applied",
+    "terminal", "associable")
 
 #: Carried digests are verified, never trusted: each must be a
 #: 64-hex sha256 when present (absence is a provenance finding).
@@ -532,7 +534,8 @@ _PRODUCER_DIGEST_FIELDS = (
     "feature_matrix_digest", "input_bytes_digest", "config_digest",
     "train_mask_digest", "preprocessing_digest",
     "k_selection_digest", "stability_report_digest",
-    "null_model_digest")
+    "null_model_digest",
+    "environment_digest", "run_manifest_digest")
 
 _SEED_COVERAGE_STATES = frozenset({"converged", "failed"})
 
@@ -598,6 +601,68 @@ def _producer_model_findings(payload: Mapping[str, Any],
             "PRODUCER_SCHEMA_MALFORMED", "artifact_payload.model",
             f"model carries {len(weights)} components but the "
             f"artifact declares k={k}"))
+    # PROV-03: numeric sanity — a structurally-typed but pathological
+    # model must fail closed.  Weights must be finite, non-negative,
+    # and sum to 1; every covariance must be a square, finite,
+    # symmetric, positive-semidefinite matrix consistent with the
+    # feature dimension.
+    import math as _m
+    if not findings:
+        if any(not _m.isfinite(float(w)) or float(w) < 0.0
+               for w in weights):
+            findings.append(Finding(
+                "PRODUCER_MODEL_INVALID", "artifact_payload.model",
+                "model.weights must be finite and non-negative"))
+        elif abs(sum(float(w) for w in weights) - 1.0) > 1e-6:
+            findings.append(Finding(
+                "PRODUCER_MODEL_INVALID", "artifact_payload.model",
+                "model.weights do not sum to 1"))
+        d = len(means[0]) if means else 0
+        if any(len(row) != d for row in means):
+            findings.append(Finding(
+                "PRODUCER_MODEL_INVALID", "artifact_payload.model",
+                "model.means rows have inconsistent feature "
+                "dimensions"))
+        if any(not _m.isfinite(float(v)) for row in means
+               for v in row):
+            findings.append(Finding(
+                "PRODUCER_MODEL_INVALID", "artifact_payload.model",
+                "model.means contain non-finite values"))
+        for ci, cov in enumerate(covs):
+            if len(cov) != d or any(len(row) != d for row in cov):
+                findings.append(Finding(
+                    "PRODUCER_MODEL_INVALID",
+                    "artifact_payload.model",
+                    f"model.covariances[{ci}] is not a {d}x{d} "
+                    "square matrix"))
+                continue
+            if any(not _m.isfinite(float(v)) for row in cov
+                   for v in row):
+                findings.append(Finding(
+                    "PRODUCER_MODEL_INVALID",
+                    "artifact_payload.model",
+                    f"model.covariances[{ci}] contains non-finite "
+                    "values"))
+                continue
+            if any(abs(float(cov[i][j]) - float(cov[j][i])) > 1e-9
+                   for i in range(d) for j in range(d)):
+                findings.append(Finding(
+                    "PRODUCER_MODEL_INVALID",
+                    "artifact_payload.model",
+                    f"model.covariances[{ci}] is not symmetric"))
+                continue
+            try:
+                import numpy as _np
+                w = _np.linalg.eigvalsh(
+                    _np.asarray(cov, dtype=float))
+                if float(w.min()) < -1e-9:
+                    raise ValueError("not PSD")
+            except Exception:
+                findings.append(Finding(
+                    "PRODUCER_MODEL_INVALID",
+                    "artifact_payload.model",
+                    f"model.covariances[{ci}] is not "
+                    "positive-semidefinite"))
     return findings
 
 
@@ -744,6 +809,15 @@ def _producer_seed_findings(payload: Mapping[str, Any]
     return findings
 
 
+#: The declared producer gate universe — every terminal artifact must
+#: carry each of these in ``stability.required_gates``.
+_REQUIRED_GATE_NAMES = frozenset({
+    "seed_policy", "modal_k_unanimous", "seed_ari", "seed_coverage",
+    "loro", "temporal_bootstrap", "season_refits", "elevation",
+    "missingness", "effort", "era_drift", "shuffled_null",
+    "season_matched_null"})
+
+
 def _producer_gate_findings(payload: Mapping[str, Any]
                             ) -> list[Finding]:
     """The flat ``stability.required_gates`` map must exist; under a
@@ -765,7 +839,18 @@ def _producer_gate_findings(payload: Mapping[str, Any]
             "non-empty flat gate map — the artifact carries no "
             "gate evidence to audit"))
         gates = None
-    elif any(not isinstance(v, bool) for v in gates.values()):
+    else:
+        # REG-14: every declared gate must be present — an omitted
+        # gate is not a closed gate.
+        missing_gates = sorted(
+            _REQUIRED_GATE_NAMES - set(gates))
+        if missing_gates:
+            findings.append(Finding(
+                "PRODUCER_PROVENANCE_MISSING", path,
+                f"required_gates omits declared gates "
+                f"{missing_gates} — an absent gate can never stand "
+                "in for evidence"))
+    if gates and any(not isinstance(v, bool) for v in gates.values()):
         findings.append(Finding(
             "PRODUCER_SCHEMA_MALFORMED", path,
             "required_gates values must be booleans — the flat "
@@ -885,6 +970,43 @@ def audit_producer_payload(payload: Any) -> list[Finding]:
         findings.extend(_producer_input_schema_findings(payload))
     findings.extend(_producer_seed_findings(payload))
     findings.extend(_producer_gate_findings(payload))
+    # PROV-01: source manifest — fixture or fully-bound real source
+    sm = payload.get("source_manifest")
+    if sm is not None:
+        if not isinstance(sm, Mapping):
+            findings.append(Finding(
+                "PRODUCER_SCHEMA_MALFORMED", "artifact_payload",
+                "source_manifest must be a mapping"))
+        elif not sm.get("fixture"):
+            for key in ("source_id", "source_digests", "units",
+                        "feature_allowlist", "lineage"):
+                if not sm.get(key):
+                    findings.append(Finding(
+                        "PRODUCER_PROVENANCE_MISSING",
+                        "artifact_payload",
+                        f"non-fixture source_manifest lacks {key!r}"))
+            if isinstance(sm.get("source_digests"), Sequence) and                     not isinstance(sm["source_digests"], str):
+                for d in sm["source_digests"]:
+                    if not _is_sha256(d):
+                        findings.append(Finding(
+                            "PRODUCER_DIGEST_MALFORMED",
+                            "artifact_payload",
+                            "source_manifest.source_digests entry is "
+                            "not a 64-hex sha256"))
+                        break
+    # REG-13/PROV-02: terminal/associable consistency
+    status = payload.get("status")
+    if payload.get("associable") is True and             status != "DESCRIPTIVE_REGIME_ONLY":
+        findings.append(Finding(
+            "PRODUCER_GATE_BYPASSED", "artifact_payload",
+            "associable=true on a non-descriptive status — "
+            "CANDIDATE_ONLY and unstable artifacts may never "
+            "associate"))
+    if payload.get("terminal") is True and status in (
+            "CANDIDATE_ONLY",):
+        findings.append(Finding(
+            "PRODUCER_GATE_BYPASSED", "artifact_payload",
+            "CANDIDATE_ONLY is a demotion, never terminal"))
     axes = payload.get("axis_results") or payload.get("axes")
     if axes is not None and isinstance(axes, Mapping):
         failing = {k: v for k, v in axes.items()

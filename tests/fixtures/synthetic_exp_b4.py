@@ -252,7 +252,9 @@ def planted_artifact_payload(events: Sequence[EventLabelV0]) -> dict:
     # required-gates map inside ``stability`` — everything a replay
     # needs to verify the artifact without re-predicting.
     required_gates = {
+        "seed_policy": True,
         "modal_k_unanimous": True,
+        "seed_coverage": True,
         "seed_ari": True,
         "loro": True,
         "temporal_bootstrap": True,
@@ -261,11 +263,10 @@ def planted_artifact_payload(events: Sequence[EventLabelV0]) -> dict:
         "missingness": True,
         "era_drift": True,
         "shuffled_null": True,
-        # One evidence gate left open keeps the planted
-        # CANDIDATE_ONLY status internally consistent — a
-        # descriptive terminal status may only ride on a fully
-        # closed gate map.
-        "season_matched_null": False,
+        "season_matched_null": True,
+        # REG-08/09 axis records present so the auditor sees a
+        # complete disposition surface
+        "effort": True,
     }
     stability = {
         "seed_ari_min": 0.91,
@@ -316,13 +317,33 @@ def planted_artifact_payload(events: Sequence[EventLabelV0]) -> dict:
         "train_mask_digest": _sha("synthetic-mask-b4"),
         "stability": stability,
         "nulls": {"shuffled_js": 0.31, "season_matched_js": 0.008},
-        "preprocessing_digest": _sha("synthetic-prep-b4"),
+        "preprocessing_digest": None,  # bound below over the section
         "k_selection_digest": _sha("synthetic-ksel-b4"),
         "stability_report_digest": sha256_canonical(stability),
         "null_model_digest": _sha("synthetic-nullmodel-b4"),
-        "status": "CANDIDATE_ONLY",
+        "status": "DESCRIPTIVE_REGIME_ONLY",
+        "terminal": True,
+        "associable": True,
+        "source_manifest": {"fixture": True},
+        "missingness_applied": {"policy": "listwise",
+                                "train_rows_total": n_rows,
+                                "train_rows_fitted": n_rows,
+                                "train_rows_dropped": 0},
+        "preprocessing": {
+            "imputer_strategy": "median",
+            "imputer_statistics": [0.0, 0.0],
+            "scaler_mean": [0.0, 0.0],
+            "scaler_var": [1.0, 1.0],
+            "feature_order": list(feature_cols),
+            "row_keys_digest": _sha("synthetic-rowkeys-b4"),
+            "train_mask_membership_digest": _sha(
+                "synthetic-maskmembers-b4")},
+        "environment_digest": _sha("synthetic-env-b4"),
+        "run_manifest_digest": _sha("synthetic-runmanifest-b4"),
         "disclaimer": "synthetic fixture — interface evidence only",
     }
+    art["preprocessing_digest"] = sha256_canonical(
+        art["preprocessing"])
     art["regime_artifact_digest"] = sha256_canonical(art)
     art["freeze_digest"] = sha256_canonical(dict(art))
     art["frozen"] = True

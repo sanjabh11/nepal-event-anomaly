@@ -466,7 +466,11 @@ def _mini_regime_frame():
         ["grp_east", "grp_central", "grp_north"]).to_numpy()
     config = RegimeRunConfig(
         train_groups=("grp_east", "grp_central", "grp_north"),
-        heldout_groups=("grp_west", "grp_farwest"))
+        heldout_groups=("grp_west", "grp_farwest"),
+        source_manifest={"fixture": True},
+        effort_waiver_reason="synthetic audit fixture carries no "
+                             "observation-effort column",
+        era_waiver_reason="synthetic audit fixture is single-era")
     return df, ["f1", "f2"], train_mask, config
 
 
@@ -532,10 +536,12 @@ class TestProducerPayloadAudit:
                    for f in findings)
 
     def test_open_gate_under_descriptive_status_flagged(self):
-        """A promoted status over an open gate is a bypass — the
-        fixture's CANDIDATE payload carries one open gate."""
+        """A promoted status over an open gate is a bypass —
+        opening a gate under a descriptive claim must flag."""
         payload = fx.planted_artifact_payload(fx.make_events(21))
         payload["status"] = "DESCRIPTIVE_REGIME_ONLY"
+        payload["stability"]["required_gates"][
+            "season_matched_null"] = False
         findings = audit_producer_payload(payload)
         assert any(f.code == "PRODUCER_GATE_BYPASSED"
                    and "season_matched_null" in f.detail

@@ -993,6 +993,10 @@ class TestSliceScopedDenominators:
             assert sc["n_opportunities"] == expected
 
     def test_season_slice_counts_linked_plus_unlinked(self):
+        # EVAL-01: non-meteorological season labels cannot be
+        # attributed to opportunities — only opportunities linked by
+        # the slice's own cases count; unattributable unlinked
+        # opportunities are excluded, never smeared in.
         design = fx.underpowered_design()
         cases = design["cases"]
         extra = fx.unlinked_opportunities(
@@ -1003,11 +1007,10 @@ class TestSliceScopedDenominators:
         report = evaluate(cases, **kwargs)
         for season, bundle in report.slices["season"].items():
             slice_cases = [c for c in cases if c.season == season]
-            assert bundle["scope_rule"] == (
-                "linked_case_opportunities_plus_unlinked_in_case_"
-                "regions")
+            assert bundle["scope_rule"] == \
+                "linked_opportunities_only"
             assert bundle["opportunities_scoped"] == \
-                len(slice_cases) + len(extra)
+                len(slice_cases)
 
     def test_lead_time_bucket_denominators_scoped(self):
         design = fx.underpowered_design()
@@ -1306,3 +1309,120 @@ class TestFitPartitionProvenance:
         assert fit_partition_provenance(
             fx.train_partition(cases, bound=True))[
                 "provenance"] == "bound"
+
+
+class TestRound4EvaluationHardening:
+    """EVAL-01..05 / FCST-01..02 adversarial probes."""
+
+    def test_baseline_provenance_recorded_unbound(self):
+        """FCST-02: caller-supplied baseline vectors are recorded as
+        fixture inputs — never silently promoted to bound evidence."""
+        design = fx.underpowered_design()
+        report = evaluate(design["cases"], **_eval_kwargs(design))
+        prov = report.baseline_provenance
+        assert prov
+        for name in report.metrics:
+            if name == "model":
+                continue
+            assert prov[name]["fit_provenance"] == \
+                "caller_supplied_fixture"
+
+    def test_baseline_evidence_digest_recomputes(self):
+        """FCST-02: a bound baseline whose declared digest does not
+        recompute over the supplied vector is rejected."""
+        design = fx.underpowered_design()
+        cases = design["cases"]
+        probs = fx.make_baseline_probs(cases)
+        bad_evidence = {
+            name: {"digest": "0" * 64,
+                   "fit_provenance": "bound"}
+            for name in probs}
+        kw = _eval_kwargs(design)
+        kw["baseline_evidence"] = bad_evidence
+        try:
+            evaluate(cases, **kw)
+            raise AssertionError("bad baseline digest must reject")
+        except ValueError as exc:
+            assert "baseline_evidence" in str(exc)
+
+    def test_baseline_evidence_bound_passes(self):
+        from nepal.research_v0._hashing import sha256_canonical
+        design = fx.underpowered_design()
+        cases = design["cases"]
+        probs = fx.make_baseline_probs(cases)
+        good = {
+            name: {"digest": sha256_canonical(
+                       [round(float(v), 9) for v in v_]),
+                   "fit_provenance": "bound"}
+            for name, v_ in probs.items()}
+        kw = _eval_kwargs(design)
+        kw["baseline_evidence"] = good
+        report = evaluate(cases, **kw)
+        assert report.baseline_provenance[
+            "climatology"]["fit_provenance"] == "bound"
+
+    def test_declaration_power_design_carried(self):
+        design = fx.underpowered_design()
+        cases = design["cases"]
+        decl = ForecastExperimentDeclaration(
+            declaration_id="decl-pd",
+            feature_artifact_digest="a" * 64,
+            threshold_record={"threshold": 0.5},
+            ablations=(), vintage_lineage=tuple(
+                sorted({c.vintage_digest for c in cases})),
+            power_design={"design_digest": "b" * 64,
+                          "metric": "pr_auc", "mde": 0.1})
+        kw = _eval_kwargs(design)
+        kw["threshold"] = 0.5
+        kw["experiment"] = decl
+        report = evaluate(cases, **kw)
+        assert report.declaration["declaration_id"] == "decl-pd"
+
+    def test_fit_partition_row_keys_reject_duplicates(self):
+        """FCST-01: canonical row keys must be unique and
+        well-formed — a duplicated key can never bind membership."""
+        from nepal.experiment_v0.baselines import (
+            FitPartition, _require_train_partition)
+        with pytest.raises(ValueError, match="row_keys"):
+            _require_train_partition(FitPartition(
+                partition="TRAIN_ONLY", rows=[[0.1], [0.2]],
+                labels=[0, 1],
+                row_keys=("u1|2020-01-01", "u1|2020-01-01")))
+
+    def test_fit_partition_row_keys_length_mismatch(self):
+        from nepal.experiment_v0.baselines import (
+            FitPartition, _require_train_partition)
+        with pytest.raises(ValueError, match="row_keys"):
+            _require_train_partition(FitPartition(
+                partition="TRAIN_ONLY", rows=[[0.1], [0.2]],
+                labels=[0, 1],
+                row_keys=("u1|2020-01-01",)))
+
+    def test_row_keys_digest_in_fit_provenance(self):
+        from nepal.experiment_v0.baselines import (
+            FitPartition, fit_partition_provenance)
+        p = FitPartition(
+            partition="TRAIN_ONLY", rows=[[0.1], [0.2]],
+            labels=[0, 1],
+            row_keys=("u1|2020-01-01", "u1|2020-01-02"))
+        from nepal.experiment_v0.baselines import \
+            _require_train_partition
+        _require_train_partition(p)
+        prov = fit_partition_provenance(p)
+        assert len(prov["row_keys_digest"]) == 64
+
+    def test_unlinked_opp_not_attributed_to_non_met_season(self):
+        """EVAL-01: unattributed unlinked opportunities cannot enter
+        a slice the registry cannot attribute them to."""
+        design = fx.underpowered_design()
+        cases = design["cases"]
+        extra = fx.unlinked_opportunities(
+            sorted({c.unit_id for c in cases}), n=1)
+        kwargs = _eval_kwargs(design)
+        kwargs["opportunities"] = {
+            **design["opportunities"], **extra}
+        report = evaluate(cases, **kwargs)
+        for season, bundle in report.slices["season"].items():
+            slice_cases = [c for c in cases if c.season == season]
+            assert bundle["opportunities_scoped"] == \
+                len(slice_cases)

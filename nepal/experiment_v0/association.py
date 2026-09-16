@@ -37,7 +37,7 @@ import random
 import re
 from collections import Counter
 from dataclasses import asdict, dataclass, field
-from datetime import date as _date
+from datetime import date as _date, timedelta as _timedelta
 from datetime import datetime, timedelta, timezone
 from typing import Any, Collection, Mapping, Optional, Sequence
 
@@ -97,7 +97,7 @@ FAMILY_ALPHA = 0.05
 #: a post-event (time-reversed) placement, and a seeded label-shuffle
 #: null.  A missing or failed null blocks the top status outright.
 REQUIRED_NULLS = ("placebo", "impossible_regime", "time_reversed",
-                  "label_shuffle")
+                  "label_shuffle", "spatial_shift")
 
 #: Sensitivity axes the report must disposition explicitly — every
 #: axis present with a PASS / FAIL / NOT_APPLICABLE status plus a
@@ -157,6 +157,78 @@ def _dates_between(first: _date, last: _date) -> list[_date]:
         out.append(d)
         d += timedelta(days=1)
     return out
+
+
+def _event_interval_days(event: EventLabelV0) -> Optional[int]:
+    """Width of the event's declared timing interval in days, or
+    None when the bounds cannot be parsed."""
+    try:
+        s = _date.fromisoformat(str(event.event_time_start)[:10])
+        e = _date.fromisoformat(str(event.event_time_end)[:10])
+    except ValueError:
+        return None
+    return (e - s).days
+
+
+def _spatial_shift_null(
+        artifact: RegimeAssignmentArtifact,
+        groups: Mapping[str, Sequence[EventLabelV0]],
+        controls: Sequence[ControlWindowV0],
+        basin_units: Mapping[str, Sequence[str]],
+        unit_basins: Mapping[str, str], *,
+        mode: str, lookback_days: int,
+        offsets: Sequence[int] = (-90, -30, 30, 90)) -> dict:
+    """ASSOC-04 geography-preserving shift null: every event group's
+    effective window is shifted by each declared day-offset while its
+    basin geography is held fixed — the observed enrichment must beat
+    every shifted-date distribution, not merely be nonzero."""
+    obs_table = _build_table(artifact, groups, controls,
+                             basin_units, mode, lookback_days)
+    observed = _point_ratios(obs_table)
+    shifted_groups: dict[str, list] = {}
+    per_offset: dict[str, dict] = {}
+    for off in offsets:
+        shifted = {}
+        for gid, members in groups.items():
+            moved = []
+            for e in members:
+                try:
+                    s = _date.fromisoformat(
+                        str(e.event_time_start)[:10]) + \
+                        _timedelta(days=int(off))
+                    t = _date.fromisoformat(
+                        str(e.event_time_end)[:10]) + \
+                        _timedelta(days=int(off))
+                except ValueError:
+                    continue
+                moved.append(dataclasses.replace(
+                    e, event_time_start=s.isoformat() + "T00:00:00Z",
+                    event_time_end=t.isoformat() + "T00:00:00Z"))
+            if moved:
+                shifted[gid] = moved
+        t = _build_table(artifact, shifted, controls, basin_units,
+                         mode, lookback_days)
+        per_offset[str(off)] = _point_ratios(t)
+    per_regime: dict[str, Any] = {}
+    for rid in observed:
+        obs = observed[rid]
+        if obs is None:
+            per_regime[rid] = {"observed_ratio": None, "p": None}
+            continue
+        ge = sum(1 for off in offsets
+                 if (per_offset[str(off)].get(rid) or 0.0) >= obs)
+        per_regime[rid] = {
+            "observed_ratio": _round12(obs),
+            "p": _round12(ge / len(offsets)),
+            "shifted_ratios": {str(off):
+                               per_offset[str(off)].get(rid)
+                               for off in offsets}}
+    rec = {"name": "spatial_shift",
+           "strata": "basin_fixed_date_shift",
+           "offsets": sorted(int(o) for o in offsets),
+           "per_regime": per_regime}
+    rec["digest"] = sha256_canonical(rec)
+    return rec
 
 
 def _parse_lookback_days(horizon: Any) -> int:
@@ -1318,6 +1390,48 @@ class AssociationReport:
                 problems.append(f"sensitivity FAIL dispositions "
                                 f"block the supported verdict: "
                                 f"{failed_axes}")
+            # ASSOC-07: full evidence revalidation — the supported
+            # verdict must stand on recomputing surfaces, not labels.
+            if self.n_event_groups <= 0:
+                problems.append("a supported verdict requires at "
+                                "least one atomic event group")
+            mult = self.multiplicity or {}
+            fp = mult.get("family_pvals")
+            if not isinstance(fp, Mapping) or not fp:
+                problems.append("a supported verdict requires a "
+                                "non-empty family_pvals table")
+            else:
+                bad = [k for k, v in fp.items()
+                       if v is not None and
+                       (not isinstance(v, (int, float))
+                        or isinstance(v, bool)
+                        or not 0.0 <= float(v) <= 1.0)]
+                if bad:
+                    problems.append(f"family_pvals entries out of "
+                                    f"range: {bad}")
+            cov = mult.get("null_coverage")
+            if not isinstance(cov, Mapping) or not cov:
+                problems.append("a supported verdict requires a "
+                                "non-empty null_coverage record")
+            else:
+                uncovered = [c for c, st in cov.items()
+                             if st != "executed"]
+                if uncovered:
+                    problems.append(f"family cells without null "
+                                    f"evidence: {uncovered}")
+            # the supported claim must name at least one regime that
+            # is Holm-significant in EVERY declared family cell —
+            # a promoted regime may never ride on a partial cell set
+            rejected = set(mult.get("holm_rejected") or ())
+            supported_regs = [
+                rid for rid in self.enrichment
+                if all(f"{h}|{m}|{rid}" in rejected
+                       for h in self.lookback_horizons
+                       for m in self.horizon_family)]
+            if not supported_regs:
+                problems.append("a supported verdict requires at "
+                                "least one regime Holm-significant "
+                                "in every declared family cell")
         return problems
 
     def to_dict(self) -> dict:
@@ -1679,13 +1793,32 @@ def run_association(
     # family is predeclared, never implicit ---
     family_tables: dict[tuple[int, str], dict[str, Any]] = {}
     family_enrichment: dict[tuple[int, str], dict[str, dict]] = {}
+    precision_exclusions: dict[str, int] = {}
     for h in lookback_days:
+        # ASSOC-01: a look-back horizon shorter than an event's own
+        # timing uncertainty is inadmissible for that event — the
+        # event is excluded from the cell and the exclusion counted.
+        if h > 0:
+            groups_h = {}
+            n_excl = 0
+            for gid, members in groups.items():
+                keep = [m for m in members
+                        if (_event_interval_days(m) or 0) <= h]
+                n_excl += len(members) - len(keep)
+                if keep:
+                    groups_h[gid] = keep
+        else:
+            groups_h, n_excl = groups, 0
         for mode in family:
-            t = _build_table(artifact, groups, negative_controls,
+            t = _build_table(artifact, groups_h, negative_controls,
                              basin_units, mode, lookback_days=h)
+            t["n_excluded_for_precision"] = n_excl
+            precision_exclusions[f"{h}d|{mode}"] = n_excl
             family_tables[(h, mode)] = t
             family_enrichment[(h, mode)] = event_group_bootstrap(
-                t, admissible_events, n_boot=n_boot, seed=seed)
+                t, [e for m in groups_h.values() for e in m]
+                if h > 0 else admissible_events,
+                n_boot=n_boot, seed=seed)
     # The primary cell — smallest declared look-back, first declared
     # placement — carries the report's headline enrichment mapping.
     primary_cell = (lookback_days[0], family[0])
@@ -1724,6 +1857,12 @@ def run_association(
             unit_basins, mode=primary_cell[1],
             lookback_days=primary_cell[0],
             n_boot=n_boot, seed=seed),
+        # ASSOC-04 geography-preserving shift null — dates shifted
+        # within fixed basin geography
+        "spatial_shift": _spatial_shift_null(
+            artifact, groups, negative_controls, basin_units,
+            unit_basins, mode=primary_cell[1],
+            lookback_days=primary_cell[0]),
     }
     # the flat controls (placebo, impossible, time-reversed) must
     # stay flat; the label-shuffle null must instead be BEATEN by
@@ -1733,6 +1872,9 @@ def run_association(
     all_flat = (not missing_nulls) and all(
         neg[k].get("flat") for k in flat_nulls)
     shuffle_p = neg["label_shuffle"].get("per_regime", {})
+    # spatial_shift: enriched regimes must beat the shifted-date
+    # distribution (per-regime p <= declared alpha), not be flat.
+    shift_p = neg["spatial_shift"].get("per_regime", {})
 
     # --- interval-placement sensitivity: every placement mode's
     # point ratios at the primary declared look-back (control frame
@@ -1791,10 +1933,29 @@ def run_association(
     # corrected-significant cells may promote the verdict.  Only
     # p_enrich cells computed against the declared family feed the
     # correction — sensitivity recomputations never enter it.
-    family_pvals = {
-        f"{h}d|{mode}|{rid}": cell.get("p_enrich")
-        for (h, mode), cells in family_enrichment.items()
-        for rid, cell in cells.items()}
+    # ASSOC-02/03/05: calibrated inference — the Holm family runs on
+    # per-cell stratified label-shuffle permutation p-values (the
+    # season x basin strata permutation null), one cell per
+    # regime x look-back x placement.  Bootstrap ``p_enrich`` stays in
+    # the enrichment cells as the uncertainty surface; it never feeds
+    # the correction.  ``null_coverage`` records exactly which family
+    # cells carried null evidence.
+    null_reps = max(min(int(n_boot), 50), 10)
+    null_coverage: dict[str, str] = {}
+    family_pvals: dict[str, Optional[float]] = {}
+    for (h, mode) in family_tables:
+        cell_key_prefix = f"{h}d|{mode}"
+        if (h, mode) == primary_cell:
+            rec = neg["label_shuffle"]
+        else:
+            rec = _label_shuffle_null(
+                artifact, groups, negative_controls, basin_units,
+                unit_basins, mode=mode, lookback_days=h,
+                n_boot=null_reps, seed=seed + 7 * h
+                + PLACEMENT_MODES.index(mode))
+        null_coverage[cell_key_prefix] = "executed"
+        for rid, r in (rec.get("per_regime") or {}).items():
+            family_pvals[f"{cell_key_prefix}|{rid}"] = r.get("p")
     holm = _holm_significant(family_pvals)
     corrected_cells = {k for k, v in holm.items() if v}
     # a regime counts as enriched only if it is Holm-significant in
@@ -2016,6 +2177,10 @@ def run_association(
             and all(
                 (shuffle_p.get(r) or {}).get("p") is not None
                 and shuffle_p[r]["p"] <= FAMILY_ALPHA
+                for r in enriched) \
+            and all(
+                (shift_p.get(r) or {}).get("p") is not None
+                and shift_p[r]["p"] <= FAMILY_ALPHA
                 for r in enriched):
         status = STATUS_SUPPORTED
         notes.append("one or more frozen regimes show a non-random "
@@ -2057,7 +2222,10 @@ def run_association(
                       "holm_rejected": sorted(k for k, v in
                                               holm.items() if v),
                       "lookback_horizons": list(lookback_names),
-                      "placement_modes": list(family)},
+                      "placement_modes": list(family),
+                      "inference": "stratified_permutation_p",
+                      "null_coverage": null_coverage,
+                      "precision_exclusions": precision_exclusions},
         sensitivities=sensitivities)
 
 

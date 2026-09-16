@@ -98,9 +98,8 @@ def _feature_frame():
     """Two planted regimes over 5 units x 90 days."""
     rng = np.random.default_rng(7)
     rows = []
-    for unit in _BASINS:
-        cluster = 0 if unit in ("koshi", "bagmati", "gandaki",
-                            "seti") else 1
+    for ui, unit in enumerate(_BASINS):
+        cluster = ui % 2
         for day in range(90):
             f1 = rng.normal(cluster * 4.0, 0.4)
             f2 = rng.normal(-cluster * 3.0, 0.4)
@@ -119,7 +118,12 @@ def _regime_artifact(df):
         ["grp_east", "grp_central", "grp_north"]).to_numpy()
     cfg = RegimeRunConfig(
         train_groups=("grp_east", "grp_central", "grp_north"),
-        heldout_groups=("grp_west", "grp_farwest"))
+        heldout_groups=("grp_west", "grp_farwest"),
+        source_manifest={"fixture": True},
+        effort_waiver_reason="synthetic e2e frame carries no "
+                             "observation-effort column",
+        era_col=None,
+        era_waiver_reason="synthetic e2e frame is single-era")
     art = run_regimes(df, ["f1", "f2"], train_mask, cfg)
     assert art.get("status") != "RUN_ERROR", art.get("reason")
     assert art["assignments"]

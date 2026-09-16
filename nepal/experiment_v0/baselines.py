@@ -37,6 +37,7 @@ partition whose rows look like scored cases rejects.
 from __future__ import annotations
 
 import math
+import hashlib
 import re
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Mapping, Sequence
@@ -94,6 +95,9 @@ class FitPartition:
     train_groups: Any = ()
     feature_digest: str = ""
     cutoff_time: str = ""
+    # FCST-01: canonical row identity "unit_id|date" — when bound,
+    # train membership is recomputed, not caller-asserted.
+    row_keys: Any = ()
 
 
 def _rows_look_like_cases(rows: Any) -> bool:
@@ -154,6 +158,29 @@ def _require_train_partition(partition: Any) -> FitPartition:
         raise ValueError(
             "FitPartition.cutoff_time must be an explicit-UTC "
             "timestamp when provided")
+    if p.row_keys not in (None, (), [], ""):
+        if isinstance(p.row_keys, (str, bytes)) or \
+                not isinstance(p.row_keys, Iterable):
+            raise ValueError(
+                "FitPartition.row_keys must be a collection of "
+                '"unit_id|date" strings')
+        keys = [str(k) for k in p.row_keys]
+        if any(k.count("|") != 1 or not all(
+                part.strip() for part in k.split("|"))
+               for k in keys):
+            raise ValueError(
+                'FitPartition.row_keys entries must be '
+                '"unit_id|date" strings with both parts non-empty')
+        if len(set(keys)) != len(keys):
+            raise ValueError(
+                "FitPartition.row_keys contain duplicates — train "
+                "membership must be unique")
+        # row-level length binding: keys must align 1:1 with rows
+        if isinstance(p.rows, Sequence) and \
+                len(keys) != len(p.rows):
+            raise ValueError(
+                "FitPartition.row_keys length does not match rows — "
+                "every fit row requires canonical identity")
     if not p.holdout_digest and not p.train_groups and \
             _rows_look_like_cases(p.rows):
         raise ValueError(
@@ -161,6 +188,17 @@ def _require_train_partition(partition: Any) -> FitPartition:
             "a partition with no holdout/train-group provenance can "
             "never fit on scored-case payloads")
     return p
+
+
+def _row_keys_digest_of(p: FitPartition) -> str:
+    keys = getattr(p, "_row_keys_digest", "")
+    if keys:
+        return keys
+    if p.row_keys not in (None, (), [], ""):
+        return hashlib.sha256(
+            "\n".join(sorted(map(str, p.row_keys)))
+            .encode("utf-8")).hexdigest()
+    return ""
 
 
 def fit_partition_provenance(partition: FitPartition) -> dict:
@@ -176,6 +214,7 @@ def fit_partition_provenance(partition: FitPartition) -> dict:
             str(g) for g in (partition.train_groups or ())),
         "feature_digest": partition.feature_digest or "",
         "cutoff_time": partition.cutoff_time or "",
+        "row_keys_digest": _row_keys_digest_of(partition),
     }
 
 

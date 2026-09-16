@@ -273,7 +273,8 @@ class TestRegimeDigestBinding:
         bundle = fx.synthetic_bundle()
         payload = bundle["association"]["artifact_payload"]
         payload["status"] = "DESCRIPTIVE_REGIME_ONLY"
-        # the fixture leaves season_matched_null open
+        payload["stability"]["required_gates"][
+            "season_matched_null"] = False
         _repair_payload_digests(payload)
         result = replay_bundle(bundle)
         assert result["association_status"] == "REPLAY_FAILED"

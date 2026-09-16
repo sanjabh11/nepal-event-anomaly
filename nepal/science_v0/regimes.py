@@ -58,7 +58,10 @@ import copy
 import dataclasses
 import hashlib
 import itertools
+import re
+import sys
 from dataclasses import dataclass, field
+from typing import Mapping, Sequence
 
 import numpy as np
 import pandas as pd
@@ -82,6 +85,7 @@ MIN_BOOTSTRAP = 200
 MIN_NULL_REPLICATES = 50
 MIN_COL_FINITE = 50
 LORO_JS_MAX = 0.35
+LORO_ARI_MIN = 0.6
 BOOTSTRAP_MAX_FAILURE_RATE = 0.10
 MISSINGNESS_POLICIES = ("listwise", "bounded_impute", "stratified")
 FOLD_SEED_POLICIES = ("all", "first")
@@ -337,6 +341,14 @@ def _refit_against_reference(sub_df: pd.DataFrame,
         rec["status"] = "NONCONVERGED"
         rec["reason"] = "every declared fold seed failed to converge"
         return rec
+    # REG-03: under the "all" policy every declared seed must
+    # converge — a failed seed demotes the fold outright.
+    if fold_seed_policy == "all" and rec["seed_failures"]:
+        rec["status"] = "NONCONVERGED"
+        rec["reason"] = (f"declared seed(s) {rec['seed_failures']} "
+                         "failed to converge on the fold — partial "
+                         "seed coverage cannot pass a required axis")
+        return rec
     rec["js"] = float(max(v["js"] for v in rec["per_seed"].values()))
     rec["ari"] = float(min(v["ari"] for v in rec["per_seed"].values()))
     rec["status"] = "PASS" if rec["js"] < LORO_JS_MAX else "FAIL"
@@ -359,14 +371,20 @@ def shuffled_null(X: np.ndarray, seed: int) -> np.ndarray:
 
 
 def season_matched_null(df: pd.DataFrame, feature_cols: list[str],
-                        season_col: str, seed: int) -> np.ndarray:
+                        season_col: str, seed: int,
+                        era_col: str | None = None) -> np.ndarray:
     """Synthetic samples from same seasonal marginals: resample each
-    feature independently within season strata."""
+    feature independently within season strata — and within
+    (season, era) joint strata when ``era_col`` is bound (REG-04)."""
     rng = np.random.default_rng(seed)
     out = np.empty((len(df), len(feature_cols)))
-    seasons = df[season_col].to_numpy()
-    for si, s in enumerate(pd.unique(seasons)):
-        idx = np.where(seasons == s)[0]
+    if era_col is not None and era_col in df.columns:
+        strata = (df[season_col].astype(str) + "|"
+                  + df[era_col].astype(str)).to_numpy()
+    else:
+        strata = df[season_col].to_numpy()
+    for si, s in enumerate(pd.unique(strata)):
+        idx = np.where(strata == s)[0]
         for j, c in enumerate(feature_cols):
             pool = df[c].to_numpy()[idx]
             pool = pool[np.isfinite(pool)]
@@ -377,7 +395,8 @@ def season_matched_null(df: pd.DataFrame, feature_cols: list[str],
 
 def _null_envelope(observed_stat, generator, modal_k: int,
                    decl_seeds: list, n_replicates: int,
-                   alpha: float) -> dict:
+                   alpha: float,
+                   k_candidates: tuple = K_CANDIDATES) -> dict:
     """Empirical null envelope for the SAME predeclared statistic
     (REG-C04): ``generator(i, gen_seed)`` returns the i-th null
     design matrix (already in fit space) or None on failure; each
@@ -389,7 +408,9 @@ def _null_envelope(observed_stat, generator, modal_k: int,
            "n_replicates": int(n_replicates),
            "n_succeeded": 0, "n_failed": 0,
            "p_value": None, "alpha": float(alpha),
-           "status": "FAIL", "reason": None}
+           "status": "FAIL", "reason": None,
+           "selection": "bic_sweep_declared_candidates",
+           "null_k_distribution": {}}
     if observed_stat is None:
         rec["reason"] = ("observed statistic undefined (K=1 or "
                          "degenerate partition) — the null envelope "
@@ -406,10 +427,16 @@ def _null_envelope(observed_stat, generator, modal_k: int,
         if X_n is None or not np.isfinite(X_n).all():
             rec["n_failed"] += 1
             continue
-        f = _fit_gmm(X_n, modal_k, fit_seed)
-        if not f["converged"]:
+        # REG-05 selection consistency: the null replicate replays
+        # the declared K sweep and takes the BIC-best converged fit —
+        # the null is not privileged with the observed modal K.
+        k_fits = [_fit_gmm(X_n, k, fit_seed) for k in k_candidates]
+        conv = [f for f in k_fits if f["converged"]]
+        if not conv:
             rec["n_failed"] += 1
             continue
+        f = min(conv, key=lambda f: f["bic"])
+        rec["null_k_distribution"][str(f["k"])] =             rec["null_k_distribution"].get(str(f["k"]), 0) + 1
         s = _silhouette(X_n, f["model"].predict(X_n))
         if s is None:
             rec["n_failed"] += 1
@@ -473,6 +500,21 @@ class RegimeRunConfig:
     # Both must be non-empty and disjoint; the mask must honour them.
     train_groups: tuple = ()
     heldout_groups: tuple = ()
+    # REG-01 calendar-aware bootstrap: cadence + declared block
+    # length + gap policy are bound configuration, never derived.
+    cadence: str = "1D"
+    bootstrap_block_len: int = 0   # 0 -> n_dates // 10 (recorded)
+    gap_policy: str = "calendar"   # blocks are calendar ranges
+    # REG-08/09 waivers: an undeclared axis FAILS the gate unless the
+    # waiver reason is explicitly bound in configuration.
+    effort_waiver_reason: str = ""
+    era_waiver_reason: str = ""
+    effort_split: str = "median"   # declared effort stratification
+    # REG-10 elevation ablation threshold
+    elev_ablation_ari_max: float = 0.8
+    # REG-11 input manifest: {"source_id", "source_digests",
+    # "units", "feature_allowlist", "lineage"} or {"fixture": True}.
+    source_manifest: object = None
 
 
 def _modal_k(ks: list[int]) -> int:
@@ -518,6 +560,16 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
         return {"status": "RUN_ERROR",
                 "reason": f"declared elevation column "
                           f"{config.elevation_col!r} missing"}
+    # REG-10: elevation is unit-bound numeric only — an arbitrary
+    # string column can never act as an elevation band.
+    if config.elevation_col is not None and \
+            not pd.api.types.is_numeric_dtype(
+                df[config.elevation_col]):
+        return {"status": "RUN_ERROR",
+                "reason": f"declared elevation column "
+                          f"{config.elevation_col!r} must be numeric "
+                          "(metres) — arbitrary labels cannot act "
+                          "as elevation bands"}
     if config.effort_col is not None and \
             config.effort_col not in df.columns:
         return {"status": "RUN_ERROR",
@@ -570,6 +622,28 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
                 "reason": f"n_bootstrap must be an int >= "
                           f"{MIN_BOOTSTRAP} — the temporal-block "
                           "bootstrap is a required stability axis"}
+    # REG-01: cadence must be a parseable pandas offset and
+    # gap_policy a declared policy — both enter the bound config
+    # digest, so an undeclared or malformed value can never produce
+    # a terminal artifact.
+    try:
+        pd.tseries.frequencies.to_offset(config.cadence)
+    except (TypeError, ValueError) as exc:
+        return {"status": "RUN_ERROR",
+                "reason": f"cadence {config.cadence!r} is not a "
+                          f"parseable offset: {exc}"}
+    if config.gap_policy != "calendar":
+        return {"status": "RUN_ERROR",
+                "reason": f"gap_policy {config.gap_policy!r} "
+                          "unsupported — only 'calendar' (blocks are "
+                          "calendar ranges that cannot bridge missing "
+                          "dates) is admitted"}
+    if isinstance(config.bootstrap_block_len, bool) or \
+            not isinstance(config.bootstrap_block_len, int) or \
+            config.bootstrap_block_len < 0:
+        return {"status": "RUN_ERROR",
+                "reason": "bootstrap_block_len must be a non-negative "
+                          "int (0 = derive n_dates//10, recorded)"}
     if isinstance(config.n_null_replicates, bool) or \
             not isinstance(config.n_null_replicates, int) or \
             config.n_null_replicates < MIN_NULL_REPLICATES:
@@ -599,6 +673,49 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
                 "reason": f"fold_seed_policy must be one of "
                           f"{FOLD_SEED_POLICIES}; got "
                           f"{config.fold_seed_policy!r}"}
+    # REG-11: a minimal input manifest is mandatory — either an
+    # explicit fixture declaration or a fully-bound real-source
+    # record (source digests, units, feature allowlist, lineage).
+    # An ungoverned frame can never produce a terminal artifact.
+    sm = config.source_manifest
+    if not isinstance(sm, Mapping) or not sm:
+        return {"status": "RUN_ERROR",
+                "reason": "source_manifest is required — declare "
+                          "{'fixture': true} for synthetic frames or "
+                          "a bound {source_id, source_digests, units, "
+                          "feature_allowlist, lineage} record for "
+                          "real inputs"}
+    if not sm.get("fixture"):
+        missing_sm = [k for k in ("source_id", "source_digests",
+                                  "units", "feature_allowlist",
+                                  "lineage") if not sm.get(k)]
+        if missing_sm:
+            return {"status": "RUN_ERROR",
+                    "reason": f"non-fixture source_manifest lacks "
+                              f"{missing_sm} — an ungoverned frame "
+                              "cannot produce a terminal artifact"}
+        if isinstance(sm.get("source_digests"), Sequence) and \
+                not isinstance(sm["source_digests"],
+                               (str, bytes)):
+            if any(not isinstance(d, str) or
+                   not re.fullmatch(r"[0-9a-f]{64}", d)
+                   for d in sm["source_digests"]):
+                return {"status": "RUN_ERROR",
+                        "reason": "source_manifest.source_digests "
+                                  "entries must be 64-hex sha256"}
+        # the declared allowlist must cover the requested features —
+        # a feature outside the declared allowlist can never enter a
+        # governed run
+        allow = sm.get("feature_allowlist")
+        if isinstance(allow, (list, tuple, set)):
+            not_allowed = [c for c in feature_cols
+                           if c not in set(allow)]
+            if not_allowed:
+                return {"status": "RUN_ERROR",
+                        "reason": f"feature columns {not_allowed} "
+                                  "are outside the declared "
+                                  "source_manifest.feature_allowlist"}
+
     # REG-C06: era boundaries are either uniformly ISO dates (a
     # date-defined partition) or uniformly era labels matching the
     # era column; mixing the two declaration styles is malformed.
@@ -715,6 +832,28 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
                 "reason": f"malformed feature columns rejected "
                           f"before fitting: {malformed}"}
 
+    # REG-07: the declared missingness policy applies to the PRIMARY
+    # fit surface — policy changes alter model inputs, and the applied
+    # row selection is bound into the artifact.
+    row_miss_frac_primary = train_df.isna().mean(axis=1).to_numpy()
+    if config.missingness_policy == "listwise":
+        fit_sel = row_miss_frac_primary == 0.0
+    elif config.missingness_policy == "bounded_impute":
+        fit_sel = row_miss_frac_primary <= float(
+            config.max_missingness)
+    else:  # stratified: all train rows; bands reported in stability
+        fit_sel = np.ones(len(train_df), dtype=bool)
+    missingness_applied = {
+        "policy": config.missingness_policy,
+        "train_rows_total": int(len(train_df)),
+        "train_rows_fitted": int(fit_sel.sum()),
+        "train_rows_dropped": int((~fit_sel).sum())}
+    train_df = train_df.loc[fit_sel]
+    if len(train_df) < 50:
+        return {"status": "RUN_ERROR",
+                "reason": f"declared missingness policy "
+                          f"{config.missingness_policy!r} leaves "
+                          f"{len(train_df)} train rows (<50)"}
     prep = TrainOnlyPreprocessor()
     try:
         prep.fit(train_df)
@@ -734,7 +873,9 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
         return {"status": "RUN_ERROR",
                 "reason": f"constant feature columns rejected: "
                           f"{constant}"}
-    X_train = X_all[train_mask]
+    # the model fits the same policy-selected surface the
+    # preprocessor saw — never the imputed remainder
+    X_train = X_all[train_mask][fit_sel]
 
     decl_seeds = sorted(set(int(s) for s in config.seeds))
 
@@ -902,8 +1043,15 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
             js = float(_js_divergence(occ_eval, occ_fit))
             js_ref = float(_js_divergence(occupancy, occ_fit))
             ari = float(_ari(ref_labels_sub, fit_labels))
+            # decisive out-of-fold agreement: the reference model and
+            # the fold model label the SAME excluded-group rows —
+            # label-invariant, so component permutation is irrelevant
+            ref_eval_labels = model.predict(
+                prep.transform(eval_rows))
+            ari_eval = float(_ari(ref_eval_labels, eval_labels))
             fold["per_seed"][str(int(sd))] = {
-                "js": js, "ari": ari, "js_vs_reference": js_ref}
+                "js": js, "ari": ari, "ari_eval": ari_eval,
+                "js_vs_reference": js_ref}
         if not fold["per_seed"]:
             fold["status"] = "NONCONVERGED"
             fold["reason"] = ("every declared fold seed failed to "
@@ -914,14 +1062,25 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
                                for v in fold["per_seed"].values()))
         fold["ari"] = float(min(v["ari"]
                                 for v in fold["per_seed"].values()))
+        fold["ari_eval"] = float(min(
+            v["ari_eval"] for v in fold["per_seed"].values()))
         fold["js_vs_reference"] = float(
             max(v["js_vs_reference"]
                 for v in fold["per_seed"].values()))
         fold["n_eval_rows"] = int(len(eval_rows))
-        fold["status"] = "PASS" if fold["js"] < LORO_JS_MAX else "FAIL"
+        # gate on out-of-fold label agreement (ARI on the excluded
+        # group's rows under fold-vs-reference models); occupancy JS
+        # remains a diagnostic — a homogeneous excluded group can
+        # legitimately diverge in composition without the partition
+        # being unstable.
+        fold["status"] = ("PASS" if fold["ari_eval"] >= LORO_ARI_MIN
+                          else "FAIL")
         if fold["status"] == "FAIL":
-            fold["reason"] = (f"out-of-fold occupancy JS "
-                              f"{fold['js']:.4f} >= {LORO_JS_MAX}")
+            fold["reason"] = (
+                f"out-of-fold label agreement ARI "
+                f"{fold['ari_eval']:.3f} < {LORO_ARI_MIN} — the "
+                "partition does not reproduce on the excluded "
+                "group's rows")
         loro[g] = fold
     stability["leave_one_region_out"] = {
         "folds": loro,
@@ -932,6 +1091,29 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
     }
     loro_pass = (all(f["status"] == "PASS" for f in loro.values())
                  and len(loro) >= MIN_GEO_GROUPS)
+
+    # REG-02: locked held-out groups are PREDICTED by the frozen
+    # model (never fitted) — coverage of the locked universe is a
+    # reported diagnostic, and any fit access would be a violation.
+    locked_cov = {}
+    for g in sorted(heldout_groups):
+        m_g = np.asarray(~train_mask) & \
+            (df[config.group_col].astype(str) == g)
+        sub_g = df.loc[m_g, feature_cols]
+        rec = {"n_rows": int(len(sub_g)),
+               "occupancy_js_vs_reference": None, "status": None}
+        if len(sub_g) == 0:
+            rec["status"] = "EMPTY"
+            rec["reason"] = "declared held-out group has no rows"
+        else:
+            lab_g = model.predict(prep.transform(sub_g))
+            occ_g = np.bincount(lab_g,
+                                minlength=modal_k) / len(lab_g)
+            js = float(_js_divergence(occupancy, occ_g))
+            rec["occupancy_js_vs_reference"] = js
+            rec["status"] = "REPORTED"
+        locked_cov[g] = rec
+    stability["locked_group_coverage"] = locked_cov
 
     # --- REG-C01: temporal-block bootstrap — every replicate REFITS
     # preprocessing + GMM on its contiguous-date resample (train rows
@@ -963,20 +1145,28 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
         boot["failure_rate"] = 1.0
         stability["temporal_block_bootstrap"] = boot
     else:
-        block_len = max(7, n_dates // 10)
+        block_len = (config.bootstrap_block_len
+                     or max(7, n_dates // 10))
         rng_bt = np.random.default_rng(int(decl_seeds[0]))
         b_weights, b_means, b_occ, b_post, b_ari = \
             [], [], [], [], []
         failures = 0
+        # REG-01: blocks are CALENDAR ranges at the declared cadence —
+        # a block spanning missing dates simply contains fewer rows;
+        # it never bridges the gap by borrowing a later date.
+        day0 = unique_days[0]
+        day_idx = {d: i for i, d in enumerate(unique_days)}
+        step = pd.tseries.frequencies.to_offset(config.cadence)
         start_pool = np.arange(n_dates)
         for b in range(config.n_bootstrap):
             chosen = []
             while len(chosen) < n_train_rows:
                 st = rng_bt.choice(start_pool)
-                span = set(unique_days[st:st + block_len].tolist())
+                lo = unique_days[st]
+                hi = lo + step * (block_len - 1)
+                span = [d for d in unique_days if lo <= d <= hi]
                 chosen.extend(
-                    train_index[np.isin(norm_values,
-                                        list(span))].tolist())
+                    train_index[np.isin(norm_values, span)].tolist())
             rows = np.array(chosen[:n_train_rows])
             sub = df.loc[rows, feature_cols]
             try:
@@ -1011,6 +1201,8 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
         boot["n_failures"] = int(failures)
         boot["failure_rate"] = float(failures / config.n_bootstrap)
         boot["block_len_dates"] = int(block_len)
+        boot["cadence"] = config.cadence
+        boot["gap_policy"] = config.gap_policy
         if b_post:
             bw = np.asarray(b_weights)
             bm = np.asarray(b_means)
@@ -1147,10 +1339,37 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
             max_band_js = None
             note = ("no evaluable elevation band — marginal "
                     "elevation explanation could not be assessed")
+        # REG-10: elevation-only ablation — fit a 1-D GMM on the
+        # elevation column alone; if it reproduces the partition the
+        # regime structure is marginally explained by elevation and
+        # cannot be promoted as independent structure.
+        try:
+            elev_train = df.loc[train_mask,
+                                config.elevation_col].to_numpy(
+                                    dtype=np.float64).reshape(-1, 1)
+            f_el = _fit_gmm(elev_train, modal_k,
+                            int(decl_seeds[0]))
+            if f_el["converged"]:
+                el_lab = f_el["model"].predict(elev_train)
+                ref_lab_el = model.predict(prep.transform(
+                    df.loc[train_mask, feature_cols]))
+                abl_ari = float(_ari(ref_lab_el, el_lab))
+            else:
+                abl_ari = None
+        except Exception:
+            abl_ari = None
+        if abl_ari is not None and                 abl_ari > float(config.elev_ablation_ari_max):
+            elev_ok = False
+            note += (" | ELEVATION ABLATION: elevation alone "
+                     f"reproduces the partition (ARI {abl_ari:.3f} "
+                     f"> {config.elev_ablation_ari_max}) — the "
+                     "structure is not independent")
         stability["elevation"] = {
             "status": "PASS" if elev_ok else "FAIL",
             "folds": elev_refits,
             "marginal_band_js_max": max_band_js,
+            "elevation_only_ablation_ari": abl_ari,
+            "ablation_threshold": float(config.elev_ablation_ari_max),
             "note": note}
 
     # --- REG-C05: missingness/effort sensitivity — exactly the
@@ -1204,13 +1423,16 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
                 brec["status"] = "SKIPPED"
                 brec["reason"] = "fewer than 30 rows in band"
             else:
-                occ_b = np.bincount(
+                # REG-07: each band REFITS preprocessing + GMM under
+                # the declared seed policy — a band comparison that
+                # only re-predicts through the primary model cannot
+                # detect that the partition itself is missingness-
+                # driven.
+                brec = _refit_against_reference(
+                    sub, prep, model, occupancy,
                     model.predict(prep.transform(sub)),
-                    minlength=modal_k) / len(sub)
-                js = float(_js_divergence(occupancy, occ_b))
-                brec["js"] = js
-                brec["status"] = ("PASS" if js < LORO_JS_MAX
-                                  else "FAIL")
+                    modal_k, decl_seeds, config.fold_seed_policy)
+                brec["n_rows"] = int(len(sub))
             bands[bname] = brec
         evaluable = [r for r in bands.values()
                      if r["status"] in ("PASS", "FAIL")]
@@ -1232,25 +1454,40 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
     # a declared-but-unevaluable missingness axis is never a pass
     miss_ok = miss_ax["status"] == "PASS"
 
-    # effort axis — optional; undeclared means NOT_APPLICABLE with an
-    # explicit reason.
+    # REG-08: effort axis — undeclared means FAIL unless an explicit
+    # waiver reason is bound in configuration; a declared axis uses
+    # the declared stratification policy, never a dynamic one.
     if config.effort_col is None:
-        stability["effort_sensitivity"] = {
-            "status": "NOT_APPLICABLE",
-            "reason": "no effort column declared in the run "
-                      "configuration"}
-        effort_ok = True
+        if config.effort_waiver_reason.strip():
+            stability["effort_sensitivity"] = {
+                "status": "NOT_APPLICABLE",
+                "reason": f"waived: {config.effort_waiver_reason}"}
+            effort_ok = True
+        else:
+            stability["effort_sensitivity"] = {
+                "status": "FAIL",
+                "reason": "no effort column declared and no "
+                          "effort_waiver_reason bound — the effort "
+                          "axis cannot be silently skipped"}
+            effort_ok = False
     else:
         ev = df.loc[train_mask, config.effort_col]
         bands = {}
+        # REG-08: the effort split is a DECLARED policy recorded in
+        # the bound config — "median" is the declared midpoint split
+        # (its threshold is recorded), not a silently-dynamic strata.
         if pd.api.types.is_numeric_dtype(ev):
             med = float(np.nanmedian(ev.to_numpy(dtype=np.float64)))
             band_sel = {"le_median": ev.to_numpy() <= med,
                         "gt_median": ev.to_numpy() > med}
+            strata_policy = {"kind": "numeric_median",
+                             "median": med}
         else:
             uniques = sorted(map(str, ev.dropna().unique()))
             band_sel = {u: (ev.astype(str) == u).to_numpy()
                         for u in uniques[:10]}
+            strata_policy = {"kind": "categorical",
+                             "values": uniques[:10]}
         for bname, bsel in band_sel.items():
             sub_idx = train_rows_index[np.asarray(bsel)]
             sub = df.loc[sub_idx, feature_cols]
@@ -1260,13 +1497,14 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
                 brec["status"] = "SKIPPED"
                 brec["reason"] = "fewer than 30 rows in band"
             else:
-                occ_b = np.bincount(
+                # refit under the declared seed policy — occupancy
+                # under the primary model alone cannot detect an
+                # effort-driven partition
+                brec = _refit_against_reference(
+                    sub, prep, model, occupancy,
                     model.predict(prep.transform(sub)),
-                    minlength=modal_k) / len(sub)
-                js = float(_js_divergence(occupancy, occ_b))
-                brec["js"] = js
-                brec["status"] = ("PASS" if js < LORO_JS_MAX
-                                  else "FAIL")
+                    modal_k, decl_seeds, config.fold_seed_policy)
+                brec["n_rows"] = int(len(sub))
             bands[str(bname)] = brec
         evaluable = [r for r in bands.values()
                      if r["status"] in ("PASS", "FAIL")]
@@ -1276,12 +1514,14 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
                 "reason": "declared effort axis yields fewer than 2 "
                           "evaluable bands — a declared axis that "
                           "cannot be evaluated is not a pass",
+                "strata_policy": strata_policy,
                 "bands": bands}
             effort_ok = False
         else:
             ok = all(r["status"] == "PASS" for r in evaluable)
             stability["effort_sensitivity"] = {
                 "status": "PASS" if ok else "FAIL",
+                "strata_policy": strata_policy,
                 "bands": bands}
             effort_ok = ok
 
@@ -1292,7 +1532,14 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
     era_ax = {"status": "NOT_APPLICABLE", "reason": None,
               "boundaries": None, "pairs": {}}
     if config.era_col is None:
-        era_ax["reason"] = "no era column declared"
+        if config.era_waiver_reason.strip():
+            era_ax["reason"] = (f"waived: "
+                                f"{config.era_waiver_reason}")
+        else:
+            era_ax["status"] = "FAIL"
+            era_ax["reason"] = ("no era column declared and no "
+                                "era_waiver_reason bound — the era "
+                                "axis cannot be silently skipped")
     elif not config.era_boundaries:
         era_ax["status"] = "FAIL"
         era_ax["reason"] = (
@@ -1369,7 +1616,8 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
 
     def _gen_season(i, gen_seed):
         raw = season_matched_null(train_sub, feature_cols,
-                                  config.season_col, seed=gen_seed)
+                                  config.season_col, seed=gen_seed,
+                                  era_col=config.era_col)
         if not np.isfinite(raw).all():
             return None
         p_n = TrainOnlyPreprocessor().fit(
@@ -1381,15 +1629,33 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
     null_shuf = _null_envelope(observed_stat, _gen_shuffled,
                                modal_k, decl_seeds,
                                config.n_null_replicates,
-                               config.null_alpha)
+                               config.null_alpha,
+                               k_candidates=config.k_candidates)
     null_seas = _null_envelope(observed_stat, _gen_season,
                                modal_k, decl_seeds,
                                config.n_null_replicates,
-                               config.null_alpha)
+                               config.null_alpha,
+                               k_candidates=config.k_candidates)
+    # REG-06: every null family, its inputs, seeds, and replicate
+    # statistics are bound and hashed — replay can recompute the
+    # envelope without trusting a summary.
+    for fam, rec in (("shuffled", null_shuf),
+                     ("season_matched", null_seas)):
+        rec["family_digest"] = _digest(
+            {"family": fam, "seed_cycle": decl_seeds,
+             "n_replicates": rec["n_replicates"],
+             "statistic": rec["statistic"],
+             "p_value": rec["p_value"],
+             "null_stat_min": rec.get("null_stat_min"),
+             "null_stat_max": rec.get("null_stat_max"),
+             "null_k_distribution": rec.get(
+                 "null_k_distribution", {})})
     nulls = {"statistic": NULL_STATISTIC,
              "observed": observed_stat,
              "alpha": float(config.null_alpha),
              "n_replicates": int(config.n_null_replicates),
+             "season_era_stratified": bool(
+                 config.era_col and config.era_col in df.columns),
              "shuffled": null_shuf,
              "season_matched": null_seas}
 
@@ -1398,6 +1664,9 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
     # policy-admissible NOT_APPLICABLE) — a recorded-but-ungated
     # metric can never promote a result.
     required_gates = {
+        # REG-03: a one-seed fold policy is diagnostic-only — terminal
+        # stability requires every declared seed to participate.
+        "seed_policy": config.fold_seed_policy == "all",
         "modal_k_unanimous": bool(k_freq == 1.0),
         "seed_ari": bool(seed_ari) and min(seed_ari) > 0.6,
         "seed_coverage": bool(seed_coverage_complete),
@@ -1452,6 +1721,16 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
             "shape": [int(len(df)), int(len(feature_cols))]},
         "config": dataclasses.asdict(config),
         "config_digest": _digest(dataclasses.asdict(config)),
+        "source_manifest": (dict(config.source_manifest)
+                            if isinstance(config.source_manifest,
+                                          Mapping)
+                            else config.source_manifest),
+        "environment_digest": _digest({
+            "python": sys.version.split()[0],
+            "numpy": np.__version__}),
+        "run_manifest_digest": _digest({
+            "config_digest": _digest(dataclasses.asdict(config)),
+            "input_bytes_digest": _sha_bytes(input_bytes)}),
         "fit_groups": sorted(mask_groups),
         "heldout_groups_declared": sorted(heldout_groups),
         "n_train_rows": int(mask.sum()),
@@ -1470,24 +1749,53 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
         "mean_max_posterior": float(post.mean()),
         "ambiguous_fraction": float((post < 0.7).mean()),
         "missingness": missingness,
+        "missingness_applied": missingness_applied,
+        # REG-12: preprocessing bound end-to-end — imputer stats,
+        # scaler params, feature order, canonical row keys, and the
+        # exact policy-selected train membership.
+        "preprocessing": {
+            "imputer_strategy": "median",
+            "imputer_statistics": prep._imputer.statistics_.tolist(),
+            "scaler_mean": prep._scaler.mean_.tolist(),
+            "scaler_var": prep._scaler.var_.tolist(),
+            "feature_order": list(feature_cols),
+            "row_keys_digest": _digest(sorted(
+                f"{u}|{d}" for u, d in zip(
+                    df[config.unit_col].astype(str),
+                    df[config.date_col].astype(str)))),
+            "train_mask_membership_digest": _digest(
+                sorted(str(i) for i in
+                       df.index[train_mask][
+                           np.asarray(fit_sel)].tolist()))},
         "stability": stability,
         "nulls": nulls,
         "model": {"weights": model.weights_.tolist(),
                   "means": model.means_.tolist(),
                   "covariances": model.covariances_.tolist()},
-        "preprocessing_digest": prep.digest(),
+        "preprocessing_digest": None,  # bound below after section
         "k_selection_digest": _digest(
             [{kk: _finite_or_token(f[kk])
               for kk in ("k", "seed", "bic", "aic", "converged")}
              for f in fits]),
         "stability_report_digest": _digest(stability),
-        "null_model_digest": _digest(
-            {"k1_bic": [_finite_or_token(f["bic"])
-                        for f in null_fits]}),
+        "null_model_digest": _digest({
+            "k1_bic": [_finite_or_token(f["bic"])
+                       for f in null_fits],
+            "null_families": {fam: rec.get("family_digest")
+                              for fam, rec in
+                              (("shuffled", null_shuf),
+                               ("season_matched", null_seas))}}),
         "status": status,
+        # REG-13: CANDIDATE_ONLY is a demotion, not a terminal
+        # result — only DESCRIPTIVE_REGIME_ONLY may associate.
+        "terminal": status in ("DESCRIPTIVE_REGIME_ONLY",
+                               "UNSUPERVISED_STRUCTURE_NOT_STABLE"),
+        "associable": status == "DESCRIPTIVE_REGIME_ONLY",
         "disclaimer": "descriptive regime structure only; not an "
                       "event precursor, association, or skill claim",
     }
+    artifact["preprocessing_digest"] = _digest(
+        artifact["preprocessing"])
     artifact["regime_artifact_digest"] = _digest(
         {k: v for k, v in artifact.items()
          if k != "regime_artifact_digest"})
@@ -1549,6 +1857,14 @@ def freeze_regime_artifact(artifact: dict) -> dict:
             arr.tobytes()):
         raise ValueError("input_bytes_digest mismatch — the bound "
                          "raw feature bytes were altered")
+    pre = artifact.get("preprocessing")
+    if not isinstance(pre, dict) or not pre.get("row_keys_digest"):
+        raise ValueError("cannot freeze: preprocessing binding "
+                         "missing — the train surface is "
+                         "unrecoverable")
+    if artifact.get("preprocessing_digest") != _digest(pre):
+        raise ValueError("preprocessing_digest mismatch — the bound "
+                         "preprocessing surface was altered")
     recomputed = _digest(
         {k: v for k, v in artifact.items()
          if k != "regime_artifact_digest"})

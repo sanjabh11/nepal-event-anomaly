@@ -491,6 +491,19 @@ def regime_assignment_from_artifact(
         raise ValueError("producer declared the regime structure "
                          "unstable — the assignment sidecar cannot "
                          "bind to association")
+    # REG-13: CANDIDATE_ONLY is a demotion, never associable — only a
+    # fully-gated DESCRIPTIVE_REGIME_ONLY artifact may bind.
+    if status == "CANDIDATE_ONLY":
+        raise ValueError("producer returned CANDIDATE_ONLY — a "
+                         "demoted candidate structure cannot enter "
+                         "held-out association")
+    # PROV-02: when the producer carries the associable flag it must
+    # be True; absent on pre-canonical payloads it is derived from
+    # the status above (transition shim).
+    if "associable" in p and p["associable"] is not True:
+        raise ValueError("producer artifact is not marked "
+                         "associable — association admits only "
+                         "associable=true payloads")
     # freeze-gate: a terminal descriptive status is reachable only
     # when every required stability gate is closed on the frozen
     # payload itself.  A fabricated status claim cannot outrun the

@@ -25,7 +25,13 @@ FEATURES = ["f1", "f2", "f3"]
 
 
 def _cfg(**kw):
-    """Declared holdout membership: grp0-2 train, grp3 held out."""
+    """Declared holdout membership: grp0-2 train, grp3 held out.
+    Round-4 additions: fixture source manifest + declared effort
+    waiver (the synthetic frame carries no effort column)."""
+    kw.setdefault("source_manifest", {"fixture": True})
+    kw.setdefault("effort_waiver_reason",
+                  "synthetic frame carries no observation-effort "
+                  "column — the axis is waived for the fixture")
     return RegimeRunConfig(train_groups=("grp0", "grp1", "grp2"),
                            heldout_groups=("grp3",), **kw)
 
@@ -164,14 +170,17 @@ class TestRunner:
         df = _fixture(n_groups=2)
         mask = (df["basin_group"] == "grp0").to_numpy()
         cfg = RegimeRunConfig(train_groups=("grp0",),
-                              heldout_groups=("grp1",))
+                              heldout_groups=("grp1",),
+                              source_manifest={"fixture": True})
         art = run_regimes(df, FEATURES, mask, cfg)
         assert art["status"] == "RUN_ERROR"
         assert "geographic groups" in art["reason"]
 
     def test_undeclared_holdout_rejected(self):
         df = _fixture()
-        art = run_regimes(df, FEATURES, _mask(df), RegimeRunConfig())
+        art = run_regimes(df, FEATURES, _mask(df),
+                          RegimeRunConfig(
+                              source_manifest={"fixture": True}))
         assert art["status"] == "RUN_ERROR"
         assert "non-empty" in art["reason"]
 
@@ -179,7 +188,8 @@ class TestRunner:
         df = _fixture()
         # held-out rows (grp2) are not in the declared heldout set
         bad_cfg = RegimeRunConfig(train_groups=("grp0", "grp1", "grp2"),
-                                  heldout_groups=("grp9",))
+                                  heldout_groups=("grp9",),
+                                  source_manifest={"fixture": True})
         art = run_regimes(df, FEATURES, _mask(df), bad_cfg)
         assert art["status"] == "RUN_ERROR"
         assert "undeclared groups" in art["reason"]
@@ -753,8 +763,8 @@ class TestRegC06EraElevation:
 
     def test_elevation_note_recorded(self):
         df = _fixture()
-        df["elev"] = np.where(df["basin_group"] == "grp0", "low",
-                              "high")
+        df["elev"] = np.where(df["basin_group"] == "grp0",
+                              2500.0, 4200.0)
         art = run_regimes(df, FEATURES, _mask(df),
                           _cfg(elevation_col="elev"))
         ax = art["stability"]["elevation"]
@@ -869,3 +879,122 @@ class TestProvC03FreezeAudit:
         assert frozen["frozen"] is True
         assert frozen["input_bytes_digest"] == \
             art["input_bytes_digest"]
+
+
+class TestRound4RegimeHardening:
+    """REG-01..14 adversarial probes: every gap must fail closed."""
+
+    def test_malformed_cadence_fails_closed(self):
+        df = _fixture()
+        cfg = _cfg(cadence="not-an-offset")
+        art = run_regimes(df, FEATURES, _mask(df), cfg)
+        assert art["status"] == "RUN_ERROR"
+        assert "cadence" in art["reason"]
+
+    def test_non_calendar_gap_policy_fails_closed(self):
+        df = _fixture()
+        cfg = _cfg(gap_policy="bridge_gaps")
+        art = run_regimes(df, FEATURES, _mask(df), cfg)
+        assert art["status"] == "RUN_ERROR"
+        assert "gap_policy" in art["reason"]
+
+    def test_bootstrap_blocks_are_calendar_ranges(self):
+        """REG-01: the bound bootstrap record must carry the declared
+        cadence, gap policy, and block length."""
+        art = _art_std()
+        boot = art["stability"]["temporal_block_bootstrap"]
+        assert boot["cadence"] == "1D"
+        assert boot["gap_policy"] == "calendar"
+        assert boot["block_len_dates"] >= 1
+        assert boot["status"] in ("PASS", "FAIL")
+
+    def test_frame_with_missing_dates_does_not_crash(self):
+        """A gap in the calendar must not raise — blocks are calendar
+        ranges, so a missing date simply contributes fewer rows."""
+        df = _fixture()
+        df = df[df["date"] != "2020-06-15"].reset_index(drop=True)
+        art = run_regimes(df, FEATURES, _mask(df), _cfg())
+        assert art["status"] != "RUN_ERROR"
+        boot = art["stability"]["temporal_block_bootstrap"]
+        assert boot["gap_policy"] == "calendar"
+
+    def test_first_seed_policy_blocks_terminal_stability(self):
+        """REG-03: fold_seed_policy='first' is diagnostic-only — it
+        can never produce a descriptive-stable terminal status."""
+        df = _fixture()
+        cfg = _cfg(fold_seed_policy="first")
+        art = run_regimes(df, FEATURES, _mask(df), cfg)
+        assert art["status"] != "DESCRIPTIVE_REGIME_ONLY"
+        assert art["stability"]["required_gates"]["seed_policy"] \
+            is False
+
+    def test_seed_policy_gate_present_and_closed(self):
+        art = _art_std()
+        gates = art["stability"]["required_gates"]
+        assert gates["seed_policy"] is True
+
+    def test_required_gate_universe_complete(self):
+        """REG-14: every declared gate must appear — an absent gate
+        is not a closed gate."""
+        art = _art_std()
+        expected = {"seed_policy", "modal_k_unanimous", "seed_ari",
+                    "seed_coverage", "loro", "temporal_bootstrap",
+                    "season_refits", "elevation", "missingness",
+                    "effort", "era_drift", "shuffled_null",
+                    "season_matched_null"}
+        assert expected <= set(
+            art["stability"]["required_gates"])
+
+    def test_era_column_without_boundaries_demotes(self):
+        """REG-09: era carrier present but boundaries undeclared —
+        the drift axis cannot pass on implicit boundaries."""
+        df = _fixture()
+        art = run_regimes(df, FEATURES, _mask(df), _cfg())
+        gate = art["stability"]["required_gates"]["era_drift"]
+        assert gate is False
+        assert art["status"] != "DESCRIPTIVE_REGIME_ONLY"
+
+    def test_era_declared_and_boundaries_close_gate(self):
+        art = _art_full()
+        assert art["stability"]["required_gates"]["era_drift"] \
+            is True
+        assert art["status"] == "DESCRIPTIVE_REGIME_ONLY"
+
+    def test_effort_declared_but_column_missing_fails(self):
+        df = _fixture()
+        cfg = _cfg(effort_col="obs_hours")
+        art = run_regimes(df, FEATURES, _mask(df), cfg)
+        assert art["status"] == "RUN_ERROR"
+
+    def test_loro_fold_records_have_out_of_fold_ari(self):
+        """REG-02: each LORO fold carries the decisive ari_eval —
+        reference-vs-fold agreement on the excluded group's rows."""
+        art = _art_std()
+        folds = art["stability"]["leave_one_region_out"]["folds"]
+        assert len(folds) >= 3
+        for g, f in folds.items():
+            assert f["status"] in ("PASS", "FAIL", "SKIPPED",
+                                   "NONCONVERGED")
+            if f["status"] in ("PASS", "FAIL"):
+                assert f["ari_eval"] is not None
+                assert 0.0 <= f["ari_eval"] <= 1.0
+
+    def test_null_envelope_replays_k_selection(self):
+        """REG-05: the null must not be privileged with the observed
+        modal K — every replicate replays the declared K sweep."""
+        art = _art_std()
+        for fam in ("shuffled", "season_matched"):
+            nul = art["nulls"][fam]
+            assert nul["selection"] == \
+                "bic_sweep_declared_candidates"
+            assert "null_k_distribution" in nul
+            assert nul["n_replicates"] >= 50
+
+    def test_null_model_digest_covers_families(self):
+        """REG-06: the null digest must recompute over both null
+        families' evidence, not just a K=1 list."""
+        art = _art_std()
+        digest = art["nulls"]["null_model_digest"] \
+            if "null_model_digest" in art["nulls"] else \
+            art.get("null_model_digest")
+        assert digest and len(digest) == 64

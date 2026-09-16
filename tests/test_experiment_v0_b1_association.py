@@ -1291,3 +1291,79 @@ def test_artifact_provenance_floor_rejected(planted):
         run_association(object(), events, controls, UNIT_BASINS,
                         holdout=holdout, region_basins=REGION_BASINS,
                         opportunities=make_opportunities(controls))
+
+
+# ---- Round-4: calibrated inference + spatial null + coverage ----
+
+def test_spatial_shift_null_present(planted):
+    """ASSOC-04: the geography-preserving shift null must execute —
+    dates shifted, basin geography fixed."""
+    artifact, events, controls, _h = planted
+    holdout = _h if _h is not None else make_holdout(events)
+    rep = run_assoc(artifact, events, controls,
+                    holdout=holdout, region_basins=REGION_BASINS)
+    shift = rep.negative_controls["spatial_shift"]
+    assert shift["name"] == "spatial_shift"
+    assert shift["strata"] == "basin_fixed_date_shift"
+    assert len(shift["offsets"]) >= 4
+    assert len(shift["digest"]) == 64
+    for rid, r in shift["per_regime"].items():
+        assert "p" in r and "shifted_ratios" in r
+
+
+def test_family_pvals_are_permutation_not_bootstrap(planted):
+    """ASSOC-02/03: the Holm family runs on stratified permutation
+    p-values — the bootstrap p_enrich is never the inferential
+    surface."""
+    artifact, events, controls, _h = planted
+    holdout = _h if _h is not None else make_holdout(events)
+    rep = run_assoc(artifact, events, controls,
+                    holdout=holdout, region_basins=REGION_BASINS)
+    mult = rep.multiplicity
+    assert mult["inference"] == "stratified_permutation_p"
+    assert mult["family_pvals"]
+    # every declared family cell carries null coverage
+    assert mult["null_coverage"]
+    assert all(v == "executed"
+               for v in mult["null_coverage"].values())
+    # family keys cover horizon x placement x regime
+    for h in mult["lookback_horizons"]:
+        for m in mult["placement_modes"]:
+            assert mult["null_coverage"].get(f"{h}|{m}") \
+                == "executed"
+
+
+def test_hollow_supported_lacks_null_coverage(planted):
+    """ASSOC-07: a fabricated SUPPORTED report without per-cell null
+    coverage or permutation p-values fails problems()."""
+    artifact, events, controls, _h = planted
+    holdout = _h if _h is not None else make_holdout(events)
+    rep = run_assoc(artifact, events, controls,
+                    holdout=holdout, region_basins=REGION_BASINS)
+    d = rep.to_dict()
+    d["status"] = "REGIME_ASSOCIATION_SUPPORTED"
+    d["multiplicity"] = {"method": "holm", "family_pvals": {},
+                         "null_coverage": {}}
+    import dataclasses
+    from nepal.experiment_v0.association import AssociationReport
+    bad = AssociationReport(**{
+        f.name: d[f.name]
+        for f in dataclasses.fields(AssociationReport)})
+    probs = bad.problems()
+    assert probs
+    assert any("null_coverage" in p or "family_pvals" in p
+               or "Holm" in p for p in probs)
+
+
+def test_precision_exclusion_recorded_for_short_lookback(planted):
+    """ASSOC-01: a look-back horizon shorter than an event's own
+    interval width excludes that event — the exclusion is counted
+    per cell."""
+    artifact, events, controls, _h = planted
+    holdout = _h if _h is not None else make_holdout(events)
+    rep = run_assoc(artifact, events, controls,
+                    holdout=holdout, region_basins=REGION_BASINS,
+                    lookback_horizons=("0d", "1d"))
+    excl = rep.multiplicity.get("precision_exclusions", {})
+    assert excl
+    assert all(isinstance(v, int) for v in excl.values())
