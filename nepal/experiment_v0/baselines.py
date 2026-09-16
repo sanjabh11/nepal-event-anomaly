@@ -26,12 +26,22 @@ fit labels admit only strict binary values (``0``/``1``, booleans,
 ``TargetState`` members, or the ``"POSITIVE"``/``"NEGATIVE"``
 vocabulary — truthy strings like ``"yes"``/``"true"``/``"1"`` never
 coerce).
+
+Provenance binding: ``FitPartition`` optionally carries
+``holdout_digest``, ``train_groups``, ``feature_digest``, and
+``cutoff_time`` — provided fields are validated; a partition with no
+provenance bound is admitted for fixtures but every returned fit
+artifact records ``provenance="unbound_fixture"``, and an unbound
+partition whose rows look like scored cases rejects.
 """
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Mapping, Sequence
+
+from nepal.research_v0.policy import parse_strict_utc
 
 # Order is contract-pinned (FORECAST_EVAL_SCAFFOLD_V0 section 3); all
 # four names must be present in an experiment's baseline set.
@@ -51,6 +61,8 @@ _CASE_PAYLOAD_KEYS = frozenset({
     "case_id", "y_state", "y_prob", "vintage_digest",
     "opportunity_id", "outcome_source_id"})
 
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+
 
 @dataclass(frozen=True)
 class FitPartition:
@@ -63,12 +75,45 @@ class FitPartition:
     ``cell_keys`` optionally carries each row's ``(unit_id, season)``
     cell for climatology fits.  Fit inputs are caller-supplied train
     arrays — never the scored case list.
+
+    Provenance fields are optional: ``holdout_digest`` binds the
+    holdout plan the train split derives from, ``train_groups`` the
+    holdout's train groups, ``feature_digest`` the feature-artifact
+    digest, and ``cutoff_time`` the feature-availability cutoff.
+    Provided fields are validated; an entirely unbound partition is a
+    fixture surface and every returned fit artifact marks
+    ``provenance="unbound_fixture"`` — and rejects outright when its
+    rows look like scored cases.
     """
 
     partition: str
     rows: Any = ()
     labels: Any = ()
     cell_keys: Any = ()
+    holdout_digest: str = ""
+    train_groups: Any = ()
+    feature_digest: str = ""
+    cutoff_time: str = ""
+
+
+def _rows_look_like_cases(rows: Any) -> bool:
+    """True when a materializable row set contains scored-case
+    payloads (ForecastCase-shaped objects or case-identity mappings).
+    Non-sequence iterables are not peeked at — generators cannot be
+    replayed and are screened downstream by
+    ``_reject_case_like_rows``."""
+    if isinstance(rows, (str, bytes)) or isinstance(rows, Mapping):
+        return False
+    if not isinstance(rows, Sequence):
+        return False
+    for row in rows:
+        if isinstance(row, Mapping):
+            if set(row) & _CASE_PAYLOAD_KEYS:
+                return True
+        elif getattr(row, "case_id", None) is not None or \
+                getattr(row, "y_state", None) is not None:
+            return True
+    return False
 
 
 def _require_train_partition(partition: Any) -> FitPartition:
@@ -83,7 +128,63 @@ def _require_train_partition(partition: Any) -> FitPartition:
             f"{TRAIN_ONLY_PARTITION!r}; declared partition "
             f"{partition.partition!r} is inadmissible — held-out or "
             "undeclared data can never enter a baseline fit")
-    return partition
+    p = partition
+    for name in ("holdout_digest", "feature_digest"):
+        value = getattr(p, name)
+        if not isinstance(value, str) or \
+                (value and not _SHA256_RE.match(value)):
+            raise ValueError(
+                f"FitPartition.{name} must be a 64-hex sha256 digest "
+                "when provided")
+    groups = p.train_groups
+    if groups not in (None, (), [], ""):
+        if isinstance(groups, (str, bytes)) or \
+                not isinstance(groups, Iterable):
+            raise ValueError(
+                "FitPartition.train_groups must be a collection of "
+                "non-empty train-group names")
+        if any(not isinstance(g, str) or not g.strip()
+               for g in groups):
+            raise ValueError(
+                "FitPartition.train_groups entries must be non-empty "
+                "strings")
+    if p.cutoff_time and \
+            (not isinstance(p.cutoff_time, str)
+             or parse_strict_utc(p.cutoff_time) is None):
+        raise ValueError(
+            "FitPartition.cutoff_time must be an explicit-UTC "
+            "timestamp when provided")
+    if not p.holdout_digest and not p.train_groups and \
+            _rows_look_like_cases(p.rows):
+        raise ValueError(
+            "unbound fixture partition rows look like scored cases — "
+            "a partition with no holdout/train-group provenance can "
+            "never fit on scored-case payloads")
+    return p
+
+
+def fit_partition_provenance(partition: FitPartition) -> dict:
+    """The provenance marker recorded on every fit artifact:
+    ``"bound"`` when holdout/train-group provenance is declared,
+    ``"unbound_fixture"`` otherwise."""
+    return {
+        "provenance": ("bound" if (partition.holdout_digest
+                                   or partition.train_groups)
+                       else "unbound_fixture"),
+        "holdout_digest": partition.holdout_digest or "",
+        "train_groups": tuple(
+            str(g) for g in (partition.train_groups or ())),
+        "feature_digest": partition.feature_digest or "",
+        "cutoff_time": partition.cutoff_time or "",
+    }
+
+
+class _FittedRates(dict):
+    """``(unit_id, season) -> rate`` map carrying fit provenance."""
+
+
+class _FittedRate(float):
+    """Scalar fitted rate carrying fit provenance."""
 
 
 def _reject_case_like_rows(materialized: Sequence[Any]) -> None:
@@ -317,7 +418,10 @@ def fit_climatology_rates(
                 f"cell key {key!r} must be a (unit_id, season) pair "
                 "of strings")
         cells.setdefault((key[0], key[1]), []).append(label)
-    return {k: sum(v) / len(v) for k, v in cells.items()}
+    rates = _FittedRates(
+        {k: sum(v) / len(v) for k, v in cells.items()})
+    rates.fit_provenance = fit_partition_provenance(p)
+    return rates
 
 
 def fit_marginal_rate(partition: FitPartition) -> float:
@@ -327,7 +431,9 @@ def fit_marginal_rate(partition: FitPartition) -> float:
     labels = _as_binary_labels(p.labels)
     if not labels:
         raise ValueError("cannot fit a marginal rate on zero labels")
-    return sum(labels) / len(labels)
+    rate = _FittedRate(sum(labels) / len(labels))
+    rate.fit_provenance = fit_partition_provenance(p)
+    return rate
 
 
 def fit_regularized_supervised(
@@ -356,6 +462,7 @@ def fit_regularized_supervised(
     if not matrix:
         raise ValueError("cannot fit a supervised baseline on zero rows")
     positive_rate = sum(labels) / len(labels)
+    provenance = fit_partition_provenance(p)
 
     if len(set(labels)) < 2:
         constant = _clip01(positive_rate)
@@ -363,6 +470,7 @@ def fit_regularized_supervised(
         def constant_predict(rows: Any) -> list[float]:
             return [constant] * len(list(rows))
 
+        constant_predict.fit_provenance = provenance
         return constant_predict
 
     from sklearn.linear_model import LogisticRegression
@@ -384,4 +492,5 @@ def fit_regularized_supervised(
             return [0.0] * len(predict_matrix)
         return [_clip01(p[col]) for p in probs]
 
+    predict.fit_provenance = provenance
     return predict

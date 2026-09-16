@@ -17,12 +17,16 @@ from pathlib import Path
 import pytest
 
 from nepal.experiment_v0 import metrics as M
-from nepal.experiment_v0.baselines import (FitPartition, 
+from nepal.experiment_v0.baselines import (FitPartition,
     BASELINE_NAMES, ThresholdRule, climatology_probs,
-    fit_regularized_supervised, null_probs, rule_probs)
+    fit_climatology_rates, fit_marginal_rate,
+    fit_partition_provenance, fit_regularized_supervised,
+    null_probs, rule_probs)
 from nepal.experiment_v0.evaluation import (
-    EvaluationReport, ForecastCase, evaluate, locked_region_problems,
-    missing_feed_degradation, power_report, uncertainty_report)
+    DEFAULT_SCENARIOS, EvaluationReport, ForecastCase,
+    ForecastExperimentDeclaration, evaluate,
+    locked_region_problems, missing_feed_degradation, power_report,
+    uncertainty_report)
 from nepal.research_v0._hashing import canonical_json, sha256_canonical
 from nepal.research_v0.gates import scan_claims_text
 from nepal.research_v0.records import NEUTRAL_RESEARCH_STATUSES
@@ -631,8 +635,35 @@ class TestPower:
     def test_power_report_direct(self):
         design = fx.underpowered_design()
         power = power_report(design["cases"])
-        assert power["cluster_key"] == "region+season+mechanism"
+        assert power["clustering_unit"] == \
+            "event_group_id_else_unit_id+season_cell"
         assert power["powered"] is False
+        # n_effective counts independent clusters, never raw cases.
+        assert power["n_effective"] == power["n_clusters"]
+        assert power["n_effective"] < len(design["cases"])
+
+    def test_event_group_collapses_clusters(self):
+        # 4 cases sharing one event group are ONE independent unit.
+        cases = fx.planted_cases(seed=2, regions=("region_east",),
+                                 seasons=("season_a",), per_cluster=4)
+        assert len({c.event_group_id for c in cases}) == 1
+        power = power_report(cases)
+        assert power["n_effective"] == 1
+
+    def test_unit_season_cell_fallback_when_group_absent(self):
+        cases = fx.planted_cases(seed=2, regions=("region_east",),
+                                 seasons=("season_a",), per_cluster=4,
+                                 event_groups=False)
+        assert all(c.event_group_id == "" for c in cases)
+        power = power_report(cases)
+        assert power["n_effective"] == \
+            len({(c.unit_id, c.season) for c in cases})
+
+    def test_raw_case_count_never_effective(self):
+        design = fx.powered_design()
+        power = power_report(design["cases"])
+        assert power["n_effective"] < len(design["cases"])
+        assert power["clustering_unit"]
 
 
 # ---------------------------------------------------------------------
@@ -776,3 +807,502 @@ def test_case_region_outside_declared_names_rejected():
     kwargs["holdout"] = holdout
     with pytest.raises(ValueError, match="declared evaluation"):
         evaluate(design["cases"], **kwargs)
+
+
+# --------------------------------------------------------------
+# EVAL-C01: denominators count only verified OBSERVED_FULL entries
+# --------------------------------------------------------------
+
+class TestVerifiedOpportunityDenominator:
+    def test_non_observed_full_excluded_and_counted(self):
+        design = fx.underpowered_design()
+        cases = design["cases"]
+        kwargs = _eval_kwargs(design)
+        opps = dict(design["opportunities"])
+        unit = cases[0].unit_id
+        for j, state in enumerate(
+                ("OBSERVED_PARTIAL", "UNOBSERVED", "UNKNOWN")):
+            oid = f"degraded-{j}"
+            opps[oid] = fx.degraded_opportunity(
+                oid, unit, cases[0].valid_start, cases[0].valid_end,
+                state=state)
+        kwargs["opportunities"] = opps
+        report = evaluate(cases, **kwargs)
+        derived = len(design["opportunities"])
+        assert report.n_opportunities == derived
+        assert report.n_censored_opportunities == 3
+        assert report.metrics["model"]["n_opportunities"] == derived
+        assert report.opportunity_scope["censored_ids"] == \
+            ["degraded-0", "degraded-1", "degraded-2"]
+
+    def test_defective_entry_censored_not_rejected(self):
+        """An OBSERVED_FULL-claimed record whose problems() is
+        non-empty never enters the denominator — it is excluded and
+        counted, and does not sink the evaluation."""
+        design = fx.underpowered_design()
+        cases = design["cases"]
+        kwargs = _eval_kwargs(design)
+        opps = dict(design["opportunities"])
+        opps["defective-0"] = fx.defective_opportunity(
+            "defective-0", cases[0].unit_id,
+            cases[0].valid_start, cases[0].valid_end)
+        kwargs["opportunities"] = opps
+        report = evaluate(cases, **kwargs)
+        assert report.n_censored_opportunities == 1
+        assert report.n_opportunities == \
+            len(design["opportunities"])
+
+    def test_out_of_scope_entry_neither_counted_nor_censored(self):
+        design = fx.underpowered_design()
+        cases = design["cases"]
+        kwargs = _eval_kwargs(design)
+        opps = dict(design["opportunities"])
+        ub = dict(design["unit_basins"])
+        ub["ghost-unit"] = "ghost-basin"   # mapped, never claimed
+        opps["outside-0"] = fx.synthetic_opportunity(
+            "outside-0", "ghost-unit",
+            "2021-01-01T06:00:00Z", "2021-01-02T06:00:00Z")
+        kwargs["opportunities"] = opps
+        kwargs["unit_basins"] = ub
+        report = evaluate(cases, **kwargs)
+        assert report.n_opportunities == \
+            len(design["opportunities"])
+        assert report.n_censored_opportunities == 0
+
+
+# --------------------------------------------------------------
+# EVAL-C02: a case's state is never trusted without the verified
+# opportunity basis
+# --------------------------------------------------------------
+
+class TestOpportunityBasisCensoring:
+    def _relinked_design(self, design, state="OBSERVED_PARTIAL"):
+        cases = design["cases"]
+        target = cases[0]
+        opps = dict(design["opportunities"])
+        opps[target.opportunity_id] = fx.degraded_opportunity(
+            target.opportunity_id, target.unit_id,
+            target.valid_start, target.valid_end, state=state)
+        return target, opps
+
+    def test_partial_link_censored_not_scored(self):
+        design = fx.underpowered_design()
+        cases = design["cases"]
+        target, opps = self._relinked_design(design)
+        kwargs = _eval_kwargs(design)
+        kwargs["opportunities"] = opps
+        report = evaluate(cases, **kwargs)
+        assert report.n_censored_for_opportunity_state == 1
+        assert report.metrics["model"]["n"] == len(cases) - 1
+        rest = [c for c in cases if c is not target]
+        y = [1 if c.y_state == "POSITIVE" else 0 for c in rest]
+        assert report.metrics["model"]["brier"] == pytest.approx(
+            M.brier_score(y, [c.y_prob for c in rest]))
+        # the degraded entry is a censored opportunity as well
+        assert report.n_censored_opportunities == 1
+        assert report.n_opportunities == \
+            len(design["opportunities"]) - 1
+
+    def test_defective_link_censored_not_scored(self):
+        design = fx.underpowered_design()
+        cases = design["cases"]
+        target = cases[0]
+        opps = dict(design["opportunities"])
+        opps[target.opportunity_id] = fx.defective_opportunity(
+            target.opportunity_id, target.unit_id,
+            target.valid_start, target.valid_end)
+        kwargs = _eval_kwargs(design)
+        kwargs["opportunities"] = opps
+        report = evaluate(cases, **kwargs)
+        assert report.n_censored_for_opportunity_state == 1
+        assert report.metrics["model"]["n"] == len(cases) - 1
+
+    @pytest.mark.parametrize("state", ["UNOBSERVED", "UNKNOWN"])
+    def test_unobserved_and_unknown_links_censored(self, state):
+        design = fx.underpowered_design()
+        cases = design["cases"]
+        _, opps = self._relinked_design(design, state=state)
+        kwargs = _eval_kwargs(design)
+        kwargs["opportunities"] = opps
+        report = evaluate(cases, **kwargs)
+        assert report.n_censored_for_opportunity_state == 1
+
+    def test_out_of_scope_link_censored(self):
+        design = fx.underpowered_design()
+        cases = design["cases"]
+        target = dataclasses.replace(cases[0], unit_id="ghost-unit")
+        cases = [target] + list(cases[1:])
+        opps = dict(design["opportunities"])
+        opps[target.opportunity_id] = dataclasses.replace(
+            opps[target.opportunity_id], unit_id="ghost-unit")
+        ub = dict(design["unit_basins"])
+        ub["ghost-unit"] = "ghost-basin"   # unclaimed by any region
+        kwargs = _eval_kwargs(design)
+        kwargs["opportunities"] = opps
+        kwargs["unit_basins"] = ub
+        report = evaluate(cases, **kwargs)
+        assert report.n_censored_out_of_scope == 1
+        assert report.metrics["model"]["n"] == len(cases) - 1
+        assert report.n_opportunities == \
+            len(design["opportunities"]) - 1
+
+    def test_censored_state_case_still_counts_in_n_censored(self):
+        """A CENSORED_OR_AMBIGUOUS case linked to a degraded entry is
+        counted once, under n_censored — not double-counted."""
+        design = fx.underpowered_design()
+        cases = list(design["cases"])
+        cases[0] = dataclasses.replace(
+            cases[0], y_state="CENSORED_OR_AMBIGUOUS")
+        target, opps = self._relinked_design(
+            {"cases": cases, "holdout": design["holdout"],
+             "opportunities": design["opportunities"],
+             "unit_basins": design["unit_basins"],
+             "region_basins": design["region_basins"]})
+        kwargs = _eval_kwargs(
+            {"cases": cases, "holdout": design["holdout"]})
+        kwargs["opportunities"] = opps
+        kwargs["unit_basins"] = design["unit_basins"]
+        kwargs["region_basins"] = design["region_basins"]
+        report = evaluate(cases, **kwargs)
+        assert report.n_censored == 1
+        assert report.n_censored_for_opportunity_state == 0
+
+
+# --------------------------------------------------------------
+# EVAL-C03: every slice denominator is registry-scoped, never a
+# case count
+# --------------------------------------------------------------
+
+class TestSliceScopedDenominators:
+    def test_region_slice_counts_owned_opportunities(self):
+        design = fx.underpowered_design()
+        cases = design["cases"]
+        east = [c for c in cases if c.region == "region_east"]
+        extra = fx.unlinked_opportunities(
+            sorted({c.unit_id for c in east}), n=2)
+        kwargs = _eval_kwargs(design)
+        kwargs["opportunities"] = {
+            **design["opportunities"], **extra}
+        report = evaluate(cases, **kwargs)
+        bundle = report.slices["region"]["region_east"]
+        expected = len(east) + len(extra)
+        assert bundle["opportunities_scoped"] == expected
+        assert bundle["opportunities_scoped"] != bundle["n_cases"]
+        assert bundle["scope_rule"] == "region_owned_basins"
+        for sc in bundle["scorers"].values():
+            assert sc["n_opportunities"] == expected
+
+    def test_season_slice_counts_linked_plus_unlinked(self):
+        design = fx.underpowered_design()
+        cases = design["cases"]
+        extra = fx.unlinked_opportunities(
+            sorted({c.unit_id for c in cases}), n=1)
+        kwargs = _eval_kwargs(design)
+        kwargs["opportunities"] = {
+            **design["opportunities"], **extra}
+        report = evaluate(cases, **kwargs)
+        for season, bundle in report.slices["season"].items():
+            slice_cases = [c for c in cases if c.season == season]
+            assert bundle["scope_rule"] == (
+                "linked_case_opportunities_plus_unlinked_in_case_"
+                "regions")
+            assert bundle["opportunities_scoped"] == \
+                len(slice_cases) + len(extra)
+
+    def test_lead_time_bucket_denominators_scoped(self):
+        design = fx.underpowered_design()
+        cases = design["cases"]
+        report = evaluate(cases, **_eval_kwargs(design))
+        for h, bundle in report.lead_time.items():
+            bucket = [c for c in cases if c.horizon == h]
+            assert bundle["opportunities_scoped"] == len(bucket)
+            assert "case count" not in bundle["scope_rule"]
+
+    def test_slice_censored_opportunity_counts(self):
+        design = fx.underpowered_design()
+        cases = design["cases"]
+        east_cases = [c for c in cases if c.region == "region_east"]
+        opps = dict(design["opportunities"])
+        opps["deg-east"] = fx.degraded_opportunity(
+            "deg-east", east_cases[0].unit_id,
+            east_cases[0].valid_start, east_cases[0].valid_end)
+        kwargs = _eval_kwargs(design)
+        kwargs["opportunities"] = opps
+        report = evaluate(cases, **kwargs)
+        assert report.slices["region"]["region_east"][
+            "n_censored_opportunities"] == 1
+        assert report.slices["region"]["region_west"][
+            "n_censored_opportunities"] == 0
+
+
+# --------------------------------------------------------------
+# EVAL-C05: declared missing-feed scenario set
+# --------------------------------------------------------------
+
+class TestMissingFeedScenarios:
+    def test_default_set_all_five(self):
+        design = fx.underpowered_design()
+        report = evaluate(design["cases"], **_eval_kwargs(design))
+        names = {s["name"] for s in
+                 report.missing_feed["scenarios"]}
+        assert names == set(DEFAULT_SCENARIOS)
+
+    def test_provider_dropout_drops_model_only(self):
+        design = fx.underpowered_design()
+        report = evaluate(design["cases"], **_eval_kwargs(design))
+        sc = next(s for s in report.missing_feed["scenarios"]
+                  if s["name"] == "provider_dropout")
+        assert sc["status"] == "EXECUTED"
+        assert "model" not in sc["scorers"]
+        assert set(sc["scorers"]) == {
+            "climatology", "rule", "null", "regularized_supervised"}
+        assert sc["scorers"]["null"] == report.metrics["null"]
+
+    def test_variable_dropout_rule_falls_back_to_climatology(self):
+        design = fx.underpowered_design()
+        report = evaluate(design["cases"], **_eval_kwargs(design))
+        sc = next(s for s in report.missing_feed["scenarios"]
+                  if s["name"] == "variable_dropout")
+        assert sc["status"] == "EXECUTED"
+        assert sc["scorers"]["rule"] == \
+            report.metrics["climatology"]
+        assert sc["scorers"]["rule"] != report.metrics["rule"] \
+            or report.metrics["rule"] == \
+            report.metrics["climatology"]
+
+    def test_member_truncation_and_latency_not_applicable(self):
+        design = fx.underpowered_design()
+        report = evaluate(design["cases"], **_eval_kwargs(design))
+        by_name = {s["name"]: s for s in
+                   report.missing_feed["scenarios"]}
+        assert by_name["member_truncation"]["status"] == \
+            "NOT_APPLICABLE"
+        assert by_name["latency_stress"]["status"] == \
+            "NOT_APPLICABLE"
+        assert by_name["member_truncation"]["reason"]
+        assert by_name["latency_stress"]["reason"]
+
+    def test_missing_opportunity_executes_with_counts(self):
+        design = fx.underpowered_design()
+        cases = design["cases"]
+        target = cases[0]
+        opps = dict(design["opportunities"])
+        opps[target.opportunity_id] = fx.degraded_opportunity(
+            target.opportunity_id, target.unit_id,
+            target.valid_start, target.valid_end)
+        kwargs = _eval_kwargs(design)
+        kwargs["opportunities"] = opps
+        report = evaluate(cases, **kwargs)
+        sc = next(s for s in report.missing_feed["scenarios"]
+                  if s["name"] == "missing_opportunity")
+        assert sc["status"] == "EXECUTED"
+        assert sc["n_censored_for_opportunity_state"] == 1
+        assert sc["scorers"]["model"] == report.metrics["model"]
+
+    def test_scenarios_param_selects_subset(self):
+        design = fx.underpowered_design()
+        kwargs = _eval_kwargs(design)
+        kwargs["scenarios"] = ("provider_dropout",)
+        report = evaluate(design["cases"], **kwargs)
+        assert [s["name"] for s in
+                report.missing_feed["scenarios"]] == \
+            ["provider_dropout"]
+
+    def test_unknown_scenario_not_applicable(self):
+        design = fx.underpowered_design()
+        kwargs = _eval_kwargs(design)
+        kwargs["scenarios"] = ("provider_dropout", "bogus_feed")
+        report = evaluate(design["cases"], **kwargs)
+        by_name = {s["name"]: s for s in
+                   report.missing_feed["scenarios"]}
+        assert by_name["bogus_feed"]["status"] == "NOT_APPLICABLE"
+        assert by_name["provider_dropout"]["status"] == "EXECUTED"
+
+
+# --------------------------------------------------------------
+# EVAL-C06 / FCST-C02: bound experiment declaration
+# --------------------------------------------------------------
+
+class TestExperimentDeclaration:
+    def test_absent_declaration_is_fixture_only(self):
+        design = fx.underpowered_design()
+        report = evaluate(design["cases"], **_eval_kwargs(design))
+        assert report.declaration["mode"] == "fixture_only"
+        assert report.status in NEUTRAL_RESEARCH_STATUSES
+
+    def test_valid_mapping_declared(self):
+        design = fx.underpowered_design()
+        cases = design["cases"]
+        kwargs = _eval_kwargs(design)
+        kwargs["experiment"] = fx.experiment_declaration(cases)
+        report = evaluate(cases, **kwargs)
+        assert report.declaration["mode"] == "declared"
+        assert report.declaration["declaration_id"] == \
+            "decl-synth-b3"
+        assert report.declaration["n_vintage_lineage"] == \
+            len({c.vintage_digest for c in cases})
+
+    def test_valid_dataclass_declared(self):
+        design = fx.underpowered_design()
+        cases = design["cases"]
+        decl = ForecastExperimentDeclaration.from_mapping(
+            fx.experiment_declaration(cases))
+        assert decl.problems() == []
+        kwargs = _eval_kwargs(design)
+        kwargs["experiment"] = decl
+        report = evaluate(cases, **kwargs)
+        assert report.declaration["mode"] == "declared"
+
+    def test_missing_keys_reject(self):
+        design = fx.underpowered_design()
+        cases = design["cases"]
+        for key in ("declaration_id", "feature_artifact_digest",
+                    "threshold_record", "ablations",
+                    "vintage_lineage"):
+            payload = fx.experiment_declaration(cases)
+            del payload[key]
+            kwargs = _eval_kwargs(design)
+            kwargs["experiment"] = payload
+            with pytest.raises(ValueError, match="experiment"):
+                evaluate(cases, **kwargs)
+
+    def test_unknown_keys_reject(self):
+        design = fx.underpowered_design()
+        cases = design["cases"]
+        payload = fx.experiment_declaration(cases)
+        payload["surprise"] = 1
+        kwargs = _eval_kwargs(design)
+        kwargs["experiment"] = payload
+        with pytest.raises(ValueError, match="unknown keys"):
+            evaluate(cases, **kwargs)
+
+    def test_bad_feature_digest_rejects(self):
+        design = fx.underpowered_design()
+        cases = design["cases"]
+        payload = fx.experiment_declaration(cases)
+        payload["feature_artifact_digest"] = "not-a-digest"
+        kwargs = _eval_kwargs(design)
+        kwargs["experiment"] = payload
+        with pytest.raises(ValueError, match="feature_artifact"):
+            evaluate(cases, **kwargs)
+
+    def test_lineage_must_cover_case_vintages(self):
+        design = fx.underpowered_design()
+        cases = design["cases"]
+        payload = fx.experiment_declaration(cases)
+        payload["vintage_lineage"] = ["0" * 64]
+        kwargs = _eval_kwargs(design)
+        kwargs["experiment"] = payload
+        with pytest.raises(ValueError, match="vintage_lineage"):
+            evaluate(cases, **kwargs)
+
+    def test_threshold_mismatch_rejects(self):
+        design = fx.underpowered_design()
+        cases = design["cases"]
+        payload = fx.experiment_declaration(cases)
+        payload["threshold_record"] = {"threshold": 0.9}
+        kwargs = _eval_kwargs(design)
+        kwargs["experiment"] = payload
+        with pytest.raises(ValueError, match="threshold"):
+            evaluate(cases, **kwargs)
+
+    def test_wrong_experiment_type_rejects(self):
+        design = fx.underpowered_design()
+        kwargs = _eval_kwargs(design)
+        kwargs["experiment"] = 42
+        with pytest.raises(ValueError, match="experiment"):
+            evaluate(design["cases"], **kwargs)
+
+    def test_declaration_problems_method(self):
+        decl = ForecastExperimentDeclaration()
+        assert decl.problems()
+        assert ForecastExperimentDeclaration.from_mapping(
+            fx.experiment_declaration(
+                fx.underpowered_design()["cases"])).problems() == []
+
+
+# --------------------------------------------------------------
+# FCST-C01: FitPartition provenance binding
+# --------------------------------------------------------------
+
+class TestFitPartitionProvenance:
+    def test_unbound_fixture_marked(self):
+        cases = fx.underpowered_design()["cases"]
+        part = fx.train_partition(cases)
+        rates = fit_climatology_rates(part)
+        assert rates.fit_provenance["provenance"] == "unbound_fixture"
+        assert fit_marginal_rate(part).fit_provenance[
+            "provenance"] == "unbound_fixture"
+        predict = fit_regularized_supervised(part)
+        assert predict.fit_provenance["provenance"] == \
+            "unbound_fixture"
+
+    def test_bound_provenance_recorded(self):
+        cases = fx.underpowered_design()["cases"]
+        part = fx.train_partition(cases, bound=True)
+        rates = fit_climatology_rates(part)
+        assert rates.fit_provenance["provenance"] == "bound"
+        assert rates.fit_provenance["holdout_digest"]
+        assert rates.fit_provenance["train_groups"] == \
+            ("train_basin_a",)
+        predict = fit_regularized_supervised(part)
+        assert predict.fit_provenance["provenance"] == "bound"
+        assert fit_marginal_rate(part).fit_provenance[
+            "provenance"] == "bound"
+
+    def test_unbound_case_like_rows_reject(self):
+        """An unbound partition whose rows are scored ForecastCase
+        objects is rejected even for fits that ignore rows."""
+        cases = fx.planted_cases(seed=3, regions=("train_basin_a",),
+                                 per_cluster=6)
+        labels = [1 if c.y_state == "POSITIVE" else 0
+                  for c in cases]
+        with pytest.raises(ValueError, match="scored cases"):
+            fit_regularized_supervised(FitPartition(
+                partition="TRAIN_ONLY", rows=list(cases),
+                labels=labels))
+        with pytest.raises(ValueError, match="scored cases"):
+            fit_marginal_rate(FitPartition(
+                partition="TRAIN_ONLY", rows=list(cases),
+                labels=labels))
+
+    def test_unbound_case_payload_rows_reject(self):
+        payload = [c.to_dict() for c in fx.planted_cases(
+            seed=3, regions=("train_basin_a",), per_cluster=2)]
+        with pytest.raises(ValueError, match="scored cases"):
+            fit_marginal_rate(FitPartition(
+                partition="TRAIN_ONLY", rows=payload,
+                labels=[0, 1]))
+
+    def test_bad_provenance_fields_reject(self):
+        with pytest.raises(ValueError, match="holdout_digest"):
+            fit_marginal_rate(FitPartition(
+                partition="TRAIN_ONLY", labels=[0, 1],
+                holdout_digest="not-hex"))
+        with pytest.raises(ValueError, match="feature_digest"):
+            fit_marginal_rate(FitPartition(
+                partition="TRAIN_ONLY", labels=[0, 1],
+                feature_digest="xyz"))
+        with pytest.raises(ValueError, match="cutoff_time"):
+            fit_marginal_rate(FitPartition(
+                partition="TRAIN_ONLY", labels=[0, 1],
+                cutoff_time="yesterday"))
+        with pytest.raises(ValueError, match="train_groups"):
+            fit_marginal_rate(FitPartition(
+                partition="TRAIN_ONLY", labels=[0, 1],
+                train_groups="train_basin_a"))
+
+    def test_non_train_only_partition_rejects(self):
+        for label in ("TEST", "HELD_OUT", "train"):
+            with pytest.raises(ValueError, match="TRAIN_ONLY"):
+                fit_marginal_rate(FitPartition(
+                    partition=label, labels=[0, 1]))
+
+    def test_fit_partition_provenance_helper(self):
+        cases = fx.underpowered_design()["cases"]
+        assert fit_partition_provenance(
+            fx.train_partition(cases))["provenance"] == \
+            "unbound_fixture"
+        assert fit_partition_provenance(
+            fx.train_partition(cases, bound=True))[
+                "provenance"] == "bound"

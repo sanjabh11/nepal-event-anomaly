@@ -127,7 +127,8 @@ def planted_cases(
         censored_every: int = 0,
         signal: float = 1.8,
         base: float = -0.6,
-        issue_dt: datetime = _BASE) -> list[ForecastCase]:
+        issue_dt: datetime = _BASE,
+        event_groups: bool = True) -> list[ForecastCase]:
     """Planted-signal synthetic cases over (region, season, mechanism)
     clusters.
 
@@ -136,6 +137,11 @@ def planted_cases(
     carries ``synth_precip`` (signal-correlated) and ``synth_temp`` so
     the transparent rule baseline has something to threshold.  Every
     ``censored_every``-th case (when > 0) is CENSORED_OR_AMBIGUOUS.
+
+    When ``event_groups`` is true every case carries the atomic event
+    group of its (region, season, mechanism) cluster — the power
+    report clusters on it; when false ``event_group_id`` is empty and
+    clustering falls back to (unit_id, season) cells.
 
     All cases in a region share the region's vintage issue_time;
     ``valid_start = issue + LEAD_SECONDS`` and
@@ -150,6 +156,8 @@ def planted_cases(
                       if v.vintage_id == f"vintage-{region}")
         for season in seasons:
             for mechanism in mechanisms:
+                group = f"ev-{region}-{season}-{mechanism}" \
+                    if event_groups else ""
                 for k in range(per_cluster):
                     s = rng.gauss(0.0, 1.0)
                     p_true = _sigmoid(base + signal * s)
@@ -184,6 +192,7 @@ def planted_cases(
                         outcome_source_id=
                         f"synth-outcome-{region}",
                         cutoff_time=_iso(issue_dt),
+                        event_group_id=group,
                         features={
                             "synth_precip": 4.0 + 3.0 * s
                             + rng.gauss(0.0, 0.1),
@@ -240,6 +249,82 @@ def opportunity_registry(
             for c in cases}
 
 
+def degraded_opportunity(
+        opportunity_id: str, unit_id: str,
+        window_start: str, window_end: str,
+        *, state: str = "OBSERVED_PARTIAL") -> ObservationOpportunityV0:
+    """A structurally valid registry entry that is NOT OBSERVED_FULL —
+    problem-free, in scope, but never a verified denominator member.
+
+    ``OBSERVED_PARTIAL`` carries in-(0,1) coverage and observed
+    frames; ``UNOBSERVED`` carries zero coverage and no frames;
+    ``UNKNOWN`` carries no coverage claim.
+    """
+    if state == "OBSERVED_PARTIAL":
+        coverage, frames = 0.4, (f"frame-{opportunity_id}-a",)
+        source_id, source_as_of = "synthetic_inventory_v0", \
+            "2021-02-01"
+    elif state == "UNOBSERVED":
+        coverage, frames = 0.0, ()
+        source_id, source_as_of = "", ""
+    else:  # UNKNOWN
+        coverage, frames = None, ()
+        source_id, source_as_of = "", ""
+    return ObservationOpportunityV0(
+        opportunity_id=opportunity_id,
+        unit_id=unit_id,
+        platform="synthetic_platform",
+        window_start=window_start,
+        window_end=window_end,
+        coverage_fraction=coverage,
+        coverage_quality="synthetic-partial",
+        detection_threshold="synthetic",
+        state=state,
+        source_id=source_id,
+        source_as_of=source_as_of,
+        frame_ids=frames)
+
+
+def defective_opportunity(
+        opportunity_id: str, unit_id: str,
+        window_start: str, window_end: str) -> ObservationOpportunityV0:
+    """An OBSERVED_FULL-claimed record with no frame binding — its
+    ``problems()`` is non-empty, so it is excluded from every
+    denominator and counted as a censored opportunity."""
+    return ObservationOpportunityV0(
+        opportunity_id=opportunity_id,
+        unit_id=unit_id,
+        platform="synthetic_platform",
+        window_start=window_start,
+        window_end=window_end,
+        coverage_fraction=1.0,
+        coverage_quality="synthetic-complete",
+        detection_threshold="synthetic",
+        state="OBSERVED_FULL",
+        source_id="synthetic_inventory_v0",
+        source_as_of="2021-02-01",
+        frame_ids=())          # OBSERVED_FULL requires real frames
+
+
+def unlinked_opportunities(
+        units: Sequence[str], n: int = 2,
+        prefix: str = "synth-opp-unlinked",
+        ) -> dict[str, ObservationOpportunityV0]:
+    """Extra verified OBSERVED_FULL opportunities bound to no case —
+    evidence that denominators come from the registry, not case
+    counts."""
+    out: dict[str, ObservationOpportunityV0] = {}
+    i = 0
+    for unit in units:
+        for j in range(n):
+            oid = f"{prefix}-{i:04d}"
+            out[oid] = synthetic_opportunity(
+                oid, unit, "2021-01-01T06:00:00Z",
+                "2021-01-02T06:00:00Z")
+            i += 1
+    return out
+
+
 def unit_basins_for(cases: Sequence[ForecastCase]) -> dict[str, str]:
     """unit_id -> basin: one synthetic basin per case region, so a
     case's region is exactly the basin group its unit belongs to."""
@@ -253,21 +338,54 @@ def region_basins_for(
 
 
 def train_partition(cases: Sequence[ForecastCase], *,
-                    seed: int = 0) -> FitPartition:
+                    seed: int = 0,
+                    bound: bool = False) -> FitPartition:
     """A declared TRAIN_ONLY FitPartition from a disjoint synthetic
-    training stream — never the evaluation cases themselves."""
+    training stream — never the evaluation cases themselves.
+
+    ``bound=True`` attaches synthetic holdout/train-group provenance
+    (holdout digest, train groups, feature digest, cutoff) so the
+    partition binds provenance rather than reading as an unbound
+    fixture surface."""
     train = planted_cases(seed + 7919, regions=("train_basin_a",),
                           seasons=seasons_of(cases),
                           mechanisms=mechanisms_of(cases),
                           per_cluster=8)
     train_sub = [c for c in train
                  if c.y_state != "CENSORED_OR_AMBIGUOUS"]
+    provenance = {}
+    if bound:
+        provenance = {
+            "holdout_digest": _sha(f"holdout:{seed}"),
+            "train_groups": ("train_basin_a",),
+            "feature_digest": _sha(f"features:{seed}"),
+            "cutoff_time": "2020-12-31T00:00:00Z",
+        }
     return FitPartition(
         partition="TRAIN_ONLY",
         rows=[c.features for c in train_sub],
         labels=[1 if c.y_state == "POSITIVE" else 0
                 for c in train_sub],
-        cell_keys=[(c.unit_id, c.season) for c in train_sub])
+        cell_keys=[(c.unit_id, c.season) for c in train_sub],
+        **provenance)
+
+
+def experiment_declaration(
+        cases: Sequence[ForecastCase], *,
+        declaration_id: str = "decl-synth-b3",
+        threshold: float = 0.5) -> dict:
+    """A valid experiment-declaration mapping for ``cases``: every
+    required key present, vintage lineage covering the cases'
+    admitted digests, and the threshold record bound to
+    ``threshold``."""
+    return {
+        "declaration_id": declaration_id,
+        "feature_artifact_digest": _sha("feature-artifact"),
+        "threshold_record": {"threshold": threshold,
+                             "record_id": "thr-synth-b3"},
+        "ablations": ["ablation-no-rule"],
+        "vintage_lineage": sorted({c.vintage_digest for c in cases}),
+    }
 
 
 def make_baseline_probs(
