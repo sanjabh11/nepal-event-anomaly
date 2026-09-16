@@ -684,12 +684,18 @@ def missing_feed_degradation(
     denom = _scope_counter(
         opportunities, unit_basins, region_basins, cases)
     full = _eligible_subset(cases, eligible)
+    # C13: when the opportunity registry is bound, denominators are
+    # derived exclusively from _scoped_opportunity_count — the
+    # n_opportunities parameter is ignored.  Only an unbound
+    # (registry=None) call may use the caller-supplied count.
+    _registry_bound = isinstance(opportunities, Mapping)
     reference = _core_metrics(
         _y(full), [c.y_prob for c in full], threshold=threshold,
-        n_opportunities=(n_opportunities
-                         if isinstance(n_opportunities, int)
-                         and not isinstance(n_opportunities, bool)
-                         else denom(cases)))
+        n_opportunities=(denom(cases) if _registry_bound
+                         else (n_opportunities
+                               if isinstance(n_opportunities, int)
+                               and not isinstance(n_opportunities, bool)
+                               else denom(cases))))
     out_scenarios: list[dict] = []
     for scenario in scenarios:
         name = str(scenario.get("name", "scenario"))
@@ -1837,6 +1843,17 @@ def evaluate(  # noqa: C901
             {"name": f"region_dropout_{r}",
              "drop_units": sorted(us)}
             for r, us in sorted(_reg_units.items())]
+    elif (isinstance(degradation_scenarios, (list, tuple))
+          and len(degradation_scenarios) == 0):
+        # C11: an explicitly empty degradation-scenario list is not a
+        # valid declaration — a declared experiment must either pass
+        # None (use the default grid) or declare concrete scenarios.
+        if decl is not None:
+            raise ValueError(
+                "degradation_scenarios=[] is not a valid declared "
+                "experiment — pass None for the default grid or "
+                "declare concrete dropout scenarios")
+        degradation_specs = []
     else:
         degradation_specs = list(degradation_scenarios)
     degradation = missing_feed_degradation(
@@ -1903,6 +1920,11 @@ def evaluate(  # noqa: C901
             "n_vintage_lineage": len(decl.vintage_lineage or ()),
         }
 
+    # C12: the experiment identity binds every declared input —
+    # threshold, bootstrap count, seed, basin maps, baseline
+    # evidence digests, and degradation specs all participate.
+    # Two evaluations differing only in n_boot or seed or basin
+    # mapping produce different experiment ids.
     digest = sha256_canonical({
         "cases": [c.to_dict() for c in cases],
         "baselines": {k: list(v) for k, v in scorers.items()},
@@ -1912,6 +1934,23 @@ def evaluate(  # noqa: C901
         "scenarios": scenario_names,
         "declaration": declaration,
         "holdout": holdout.to_dict(),
+        "threshold": threshold,
+        "n_boot": n_boot,
+        "seed": seed,
+        "unit_basins": (dict(unit_basins)
+                        if isinstance(unit_basins, Mapping)
+                        else {}),
+        "region_basins": ({k: sorted(v)
+                           for k, v in region_basins.items()}
+                          if isinstance(region_basins, Mapping)
+                          else {}),
+        "baseline_evidence": (
+            {k: v.get("digest")
+             for k, v in (baseline_evidence or {}).items()}
+            if isinstance(baseline_evidence, Mapping) else {}),
+        "degradation_specs": (
+            [dict(s) for s in degradation_specs]
+            if degradation_specs else []),
     })
     experiment_id = f"eval-{digest[:16]}"
 

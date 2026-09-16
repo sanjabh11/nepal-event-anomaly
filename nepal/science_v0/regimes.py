@@ -99,6 +99,7 @@ from nepal.research_v0._hashing import (
     sha256_canonical, verify_source_evidence)
 from nepal.research_v0.gates import REQUIRED_REGIME_GATE_NAMES
 from nepal.research_v0.policy import ForecastDataClass, RegimeMode
+from nepal.research_v0.records import RunManifestV0
 
 STATUSES = frozenset({
     "DESCRIPTIVE_REGIME_ONLY",
@@ -1867,6 +1868,16 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
              "n_replicates": rec["n_replicates"],
              "statistic": rec["statistic"],
              "p_value": rec["p_value"],
+             # C06: bind every declared record field into the family
+             # digest — a tampered summary cannot replay under the
+             # same digest.
+             "observed": rec.get("observed"),
+             "alpha": rec.get("alpha"),
+             "n_succeeded": rec.get("n_succeeded"),
+             "n_failed": rec.get("n_failed"),
+             "status": rec.get("status"),
+             "reason": rec.get("reason"),
+             "selection": rec.get("selection"),
              "null_stat_min": rec.get("null_stat_min"),
              "null_stat_max": rec.get("null_stat_max"),
              "null_k_distribution": rec.get(
@@ -1926,6 +1937,32 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
         # descriptive-stable
         status = "CANDIDATE_ONLY"
 
+    # C15: bind a real RunManifestV0 — the run's worker identity,
+    # environment, seed, and input/output byte digests are typed and
+    # validated, not a synthetic digest.  The logical creation time is
+    # derived deterministically from the input data window (max date)
+    # so identical runs stay byte-identical.
+    _env_digest = _digest({
+        "python": sys.version.split()[0],
+        "numpy": np.__version__})
+    _max_date = pd.to_datetime(df[config.date_col]).max()
+    _run_manifest = RunManifestV0(
+        run_id=f"regimes-{_digest(dataclasses.asdict(config))[:16]}"
+               f"-{_sha_bytes(input_bytes)[:16]}",
+        worker_id="science_v0.regimes.run_regimes",
+        created_at=_max_date.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        environment_digest=_env_digest,
+        seed=int(decl_seeds[0]) if decl_seeds else None,
+        input_digests=(_sha_bytes(input_bytes),),
+        output_digests=(assignment_digest,),
+        checkpoint_policy="atomic_publish_or_quarantine",
+        status="COMPLETED")
+    _rm_problems = _run_manifest.problems()
+    if _rm_problems:
+        return {"status": "RUN_ERROR",
+                "reason": f"run manifest invalid: {_rm_problems}"}
+    _run_manifest_dict = _run_manifest.to_dict()
+
     artifact = {
         "mode": config.mode,
         # FCST-01: FORECAST_REGIME binds issue-time archive vintages
@@ -1964,14 +2001,20 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
                             if isinstance(config.source_manifest,
                                           Mapping)
                             else config.source_manifest),
-        "environment_digest": _digest({
-            "python": sys.version.split()[0],
-            "numpy": np.__version__}),
-        "run_manifest_digest": _digest({
-            "config_digest": _digest(dataclasses.asdict(config)),
-            "input_bytes_digest": _sha_bytes(input_bytes)}),
+        "environment_digest": _env_digest,
+        # C15: a real typed RunManifestV0 serialized into the
+        # artifact — its digest recomputes over the full record.
+        "run_manifest": _run_manifest_dict,
+        "run_manifest_digest": _digest(_run_manifest_dict),
         "fit_groups": sorted(mask_groups),
         "heldout_groups_declared": sorted(heldout_groups),
+        # C03: the unit→basin/group map is bound into the artifact —
+        # downstream association cannot remap a unit to a different
+        # basin than the producer declared.
+        "unit_basin_map": sorted(
+            (str(u), str(g)) for u, g in
+            df[[config.unit_col, config.group_col]].drop_duplicates()
+            .itertuples(index=False)),
         "n_train_rows": int(mask.sum()),
         "n_rows": int(len(df)),
         "train_mask_digest": _digest(mask.tolist()),
@@ -2039,6 +2082,80 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
         {k: v for k, v in artifact.items()
          if k != "regime_artifact_digest"})
     return artifact
+
+
+def _validate_config_semantics(cfg: dict) -> list[str]:
+    """C04: semantic revalidation of the serialized producer config.
+
+    Freeze and adapters recompute the config digest but do not
+    revalidate semantics — a digest-matching config with invalid
+    cadence, block length, K universe, or seeds would pass.  This
+    function re-runs the key semantic checks on the serialized dict
+    so any downstream boundary catches them.
+    """
+    problems: list[str] = []
+    cadence = cfg.get("cadence")
+    if not isinstance(cadence, str) or not cadence.strip():
+        problems.append("cadence must be a non-empty string")
+    else:
+        try:
+            pd.Timedelta(
+                pd.tseries.frequencies.to_offset(cadence).nanos)
+        except (TypeError, ValueError, AttributeError):
+            problems.append(f"cadence {cadence!r} is not a "
+                            "fixed-length offset")
+    if cfg.get("gap_policy") != "calendar":
+        problems.append(f"gap_policy must be 'calendar'; got "
+                        f"{cfg.get('gap_policy')!r}")
+    block_len = cfg.get("bootstrap_block_len")
+    if isinstance(block_len, bool) or \
+            not isinstance(block_len, int) or block_len <= 0:
+        problems.append(f"bootstrap_block_len must be a positive "
+                        f"int; got {block_len!r}")
+    ks = cfg.get("k_candidates")
+    if not isinstance(ks, (list, tuple)) or not ks:
+        problems.append("k_candidates must be non-empty")
+    else:
+        if any(isinstance(k, bool) or not isinstance(k, int) or
+               k not in K_CANDIDATES for k in ks):
+            problems.append(f"k_candidates must be ints within "
+                            f"{K_CANDIDATES}")
+        if 1 not in ks:
+            problems.append("K=1 null candidate must appear in "
+                            "k_candidates")
+    seeds = cfg.get("seeds")
+    if not isinstance(seeds, (list, tuple)) or \
+            len(set(seeds)) < MIN_SEEDS:
+        problems.append(f"need >= {MIN_SEEDS} distinct seeds")
+    elif any(isinstance(sd, bool) or not isinstance(sd, int) or
+             sd < 0 for sd in seeds):
+        problems.append("seeds must be non-negative ints")
+    eras = cfg.get("era_boundaries") or []
+    if not isinstance(eras, (list, tuple)):
+        problems.append("era_boundaries must be a list of "
+                        "YYYY-MM-DD dates or era labels")
+    else:
+        # era boundaries are either uniformly ISO dates or uniformly
+        # era labels — the producer allows both styles
+        iso_flags = [_iso_date_ok(e) for e in eras if
+                     isinstance(e, str) and e.strip()]
+        if any(not isinstance(e, str) or not e.strip() for e in eras):
+            problems.append("era_boundaries must be non-empty "
+                            "strings")
+    miss = cfg.get("missingness_policy")
+    if miss not in MISSINGNESS_POLICIES:
+        problems.append(f"missingness_policy {miss!r} not in "
+                        f"{MISSINGNESS_POLICIES}")
+    effort = cfg.get("effort_split")
+    if effort not in ("median", "tercile", "first10") and \
+            not (isinstance(effort, str) and
+                 effort.startswith("quantile:")):
+        problems.append(f"effort_split {effort!r} not a supported "
+                        "policy")
+    mode = cfg.get("mode") or RegimeMode.RETROSPECTIVE_REGIME.value
+    if mode not in RegimeMode._value2member_map_:
+        problems.append(f"mode {mode!r} not a RegimeMode value")
+    return problems
 
 
 def freeze_regime_artifact(artifact: dict) -> dict:
@@ -2111,6 +2228,45 @@ def freeze_regime_artifact(artifact: dict) -> dict:
         raise ValueError("regime_artifact_digest mismatch — the "
                          "artifact payload was mutated after "
                          "production")
+    # --- C03: unit→basin map binding ------------------------------------
+    ubm = artifact.get("unit_basin_map")
+    if not isinstance(ubm, (list, tuple)) or not ubm:
+        raise ValueError("cannot freeze: unit_basin_map missing or "
+                         "empty — the producer did not bind the "
+                         "unit→basin partition")
+    _ubm_groups = {g for _, g in ubm}
+    _declared_groups = set(artifact.get("fit_groups") or []) | \
+        set(artifact.get("heldout_groups_declared") or [])
+    if not _ubm_groups <= _declared_groups:
+        raise ValueError(
+            f"unit_basin_map references groups not declared in "
+            f"fit_groups/heldout_groups_declared: "
+            f"{sorted(_ubm_groups - _declared_groups)}")
+    _ubm_units = [u for u, _ in ubm]
+    if len(_ubm_units) != len(set(_ubm_units)):
+        raise ValueError("unit_basin_map has duplicate unit ids — "
+                         "the partition is not well-defined")
+    # --- C15: run manifest validation -----------------------------------
+    rm = artifact.get("run_manifest")
+    if not isinstance(rm, dict):
+        raise ValueError("cannot freeze: run_manifest missing — the "
+                         "typed run provenance record is required")
+    _rm_rec = RunManifestV0(
+        **{k: (tuple(v) if isinstance(v, list) and
+               k in ("input_digests", "output_digests") else v)
+           for k, v in rm.items() if k != "record_type"})
+    _rm_problems = _rm_rec.problems()
+    if _rm_problems:
+        raise ValueError(f"cannot freeze: run_manifest invalid: "
+                         f"{_rm_problems}")
+    if artifact.get("run_manifest_digest") != _digest(rm):
+        raise ValueError("run_manifest_digest mismatch — the typed "
+                         "run manifest was altered after production")
+    # --- C04: semantic config revalidation -----------------------------
+    cfg_sem = _validate_config_semantics(artifact.get("config") or {})
+    if cfg_sem:
+        raise ValueError(f"cannot freeze: config semantics invalid "
+                         f"after digest recomputation: {cfg_sem}")
     # --- gate/status consistency --------------------------------------
     gates = (artifact.get("stability") or {}).get("required_gates")
     if not isinstance(gates, dict) or not gates:

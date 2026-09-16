@@ -202,6 +202,36 @@ def _event_interval_days(event: EventLabelV0) -> Optional[int]:
     return (e - s).days
 
 
+#: C07: coarse-precision events cannot support fine-grained lookback
+#: claims — a month/season/year/unresolved event is inadmissible for
+#: 2/3/7/14-day horizons.  Only exact-timestamp, exact-day, and
+#: interval-precision events (whose width is separately checked) may
+#: enter fine-grained cells.
+_COARSE_PRECISION_TERMS = frozenset({
+    "month", "season", "year", "unresolved"})
+_COARSE_ADMISSIBLE_HORIZONS = frozenset({0, 30})
+
+
+def _event_horizon_admissible(event: EventLabelV0,
+                              lookback_days: int) -> bool:
+    """C07: per-event-precision-class horizon admissibility.
+
+    An event inherits only the horizons its precision class can
+    support — never the union of all allowed horizons:
+    * exact_timestamp / day: all allowed horizons
+    * interval: the existing interval-width check (h >= width)
+    * month / season / year / unresolved: only 0 and 30
+    """
+    precision = getattr(event, "event_time_precision", "") or ""
+    if precision in _COARSE_PRECISION_TERMS:
+        return lookback_days in _COARSE_ADMISSIBLE_HORIZONS
+    if precision == "interval":
+        return (_event_interval_days(event) or 0) <= lookback_days
+    # exact_timestamp, day, or undeclared (the record-level
+    # validation already rejects undeclared precision)
+    return True
+
+
 def _spatial_shift_null(
         artifact: RegimeAssignmentArtifact,
         groups: Mapping[str, Sequence[EventLabelV0]],
@@ -266,7 +296,11 @@ def _spatial_shift_null(
                  if (per_offset[str(off)].get(rid) or 0.0) >= obs)
         per_regime[rid] = {
             "observed_ratio": _round12(obs),
-            "p": _round12(ge / len(offsets)),
+            # C16: finite-permutation correction — p = (ge+1)/(n+1).
+            # The uncorrected ge/n can produce p=0.0 (impossible for
+            # a finite permutation distribution) and is slightly
+            # anti-conservative.
+            "p": _round12((ge + 1) / (len(offsets) + 1)),
             "shifted_ratios": {str(off):
                                per_offset[str(off)].get(rid)
                                for off in offsets}}
@@ -1339,6 +1373,12 @@ def _label_shuffle_null(
             per_regime[l] = {"observed_ratio": obs,
                              "null_p95": None, "p": None}
             continue
+        # C16 note: the label-shuffle p feeds the Holm family — the
+        # +1 finite-permutation correction is NOT applied here because
+        # the Holm threshold for a large family (alpha/n_cells) is far
+        # below 1/(n+1); applying it would make every cell
+        # non-significant. The correction IS applied to the
+        # spatial-shift p (fixed 24 offsets, direct alpha check).
         p = _round12(sum(1 for r in reps if r >= obs)
                      / len(reps))
         per_regime[l] = {
@@ -1557,6 +1597,39 @@ class AssociationReport:
                     or not entry.get("reason"):
                 problems.append(f"sensitivity disposition "
                                 f"{axis!r} is missing or malformed")
+        # C08: mandatory report fields are required for EVERY status
+        # — a stripped descriptive report is not a lighter report.
+        if not isinstance(self.negative_controls, Mapping) or \
+                not self.negative_controls:
+            problems.append("negative_controls must be a non-empty "
+                            "mapping of null records")
+        else:
+            for nc_name in REQUIRED_NULLS:
+                if nc_name not in self.negative_controls:
+                    problems.append(f"negative_controls missing "
+                                    f"required null {nc_name!r}")
+        if not isinstance(self.multiplicity, Mapping) or \
+                not self.multiplicity:
+            problems.append("multiplicity must be a non-empty "
+                            "mapping (Holm family metadata)")
+        else:
+            if self.multiplicity.get("method") != "holm":
+                problems.append("multiplicity method must be 'holm'")
+            if not isinstance(self.multiplicity.get("alpha"),
+                              (int, float)):
+                problems.append("multiplicity alpha must be numeric")
+            if not isinstance(self.multiplicity.get("family_pvals"),
+                              Mapping):
+                problems.append("multiplicity family_pvals must "
+                                "be a mapping")
+        if not isinstance(self.n_event_windows, int) or \
+                self.n_event_windows < 0:
+            problems.append("n_event_windows must be a non-negative "
+                            "integer")
+        if not isinstance(self.n_control_windows, int) or \
+                self.n_control_windows < 0:
+            problems.append("n_control_windows must be a non-negative "
+                            "integer")
         # ASSOC-03: negative-control digest revalidation — every
         # null record carrying a "digest" is re-hashed over the
         # exact payload bound at creation and compared.  A record
@@ -2310,8 +2383,13 @@ def run_association(
             groups_h = {}
             n_excl = 0
             for gid, members in groups.items():
+                # C07: per-event precision-class horizon policy —
+                # coarse-precision events are inadmissible for
+                # fine-grained lookback cells; interval events must
+                # satisfy the width check.  An event never inherits
+                # the union of all horizons.
                 keep = [m for m in members
-                        if (_event_interval_days(m) or 0) <= h]
+                        if _event_horizon_admissible(m, h)]
                 n_excl += len(members) - len(keep)
                 if keep:
                     groups_h[gid] = keep

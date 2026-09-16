@@ -928,7 +928,8 @@ def _producer_null_findings(payload: Mapping[str, Any]
     Each null family record the producer serializes binds a
     ``family_digest`` = ``sha256_canonical`` over the documented
     dict ``{family, seed_cycle, n_replicates, statistic, p_value,
-    null_stat_min, null_stat_max, null_k_distribution,
+    observed, alpha, n_succeeded, n_failed, status, reason,
+    selection, null_stat_min, null_stat_max, null_k_distribution,
     replicates}`` — recompute it over exactly what is carried (the
     generator is never re-run).  ``seed_cycle`` is the declared
     seed set (``seeds_declared``, falling back to ``seeds``).  When
@@ -960,6 +961,14 @@ def _producer_null_findings(payload: Mapping[str, Any]
                 "n_replicates": rec["n_replicates"],
                 "statistic": rec["statistic"],
                 "p_value": rec["p_value"],
+                # C06: the digest binds every declared record field
+                "observed": rec.get("observed"),
+                "alpha": rec.get("alpha"),
+                "n_succeeded": rec.get("n_succeeded"),
+                "n_failed": rec.get("n_failed"),
+                "status": rec.get("status"),
+                "reason": rec.get("reason"),
+                "selection": rec.get("selection"),
                 "null_stat_min": rec.get("null_stat_min"),
                 "null_stat_max": rec.get("null_stat_max"),
                 "null_k_distribution":

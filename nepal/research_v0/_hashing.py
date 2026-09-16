@@ -107,8 +107,11 @@ def verify_source_evidence(manifest: Any) -> list[str]:
     """
     if not isinstance(manifest, Mapping):
         return ["source manifest is not a mapping"]
-    if manifest.get("fixture"):
+    if manifest.get("fixture") is True:
         return []
+    if "fixture" in manifest and manifest["fixture"] is not True:
+        return [f"fixture must be a strict boolean True to bypass "
+                f"byte verification — got {manifest['fixture']!r}"]
     root_raw = manifest.get("evidence_root")
     if not isinstance(root_raw, str) or not root_raw.strip():
         return ["evidence_root must be a non-empty string naming a "

@@ -116,11 +116,31 @@ class TestProv01StrictBoolGates:
             "forecast_vintage_digests": [],
             "forecast_feature_set": [],
             "assignments": assignments,
-            "config": {"seeds": [1, 2, 3]},
+            "config": {"seeds": [1, 2, 3],
+                       "cadence": "1D",
+                       "gap_policy": "calendar",
+                       "bootstrap_block_len": 7,
+                       "k_candidates": [1, 2, 3],
+                       "missingness_policy": "listwise",
+                       "effort_split": "median",
+                       "mode": "RETROSPECTIVE_REGIME"},
             "input_values": vals,
             "input_schema": {"shape": [2, 2]},
             "preprocessing": {"row_keys_digest": "a" * 64},
             "stability": {"required_gates": gates},
+            "fit_groups": ["g1"],
+            "heldout_groups_declared": [],
+            "unit_basin_map": [["u1", "g1"]],
+            "run_manifest": {
+                "run_id": "test-run-001",
+                "worker_id": "test-worker",
+                "created_at": "2020-01-02T00:00:00Z",
+                "environment_digest": "b" * 64,
+                "seed": 1,
+                "input_digests": ["c" * 64],
+                "output_digests": ["d" * 64],
+                "checkpoint_policy": "atomic_publish_or_quarantine",
+                "status": "COMPLETED"},
         }
         art["assignment_digest"] = sha256_canonical(assignments)
         art["config_digest"] = sha256_canonical(art["config"])
@@ -128,6 +148,8 @@ class TestProv01StrictBoolGates:
             raw.tobytes()).hexdigest()
         art["preprocessing_digest"] = sha256_canonical(
             art["preprocessing"])
+        art["run_manifest_digest"] = sha256_canonical(
+            art["run_manifest"])
         art["regime_artifact_digest"] = sha256_canonical(
             {k: v for k, v in art.items()
              if k != "regime_artifact_digest"})
@@ -346,6 +368,13 @@ class TestReg05aNullInputDigest:
                     "n_replicates": nul["n_replicates"],
                     "statistic": nul["statistic"],
                     "p_value": nul["p_value"],
+                    "observed": nul.get("observed"),
+                    "alpha": nul.get("alpha"),
+                    "n_succeeded": nul.get("n_succeeded"),
+                    "n_failed": nul.get("n_failed"),
+                    "status": nul.get("status"),
+                    "reason": nul.get("reason"),
+                    "selection": nul.get("selection"),
                     "null_stat_min": nul.get("null_stat_min"),
                     "null_stat_max": nul.get("null_stat_max"),
                     "null_k_distribution": nul.get(
