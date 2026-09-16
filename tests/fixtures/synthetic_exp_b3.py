@@ -21,13 +21,15 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Mapping, Sequence
 
 from nepal.experiment_v0.baselines import (
-    ThresholdRule, climatology_probs, fit_regularized_supervised,
-    null_probs, rule_probs)
+    FitPartition, ThresholdRule, climatology_probs,
+    fit_climatology_rates, fit_marginal_rate,
+    fit_regularized_supervised, null_probs, rule_probs)
 from nepal.experiment_v0.evaluation import ForecastCase
 from nepal.research_v0._hashing import sha256_canonical
 from nepal.research_v0.policy import HORIZON_SECONDS
 from nepal.research_v0.records import (ForecastVintageV0,
-                                      HoldoutPlanV0)
+                                      HoldoutPlanV0,
+                                      ObservationOpportunityV0)
 
 _BASE = datetime(2021, 1, 1, tzinfo=timezone.utc)
 LEAD_SECONDS = 21600.0          # fixed issue -> valid_start lead (6 h)
@@ -206,40 +208,92 @@ def mechanisms_of(cases: Sequence[ForecastCase]) -> tuple[str, ...]:
     return tuple(sorted({c.mechanism for c in cases}))
 
 
-def make_baseline_probs(
-        cases: Sequence[ForecastCase], *,
-        seed: int = 0) -> dict[str, list[float]]:
-    """Compute all four mandatory baseline probability vectors for
-    ``cases`` — aligned by position, one entry per case."""
-    sub = [c for c in cases if c.y_state != "CENSORED_OR_AMBIGUOUS"]
+def synthetic_opportunity(
+        opportunity_id: str, unit_id: str,
+        window_start: str, window_end: str) -> ObservationOpportunityV0:
+    """One problem-free OBSERVED_FULL opportunity record covering a
+    case's valid window on the case's own unit."""
+    return ObservationOpportunityV0(
+        opportunity_id=opportunity_id,
+        unit_id=unit_id,
+        platform="synthetic_platform",
+        window_start=window_start,
+        window_end=window_end,
+        coverage_fraction=1.0,
+        coverage_quality="synthetic-complete",
+        detection_threshold="synthetic",
+        state="OBSERVED_FULL",
+        source_id="synthetic_inventory_v0",
+        source_as_of="2021-02-01",
+        frame_ids=(f"frame-{opportunity_id}-a",
+                   f"frame-{opportunity_id}-b"))
 
-    rates: dict[tuple[str, str], float] = {}
-    cell: dict[tuple[str, str], list[int]] = {}
-    for c in sub:
-        cell.setdefault((c.unit_id, c.season), []).append(
-            1 if c.y_state == "POSITIVE" else 0)
-    for key, vals in cell.items():
-        rates[key] = sum(vals) / len(vals)
-    climatology = climatology_probs(cases, rates)
 
-    rules = (ThresholdRule(feature="synth_precip", threshold=4.0,
-                           low_prob=0.05, high_prob=0.85),)
-    rule = rule_probs(cases, rules)
+def opportunity_registry(
+        cases: Sequence[ForecastCase]
+        ) -> dict[str, ObservationOpportunityV0]:
+    """opportunity_id -> verified opportunity record: one per case,
+    bound to the case's unit and valid window."""
+    return {c.opportunity_id: synthetic_opportunity(
+                c.opportunity_id, c.unit_id,
+                c.valid_start, c.valid_end)
+            for c in cases}
 
-    null = null_probs(len(cases), unambiguous_rate(cases))
 
-    # Fit the regularized baseline on a disjoint synthetic training
-    # stream (train region) — never on the evaluation cases.
+def unit_basins_for(cases: Sequence[ForecastCase]) -> dict[str, str]:
+    """unit_id -> basin: one synthetic basin per case region, so a
+    case's region is exactly the basin group its unit belongs to."""
+    return {c.unit_id: f"{c.region}_basin" for c in cases}
+
+
+def region_basins_for(
+        regions: Sequence[str]) -> dict[str, tuple[str, ...]]:
+    """evaluation-region name -> declared basin set."""
+    return {r: (f"{r}_basin",) for r in regions}
+
+
+def train_partition(cases: Sequence[ForecastCase], *,
+                    seed: int = 0) -> FitPartition:
+    """A declared TRAIN_ONLY FitPartition from a disjoint synthetic
+    training stream — never the evaluation cases themselves."""
     train = planted_cases(seed + 7919, regions=("train_basin_a",),
                           seasons=seasons_of(cases),
                           mechanisms=mechanisms_of(cases),
                           per_cluster=8)
     train_sub = [c for c in train
                  if c.y_state != "CENSORED_OR_AMBIGUOUS"]
-    predict = fit_regularized_supervised(
-        [c.features for c in train_sub],
-        [1 if c.y_state == "POSITIVE" else 0 for c in train_sub],
-        seed=seed)
+    return FitPartition(
+        partition="TRAIN_ONLY",
+        rows=[c.features for c in train_sub],
+        labels=[1 if c.y_state == "POSITIVE" else 0
+                for c in train_sub],
+        cell_keys=[(c.unit_id, c.season) for c in train_sub])
+
+
+def make_baseline_probs(
+        cases: Sequence[ForecastCase], *,
+        seed: int = 0) -> dict[str, list[float]]:
+    """Compute all four mandatory baseline probability vectors for
+    ``cases`` — aligned by position, one entry per case.
+
+    Every fitted baseline (climatology rates, null base rate, the
+    regularized supervised model) is fit on a declared TRAIN_ONLY
+    partition drawn from a disjoint synthetic training stream — the
+    scored cases' labels never enter a fit.  ``rule`` is predeclared
+    and fits nothing.
+    """
+    partition = train_partition(cases, seed=seed)
+
+    climatology = climatology_probs(
+        cases, fit_climatology_rates(partition))
+
+    rules = (ThresholdRule(feature="synth_precip", threshold=4.0,
+                           low_prob=0.05, high_prob=0.85),)
+    rule = rule_probs(cases, rules)
+
+    null = null_probs(len(cases), fit_marginal_rate(partition))
+
+    predict = fit_regularized_supervised(partition, seed=seed)
     supervised = predict([c.features for c in cases])
 
     return {"climatology": climatology, "rule": rule, "null": null,
@@ -257,7 +311,10 @@ def powered_design() -> dict[str, Any]:
         seed=11, regions=regions, seasons=seasons,
         mechanisms=mechanisms, horizons=("24h", "48h", "72h", "7d"),
         per_cluster=2, censored_every=17)
-    return {"holdout": holdout, "cases": cases}
+    return {"holdout": holdout, "cases": cases,
+            "opportunities": opportunity_registry(cases),
+            "unit_basins": unit_basins_for(cases),
+            "region_basins": region_basins_for(regions)}
 
 
 def underpowered_design() -> dict[str, Any]:
@@ -269,4 +326,7 @@ def underpowered_design() -> dict[str, Any]:
                           mechanisms=("snow_release",),
                           horizons=("24h", "48h"), per_cluster=3,
                           censored_every=0)
-    return {"holdout": holdout, "cases": cases}
+    return {"holdout": holdout, "cases": cases,
+            "opportunities": opportunity_registry(cases),
+            "unit_basins": unit_basins_for(cases),
+            "region_basins": region_basins_for(regions)}

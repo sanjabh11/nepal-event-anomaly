@@ -9,14 +9,16 @@ fail-closed, deterministic, synthetic-only evaluator:
   consistency), admissible horizons, three-valued targets, per-case
   lineage identifiers (verified-opportunity id, outcome-source id,
   issue-time feature cutoff), the mandatory baseline set, aligned
-  probability vectors, and an explicit verified-opportunity
-  denominator — and raises one ``ValueError`` listing every problem.
-  Cases are canonically ordered before hashing so the report digest
-  is invariant under input reordering.
+  probability vectors, and a verified-opportunity denominator
+  *derived from the opportunity registry* — and raises one
+  ``ValueError`` listing every problem.  Cases are canonically
+  ordered before hashing so the report digest is invariant under
+  input reordering.
 * Censored (``CENSORED_OR_AMBIGUOUS``) cases are excluded from every
   metric numerator and counted in ``n_censored``; the false-alarm
-  denominator is the caller-supplied opportunity count, never the
-  unambiguous-case count.
+  denominator is the count of registry opportunities inside the
+  declared evaluation scope, never the unambiguous-case count and
+  never a caller-chosen integer.
 * Metrics are recomputed per region / season / mechanism slice and per
   lead-time (horizon) bucket.
 * ``power_report`` derives the effective sample size as the count of
@@ -40,14 +42,15 @@ import random
 from dataclasses import MISSING as _MISSING
 from dataclasses import asdict, dataclass, field, fields
 from statistics import NormalDist
-from typing import Any, Collection, Mapping, Sequence
+from typing import Any, Collection, Mapping, Optional, Sequence
 
 from nepal.research_v0._hashing import sha256_canonical
 from nepal.research_v0.policy import (HORIZON_SECONDS, TargetState,
                                       parse_strict_utc,
                                       require_finite_seconds)
 from nepal.research_v0.records import (ForecastVintageV0,
-                                      HoldoutPlanV0)
+                                      HoldoutPlanV0,
+                                      ObservationOpportunityV0)
 
 from . import metrics as _metrics
 from .baselines import REQUIRED_BASELINE_NAMES
@@ -134,6 +137,12 @@ class ForecastCase:
                     raise ValueError(
                         f"ForecastCase: {name} must be a string, got "
                         f"{type(value).__name__}")
+                if name == "y_state" and value not in _TARGET_VALUES:
+                    raise ValueError(
+                        f"ForecastCase: y_state {value!r} is not a "
+                        f"TargetState value {sorted(_TARGET_VALUES)} — "
+                        "truthy strings like 'yes'/'true'/'1' never "
+                        "coerce")
                 kwargs[name] = value
             elif name in _NUM_FIELDS:
                 if isinstance(value, bool) or \
@@ -217,8 +226,8 @@ def _bundle(y: list[int], p: list[float], *,
     """One scorer's full metric bundle on the unambiguous subset.
 
     ``n_opportunities`` is the verified-opportunity denominator for
-    the false-alarm rate — supplied by the caller, never inferred from
-    the unambiguous count.
+    the false-alarm rate — derived from the opportunity registry by
+    ``evaluate``, never inferred from the unambiguous count.
     """
     flags = [1 if pi >= threshold else 0 for pi in p]
     pr = _metrics.pr_curve(y, p)
@@ -621,11 +630,62 @@ def _case_lineage_problems(c: ForecastCase) -> list[str]:
     return problems
 
 
+def _region_basin_problems(holdout: Any, region_basins: Any,
+                           ) -> tuple[list[str], dict[str, str]]:
+    """Validate the evaluation-scope map and return
+    ``(problems, basin_owner)`` where ``basin_owner`` binds each basin
+    to the evaluation region that declares it.
+
+    ``region_basins`` must be a mapping whose keys equal
+    ``holdout.evaluation_region_names`` exactly; every region must map
+    to a non-empty collection of basin names and no basin may be
+    claimed by two regions.  This mirrors the ``run_association``
+    holdout binding — a case's ``region`` is an evaluation-region
+    name, and a case's verified opportunity must sit on a unit whose
+    basin is claimed by that region.
+    """
+    problems: list[str] = []
+    basin_owner: dict[str, str] = {}
+    if not isinstance(region_basins, Mapping):
+        return ["region_basins must be a mapping of "
+                "evaluation-region name -> basins"], basin_owner
+    named = set(getattr(holdout, "evaluation_region_names", ()) or ())
+    if set(region_basins.keys()) != named:
+        problems.append(
+            "region_basins keys must equal "
+            "holdout.evaluation_region_names exactly "
+            f"(region_basins={sorted(map(str, region_basins))}, "
+            f"evaluation_region_names={sorted(map(str, named))})")
+    for key in sorted(region_basins, key=str):
+        name = str(key)
+        basins = region_basins[key]
+        if isinstance(basins, (str, bytes)) or \
+                not isinstance(basins, Collection) or not basins:
+            problems.append(f"evaluation region {name!r} must map to "
+                            "a non-empty collection of basin names")
+            continue
+        for basin in basins:
+            if not isinstance(basin, str) or not basin.strip():
+                problems.append(f"evaluation region {name!r}: basin "
+                                "names must be non-empty strings")
+                continue
+            if basin in basin_owner and basin_owner[basin] != name:
+                problems.append(
+                    f"basin {basin!r} is claimed by both regions "
+                    f"{basin_owner[basin]!r} and {name!r}")
+            else:
+                basin_owner[basin] = name
+    return problems, basin_owner
+
+
 def evaluate(cases: Sequence[ForecastCase], *,
              holdout: HoldoutPlanV0,
              baseline_probs: Mapping[str, Sequence[float]],
              admitted_vintages: Mapping[str, ForecastVintageV0],
-             n_opportunities: int = -1,
+             opportunities: Mapping[str, ObservationOpportunityV0],
+             unit_basins: Mapping[str, str],
+             region_basins: Mapping[str, Collection[str]],
+             n_opportunities_declared: Optional[int] = None,
              threshold: float = 0.5,
              n_boot: int = 200,
              seed: int = 0) -> EvaluationReport:
@@ -638,13 +698,29 @@ def evaluate(cases: Sequence[ForecastCase], *,
     states, empty per-case lineage identifiers (``opportunity_id``,
     ``outcome_source_id``, ``cutoff_time``) or a ``cutoff_time`` that
     postdates ``issue_time``, missing mandatory baselines, misaligned
-    or out-of-range probability vectors, duplicate case ids, and a
-    missing, non-positive, or undersized ``n_opportunities`` (the
-    verified observation-opportunity count must cover every case).
+    or out-of-range probability vectors, duplicate case ids, and any
+    defect in the opportunity-registry binding.
+
+    ``opportunities`` is the verified observation-opportunity registry
+    (``opportunity_id`` -> ``ObservationOpportunityV0``) — the same
+    registry type ``run_association`` consumes.  Every registry entry
+    must be a problem-free record whose ``opportunity_id`` equals its
+    map key and whose ``unit_id`` has a ``unit_basins`` mapping.
+    Every case's ``opportunity_id`` must resolve to a registry entry
+    on the case's own unit whose basin (via ``unit_basins``) is
+    claimed — through ``region_basins`` — by the case's declared
+    evaluation region.
+
+    The false-alarm denominator ``n_opportunities`` is *derived* from
+    the registry: the count of distinct registry opportunity ids whose
+    unit's basin lies inside the declared evaluation regions.  It is
+    never caller-chosen.  The optional ``n_opportunities_declared``
+    is tamper evidence only — when given it must equal the derived
+    count exactly.
 
     Censored cases are excluded from every metric numerator and
     counted in ``n_censored``; the false-alarm rate divides by the
-    explicit ``n_opportunities`` — never by the unambiguous count.
+    derived ``n_opportunities`` — never by the unambiguous count.
     Cases are canonically ordered by ``(case_id, opportunity_id)``
     before scoring and hashing, so reordering identical inputs yields
     an identical report and digest.
@@ -686,20 +762,78 @@ def evaluate(cases: Sequence[ForecastCase], *,
                     "sha256_canonical(vintage.to_dict()) — the "
                     "admission map is keyed by canonical digest")
 
-    if isinstance(n_opportunities, bool) or \
-            not isinstance(n_opportunities, int):
+    # ---- evaluation-scope maps: unit -> basin -> region ----------
+    if not isinstance(unit_basins, Mapping):
+        problems.append("unit_basins must be a mapping of unit_id -> "
+                        "basin name")
+        ub: Mapping[str, Any] = {}
+    else:
+        ub = unit_basins
+        for u, b in unit_basins.items():
+            if not isinstance(u, str) or not isinstance(b, str) or \
+                    not b.strip():
+                problems.append(
+                    f"unit_basins entry {u!r} -> {b!r} must map a "
+                    "string unit id to a non-empty string basin")
+    rb_problems, basin_owner = _region_basin_problems(
+        holdout, region_basins)
+    problems.extend(rb_problems)
+    eval_basins = set(basin_owner)
+
+    # ---- opportunity registry: the denominator's source of truth --
+    registry: Mapping[str, Any] = {}
+    if not isinstance(opportunities, Mapping):
         problems.append(
-            f"n_opportunities {n_opportunities!r} must be an "
-            "integer count of verified observation opportunities")
-    elif n_opportunities <= 0:
+            "opportunities must be a mapping of opportunity_id -> "
+            "ObservationOpportunityV0 — the false-alarm denominator "
+            "is registry-derived, never caller-chosen")
+    else:
+        registry = opportunities
+        for key, rec in registry.items():
+            tag = f"opportunity registry entry {key!r}"
+            if type(rec) is not ObservationOpportunityV0:
+                problems.append(f"{tag}: not an "
+                                "ObservationOpportunityV0 record")
+                continue
+            if rec.opportunity_id != key:
+                problems.append(
+                    f"{tag}: record opportunity_id "
+                    f"{rec.opportunity_id!r} does not equal the "
+                    "registry key — the registry is keyed by "
+                    "opportunity_id")
+            problems.extend(f"{tag}: {p}" for p in rec.problems())
+            basin = ub.get(rec.unit_id)
+            if not isinstance(basin, str) or not basin.strip():
+                problems.append(
+                    f"{tag}: unit {rec.unit_id!r} has no basin "
+                    "mapping in unit_basins")
+
+    # The denominator: distinct registry opportunities whose unit's
+    # basin lies inside the declared evaluation regions.
+    n_opportunities = sum(
+        1 for rec in registry.values()
+        if type(rec) is ObservationOpportunityV0
+        and ub.get(rec.unit_id) in eval_basins)
+    if isinstance(opportunities, Mapping) and \
+            isinstance(unit_basins, Mapping) and n_opportunities <= 0:
         problems.append(
-            "n_opportunities is required and must be positive — the "
-            "false-alarm denominator cannot be inferred")
-    elif n_opportunities < len(cases):
-        problems.append(
-            f"n_opportunities ({n_opportunities}) is smaller than "
-            f"n_cases ({len(cases)}) — every case is one verified "
-            "opportunity")
+            "the opportunity registry contains no verified "
+            "opportunities inside the declared evaluation scope — "
+            "the false-alarm denominator cannot be zero")
+    if n_opportunities_declared is not None:
+        if isinstance(n_opportunities_declared, bool) or \
+                not isinstance(n_opportunities_declared, int):
+            problems.append(
+                f"n_opportunities_declared "
+                f"{n_opportunities_declared!r} must be an integer "
+                "equal to the registry-derived opportunity count")
+        elif n_opportunities_declared != n_opportunities:
+            problems.append(
+                f"n_opportunities_declared "
+                f"({n_opportunities_declared}) does not equal the "
+                f"registry-derived in-scope opportunity count "
+                f"({n_opportunities}) — the denominator is evidence, "
+                "not a caller claim")
 
     seen_ids: set[str] = set()
     seen_opps: set[str] = set()
@@ -716,6 +850,36 @@ def evaluate(cases: Sequence[ForecastCase], *,
         seen_opps.add(c.opportunity_id)
         problems.extend(_case_lineage_problems(c))
         problems.extend(_case_vintage_problems(c, admitted_vintages))
+        if isinstance(c.opportunity_id, str) and \
+                c.opportunity_id.strip():
+            opp = registry.get(c.opportunity_id)
+            if c.opportunity_id not in registry:
+                problems.append(
+                    f"case {c.case_id!r}: opportunity_id "
+                    f"{c.opportunity_id!r} is absent from the "
+                    "opportunity registry")
+            elif type(opp) is ObservationOpportunityV0:
+                if opp.unit_id != c.unit_id:
+                    problems.append(
+                        f"case {c.case_id!r}: unit {c.unit_id!r} "
+                        f"does not match opportunity "
+                        f"{opp.opportunity_id!r} unit "
+                        f"{opp.unit_id!r}")
+                basin = ub.get(opp.unit_id)
+                owner = basin_owner.get(basin) \
+                    if isinstance(basin, str) else None
+                if owner is None:
+                    problems.append(
+                        f"case {c.case_id!r}: opportunity "
+                        f"{opp.opportunity_id!r} sits in basin "
+                        f"{basin!r} outside the declared evaluation "
+                        "regions")
+                elif owner != c.region:
+                    problems.append(
+                        f"case {c.case_id!r}: opportunity basin "
+                        f"{basin!r} belongs to evaluation region "
+                        f"{owner!r}, not the case's declared region "
+                        f"{c.region!r}")
 
     provided = {str(k) for k in baseline_probs}
     missing = REQUIRED_BASELINE_NAMES - provided
@@ -793,6 +957,7 @@ def evaluate(cases: Sequence[ForecastCase], *,
         "cases": [c.to_dict() for c in cases],
         "baselines": {k: list(v) for k, v in scorers.items()},
         "vintages": sorted(str(k) for k in admitted_vintages),
+        "opportunity_ids": sorted(str(k) for k in registry),
         "n_opportunities": n_opportunities,
         "holdout": holdout.to_dict(),
     })
