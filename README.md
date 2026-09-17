@@ -109,8 +109,8 @@ fully-verified baseline (round-9 hardening content commit; the
 manifest's `content_head` names the commit whose tree the manifest
 hashes — the manifest commit itself follows the content commit):
 **2251 passed / 5 skipped / 0 failed** across
-**82** manifest-governed files — recount pending the
-final coordinated commit. The round-9 surface hardens the producer
+**82** manifest-governed files — bound to the round-9
+hardened head. The round-9 surface hardens the producer
 boundary end-to-end: a complete `validate_producer_payload`
 shared floor at every boundary, `unit_basin_map` binding carried
 through the adapted artifact into association, and source-byte
