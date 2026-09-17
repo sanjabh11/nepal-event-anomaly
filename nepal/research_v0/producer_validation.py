@@ -291,6 +291,23 @@ def _scalar_floor_problems(
         problems.append(
             "SCHEMA_MALFORMED: modal_k_frequency must be a "
             "number in [0, 1]")
+    # R9-P12/V6: the mode↔data-class binding is producer
+    # semantics, not an audit nicety — a retrospective artifact
+    # cannot declare operational-archive provenance and a
+    # forecast artifact cannot declare reanalysis.
+    mode = payload.get("mode")
+    dc = payload.get("data_class")
+    if mode == RegimeMode.RETROSPECTIVE_REGIME.value and \
+            "data_class" in payload and dc != "REANALYSIS":
+        problems.append(
+            "SCHEMA_MALFORMED: RETROSPECTIVE_REGIME requires "
+            f"data_class 'REANALYSIS', got {dc!r}")
+    if mode == RegimeMode.FORECAST_REGIME.value and \
+            "data_class" in payload and \
+            dc != "ARCHIVED_OPERATIONAL":
+        problems.append(
+            "SCHEMA_MALFORMED: FORECAST_REGIME requires "
+            f"data_class 'ARCHIVED_OPERATIONAL', got {dc!r}")
     return problems
 
 

@@ -1266,6 +1266,7 @@ class TestR9AdversarialResiduals:
         ("associable", "yes"), ("terminal", "yes"),
         ("status", "FABRICATED"),
         ("modal_k_frequency", None),
+        ("data_class", "ARCHIVED_OPERATIONAL"),
     ])
     def test_v6_scalar_type_floors(self, field, value):
         payload = _canonical_payload()
