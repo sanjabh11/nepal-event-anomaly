@@ -1,6 +1,6 @@
 {
  "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
- "content_head": "ae1b03eede736a32cf0207a8b2c68461e73ea232",
+ "content_head": "6c02f9bd2dd77a5a82b2db68702ca60f11ad1afd",
  "files": [
   {
    "relpath": ".github/workflows/research-v0.yml",
@@ -14,7 +14,7 @@
   },
   {
    "relpath": "README.md",
-   "sha256": "84b67d0484947ad47cb9845c61c2118747623c50286eee4e5c84399d04ba8276",
+   "sha256": "8a878ecf0612a6d93870da53a1b025deee0cd40935361fb2c3fcb3a4a8ba5c16",
    "size_bytes": 6764
   },
   {
@@ -49,7 +49,7 @@
   },
   {
    "relpath": "docs/science/P0_BASELINE_LEDGER.md",
-   "sha256": "d670cbbdcf5573683488b4757756b3d2ea5f927435117c6ccd717472bf202dcc",
+   "sha256": "d02d065a08439d2b49ff26c806b4be4fbf54568e220d33c24147f115f13a2ed0",
    "size_bytes": 12793
   },
   {
@@ -415,7 +415,7 @@
  ],
  "generated": "2026-09-17",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "ae1b03eede736a32cf0207a8b2c68461e73ea232",
+ "manifest_commit": "6c02f9bd2dd77a5a82b2db68702ca60f11ad1afd",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -423,7 +423,7 @@
  "scope": "governed science artifacts: docs/science, nepal/research_v0, research tests, CI workflow, README \u2014 non-science sources excluded by design",
  "self_excluded": true,
  "test_results": {
-  "full_suite_venv": "2251 passed, 5 skipped (rasterio), 0 failed, 57 warnings",
+  "full_suite_venv": "2252 passed, 5 skipped (rasterio), 0 failed, 57 warnings",
   "swarm_focused": "562 passed (round7 hardening 22 + round6 hardening 118 + round5 hardening 18 + regimes 93 + association 63 + evaluation 118 + audit 61 + adapters 41 + replay 25 + e2e 3)",
   "adversarial_probes": "r6+r7+r8 hardening lanes pass (shared producer validator at freeze/adapter/audit/association boundaries, typed fit_partition, forecast feature payload binding, vintage evidence_root byte verification, FMX label derivation + required metadata, spatial-shift support accounting); rebind/mode-confusion/bypass probes fail closed",
   "claim_scan": "clean on all governed files",
