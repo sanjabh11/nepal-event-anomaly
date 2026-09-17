@@ -1,6 +1,6 @@
 {
  "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
- "content_head": "5ee8436a1d554be9f57bf17f8a98d1839453d5af",
+ "content_head": "ae1b03eede736a32cf0207a8b2c68461e73ea232",
  "files": [
   {
    "relpath": ".github/workflows/research-v0.yml",
@@ -219,8 +219,8 @@
   },
   {
    "relpath": "nepal/research_v0/producer_validation.py",
-   "sha256": "98a23f9495dca7c0cb71f460adcf782a179c3fa203a44b5406fa8de6b767d63b",
-   "size_bytes": 85049
+   "sha256": "f9792d868f669cf8568c6651bd3b1f020030e71f215473947791504c0a0d869c",
+   "size_bytes": 85891
   },
   {
    "relpath": "nepal/research_v0/records.py",
@@ -359,8 +359,8 @@
   },
   {
    "relpath": "tests/test_r9_promotion.py",
-   "sha256": "214323cb837afdde9af9bf5cf4fe3d15848d80b6e134e85c82a8fa185ea29bf6",
-   "size_bytes": 58910
+   "sha256": "307a0295cbfd274e813a064eb993d9bad92da2e7e5243102167fbf3fff9e9c3d",
+   "size_bytes": 58958
   },
   {
    "relpath": "tests/test_research_v0_adversarial.py",
@@ -415,7 +415,7 @@
  ],
  "generated": "2026-09-17",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "5ee8436a1d554be9f57bf17f8a98d1839453d5af",
+ "manifest_commit": "ae1b03eede736a32cf0207a8b2c68461e73ea232",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
