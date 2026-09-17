@@ -182,14 +182,24 @@ def audit_matrix(columns: dict[str, list],
             Kendall-τ=1 check (§2.2).
         preprocessing_provenance: {column: "train_only"|"includes_test"}
             — anything not declared train_only rejects (§2.5).
-        catalog_label_columns: declared label channels; one appearing
-            in feature_digest_set rejects (B17).
+        catalog_label_columns: caller-declared label channels —
+            UNIONED with every audit declaring
+            declared_field_class="catalog_label"; a label channel
+            appearing in feature_digest_set rejects (B17).  Omitting
+            this parameter no longer bypasses the check: the audits
+            themselves carry the declaration.
         feature_digest_set: the predictor digest set under audit.
         preprocessing_fit_rows: rows the scaler/imputer saw; must equal
             train_row_count when provided (§2.5).
     """
     audits_by_name = {a.column_name: a for a in audits}
-    cat_labels = catalog_label_columns or set()
+    # NEW-FMX-01: the label-channel set is derived from the audits
+    # themselves, unioned with any caller-supplied declaration — a
+    # caller can no longer bypass the label/predictor separation by
+    # omitting catalog_label_columns.
+    cat_labels = set(catalog_label_columns or set())
+    cat_labels |= {a.column_name for a in audits
+                   if a.declared_field_class == "catalog_label"}
     digest_set = feature_digest_set or set()
     exposure = exposure_proxies or {}
     b_ord = b_orderings or {}
@@ -256,6 +266,16 @@ def audit_matrix(columns: dict[str, list],
                            "non-rank field class")
 
         # ---- catalog_label channel -----------------------------------
+        # A column whose own audit declares catalog_label sits inside
+        # the audited matrix: a label channel inside a predictor
+        # matrix rejects outright, regardless of what the caller
+        # declared.  When feature_digest_set is supplied the
+        # membership check additionally fires LABEL-IN-PREDICTORS.
+        if audit.declared_field_class == "catalog_label":
+            fired.append("LABEL-CLASS-IN-MATRIX")
+            reasons.append("catalog_label-classed column present in "
+                           "the audited predictor matrix — a label "
+                           "channel is never a predictor")
         if name in cat_labels and name in digest_set:
             fired.append("LABEL-IN-PREDICTORS")
             reasons.append("catalog_label column inside the feature "
@@ -270,17 +290,59 @@ def audit_matrix(columns: dict[str, list],
             reasons.append("availability_semantics not declared — "
                            "per-value availability uncheckable")
 
+        # ---- required metadata (NEW-FMX-02) ---------------------------
+        # Every column audit must carry a non-empty unit, value_domain,
+        # a two-ended strict-UTC temporal_window, and a declared
+        # missingness_policy — a column without them cannot be placed
+        # on the availability or legality surfaces at all.
+        if not audit.unit or not str(audit.unit).strip():
+            fired.append("UNIT-MISSING")
+            reasons.append("unit not declared — values are "
+                           "dimensionally uninterpretable")
+        if not audit.value_domain or \
+                not str(audit.value_domain).strip():
+            fired.append("DOMAIN-MISSING")
+            reasons.append("value_domain not declared — the legal "
+                           "range is uncheckable")
+        # The per-column missingness vocabulary has no declared enum
+        # in the codebase (regimes.MISSINGNESS_POLICIES is the
+        # dataset-level set and does not cover the column-level
+        # "forbid_nan" already honored below), so the requirement is
+        # a non-empty declared string.
+        if not audit.missingness_policy or \
+                not str(audit.missingness_policy).strip():
+            fired.append("MISSINGNESS-MISSING")
+            reasons.append("missingness_policy not declared — NaN "
+                           "handling is uncheckable")
+
         # ---- temporal checks -----------------------------------------
-        if audit.temporal_window and cutoff_iso:
-            w_end = _parse(audit.temporal_window[1])
-            if w_end > _parse(cutoff_iso):
+        w_start = w_end = None
+        window = audit.temporal_window
+        if not isinstance(window, (tuple, list)) or len(window) != 2:
+            fired.append("WINDOW-MISSING")
+            reasons.append("temporal_window must be a "
+                           "(start_iso, end_iso) pair")
+        else:
+            try:
+                w_start = _parse(str(window[0]))
+                w_end = _parse(str(window[1]))
+            except (TypeError, ValueError, AttributeError):
+                fired.append("WINDOW-MISSING")
+                reasons.append("temporal_window bounds must parse as "
+                               "strict UTC timestamps")
+        if w_start is not None and w_end is not None:
+            if w_start > w_end:
+                fired.append("WINDOW-ORDER")
+                reasons.append(
+                    f"temporal_window start {window[0]} is after "
+                    f"end {window[1]}")
+            if cutoff_iso and w_end > _parse(cutoff_iso):
                 fired.append("POST-CUTOFF")
                 reasons.append(
-                    f"temporal_window end {audit.temporal_window[1]} "
+                    f"temporal_window end {window[1]} "
                     f"after cutoff {cutoff_iso}")
-        if forecast_issue_iso and audit.temporal_window:
-            if _parse(audit.temporal_window[1]) > \
-                    _parse(forecast_issue_iso):
+            if forecast_issue_iso and \
+                    w_end > _parse(forecast_issue_iso):
                 fired.append("POST-ISSUE")
                 reasons.append("source observation window ends after "
                                "the issue time")
@@ -320,4 +382,14 @@ def audit_matrix(columns: dict[str, list],
         else:
             verdicts.append(Verdict(name, "pass", ("ALL-CLEAN",),
                                     ("no violation detected",)))
+
+    # NEW-FMX-01: a declared label channel named inside the feature
+    # digest set rejects even when the channel is not among the
+    # audited columns — the digest set, not the column map, is the
+    # predictor surface under audit.
+    for lname in sorted((cat_labels & digest_set) - set(columns)):
+        verdicts.append(Verdict(
+            lname, "reject", ("LABEL-IN-PREDICTORS",),
+            ("declared catalog_label channel inside the feature "
+             "digest set (B17)",)))
     return verdicts

@@ -3,9 +3,13 @@
 Implements the gate model of ``docs/science/run_c/FORECAST_ARCHIVE_MATRIX_V0``
 against the ``nepal.research_v0`` contracts
 (``ForecastVintageV0`` / ``CutoffRecordV0`` /
-``ForecastDataClass``).  This adapter is *metadata admission only*:
+``ForecastDataClass``).  This adapter is *metadata admission first*:
 no archive is downloaded, no credential is used, and no payload byte
-is accessed.  A ``VintageRequest`` describes provider-declared
+is accessed — unless the caller explicitly passes
+``require_bytes=True`` to :func:`build_vintage`, the byte-binding
+gate (C14) under which ``evidence_root`` must name a real directory
+and both declared files must exist inside it, non-symlink, hashing
+to the declared digests.  A ``VintageRequest`` describes provider-declared
 metadata; admission checks the provider registry, the data-class
 allowlist, the strict-UTC ordering chain, the provider archive-delay
 floor (fixed, per-centre, or caller-declared), licence/mechanism
@@ -26,6 +30,7 @@ import re
 from dataclasses import asdict, dataclass, fields
 from typing import Any, Mapping, Optional, Sequence
 
+from nepal.research_v0._hashing import verify_vintage_evidence
 from nepal.research_v0.policy import (ForecastDataClass,
                                       parse_strict_utc,
                                       require_finite_seconds)
@@ -90,6 +95,9 @@ class VintageRequest:
     retrieval_record_sha256: str = ""
     archive_payload_path: str = ""
     retrieval_record_path: str = ""
+    evidence_root: str = ""               # dir under which the paths
+                                          # resolve to real bytes (C14);
+                                          # "" = metadata-only candidate
     declared_delay_seconds: float = -1.0  # provider-declared delay; required
                                         # when provider has no fixed floor
 
@@ -313,6 +321,15 @@ def admission_problems(req: VintageRequest) -> list[str]:
                 not SHA256_RE.match(value):
             problems.append(f"{name} must be a 64-hex sha256 digest")
 
+    # evidence_root is intentionally NOT a required request field:
+    # metadata-only candidate requests must remain admissible (the
+    # audit requires candidates stay candidates).  Shape only — byte
+    # verification happens in build_vintage(require_bytes=True).
+    if not isinstance(req.evidence_root, str):
+        problems.append("evidence_root must be a string naming the "
+                        "evidence root ('' for a metadata-only "
+                        "candidate request)")
+
     parsed: dict[str, Optional[float]] = {}
     for name in _TIMESTAMP_FIELDS:
         raw = getattr(req, name)
@@ -346,16 +363,32 @@ def admission_problems(req: VintageRequest) -> list[str]:
 
 
 def build_vintage(req: VintageRequest,
-                  vintage_id: str) -> ForecastVintageV0:
+                  vintage_id: str,
+                  *,
+                  require_bytes: bool = False) -> ForecastVintageV0:
     """Admit a metadata request into a ``ForecastVintageV0``.
 
     Raises ``ValueError("; ".join(problems))`` on any admission or
     record problem — the produced record itself must pass
     ``ForecastVintageV0.problems()`` (digest shape, paths, ordering).
+
+    ``require_bytes`` is the byte-binding gate (C14): when True the
+    request must carry a non-empty ``evidence_root`` and both declared
+    files must resolve inside it — real, non-symlink, hashing to the
+    declared digests — per ``verify_vintage_evidence``.  Metadata
+    admission without bytes (the default) yields a *candidate*
+    vintage: it may flow through ledgers and descriptive evaluation
+    but can never ground a forecast-ready claim on its own.
     """
     problems = admission_problems(req)
     if not str(vintage_id or "").strip():
         problems.append("vintage_id is required")
+    if require_bytes and (not isinstance(req.evidence_root, str)
+                          or not req.evidence_root.strip()):
+        problems.append(
+            "evidence_root is required for byte-bound vintage "
+            "admission — a metadata-only request admits a candidate, "
+            "never forecast-ready evidence")
     if problems:
         raise ValueError("; ".join(problems))
     vintage = ForecastVintageV0(
@@ -373,10 +406,16 @@ def build_vintage(req: VintageRequest,
         retrieval_record_path=req.retrieval_record_path,
         model_version=req.model_version,
         license_id=req.license_id,
-        archive_mechanism=req.archive_mechanism)
+        archive_mechanism=req.archive_mechanism,
+        evidence_root=req.evidence_root)
     rec_problems = vintage.problems()
     if rec_problems:
         raise ValueError("; ".join(rec_problems))
+    if require_bytes:
+        byte_problems = verify_vintage_evidence(
+            vintage, vintage.evidence_root)
+        if byte_problems:
+            raise ValueError("; ".join(byte_problems))
     return vintage
 
 
@@ -386,12 +425,16 @@ def ledger_problems(vintages: Sequence[ForecastVintageV0]) -> list[str]:
     Flags non-vintage entries, record-level problems, duplicate
     ``vintage_id`` values, the same ``archive_payload_sha256`` bound
     under different vintage_ids (one byte sequence may not back two
-    vintages), and duplicate ``retrieval_record_sha256`` values.
+    vintages), duplicate ``retrieval_record_sha256`` values, and two
+    byte-bound vintages (non-empty ``evidence_root``) binding the same
+    ``(evidence_root, path)`` evidence file to different declared
+    digests (C14 — one file, one digest).
     """
     problems: list[str] = []
     seen_ids: set[str] = set()
     payload_owner: dict[str, str] = {}
     retrieval_seen: set[str] = set()
+    path_digest_owner: dict[tuple[str, str], tuple[str, str]] = {}
     for index, vintage in enumerate(vintages):
         if type(vintage) is not ForecastVintageV0:
             problems.append(
@@ -424,6 +467,37 @@ def ledger_problems(vintages: Sequence[ForecastVintageV0]) -> list[str]:
                     f"{record_digest[:16]}…")
             else:
                 retrieval_seen.add(record_digest)
+        # C14: one evidence file, one digest — two byte-bound vintages
+        # may not bind the same (evidence_root, path) file to
+        # different declared digests.  Candidates with
+        # evidence_root == "" claim no shared filesystem location, so
+        # their nominal paths do not participate.
+        if not (isinstance(vintage.evidence_root, str)
+                and vintage.evidence_root.strip()):
+            continue
+        for path_value, digest_value in (
+                (vintage.archive_payload_path,
+                 vintage.archive_payload_sha256),
+                (vintage.retrieval_record_path,
+                 vintage.retrieval_record_sha256)):
+            if not (isinstance(path_value, str) and path_value.strip()
+                    and isinstance(digest_value, str)
+                    and digest_value):
+                continue
+            key = (vintage.evidence_root, path_value)
+            prior = path_digest_owner.get(key)
+            if prior is not None and \
+                    prior[0] != digest_value:
+                problems.append(
+                    f"vintages {prior[1]!r} and "
+                    f"{vintage.vintage_id!r} bind evidence file "
+                    f"{path_value!r} (root "
+                    f"{vintage.evidence_root!r}) to different "
+                    "digests — one byte sequence may not carry two "
+                    "declared digests")
+            elif prior is None:
+                path_digest_owner[key] = (digest_value,
+                                          vintage.vintage_id)
     return problems
 
 

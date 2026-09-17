@@ -364,7 +364,7 @@ immutable evidence.
 
 | ID | Disposition |
 |---|---|
-| P0-01 count discrepancy | RESOLVED — authoritative census: `--collect-only` = 1311 nodes = 1306 passed + 5 rasterio skips; manifest's 1306 verified correct. External 1300 was a stale/env-differentiated observation. |
+| P0-01 count discrepancy | RESOLVED — census at that date: `--collect-only` = 1311 nodes = 1306 passed + 5 rasterio skips; manifest's 1306 verified correct (historical, superseded by Round-7 census). External 1300 was a stale/env-differentiated observation. |
 | DOC-01 historical vs current counts | RESOLVED — README and P0 label 1282 as ledger-time history, 1306 as current; historical evidence retained |
 | DOC-02 stale extractor comments | RESOLVED — both comments now state route-dependent semantics (ARCO increments vs MARS/EDH running accumulation) |
 | RUN-01 derived-run provenance | RESOLVED — derivation ledger carries `run_kind=derived`, `input_run_bundle_sha256`, `acquisition_disk_check=not_applicable_derived_run` |
@@ -405,7 +405,7 @@ only — `EVIDENCE_VERIFIED` posture still requires byte-bound sidecar
 | I-09 case lineage | RESOLVED — ForecastCase carries opportunity_id/outcome_source_id/cutoff_time; evaluate() fails closed when empty |
 | I-10 order-sensitive digest | RESOLVED — canonical (case_id, opportunity_id) sort + baseline realignment before hashing; permutation-invariance tested |
 | I-11 audit scope | RESOLVED — B4 audit labeled experiment-layer; replay bundles now carry the opportunity registry |
-| DOC-01 count drift | RESOLVED — README/P0 record 1282/1306/1641 as dated history; 1687 at post-audit head (superseded 2026-09-16 by the round-5 census: 1875/5/0/57 at `content_head` 99ccec9, manifest commit `4e2ef91`) |
+| DOC-01 count drift | RESOLVED — README/P0 record 1282/1306/1641 as dated history; 1687 at post-audit head (superseded 2026-09-16 by the round-5 census: 1875/5/0/57 at `content_head` 99ccec9, manifest commit `4e2ef91`; historical, superseded by Round-7 census) |
 | DOC-02 metadata-only scope | RESOLVED — SOURCE_FEASIBILITY_RECORDS_V0 labeled dated metadata-only snapshot |
 | GOV-01/02 | PARTIAL — the scope-separation part is RESOLVED (P3 design-only vs P5-C acquisition; see STATUS_SCOPE_RECONCILIATION_NOTE_20260915); GOV-02's bounded exercised-governance record now exists (`GOVERNANCE_EXERCISE_RECORD_V0.md`, added 2026-09-16); GOV-01's downstream human approvals remain open-by-design — no code substitutes for owner sign-off |
 | H01/H03 | RESOLVED (wording) — Run A docs state hybrid route, method-only, bounded 5-month overlap, no K/JS transfer |
@@ -517,7 +517,7 @@ RUN-A-01 ratification, OPS-01) remain open by design.
 | EVAL-02 | Uncertainty bootstrap resamples `event_group_id`-else-`unit+season` clusters — the dependence unit, not raw region+season. |
 | EVAL-03 | `FORECAST_EXPERIMENT_ONLY` requires a complete bound declaration (vintage lineage, ablations, feature digest, threshold) plus byte-bound baseline evidence — fixture-only calls cap at `UNDERPOWERED_DESCRIPTIVE_ONLY`. |
 | EVAL-04 | Slice denominators carry explicit registry attribution via `scope_rule` (`region_owned_basins`, `opportunity_window_midpoint_season`, `linked_opportunities_only`) with verified/censored id tuples. |
-| DOC-01..04, GOAL-01 | Census reconciliation (1875/5/0/57), Run-A wording, license clarification, mission overlay, legacy-path caveats. |
+| DOC-01..04, GOAL-01 | Census reconciliation (1875/5/0/57 — historical, superseded by Round-7 census), Run-A wording, license clarification, mission overlay, legacy-path caveats. |
 | CI-01 | Workflow triggers cover `nepal/science_v0/**`, `nepal/experiment_v0/**`, their tests and fixtures; focused contract-test step added. |
 | ENV-01 | CI runs Python 3.14 with `requirements.txt` pins; the 5 rasterio skips are disclosed as excluded-gate skips (rasterio intentionally outside the supported lock). |
 
@@ -557,7 +557,8 @@ Documentation/CI residuals closed in this round (docs lane):
   intake items remain gated.
 - DOC-02 — stale live-state blocks refreshed to the round-5 rebind
   (HEAD `4e2ef91`, `content_head` 99ccec9, 71 manifest files,
-  1875/5/0/57, 411 focused-lane green) in `P0_BASELINE_LEDGER.md`,
+  1875/5/0/57, 411 focused-lane green — historical, superseded by
+  Round-7 census) in `P0_BASELINE_LEDGER.md`,
   `README.md`, and this register; the internal 56-vs-57 warnings
   inconsistency and the GOV-01/02 open-by-design wording reconciled.
 - DOC-02b — `manifest_commit` field semantics reviewed; convention
@@ -576,3 +577,66 @@ Documentation/CI residuals closed in this round (docs lane):
 
 The open-by-design table and `NO_QUALIFYING_PILOT_SOURCE` /
 `WARNING_PATH_AUTHORIZED: NO` postures are unchanged.
+
+## Round-7 closure — conformance hardening census (2026-09-17)
+
+Verified at `content_head` cc2218b; HEAD `cab5897` is the manifest
+rebind carrying this register (frozen baseline `5ef43c2`).
+**Authoritative suite census: 2015 passed + 5 rasterio-disclosed
+skips + 57 warnings = 2020 collected**; `ARTIFACT_MANIFEST_V0.json`
+governs 77 files.  All earlier census figures in this register
+(1282, 1300/1306/1311, 1641, 1687, 1875/5/0/57, and the 56-warning
+count) are **(historical, superseded by Round-7 census)** — the rows
+above are preserved verbatim as dated history, not edited.
+
+Round-7 closed the following report-local gaps.  The `R7-` prefix is
+a disambiguation prefix used only in this register — the report-local
+IDs are C01–C17; they do not collide with the historical round-3
+C01–C30 table above.  Behavioral tests live in
+`tests/test_r7_hardening.py` unless noted.
+
+| Gap | Closure evidence |
+|---|---|
+| R7-C02 | Strict fixture booleans — non-bool truthy/falsy `fixture` markers reject; `nepal/science_v0/regimes.py` + `TestC02StrictBoolFixture` (`tests/test_r7_hardening.py`) |
+| R7-C03 | `unit_basin_map` bound into the producer payload and freeze-validated; `nepal/science_v0/regimes.py` + `TestC03UnitBasinMap` |
+| R7-C04 | Semantic config revalidation at freeze via `_validate_config_semantics` (cadence, gap policy, block length, missingness, effort split, mode); `nepal/science_v0/regimes.py` + `TestC04ConfigSemantics` |
+| R7-C06 | `family_digest` covers the complete null-family record fields; `nepal/science_v0/regimes.py` + `TestC06FamilyDigest` |
+| R7-C07 | Per-event precision-class horizon admissibility — coarse-precision events cannot support fine lookback horizons; `nepal/experiment_v0/association.py` + `TestC07PrecisionHorizons` |
+| R7-C08 | Mandatory report fields enforced for EVERY status, not only terminal success (`REQUIRED_NULLS` revalidation in `AssociationReport.problems`); `nepal/experiment_v0/association.py`; exercised by the `tests/test_r6_association.py` lane |
+| R7-C11 | Explicitly empty `degradation_scenarios` rejected under a bound declaration (None = default grid only); `nepal/experiment_v0/evaluation.py` + `TestC11EmptyDegradation` |
+| R7-C12 | `experiment_id` binds threshold, n_boot, seed, unit/region basin maps, baseline-evidence digests, and degradation specs; `nepal/experiment_v0/evaluation.py` + `TestC12ExperimentIdentity` |
+| R7-C13 | Slice denominators derived exclusively from the bound opportunity registry (`missing_feed_degradation`); `nepal/experiment_v0/evaluation.py`; exercised by the `tests/test_r6_evaluation.py` lane |
+| R7-C15 | Typed `RunManifestV0` with deterministic creation time; missing run manifest rejects at freeze; `nepal/science_v0/regimes.py` + `TestC15RunManifest` |
+| R7-C16 | Finite-permutation +1 correction on spatial-shift p (`p = (ge+1)/(n+1)`); `nepal/experiment_v0/association.py` + `TestC16FinitePermutation` |
+
+Round-7 residuals → Round-8 dispositions (closed by the Round-8
+hardening content commit; census 2073 passed + 5 rasterio-disclosed
+skips + 57 warnings, superseding the Round-7 census above as the
+current authoritative figure — the Round-7 census rows are retained
+verbatim as dated history):
+
+| Report-local ID | Canonical register family | Round-8 disposition |
+|---|---|---|
+| R7-C01 shared producer validator | PROV family (producer payload validation) | RESOLVED — `nepal/research_v0/producer_validation.py` (`validate_producer_payload`) now runs at every producer boundary: `freeze_regime_artifact`, `regime_assignment_from_artifact`, `audit_producer_payload`, and the `run_association` producer-payload binding path; `tests/test_r8_provenance.py` (31 tests) |
+| R7-C09 typed `fit_partition` | REG/FCST family (fit-surface binding) | RESOLVED — typed `fit_partition/v0` record bound into the payload, cross-checked against `fit_groups`/`heldout_groups_declared`/`n_train_rows`/`n_rows`/`feature_matrix_digest`/`feature_cols`, `fit_partition_digest` recomputed; `tests/test_r8_provenance.py` |
+| R7-C10 forecast feature payload binding | FCST family (feature-matrix binding) | RESOLVED — `FORECAST_REGIME` payloads must carry a `forecast_feature_payload` consistent with mode/data-class/feature-matrix digest/row count/row-key digest; retrospective artifacts carrying forecast payloads reject; `tests/test_r8_provenance.py` |
+| R7-C14 vintage `evidence_root` byte verification | E05/B15 family (vintage byte-binding) | RESOLVED — `ForecastVintageV0.evidence_root` + `verify_vintage_evidence()` (realpath containment, symlink/absolute/escape rejection, sha256 of real bytes); `build_vintage(require_bytes=True)`; `evaluate()` byte-verifies every claimed root and `FORECAST_EXPERIMENT_ONLY` now requires all admitted vintages byte-bound; `tests/test_r8_vintage.py` |
+| R7-C17 rasterio-dependent skips | ENV-01 family (environment) | DOCUMENTED QUARANTINE — rasterio is intentionally outside the pinned environment by policy; the 5 skips are disclosed via `-rs`, not hidden; an optional pinned geospatial job is a future decision — rasterio is NOT added to CI or `requirements.txt` |
+| NEW-FMX-01 label derivation | FMX family (feature-matrix labels) | RESOLVED — `fmx_audit` derives label columns from audited column metadata (`catalog_label` field class) even when `catalog_label_columns` is omitted; catalog labels in the predictor matrix or digest references reject; `tests/test_r8_fmx_assoc.py` |
+| NEW-FMX-02 required FMX metadata | FMX family | RESOLVED — non-empty `unit`/`value_domain`/`missingness_policy` and a strict-UTC `temporal_window` (start ≤ end) are required; `tests/test_r8_fmx_assoc.py` |
+| NEW-ASSOC-01 spatial-shift support accounting | ASSOC family (null family) | RESOLVED — shifted groups are checked against assignment coverage; eligible/censored support is recorded per offset, unsupported offsets are excluded from p denominators, and support below `MIN_USABLE_SPATIAL_SHIFTS` fails closed (no p-value) instead of counting as zero enrichment; finite-permutation `(ge+1)/(n+1)` retained; `tests/test_r8_fmx_assoc.py` |
+| NEW-CI-01 round-N tests absent from CI | CI-01 family | RESOLVED (docs/CI lane) — workflow triggers now include `tests/test_r7_hardening.py`, `tests/test_r7_*.py`, `tests/test_r8_*.py`, and the hardening step runs the generalized `tests/test_r[678]_*.py` nullglob lane |
+
+Crosswalk note: R7-C02/C03/C04/C06 extend the PROV/REG gate-universe
+and config rows; R7-C07/C08/C16 extend the ASSOC null/report rows;
+R7-C11/C12/C13 extend the EVAL denominator/identity rows; R7-C15
+extends the PROV run-manifest row; R7-C17 maps to the ENV-01
+environment quarantine row.  `NEW-*` IDs enter the register as new
+rows under their own IDs above.
+
+Still external/data-gated — never marked resolved:
+S01–S04 source qualification, E01–E03 event package, M01 FMX on real
+data, R01/R02 real regimes, A01 association, F01–F03 forecast,
+G01/G02 human approvals, O01 operations.  Postures unchanged:
+`DESIGN_DRAFT_COMPLETE`; P3 design-only; `NO_QUALIFYING_PILOT_SOURCE`;
+`WARNING_PATH_AUTHORIZED: NO`.

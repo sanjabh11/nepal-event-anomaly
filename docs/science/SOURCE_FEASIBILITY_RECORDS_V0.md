@@ -32,6 +32,68 @@ splits, file schemas, and every item under "Outstanding evidence
 items" remain intake-gated; all sources stay `CANDIDATE_ONLY` and
 `NO_QUALIFYING_PILOT_SOURCE` stands.
 
+## Current status index (2026-09-17)
+
+One line per source: metadata-license **tag** status vs payload-access
+status vs current decision.  **Metadata-license tag resolution is NOT
+payload access or redistribution permission; no source is qualified
+until byte-verified evidence plus independent review exist at
+intake.**  The dated rows below are preserved verbatim.
+
+**Snow avalanche**
+
+- HiAVAL — tag resolved (record CC0; conservative governing term CC BY 4.0) / payload unverified / `CANDIDATE_ONLY`.
+- Kneib et al. Sentinel-1 deposits — tag resolved (CC BY 4.0) / payload unverified; Nepal/China extent split unresolved / `CANDIDATE_ONLY`.
+- SAFE-HMA — tag resolved (CC BY 4.0) / payload unverified / `CANDIDATE_ONLY`.
+- Nepal DRR Portal (MoHA) — bulk-export terms undocumented / payload unverified / `CANDIDATE_ONLY`.
+- DesInventar Nepal — terms unresolved / payload unverified / `CANDIDATE_ONLY`.
+- EM-DAT — CC-BY-NC-ND (no derivatives) / payload unverified / `CANDIDATE_ONLY`.
+- AvalCD — CC BY-NC 4.0, no Nepal coverage / not applicable / `REJECTED` for Nepal pilot.
+
+**GLOF**
+
+- ICIMOD HMAGLOFDB v1.3.0 — tag resolved (canonical RDS CC BY 4.0; Zenodo mirror CC0) / payload unverified / `CANDIDATE_ONLY` (strongest candidate).
+
+**Ice/rock avalanche / glacier failure**
+
+- essd-2026-481 glacier-failure DB — tag resolved (CC BY 4.0 on canonical versioned DOI zenodo.19477908) / payload unverified; discussion preprint / `CANDIDATE_ONLY`.
+- Zhong et al. RIA — CC BY 4.0 tag but `access_right=restricted` (request-gated) / payload access blocked / `BLOCKED_EXTERNAL`.
+- Kääb et al. 2021 — CC BY / payload unverified; no Nepal sites / `CANDIDATE_ONLY` (weak Nepal source).
+- Science China glacier-slope-failure inventory — license unverified / machine-readable access unverified / `CANDIDATE_ONLY`.
+
+**Landslide**
+
+- USGS Gorkha — USGS public domain / payload unverified / `CANDIDATE_ONLY` (seismic trigger class only).
+- Gnyawali & Adhikari Gorkha — no license field on record; public-domain presumption rejected / payload unverified / `CANDIDATE_ONLY`.
+- Burrows et al. timed monsoon set — tag resolved (CC BY 4.0) / payload unverified / `CANDIDATE_ONLY`.
+- Jones et al. 30-yr monsoon — NGDC 166966 license unresolved / payload unverified / `CANDIDATE_ONLY`.
+- ICIMOD RDS landslide sets — CC BY 4.0 verified on Koshi records / payload unverified / `CANDIDATE_ONLY`.
+- NASA COOLR GLC + HMA LS V002 — open with citation; redistribution unresolved / payload unverified / `CANDIDATE_ONLY`.
+- DesInventar/BIPAD — terms unresolved / payload unverified / `CANDIDATE_ONLY`.
+
+**Dam breach / LDOF**
+
+- ICOLD WRD — paywalled 3-yr license / `BLOCKED_EXTERNAL` (not open).
+- Borealis worldwide failure DB — Open Dataverse / Nepal engineered count unverified / `CANDIDATE_ONLY`.
+- GRanD/GDW (figshare.25988293) — CC BY; record is GDW v1.0, not GRanD v1.3 / payload unverified / exposure layer only.
+- Jiang et al. LDOF — tag resolved (CC BY 4.0) / preprint; Nepal subset unverified / `CANDIDATE_ONLY`.
+- USGS OFR 91-239 — public domain / historical baseline only.
+- Nepal engineered breaches — no structured timed source located (not a proof of absence) / `DEFERRED_NO_OPEN_TIMED_SOURCE`.
+
+**Forecast / reforecast archives** — metadata review only; none
+qualified for forecast use:
+
+- TIGGE (ECDS/CMA) — per-centre CC BY / CC BY-NC split documented; registration delayed 48 h / issue-time retrieval + per-centre license review required / `CANDIDATE_ONLY`.
+- NCAR RDA ds084001 GFS — CC BY 4.0; bounded span 2015→2025 verified / `CANDIDATE_ONLY`.
+- NCEI NOMADS — free; cycle completeness unverified / `CANDIDATE_ONLY`.
+- GEFSv12 reforecast (AWS) — free; reforecast only — does not prove operational availability / `CANDIDATE_ONLY`.
+- S2S database (ECDS) — per-centre mixed licenses incl. CC BY-NC; review required / `CANDIDATE_ONLY`.
+- C3S seasonal — free; seasonal context only / `CANDIDATE_ONLY`.
+- ECMWF MARS operational — procurement-gated (Service Agreement, ~€3k/yr, Nepal non-member) / `BLOCKED_EXTERNAL`.
+- dynamical.org / Open-Meteo — third-party archive; no provider publication-time proof / secondary only.
+- ERA5 / ERA5-Land(+T) / IMDAA — REANALYSIS — never forecast-skill evidence.
+- ECMWF Open Data / NOMADS RT / IMD — CURRENT_FEED, ~7-day rolling — NOT archives.
+
 ## Snow avalanche
 
 | Source | Version/DOI | License | Coverage | Time precision | Spatial semantics | Non-event frame | Posture |

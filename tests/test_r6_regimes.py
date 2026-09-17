@@ -109,6 +109,17 @@ class TestProv01StrictBoolGates:
                        ["u1", "2020-01-02", 1]]
         vals = [[1.0, 2.0], [3.0, 4.0]]
         raw = np.asarray(vals, dtype=np.float64)
+        seeds = [1, 2, 3]
+        fit_partition = {
+            "record_type": "fit_partition/v0",
+            "train_groups": ["g1"],
+            "heldout_groups": [],
+            "n_train_rows": 1,
+            "n_rows": 2,
+            "train_row_keys_digest": "f" * 64,
+            "cutoff_iso": "2020-01-01",
+            "feature_matrix_digest": "e" * 64,
+            "feature_cols": ["f1", "f2"]}
         art = {
             "status": "DESCRIPTIVE_REGIME_ONLY",
             "mode": "RETROSPECTIVE_REGIME",
@@ -116,6 +127,20 @@ class TestProv01StrictBoolGates:
             "forecast_vintage_digests": [],
             "forecast_feature_set": [],
             "assignments": assignments,
+            "label_blinding": True,
+            "fitted_on": "TRAIN_ONLY",
+            "k": 1,
+            "seeds": seeds,
+            "seeds_declared": seeds,
+            "seed_coverage": {str(s): "converged" for s in seeds},
+            "per_seed_best_k": {str(s): 1 for s in seeds},
+            "modal_k_frequency": 1.0,
+            "occupancy": [1.0],
+            "model": {"weights": [1.0],
+                      "means": [[1.5, 3.0]],
+                      "covariances": [[[0.25, 0.0], [0.0, 0.25]]]},
+            "feature_cols": ["f1", "f2"],
+            "feature_matrix_digest": "e" * 64,
             "config": {"seeds": [1, 2, 3],
                        "cadence": "1D",
                        "gap_policy": "calendar",
@@ -125,11 +150,22 @@ class TestProv01StrictBoolGates:
                        "effort_split": "median",
                        "mode": "RETROSPECTIVE_REGIME"},
             "input_values": vals,
-            "input_schema": {"shape": [2, 2]},
+            "input_schema": {"feature_cols": ["f1", "f2"],
+                             "n_rows": 2,
+                             "dtypes": {"f1": "float64",
+                                        "f2": "float64"},
+                             "shape": [2, 2]},
             "preprocessing": {"row_keys_digest": "a" * 64},
             "stability": {"required_gates": gates},
+            "nulls": {"shuffled_js": 0.31},
             "fit_groups": ["g1"],
             "heldout_groups_declared": [],
+            "fit_partition": fit_partition,
+            "n_train_rows": 1,
+            "n_rows": 2,
+            "train_mask_digest": "0" * 64,
+            "k_selection_digest": "1" * 64,
+            "null_model_digest": "2" * 64,
             "unit_basin_map": [["u1", "g1"]],
             "run_manifest": {
                 "run_id": "test-run-001",
@@ -141,6 +177,14 @@ class TestProv01StrictBoolGates:
                 "output_digests": ["d" * 64],
                 "checkpoint_policy": "atomic_publish_or_quarantine",
                 "status": "COMPLETED"},
+            "source_manifest": {"fixture": True},
+            "missingness_applied": {"policy": "listwise",
+                                    "train_rows_total": 2,
+                                    "train_rows_fitted": 2,
+                                    "train_rows_dropped": 0},
+            "terminal": True,
+            "associable": True,
+            "disclaimer": "synthetic minimal artifact",
         }
         art["assignment_digest"] = sha256_canonical(assignments)
         art["config_digest"] = sha256_canonical(art["config"])
@@ -150,6 +194,10 @@ class TestProv01StrictBoolGates:
             art["preprocessing"])
         art["run_manifest_digest"] = sha256_canonical(
             art["run_manifest"])
+        art["fit_partition_digest"] = sha256_canonical(
+            fit_partition)
+        art["stability_report_digest"] = sha256_canonical(
+            art["stability"])
         art["regime_artifact_digest"] = sha256_canonical(
             {k: v for k, v in art.items()
              if k != "regime_artifact_digest"})

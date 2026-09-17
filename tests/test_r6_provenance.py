@@ -142,6 +142,15 @@ def _producer_payload(**overrides) -> dict:
                                   [[0.5, 0.0], [0.0, 0.5]]]},
         "fit_groups": ["g0", "g1", "g2"],
         "heldout_groups_declared": ["g3"],
+        "fit_partition": {
+            "record_type": "fit_partition/v0",
+            "train_groups": ["g0", "g1", "g2"],
+            "heldout_groups": ["g3"],
+            "n_train_rows": 3, "n_rows": 3,
+            "train_row_keys_digest": "f" * 64,
+            "cutoff_iso": "2020-06-02",
+            "feature_matrix_digest": "c" * 64,
+            "feature_cols": ["f1", "f2"]},
         "unit_basin_map": [["u1", "g0"], ["u2", "g1"]],
         "run_manifest": {
             "run_id": "prov-test-run-001",
@@ -187,6 +196,8 @@ def _producer_payload(**overrides) -> dict:
     }
     art["config_digest"] = sha256_canonical(art["config"])
     art["preprocessing_digest"] = sha256_canonical(preprocessing)
+    art["fit_partition_digest"] = sha256_canonical(
+        art["fit_partition"])
     art["k_selection_digest"] = "1" * 64
     art["stability_report_digest"] = sha256_canonical(stability)
     art["null_model_digest"] = "2" * 64

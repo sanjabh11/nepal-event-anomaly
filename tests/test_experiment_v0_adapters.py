@@ -263,39 +263,107 @@ def _canon(obj):
 
 def _frozen_regime_payload(**overrides):
     """A frozen science_v0 regime-artifact payload with REAL digests —
-    tamper tests mutate fields and expect digest verification to fail."""
+    tamper tests mutate fields and expect digest verification to fail.
+
+    Round-8: the adapter runs the shared producer provenance floor
+    (``research_v0.producer_validation``), so the fixture carries the
+    full canonical schema — model parameters, input schema, source
+    manifest, unit->basin map, run manifest, and the typed
+    fit_partition binding — not just the adapter's historical
+    subset."""
     assignments = [("u1", "2020-06-01", 0), ("u1", "2020-06-02", 1),
                    ("u2", "2020-06-01", 0)]
+    seeds = [7, 42, 2024]
+    stability = {
+        "required_gates": {
+            "seed_policy": True, "modal_k_unanimous": True,
+            "seed_ari": True, "seed_coverage": True,
+            "loro": True, "temporal_bootstrap": True,
+            "season_refits": True, "elevation": True,
+            "missingness": True, "effort": True,
+            "era_drift": True,
+            "shuffled_null": True, "season_matched_null": True,
+        },
+    }
+    preprocessing = {"imputer_strategy": "median",
+                     "imputer_statistics": [0.0, 0.0],
+                     "scaler_mean": [0.0, 0.0],
+                     "scaler_var": [1.0, 1.0],
+                     "feature_order": ["f1", "f2"],
+                     "row_keys_digest": "e" * 64,
+                     "train_mask_membership_digest": "f" * 64}
+    fit_partition = {
+        "record_type": "fit_partition/v0",
+        "train_groups": ["g0", "g1", "g2"],
+        "heldout_groups": ["g3"],
+        "n_train_rows": 2,
+        "n_rows": 3,
+        "train_row_keys_digest": "1" * 64,
+        "cutoff_iso": "2020-06-02",
+        "feature_matrix_digest": "b" * 64,
+        "feature_cols": ["f1", "f2"]}
+    run_manifest = {
+        "run_id": "adapter-test-run-001",
+        "worker_id": "test-worker",
+        "created_at": "2020-06-02T00:00:00Z",
+        "environment_digest": "2" * 64,
+        "seed": 7,
+        "input_digests": ["3" * 64],
+        "output_digests": ["4" * 64],
+        "checkpoint_policy": "atomic_publish_or_quarantine",
+        "status": "COMPLETED"}
     art = {
         "mode": "RETROSPECTIVE_REGIME",
         "data_class": "REANALYSIS",
         "fitted_on": "TRAIN_ONLY",
         "label_blinding": True,
         "k": 2,
-        "seeds": [7, 42, 2024],
+        "seeds": seeds,
+        "seeds_declared": seeds,
+        "seed_coverage": {str(s): "converged" for s in seeds},
+        "per_seed_best_k": {str(s): 2 for s in seeds},
+        "modal_k_frequency": 1.0,
         "assignments": assignments,
         "assignment_digest": _canon(assignments),
         "feature_cols": ["f1", "f2"],
         "feature_matrix_digest": "b" * 64,
+        "input_bytes_digest": "5" * 64,
+        "input_schema": {"feature_cols": ["f1", "f2"], "n_rows": 3,
+                         "dtypes": {"f1": "float64", "f2": "float64"},
+                         "shape": [3, 2]},
+        "model": {"weights": [0.6, 0.4],
+                  "means": [[1.0, 2.0], [4.0, 5.0]],
+                  "covariances": [[[0.25, 0.0], [0.0, 0.25]],
+                                  [[0.5, 0.0], [0.0, 0.5]]]},
         "config_digest": "c" * 64,
         "fit_groups": ["g0", "g1", "g2"],
         "heldout_groups_declared": ["g3"],
+        "fit_partition": fit_partition,
+        "unit_basin_map": [["u1", "g0"], ["u2", "g1"]],
+        "run_manifest": run_manifest,
+        "run_manifest_digest": _canon(run_manifest),
+        "n_train_rows": 2,
+        "n_rows": 3,
         "train_mask_digest": "d" * 64,
         "occupancy": [0.6, 0.4],
-        "stability": {
-            "required_gates": {
-                "seed_policy": True, "modal_k_unanimous": True,
-                "seed_ari": True, "seed_coverage": True,
-                "loro": True, "temporal_bootstrap": True,
-                "season_refits": True, "elevation": True,
-                "missingness": True, "effort": True,
-                "era_drift": True,
-                "shuffled_null": True, "season_matched_null": True,
-            },
-        },
+        "stability": stability,
+        "nulls": {"shuffled_js": 0.31, "season_matched_js": 0.008},
+        "preprocessing": preprocessing,
+        "k_selection_digest": "6" * 64,
+        "null_model_digest": "7" * 64,
         "status": "DESCRIPTIVE_REGIME_ONLY",
+        "terminal": True,
+        "associable": True,
+        "source_manifest": {"fixture": True},
+        "missingness_applied": {"policy": "listwise",
+                                "train_rows_total": 3,
+                                "train_rows_fitted": 3,
+                                "train_rows_dropped": 0},
         "disclaimer": "synthetic",
     }
+    art["preprocessing_digest"] = _canon(preprocessing)
+    art["fit_partition_digest"] = _canon(fit_partition)
+    art["stability_report_digest"] = _canon(stability)
     art["regime_artifact_digest"] = _canon(art)
     # freeze_digest covers the PRE-freeze surface (producer semantics:
     # frozen flag is added after the digest is computed)

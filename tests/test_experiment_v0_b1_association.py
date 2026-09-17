@@ -23,7 +23,8 @@ from nepal.experiment_v0.association import (
     RegimeAssignmentArtifact, association_report_text,
     event_group_bootstrap, run_association)
 from nepal.research_v0._hashing import canonical_json, sha256_canonical
-from nepal.research_v0.gates import scan_claims_text
+from nepal.research_v0.gates import (REQUIRED_REGIME_GATE_NAMES,
+                                     scan_claims_text)
 from nepal.research_v0.records import (NEUTRAL_RESEARCH_STATUSES,
                                      ControlWindowV0, EventLabelV0,
                                      HoldoutPlanV0,
@@ -265,8 +266,11 @@ def _artifact_payload_key(artifact) -> tuple:
 
 def _producer_payload_for(assignments,
                           seeds=(11, 23, 42)) -> dict:
-    """A minimal frozen producer-shaped payload binding ``assignments``
-    — the same digest chain ``freeze_regime_artifact`` /
+    """A frozen producer-shaped payload binding ``assignments``
+    — carrying the FULL canonical producer schema (R8-C01: the shared
+    ``validate_producer_payload`` floor now runs at the association
+    binding boundary too, so a partial payload can no longer ride the
+    verified path) plus the digest chain ``freeze_regime_artifact`` /
     ``regime_assignment_from_artifact`` recompute:
     ``assignment_digest`` over the raw sidecar,
     ``regime_artifact_digest`` over the payload minus
@@ -274,6 +278,45 @@ def _producer_payload_for(assignments,
     ``freeze_digest`` over the payload minus ``{freeze_digest,
     frozen}``."""
     rows = [list(r) for r in sorted(assignments)]
+    feature_cols = ["synth_f1", "synth_f2"]
+    n_rows = len(rows)
+    groups_fit = sorted(set(UNIT_BASINS.values()))
+    groups_held = sorted(REGION_BASINS)
+    stability = {"seed_ari_min": 0.9, "modal_k_frequency": 1.0,
+                 "required_gates": {
+                     g: True for g in
+                     sorted(REQUIRED_REGIME_GATE_NAMES)}}
+    preprocessing = {"imputer_strategy": "median",
+                     "imputer_statistics": [0.0, 0.0],
+                     "scaler_mean": [0.0, 0.0],
+                     "scaler_var": [1.0, 1.0],
+                     "feature_order": list(feature_cols),
+                     "row_keys_digest": _h("synth-b1-rowkeys"),
+                     "train_mask_membership_digest":
+                         _h("synth-b1-maskmembers")}
+    config = {"seeds": list(seeds), "k_candidates": [1, 2, 3],
+              "null_alpha": 0.05, "cadence": "1D",
+              "gap_policy": "calendar", "bootstrap_block_len": 7,
+              "missingness_policy": "listwise",
+              "effort_split": "median",
+              "mode": "RETROSPECTIVE_REGIME"}
+    fit_partition = {
+        "record_type": "fit_partition/v0",
+        "train_groups": groups_fit,
+        "heldout_groups": groups_held,
+        "n_train_rows": n_rows, "n_rows": n_rows,
+        "train_row_keys_digest": _h("synth-b1-trainkeys"),
+        "cutoff_iso": "2020-12-15",
+        "feature_matrix_digest": _h("synth-b1-fmx"),
+        "feature_cols": list(feature_cols)}
+    run_manifest = {
+        "run_id": "synth-b1-run-001", "worker_id": "synthetic-fixture",
+        "created_at": "2020-12-15T00:00:00Z",
+        "environment_digest": _h("synth-b1-env"), "seed": 11,
+        "input_digests": [_h("synth-b1-input")],
+        "output_digests": [_h("synth-b1-assignments")],
+        "checkpoint_policy": "atomic_publish_or_quarantine",
+        "status": "COMPLETED"}
     payload = {
         "record_type": "FrozenRegimeArtifactV0",
         "assignments": rows,
@@ -283,8 +326,55 @@ def _producer_payload_for(assignments,
         "label_blinding": True,
         "data_class": "REANALYSIS",
         "status": "DESCRIPTIVE_REGIME_ONLY",
+        "terminal": True,
+        "associable": True,
         "seeds": list(seeds),
+        "seeds_declared": list(seeds),
+        "seed_coverage": {str(s): "converged" for s in seeds},
+        "k": 3,
+        "per_seed_best_k": {str(s): 3 for s in seeds},
+        "modal_k_frequency": 1.0,
+        "occupancy": [0.5, 0.3, 0.2],
+        "feature_cols": list(feature_cols),
+        "feature_matrix_digest": _h("synth-b1-fmx"),
+        "input_bytes_digest": _h("synth-b1-inputbytes"),
+        "input_schema": {"feature_cols": list(feature_cols),
+                         "n_rows": n_rows,
+                         "dtypes": {c: "float64"
+                                    for c in feature_cols},
+                         "shape": [n_rows, len(feature_cols)]},
+        "model": {"weights": [0.5, 0.3, 0.2],
+                  "means": [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],
+                  "covariances": [[[0.25, 0.0], [0.0, 0.25]],
+                                  [[0.25, 0.0], [0.0, 0.25]],
+                                  [[0.25, 0.0], [0.0, 0.25]]]},
+        "config": config,
+        "config_digest": sha256_canonical(config),
+        "fit_groups": groups_fit,
+        "heldout_groups_declared": groups_held,
+        "fit_partition": fit_partition,
+        "unit_basin_map": sorted(UNIT_BASINS.items()),
+        "run_manifest": run_manifest,
+        "n_train_rows": n_rows,
+        "n_rows": n_rows,
+        "train_mask_digest": _h("synth-b1-mask"),
+        "stability": stability,
+        "nulls": {"shuffled_js": 0.31, "season_matched_js": 0.008},
+        "preprocessing": preprocessing,
+        "preprocessing_digest": sha256_canonical(preprocessing),
+        "k_selection_digest": _h("synth-b1-ksel"),
+        "stability_report_digest": sha256_canonical(stability),
+        "null_model_digest": _h("synth-b1-nullmodel"),
+        "source_manifest": {"fixture": True},
+        "missingness_applied": {"policy": "listwise",
+                                "train_rows_total": n_rows,
+                                "train_rows_fitted": n_rows,
+                                "train_rows_dropped": 0},
+        "environment_digest": _h("synth-b1-env"),
+        "disclaimer": "synthetic fixture — interface evidence only",
     }
+    payload["fit_partition_digest"] = sha256_canonical(fit_partition)
+    payload["run_manifest_digest"] = sha256_canonical(run_manifest)
     payload["assignment_digest"] = sha256_canonical(rows)
     payload["regime_artifact_digest"] = sha256_canonical(
         {k: v for k, v in payload.items() if k != "frozen"})

@@ -185,6 +185,105 @@ def verify_source_evidence(manifest: Any) -> list[str]:
     return problems
 
 
+def verify_vintage_evidence(vintage: Any,
+                            evidence_root: Any = None) -> list[str]:
+    """Byte-verify a forecast vintage's evidence binding (C14/E05).
+
+    Fail-closed contract for an admitted ``ForecastVintageV0`` (or its
+    serialized mapping): the evidence root — the ``evidence_root``
+    argument, or the record's own ``evidence_root`` field when the
+    argument is ``None`` — must be a non-empty string naming a
+    directory that exists on disk; ``archive_payload_path`` and
+    ``retrieval_record_path`` must be non-empty relative paths that
+    resolve INSIDE the root (absolute paths, ``..`` escapes, and
+    symlinks all reject — ``os.path.realpath`` of each file must stay
+    inside the realpath of the root), name real files, and hash to the
+    declared ``archive_payload_sha256`` / ``retrieval_record_sha256``.
+
+    Returns human-readable problem strings — an empty list means both
+    files exist inside the root and hash to the declared digests.
+    Never raises.  A metadata-only candidate vintage
+    (``evidence_root == ""``) is a problem here by construction: this
+    is the byte-boundary check a forecast-ready claim must pass, not
+    the metadata admission check — candidates are admitted without
+    bytes via ``build_vintage`` and promoted only through this gate.
+    """
+    if not isinstance(vintage, Mapping) and not all(
+            hasattr(vintage, name) for name in (
+                "archive_payload_path", "archive_payload_sha256",
+                "retrieval_record_path",
+                "retrieval_record_sha256")):
+        return ["vintage evidence payload is not a mapping or a "
+                "ForecastVintageV0-like record"]
+
+    def _field(name: str) -> Any:
+        if isinstance(vintage, Mapping):
+            return vintage.get(name)
+        return getattr(vintage, name, None)
+
+    root_raw = evidence_root if evidence_root is not None \
+        else _field("evidence_root")
+    if not isinstance(root_raw, str) or not root_raw.strip():
+        return ["evidence_root must be a non-empty string naming a "
+                "directory"]
+    root = Path(root_raw)
+    if not root.is_dir():
+        return [f"evidence_root {root} is not a directory"]
+    try:
+        root_resolved = root.resolve()
+    except OSError as exc:
+        return [f"cannot resolve evidence_root {root}: {exc}"]
+    problems: list[str] = []
+    for label, path_field, digest_field in (
+            ("archive_payload", "archive_payload_path",
+             "archive_payload_sha256"),
+            ("retrieval_record", "retrieval_record_path",
+             "retrieval_record_sha256")):
+        rel = _field(path_field)
+        declared = _field(digest_field)
+        if not isinstance(rel, str) or not rel.strip():
+            problems.append(f"{path_field} must be a non-empty "
+                            "relative path")
+            continue
+        if Path(rel).is_absolute():
+            problems.append(f"{label} path {rel!r} is absolute — it "
+                            "must resolve inside evidence_root")
+            continue
+        if not isinstance(declared, str) or \
+                not _SHA256_RE.match(declared):
+            problems.append(f"{digest_field} must be a 64-hex sha256")
+            continue
+        joined = root_resolved / rel
+        # Reject the symlink itself before resolution: an inside-root
+        # symlink's target is not the artifact the caller named.
+        if joined.is_symlink():
+            problems.append(f"{label} path {rel!r} is a symlink — "
+                            "evidence files must be real files")
+            continue
+        try:
+            resolved = joined.resolve()
+        except OSError as exc:
+            problems.append(f"{label} path {rel!r} cannot be "
+                            f"resolved: {exc}")
+            continue
+        try:
+            resolved.relative_to(root_resolved)
+        except ValueError:
+            problems.append(f"{label} path {rel!r} resolves outside "
+                            "evidence_root")
+            continue
+        try:
+            actual = sha256_file(resolved)
+        except ValueError as exc:
+            problems.append(f"{label} path {rel!r}: {exc}")
+            continue
+        if actual != declared:
+            problems.append(
+                f"{label} path {rel!r}: sha256 mismatch — declared "
+                f"{declared[:16]}… != file {actual[:16]}…")
+    return problems
+
+
 def _reject_nonjson(payload: Any, path: str = "$") -> None:
     if isinstance(payload, bool) or payload is None or \
             isinstance(payload, (str, int)):

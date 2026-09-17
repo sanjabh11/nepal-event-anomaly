@@ -176,3 +176,27 @@ not repeated by this lane — the bundle's own digest map is bound above).
   difference noted in the reconciliation doc); the remaining 73
   months have no pure-route counterpart and are UNVERIFIED.
 - Any value not traceable to the digests in §3 is UNVERIFIED.
+
+## 8. Reconciliation addendum (2026-09-17)
+
+- **Corrected derivative exists.** The `sf_daily` defect in §6 was
+  repaired in a derived run —
+  `research_runs/gmm_hybrid_corrected_20260915/` (run_id
+  `gmm_confirmation_20260915T111937Z`) — which deaccumulates the
+  running-total `sf`/`tp` fields (closing-value aggregation) and
+  regenerates every downstream artifact. Per the gap register (RA-01
+  and RA-09 rows): modal K=5 recomputed, JS 0.2702, mean `sf_daily`
+  13.3 → 1.06 mm, and `rehash_report.json` confirms all recorded
+  digests match (183 + 16 files). The values in §5 above are the
+  ORIGINAL run's (`gmm_confirmation_20260915T052240Z`); for any
+  reuse, the corrected derivative supersedes them. Both runs remain
+  `EXPLORATORY_DESCRIPTIVE_SINGLE_CELL` and method-only — neither is
+  P5-C-authorized scientific evidence pending the owner decision in
+  `HYBRID_ROUTE_RECONCILIATION_V0.md` §2 — and no K, JS, or occupancy
+  value from either run transfers to `run_b/REGIME_PROTOCOL_V0.md`.
+- **Ledger-digest reconciliation status: no open mismatch.** The §3
+  digests were recomputed by this lane and agree with
+  `download_ledger.json`, `run_metadata.json`, `bundle.json`, and
+  `complete.json`; the §3 addendum binds both run roots'
+  `provenance_receipts.json` files to their `rehash_report.json`
+  records.

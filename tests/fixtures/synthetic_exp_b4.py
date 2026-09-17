@@ -312,6 +312,35 @@ def planted_artifact_payload(events: Sequence[EventLabelV0]) -> dict:
                               set(UNIT_BASINS.values())}),
         "heldout_groups_declared": ["gandaki_eval", "karnali_eval",
                                     "koshi_eval"],
+        # R8-C09: the typed fit-partition record — agrees with the
+        # flat fit/heldout declarations above; its digest is bound
+        # into the envelope below.
+        "fit_partition": {
+            "record_type": "fit_partition/v0",
+            "train_groups": sorted({b.split("_")[0] for b in
+                                    set(UNIT_BASINS.values())}),
+            "heldout_groups": ["gandaki_eval", "karnali_eval",
+                               "koshi_eval"],
+            "n_train_rows": (n_rows * 3) // 4,
+            "n_rows": n_rows,
+            "train_row_keys_digest": _sha("synthetic-trainkeys-b4"),
+            "cutoff_iso": "2020-12-15",
+            "feature_matrix_digest": _sha("synthetic-fmx-b4"),
+            "feature_cols": list(feature_cols)},
+        # C03: the unit -> basin partition, bound into the artifact.
+        "unit_basin_map": sorted(
+            (u, b) for u, b in UNIT_BASINS.items()),
+        # C15: the typed run-manifest record (digest bound below).
+        "run_manifest": {
+            "run_id": "synthetic-b4-run-001",
+            "worker_id": "synthetic-fixture",
+            "created_at": "2020-12-15T00:00:00Z",
+            "environment_digest": _sha("synthetic-env-b4"),
+            "seed": 11,
+            "input_digests": [_sha("synthetic-input-bytes-b4")],
+            "output_digests": [_sha("synthetic-assignments-b4")],
+            "checkpoint_policy": "atomic_publish_or_quarantine",
+            "status": "COMPLETED"},
         "n_train_rows": (n_rows * 3) // 4,
         "n_rows": n_rows,
         "train_mask_digest": _sha("synthetic-mask-b4"),
@@ -339,11 +368,15 @@ def planted_artifact_payload(events: Sequence[EventLabelV0]) -> dict:
             "train_mask_membership_digest": _sha(
                 "synthetic-maskmembers-b4")},
         "environment_digest": _sha("synthetic-env-b4"),
-        "run_manifest_digest": _sha("synthetic-runmanifest-b4"),
+        "run_manifest_digest": None,  # bound below over the record
         "disclaimer": "synthetic fixture — interface evidence only",
     }
     art["preprocessing_digest"] = sha256_canonical(
         art["preprocessing"])
+    art["fit_partition_digest"] = sha256_canonical(
+        art["fit_partition"])
+    art["run_manifest_digest"] = sha256_canonical(
+        art["run_manifest"])
     art["regime_artifact_digest"] = sha256_canonical(art)
     art["freeze_digest"] = sha256_canonical(dict(art))
     art["frozen"] = True

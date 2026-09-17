@@ -11,6 +11,7 @@ from nepal.science_v0.fmx_audit import (
 def _audit(name, cls="meteorological_reforecast",
            window=("2020-05-01T00:00:00Z", "2020-06-01T00:00:00Z"),
            **kw):
+    kw.setdefault("missingness_policy", "listwise")
     return ColumnAudit(
         column_name=name, declared_field_class=cls,
         source_lineage=("synthetic_inventory_v0", "0.0.0-synthetic",

@@ -33,6 +33,8 @@ from nepal.research_v0.records import (
 
 from nepal.research_v0._hashing import sha256_bytes, sha256_canonical
 from nepal.research_v0.gates import REQUIRED_REGIME_GATE_NAMES
+from nepal.research_v0.producer_validation import (
+    validate_producer_payload)
 
 from .association import RegimeAssignmentArtifact
 from .vintages import VintageRequest, build_vintage
@@ -479,8 +481,20 @@ def regime_assignment_from_artifact(
     A summary-only artifact without the assignment sidecar is
     rejected; assignments are never re-derived here, because
     re-prediction would violate freeze semantics.
+
+    R8-C01: the shared producer provenance floor
+    (``research_v0.producer_validation.validate_producer_payload``)
+    runs first — the same validator ``freeze_regime_artifact`` runs
+    before certification — so a payload missing whole provenance
+    sections (``model``, ``source_manifest``, the typed
+    ``fit_partition`` binding, …) cannot adapt by rehashing its
+    envelope digests.
     """
     p = _payload(payload, "regime artifact")
+    _shared = validate_producer_payload(p)
+    if _shared:
+        raise ValueError("regime artifact failed shared producer "
+                         "validation: " + "; ".join(_shared))
     raw = p["assignments"] if isinstance(p.get("assignments"),
                                          (list, tuple)) else None
     if not raw:

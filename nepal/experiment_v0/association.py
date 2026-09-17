@@ -42,6 +42,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Collection, Mapping, Optional, Sequence
 
 from nepal.research_v0._hashing import sha256_canonical
+from nepal.research_v0.producer_validation import (
+    validate_producer_payload)
 from nepal.research_v0.policy import (TargetState, parse_strict_utc,
                                       require_finite_seconds)
 from nepal.research_v0.records import (POSITIVE_ADMISSIBLE_ADJUDICATION,
@@ -122,6 +124,15 @@ SPATIAL_SHIFT_OFFSETS = tuple(
 #: alpha, so it fails closed instead of producing a low-resolution
 #: p-value.
 MIN_SPATIAL_SHIFTS = 20
+
+#: Minimum number of *usable* shifted replicates — offsets carrying
+#: at least one eligible event group and a defined shifted ratio for
+#: the regime — before the null may emit a p-value.  Derived so the
+#: smallest achievable p = 1/(n+1) can still reach FAMILY_ALPHA:
+#: a null supported by fewer replicates fails closed instead of
+#: reporting a p its resolution can never earn.
+MIN_USABLE_SPATIAL_SHIFTS = next(
+    n for n in range(1, 10_000) if 1.0 / (n + 1) <= FAMILY_ALPHA)
 
 #: Negative-control families that must execute and land in the report
 #: before ``REGIME_ASSOCIATION_SUPPORTED`` is reachable: a placebo
@@ -232,6 +243,35 @@ def _event_horizon_admissible(event: EventLabelV0,
     return True
 
 
+def _shifted_group_eligible(
+        artifact: RegimeAssignmentArtifact,
+        shifted_members: Sequence[EventLabelV0],
+        basin_units: Mapping[str, Sequence[str]],
+        mode: str,
+        lookback_days: int = 0) -> bool:
+    """Whether a shifted event group still intersects the artifact's
+    coverage: at least one member resolves to a sampled (unit, date)
+    cell — under the same placement ``mode`` / ``lookback_days`` the
+    table builder uses — that carries a frozen assignment.  A group
+    whose shifted windows fall entirely outside the assignment span
+    carries no information; its offset is censored, never counted as
+    a non-exceeding replicate."""
+    for ev in shifted_members:
+        us = basin_units.get(ev.basin_id, ())
+        if not us:
+            continue
+        if mode == "midpoint":
+            day = _event_midpoint_date(ev, lookback_days)
+            dates = (day,) if day is not None else ()
+        else:  # "uniform" and "worst_case" sample every window date
+            dates = _event_dates(ev, lookback_days)
+        for u in us:
+            for d in dates:
+                if artifact.regime_for(u, d.isoformat()) is not None:
+                    return True
+    return False
+
+
 def _spatial_shift_null(
         artifact: RegimeAssignmentArtifact,
         groups: Mapping[str, Sequence[EventLabelV0]],
@@ -250,7 +290,17 @@ def _spatial_shift_null(
     ``MIN_SPATIAL_SHIFTS`` distinct nonzero day offsets — a zero
     offset is not a shift and is dropped before the floor is
     counted, and a low-resolution null fails closed because its
-    p-grid can never reach the family alpha."""
+    p-grid can never reach the family alpha.
+
+    NEW-ASSOC-01 support accounting: a shifted replicate carries
+    information only when at least one shifted event group still
+    intersects the artifact's assignment coverage.  Offsets with zero
+    eligible groups are recorded (``offset_support``) but excluded
+    from every per-regime denominator — under the old accounting they
+    silently contributed a 0.0 ratio, diluting the null.  A regime
+    whose usable-support count falls below
+    ``MIN_USABLE_SPATIAL_SHIFTS`` fails closed with
+    ``INSUFFICIENT_SHIFT_SUPPORT`` and no p-value."""
     resolved = tuple(sorted({int(o) for o in offsets if int(o) != 0}))
     if len(resolved) < MIN_SPATIAL_SHIFTS:
         raise ValueError(
@@ -262,8 +312,8 @@ def _spatial_shift_null(
     obs_table = _build_table(artifact, groups, controls,
                              basin_units, mode, lookback_days)
     observed = _point_ratios(obs_table)
-    shifted_groups: dict[str, list] = {}
     per_offset: dict[str, dict] = {}
+    offset_support: dict[str, dict] = {}
     for off in offsets:
         shifted = {}
         for gid, members in groups.items():
@@ -283,31 +333,66 @@ def _spatial_shift_null(
                     event_time_end=t.isoformat() + "T00:00:00Z"))
             if moved:
                 shifted[gid] = moved
+        n_eligible = sum(
+            1 for moved in shifted.values()
+            if _shifted_group_eligible(
+                artifact, moved, basin_units, mode, lookback_days))
+        offset_support[str(off)] = {
+            "n_eligible_groups": n_eligible,
+            "n_censored_groups": len(groups) - n_eligible}
         t = _build_table(artifact, shifted, controls, basin_units,
                          mode, lookback_days)
         per_offset[str(off)] = _point_ratios(t)
+    usable = [off for off in offsets
+              if offset_support[str(off)]["n_eligible_groups"] > 0]
     per_regime: dict[str, Any] = {}
     for rid in observed:
         obs = observed[rid]
+        # ``shifted_ratios`` keeps every declared offset — including
+        # censored and undefined replicates — so the accounting is
+        # visible, never silently dropped.
+        shifted_ratios = {str(off): per_offset[str(off)].get(rid)
+                          for off in offsets}
+        supported = [off for off in usable
+                     if per_offset[str(off)].get(rid) is not None]
+        n = len(supported)
         if obs is None:
-            per_regime[rid] = {"observed_ratio": None, "p": None}
+            per_regime[rid] = {
+                "observed_ratio": None, "p": None,
+                "status": "OBSERVED_RATIO_UNDEFINED",
+                "n_offsets_used": n,
+                "n_offsets_censored": len(offsets) - n,
+                "shifted_ratios": shifted_ratios}
             continue
-        ge = sum(1 for off in offsets
-                 if (per_offset[str(off)].get(rid) or 0.0) >= obs)
-        per_regime[rid] = {
+        ge = sum(1 for off in supported
+                 if per_offset[str(off)][rid] >= obs)
+        entry = {
             "observed_ratio": _round12(obs),
-            # C16: finite-permutation correction — p = (ge+1)/(n+1).
-            # The uncorrected ge/n can produce p=0.0 (impossible for
-            # a finite permutation distribution) and is slightly
+            "n_offsets_used": n,
+            "n_offsets_censored": len(offsets) - n,
+            "shifted_ratios": shifted_ratios}
+        if n < MIN_USABLE_SPATIAL_SHIFTS:
+            # Fail closed: a null this thin can never resolve p below
+            # the family alpha — emit no p at all rather than a
+            # confident-looking number.
+            entry["p"] = None
+            entry["status"] = "INSUFFICIENT_SHIFT_SUPPORT"
+        else:
+            # C16: finite-permutation correction — p = (ge+1)/(n+1)
+            # over the *supported* replicates only.  The uncorrected
+            # ge/n can produce p=0.0 (impossible for a finite
+            # permutation distribution) and is slightly
             # anti-conservative.
-            "p": _round12((ge + 1) / (len(offsets) + 1)),
-            "shifted_ratios": {str(off):
-                               per_offset[str(off)].get(rid)
-                               for off in offsets}}
+            entry["p"] = _round12((ge + 1) / (n + 1))
+            entry["status"] = "OK"
+        per_regime[rid] = entry
     rec = {"name": "spatial_shift",
            "strata": "basin_fixed_date_shift",
            "offsets": list(offsets),
            "n_shifts": len(offsets),
+           "n_offsets_usable": len(usable),
+           "n_offsets_censored": len(offsets) - len(usable),
+           "offset_support": offset_support,
            "per_regime": per_regime}
     # The digest binds every key present at this point — it never
     # covers the "digest" key attached afterward.
@@ -2000,6 +2085,14 @@ def _producer_payload_binding_problems(
     if not isinstance(payload, Mapping):
         return ["producer_payload must be a JSON-object mapping — "
                 "the serialized frozen producer artifact"]
+    # R8-C01: the shared producer provenance floor runs here too —
+    # the digest chain below binds the artifact to *a* payload, but
+    # only this validator proves that payload is a complete producer
+    # artifact (model, source_manifest, fit_partition, gates…).  A
+    # self-consistent forged pair could otherwise bind a payload
+    # missing whole provenance sections.
+    problems.extend(f"producer_payload {p}"
+                    for p in validate_producer_payload(payload))
     freeze = payload.get("freeze_digest")
     raw = payload.get("assignments")
     raw_ok = isinstance(raw, (list, tuple)) and bool(raw)
@@ -2925,6 +3018,7 @@ __all__ = [
     "MECHANISM_MIN_GROUPS",
     "MIN_EVENT_GROUPS",
     "MIN_SPATIAL_SHIFTS",
+    "MIN_USABLE_SPATIAL_SHIFTS",
     "NOVELTY_SHARE_MAX",
     "PLACEMENT_MODES",
     "REQUIRED_SENSITIVITY_AXES",

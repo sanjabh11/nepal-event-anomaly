@@ -56,6 +56,7 @@ def synthetic_vintage_request(
         "retrieval_record_sha256": _sha(f"{provider}:retrieval-record"),
         "archive_payload_path": f"evidence/{provider}/payload.bin",
         "retrieval_record_path": f"evidence/{provider}/retrieval.json",
+        "evidence_root": "",
         "declared_delay_seconds": -1.0,
     }
     request.update(overrides)

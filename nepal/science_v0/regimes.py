@@ -99,6 +99,8 @@ from nepal.research_v0._hashing import (
     sha256_canonical, verify_source_evidence)
 from nepal.research_v0.gates import REQUIRED_REGIME_GATE_NAMES
 from nepal.research_v0.policy import ForecastDataClass, RegimeMode
+from nepal.research_v0.producer_validation import (
+    validate_producer_payload)
 from nepal.research_v0.records import RunManifestV0
 
 STATUSES = frozenset({
@@ -1963,6 +1965,31 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
                 "reason": f"run manifest invalid: {_rm_problems}"}
     _run_manifest_dict = _run_manifest.to_dict()
 
+    # R8-C09: the typed fit-partition binding — a first-class record
+    # re-stating the fit surface (train/heldout groups, row counts,
+    # the train row-key digest, the fit-window cutoff, the feature
+    # matrix) so a downstream boundary cross-checks a single bound
+    # structure instead of trusting scattered flat fields.
+    _fm_digest = _digest(
+        [[round(v, 6) if isinstance(v, float) else v
+          for v in row] for row in input_values])
+    _train_dates = pd.to_datetime(
+        df.loc[train_mask, config.date_col])
+    _fit_partition = {
+        "record_type": "fit_partition/v0",
+        "train_groups": sorted(mask_groups),
+        "heldout_groups": sorted(heldout_groups),
+        "n_train_rows": int(mask.sum()),
+        "n_rows": int(len(df)),
+        "train_row_keys_digest": _digest(sorted(
+            f"{u}|{d}" for u, d in zip(
+                df.loc[train_mask, config.unit_col].astype(str),
+                df.loc[train_mask, config.date_col].astype(str)))),
+        "cutoff_iso": (_train_dates.max().strftime("%Y-%m-%d")
+                       if len(_train_dates) else ""),
+        "feature_matrix_digest": _fm_digest,
+        "feature_cols": list(feature_cols)}
+
     artifact = {
         "mode": config.mode,
         # FCST-01: FORECAST_REGIME binds issue-time archive vintages
@@ -1985,9 +2012,12 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
         "feature_cols": list(feature_cols),
         # six-decimal semantic digest is a versioned normalization
         # domain; the exact raw input bytes are bound alongside it
-        "feature_matrix_digest": _digest(
-            [[round(v, 6) if isinstance(v, float) else v
-              for v in row] for row in input_values]),
+        "feature_matrix_digest": _fm_digest,
+        # R8-C09: the typed fit-partition record and its digest are
+        # bound into the artifact BEFORE regime_artifact_digest is
+        # computed — a rehashed partial artifact cannot pass freeze.
+        "fit_partition": _fit_partition,
+        "fit_partition_digest": _digest(_fit_partition),
         "input_bytes_digest": _sha_bytes(input_bytes),
         "input_values": input_values,
         "input_schema": {
@@ -2076,6 +2106,24 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
         "disclaimer": "descriptive regime structure only; not an "
                       "event precursor, association, or skill claim",
     }
+    # R8-C10: FORECAST_REGIME binds a typed forecast-feature payload
+    # — the vintage digests, the declared feature subset, the matrix
+    # digest, and the frame's row count/keys in one hashed record —
+    # so a bare forecast_feature_set string is no longer the only
+    # binding.  RETROSPECTIVE_REGIME never carries it.
+    if config.mode == RegimeMode.FORECAST_REGIME.value:
+        _ffp = {
+            "record_type": "forecast_feature_payload/v0",
+            "forecast_feature_set": sorted(
+                str(c) for c in config.forecast_feature_set),
+            "forecast_vintage_digests": sorted(
+                str(d) for d in config.forecast_vintage_digests),
+            "feature_matrix_digest": _fm_digest,
+            "row_count": int(len(df)),
+            "row_keys_digest":
+                artifact["preprocessing"]["row_keys_digest"]}
+        artifact["forecast_feature_payload"] = _ffp
+        artifact["forecast_feature_payload_digest"] = _digest(_ffp)
     artifact["preprocessing_digest"] = _digest(
         artifact["preprocessing"])
     artifact["regime_artifact_digest"] = _digest(
@@ -2170,7 +2218,34 @@ def freeze_regime_artifact(artifact: dict) -> dict:
     required_gates.  A direct freeze call on a hand-assembled or
     mutated artifact fails closed; it cannot bypass the producer
     audit.
+
+    R8-C01: the shared provenance floor
+    (``research_v0.producer_validation.validate_producer_payload``)
+    runs BEFORE any digest recomputation — the same validator the
+    association adapter and the experiment auditor run — so a
+    rehashed partial artifact (missing ``model``,
+    ``source_manifest``, the typed ``fit_partition`` binding, …)
+    fails closed here exactly as it does downstream.
     """
+    if not isinstance(artifact, Mapping):
+        raise ValueError("cannot freeze: artifact is not a mapping")
+    # The two fields only freeze itself emits (frozen, freeze_digest)
+    # are supplied to the probe so the canonical schema floor applies
+    # to the pre-freeze surface; a caller's own values, when present,
+    # are validated as carried.
+    _probe = dict(artifact)
+    _probe.setdefault("frozen", True)
+    if "freeze_digest" not in _probe:
+        try:
+            _probe["freeze_digest"] = _digest(
+                {k: v for k, v in artifact.items()
+                 if k != "freeze_digest"})
+        except (TypeError, ValueError):
+            _probe["freeze_digest"] = "uncomputable"
+    _shared = validate_producer_payload(_probe)
+    if _shared:
+        raise ValueError("cannot freeze: shared producer validation "
+                         "failed: " + "; ".join(_shared))
     status = artifact.get("status")
     if status == "RUN_ERROR":
         raise ValueError("cannot freeze a RUN_ERROR artifact")

@@ -41,7 +41,26 @@ The empty Git shell is never the implementation root.
   (bound head is the manifest's own field — see
   `ARTIFACT_MANIFEST_V0.json` for the current value).
 
-## Last fully-verified baseline (2026-09-16, round-7 hardening)
+## Last fully-verified baseline (round-8 hardening)
+
+- HEAD: Round-8 hardening content commit (bound via `content_head`
+  in `ARTIFACT_MANIFEST_V0.json`; the manifest rebind lands as its
+  direct child, same relationship as previous binds).
+- Full suite under pinned `.venv`: **2073 passed, 5 skipped
+  (rasterio), 0 failed, 57 warnings**.
+- New surface: `nepal/research_v0/producer_validation.py` (shared
+  producer validator), `tests/test_r8_provenance.py` (31),
+  `tests/test_r8_vintage.py`, `tests/test_r8_fmx_assoc.py`;
+  `verify_vintage_evidence` in `nepal/research_v0/_hashing.py`;
+  `ForecastVintageV0.evidence_root`; byte-bound
+  `FORECAST_EXPERIMENT_ONLY` gate in `evaluate()`; FMX label
+  derivation + required metadata in `science_v0/fmx_audit.py`;
+  spatial-shift support accounting in `experiment_v0/association.py`.
+- Prior baseline retained as history: round-7 content `cc2218b`,
+  77 manifest files, 2015/5/0/57, 562 focused; round-6 content
+  `aceedff`, 76 files, 1993/5/0/57, 540 focused.
+
+## Prior baseline (2026-09-16, round-7 hardening)
 
 - HEAD: `cc2218b` — "Round-7 enforcement hardening" (content
   commit; the manifest rebind lands as its direct child, same
@@ -55,8 +74,6 @@ The empty Git shell is never the implementation root.
 - Focused lanes: **562 green** (round7-hardening 22 + round6
   hardening 118 + round5 hardening 18 + regimes 93 + association 63
   + evaluation 118 + audit 61 + adapters/replay/e2e).
-- Prior baseline retained as history below: round-6 content
-  `aceedff`, 76 files, 1993/5/0/57, 540 focused.
 
 ## Verification snapshot history (2026-09-15, round 2 and later)
 

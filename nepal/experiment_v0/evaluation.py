@@ -68,7 +68,8 @@ from statistics import NormalDist
 from typing import (Any, Collection, Iterable, Mapping, Optional,
                     Sequence)
 
-from nepal.research_v0._hashing import sha256_canonical
+from nepal.research_v0._hashing import (sha256_canonical,
+                                       verify_vintage_evidence)
 from nepal.research_v0.policy import (HORIZON_SECONDS, TargetState,
                                       parse_strict_utc,
                                       require_finite_seconds)
@@ -1270,7 +1271,9 @@ def evaluate(  # noqa: C901
              degradation_scenarios: Optional[Sequence[Mapping]]
              = None,
              feature_row_keys: Optional[Iterable[str]]
-             = None) -> EvaluationReport:
+             = None,
+             require_vintage_bytes: bool = False
+             ) -> EvaluationReport:
     """Validate the contract and emit the full descriptive report.
 
     Raises ``ValueError`` listing *every* problem: unlocked or unmapped
@@ -1327,6 +1330,18 @@ def evaluate(  # noqa: C901
     drawn from that universe — a fit row outside it can never be a
     real feature row.
 
+    ``require_vintage_bytes`` (C14) is the byte-binding gate: when
+    True every admitted vintage must carry a non-empty
+    ``evidence_root`` whose declared payload/retrieval files resolve
+    inside it — real, non-symlink, hashing to the declared digests —
+    or the evaluation fails closed with ``ValueError``.  With the
+    default (False) a declared ``evidence_root`` is still verified
+    whenever present — a claimed byte binding that fails verification
+    is always a problem — while ``evidence_root == ""`` vintages
+    remain metadata-only candidates: they may flow through
+    descriptive evaluation but a forecast-ready evaluation requires
+    the byte gate.
+
     Censored cases are excluded from every metric numerator and
     counted in ``n_censored``; the false-alarm rate divides by the
     derived ``n_opportunities`` — never by the unambiguous count.
@@ -1336,6 +1351,8 @@ def evaluate(  # noqa: C901
     """
     cases = list(cases)
     problems: list[str] = []
+    if not isinstance(require_vintage_bytes, bool):
+        problems.append("require_vintage_bytes must be a bool")
     # the holdout must BE a valid contract record — not merely expose
     # test_locked/test_groups attributes (type + full problems())
     if type(holdout) is not HoldoutPlanV0:
@@ -1358,11 +1375,24 @@ def evaluate(  # noqa: C901
     if not isinstance(admitted_vintages, Mapping):
         problems.append("admitted_vintages must be a mapping of "
                         "canonical vintage digest -> ForecastVintageV0")
+        _vintages_byte_bound = False
     else:
+        # C14: track byte-binding per admitted vintage.  A declared
+        # evidence_root is byte-verified below whenever present — a
+        # claimed binding that fails is tamper evidence and already
+        # raises with the rest of problems — so a vintage reaching the
+        # status computation with a non-empty root is verified
+        # byte-bound.  An empty-root vintage is a metadata-only
+        # candidate: it may flow through descriptive evaluation but
+        # can never ground FORECAST_EXPERIMENT_ONLY (see
+        # _decl_complete), and under require_vintage_bytes it is
+        # rejected outright.
+        _vintages_byte_bound = bool(admitted_vintages)
         for key, v in admitted_vintages.items():
             tag = f"admitted vintage {key!r}"
             if type(v) is not ForecastVintageV0:
                 problems.append(f"{tag}: not a ForecastVintageV0")
+                _vintages_byte_bound = False
                 continue
             problems.extend(f"{tag}: {pp}" for pp in v.problems())
             if sha256_canonical(v.to_dict()) != key:
@@ -1370,6 +1400,18 @@ def evaluate(  # noqa: C901
                     f"{tag}: key does not recompute to "
                     "sha256_canonical(vintage.to_dict()) — the "
                     "admission map is keyed by canonical digest")
+            if isinstance(v.evidence_root, str) and \
+                    v.evidence_root.strip():
+                problems.extend(
+                    f"{tag}: {bp}" for bp in
+                    verify_vintage_evidence(v, v.evidence_root))
+            else:
+                _vintages_byte_bound = False
+                if require_vintage_bytes is True:
+                    problems.append(
+                        f"{tag}: evidence_root is required — a "
+                        "metadata-only vintage is a candidate and "
+                        "cannot ground a forecast-ready evaluation")
 
     # ---- evaluation-scope maps: unit -> basin -> region ----------
     if not isinstance(unit_basins, Mapping):
@@ -1890,7 +1932,12 @@ def evaluate(  # noqa: C901
         and len(tuple(decl.vintage_lineage or ())) > 0
         and _baseline_bound
         and _regime_bound
-        and feature_rows_verified)
+        and feature_rows_verified
+        # C14: no forecast-ready status over metadata-only vintages —
+        # every admitted vintage must carry a byte-verified
+        # evidence_root (verification problems above already failed
+        # closed for any claimed-but-broken root).
+        and _vintages_byte_bound)
     status = ("FORECAST_EXPERIMENT_ONLY"
               if power["powered"] and _decl_complete
               else "UNDERPOWERED_DESCRIPTIVE_ONLY")

@@ -23,6 +23,9 @@ on:
       - "tests/test_round5_hardening.py"
       - "tests/test_run_a_reconciliation.py"
       - "tests/test_r6_*.py"
+      - "tests/test_r7_hardening.py"
+      - "tests/test_r7_*.py"
+      - "tests/test_r8_*.py"
       - "tests/test_framework_v1_*.py"
       - "requirements.txt"
       - "docs/science/**"
@@ -46,6 +49,9 @@ on:
       - "tests/test_round5_hardening.py"
       - "tests/test_run_a_reconciliation.py"
       - "tests/test_r6_*.py"
+      - "tests/test_r7_hardening.py"
+      - "tests/test_r7_*.py"
+      - "tests/test_r8_*.py"
       - "tests/test_framework_v1_*.py"
       - "requirements.txt"
       - "docs/science/**"
@@ -141,11 +147,13 @@ jobs:
           PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
             python -B -m pytest tests/test_p5_io_contract.py -q -rs
 
-      - name: Round-5 hardening + Run-A reconciliation tests
-        # CI-01 (round 6): these manifest-governed lanes were carried
-        # by the manifest but never executed in this workflow.  The
-        # tests/test_r6_*.py glob covers future round-N hardening
-        # lanes; nullglob keeps an empty match from failing the step.
+      - name: Round-N hardening + Run-A reconciliation tests
+        # CI-01 (rounds 6-8, NEW-CI-01): these manifest-governed lanes
+        # were carried by the manifest but never executed in this
+        # workflow.  The tests/test_r[678]_*.py glob covers current and
+        # future round-N hardening lanes (r6, r7 incl.
+        # test_r7_hardening.py, r8); nullglob keeps an empty match from
+        # failing the step, while any matched file must pass.
         run: |
           set -e
           PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
@@ -154,12 +162,12 @@ jobs:
             tests/test_run_a_reconciliation.py \
             -q -rs
           shopt -s nullglob
-          r6=(tests/test_r6_*.py)
-          if [ ${#r6[@]} -gt 0 ]; then
+          rn=(tests/test_r[678]_*.py)
+          if [ ${#rn[@]} -gt 0 ]; then
             PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
-              python -B -m pytest "${r6[@]}" -q -rs
+              python -B -m pytest "${rn[@]}" -q -rs
           else
-            echo "no tests/test_r6_*.py files present yet"
+            echo "no tests/test_r[678]_*.py files present yet"
           fi
 
       - name: Frozen framework_v1 contract tests

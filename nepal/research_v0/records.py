@@ -785,7 +785,19 @@ class HoldoutPlanV0:
 @dataclass(frozen=True)
 class ForecastVintageV0:
     """One issue-time forecast source vintage, bound to actual archived
-    bytes and a retrieval record — identifiers alone are not evidence."""
+    bytes and a retrieval record — identifiers alone are not evidence.
+
+    ``evidence_root`` names the directory under which
+    ``archive_payload_path`` and ``retrieval_record_path`` resolve to
+    real bytes (C14/E05).  ``problems()`` stays pure — field shapes
+    only, never I/O — so a vintage admitted with
+    ``evidence_root == ""`` is a metadata-only *candidate*: byte
+    verification happens at the admission and evaluation boundaries
+    (``build_vintage(..., require_bytes=True)``,
+    ``evaluate(..., require_vintage_bytes=True)``, and
+    ``nepal.research_v0._hashing.verify_vintage_evidence``), not here.
+    A candidate may flow through ledgers and descriptive evaluation
+    but can never ground a forecast-ready claim on its own."""
 
     vintage_id: str
     provider: str
@@ -802,6 +814,7 @@ class ForecastVintageV0:
     model_version: str = ""
     license_id: str = ""
     archive_mechanism: str = ""
+    evidence_root: str = ""            # "" = metadata-only candidate
 
     def problems(self) -> list[str]:
         problems: list[str] = []
@@ -829,6 +842,13 @@ class ForecastVintageV0:
         _req(problems, "archive_payload_path", self.archive_payload_path)
         _req(problems, "retrieval_record_path",
              self.retrieval_record_path)
+        # Shape only — evidence_root may legitimately be "" (a
+        # metadata-only candidate); non-empty roots are byte-verified
+        # at the admission/evaluation boundary, never here.
+        if not isinstance(self.evidence_root, str):
+            problems.append(
+                "evidence_root must be a string naming the evidence "
+                "root ('' marks a metadata-only candidate vintage)")
         times = {
             "initialization_time": _ts(problems, "initialization_time",
                                        self.initialization_time),

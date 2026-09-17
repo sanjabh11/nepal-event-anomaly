@@ -17,7 +17,9 @@ from __future__ import annotations
 import hashlib
 import math
 import random
+import tempfile
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from nepal.experiment_v0.baselines import (
@@ -69,11 +71,41 @@ def synthetic_holdout(
         embargo_seconds=2592000.0)
 
 
+#: Shared evidence root for byte-bound synthetic vintages (C14):
+#: deterministic content written idempotently under the system temp
+#: dir so ``verify_vintage_evidence`` sees real bytes — the declared
+#: digests are sha256 over exactly these payloads.  The bytes are
+#: fabricated; the binding is real.
+_SYNTH_VINTAGE_ROOT = Path(tempfile.gettempdir()) / \
+    "nepal_synth_vintage_evidence"
+
+
+def _write_vintage_evidence(region: str) -> str:
+    """Write the synthetic payload/retrieval files under the shared
+    evidence root and return the root path.  Idempotent."""
+    dest = _SYNTH_VINTAGE_ROOT / "vintages" / region
+    dest.mkdir(parents=True, exist_ok=True)
+    (dest / "payload.bin").write_bytes(f"payload:{region}".encode())
+    (dest / "retrieval.json").write_bytes(
+        f"retrieval:{region}".encode())
+    return str(_SYNTH_VINTAGE_ROOT)
+
+
 def synthetic_vintage(region: str,
-                      issue_dt: datetime = _BASE) -> ForecastVintageV0:
+                      issue_dt: datetime = _BASE,
+                      *, byte_bound: bool = True) -> ForecastVintageV0:
     """One synthetic ARCHIVED_OPERATIONAL vintage covering every
     horizon from ``issue + LEAD_SECONDS`` out to the widest policy
-    horizon."""
+    horizon.
+
+    ``byte_bound=True`` (the default) writes the declared payload and
+    retrieval bytes under the shared temp evidence root so the vintage
+    satisfies the C14 byte-binding gate — the bytes are synthetic but
+    the hash binding is real.  ``byte_bound=False`` yields a
+    metadata-only candidate (``evidence_root == ""``): admissible for
+    descriptive evaluation but unable to ground
+    ``FORECAST_EXPERIMENT_ONLY``.
+    """
     issue_s = _iso(issue_dt)
     return ForecastVintageV0(
         vintage_id=f"vintage-{region}",
@@ -91,7 +123,9 @@ def synthetic_vintage(region: str,
         retrieval_record_path=f"vintages/{region}/retrieval.json",
         model_version="synthetic-model-v0",
         license_id="synthetic-licence",
-        archive_mechanism="synthetic-portal")
+        archive_mechanism="synthetic-portal",
+        evidence_root=_write_vintage_evidence(region)
+        if byte_bound else "")
 
 
 def vintage_digest(vintage: ForecastVintageV0) -> str:
@@ -101,20 +135,24 @@ def vintage_digest(vintage: ForecastVintageV0) -> str:
 
 def admitted_vintages(
         regions: Sequence[str],
-        issue_dt: datetime = _BASE) -> dict[str, ForecastVintageV0]:
+        issue_dt: datetime = _BASE,
+        *, byte_bound: bool = True
+        ) -> dict[str, ForecastVintageV0]:
     """digest -> ForecastVintageV0 map for the given regions."""
     out: dict[str, ForecastVintageV0] = {}
     for region in regions:
-        v = synthetic_vintage(region, issue_dt)
+        v = synthetic_vintage(region, issue_dt, byte_bound=byte_bound)
         out[vintage_digest(v)] = v
     return out
 
 
 def admitted_for_cases(
         cases: Sequence[ForecastCase],
-        issue_dt: datetime = _BASE) -> dict[str, ForecastVintageV0]:
+        issue_dt: datetime = _BASE,
+        *, byte_bound: bool = True
+        ) -> dict[str, ForecastVintageV0]:
     return admitted_vintages(sorted({c.region for c in cases}),
-                             issue_dt)
+                             issue_dt, byte_bound=byte_bound)
 
 
 def planted_cases(
@@ -128,7 +166,8 @@ def planted_cases(
         signal: float = 1.8,
         base: float = -0.6,
         issue_dt: datetime = _BASE,
-        event_groups: bool = True) -> list[ForecastCase]:
+        event_groups: bool = True,
+        vintage_byte_bound: bool = True) -> list[ForecastCase]:
     """Planted-signal synthetic cases over (region, season, mechanism)
     clusters.
 
@@ -148,7 +187,8 @@ def planted_cases(
     ``valid_end - valid_start = HORIZON_SECONDS[horizon]``.
     """
     rng = random.Random(int(seed))
-    vintages = admitted_vintages(regions, issue_dt)
+    vintages = admitted_vintages(regions, issue_dt,
+                                 byte_bound=vintage_byte_bound)
     cases: list[ForecastCase] = []
     i = 0
     for region in regions:
@@ -445,9 +485,15 @@ def make_baseline_probs(
             "regularized_supervised": supervised}
 
 
-def powered_design() -> dict[str, Any]:
+def powered_design(*, vintage_byte_bound: bool = True
+                   ) -> dict[str, Any]:
     """A design that clears the default precision floor: 10 regions x
-    5 seasons x 2 mechanisms = 100 independent clusters."""
+    5 seasons x 2 mechanisms = 100 independent clusters.
+
+    ``vintage_byte_bound=False`` plants metadata-only vintage digests
+    — pair with ``admitted_for_cases(cases, byte_bound=False)`` for a
+    digest-consistent candidate-only scenario (C14).
+    """
     regions = tuple(f"test_region_{i:02d}" for i in range(10))
     seasons = tuple(f"season_{i}" for i in range(5))
     mechanisms = ("snow_release", "lake_outburst")
@@ -455,14 +501,16 @@ def powered_design() -> dict[str, Any]:
     cases = planted_cases(
         seed=11, regions=regions, seasons=seasons,
         mechanisms=mechanisms, horizons=("24h", "48h", "72h", "7d"),
-        per_cluster=2, censored_every=17)
+        per_cluster=2, censored_every=17,
+        vintage_byte_bound=vintage_byte_bound)
     return {"holdout": holdout, "cases": cases,
             "opportunities": opportunity_registry(cases),
             "unit_basins": unit_basins_for(cases),
             "region_basins": region_basins_for(regions)}
 
 
-def underpowered_design() -> dict[str, Any]:
+def underpowered_design(*, vintage_byte_bound: bool = True
+                       ) -> dict[str, Any]:
     """A minimal design far below the precision floor."""
     regions = ("region_east", "region_west")
     holdout = synthetic_holdout(test_groups=regions)
@@ -470,7 +518,8 @@ def underpowered_design() -> dict[str, Any]:
                           seasons=("season_a", "season_b"),
                           mechanisms=("snow_release",),
                           horizons=("24h", "48h"), per_cluster=3,
-                          censored_every=0)
+                          censored_every=0,
+                          vintage_byte_bound=vintage_byte_bound)
     return {"holdout": holdout, "cases": cases,
             "opportunities": opportunity_registry(cases),
             "unit_basins": unit_basins_for(cases),

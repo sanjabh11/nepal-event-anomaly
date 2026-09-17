@@ -41,6 +41,9 @@ except ImportError:  # pragma: no cover - contract pending
     verify_source_evidence = None
 from nepal.research_v0.gates import (REQUIRED_REGIME_GATE_NAMES,
                                    scan_claims_text)
+from nepal.research_v0.producer_validation import (
+    PRODUCER_DIGEST_FIELDS, PRODUCER_REQUIRED_FIELDS,
+    validate_producer_payload)
 from nepal.research_v0.records import (ControlWindowV0, EventLabelV0,
                                      ForecastVintageV0, HoldoutPlanV0,
                                      ObservationOpportunityV0,
@@ -537,30 +540,23 @@ def _call_run_association(artifact, events, controls, unit_basins, *,
 #: ``science_v0.run_regimes`` + ``freeze_regime_artifact`` payload
 #: must carry.  Missing fields are provenance gaps; a fabricated
 #: artifact that omits them cannot support a terminal status.
-_PRODUCER_REQUIRED_FIELDS = (
-    "assignments", "assignment_digest",
-    "regime_artifact_digest", "freeze_digest", "frozen",
-    "label_blinding", "fitted_on", "mode", "status",
-    "data_class", "seeds", "seeds_declared", "seed_coverage",
-    "feature_cols", "feature_matrix_digest", "input_bytes_digest",
-    "input_schema", "model", "config_digest", "fit_groups",
-    "heldout_groups_declared", "n_train_rows", "n_rows",
-    "train_mask_digest", "k", "per_seed_best_k",
-    "modal_k_frequency", "occupancy", "stability", "nulls",
-    "preprocessing", "preprocessing_digest", "k_selection_digest",
-    "stability_report_digest", "null_model_digest", "disclaimer",
-    "source_manifest", "missingness_applied",
-    "terminal", "associable")
+#: R8-C01: the tuples live in ``research_v0.producer_validation`` —
+#: the shared validator freeze and the adapter also run — and are
+#: aliased here so the audit's own richer checks and every existing
+#: import keep working.
+_PRODUCER_REQUIRED_FIELDS = PRODUCER_REQUIRED_FIELDS
+_PRODUCER_DIGEST_FIELDS = PRODUCER_DIGEST_FIELDS
 
-#: Carried digests are verified, never trusted: each must be a
-#: 64-hex sha256 when present (absence is a provenance finding).
-_PRODUCER_DIGEST_FIELDS = (
-    "assignment_digest", "regime_artifact_digest", "freeze_digest",
-    "feature_matrix_digest", "input_bytes_digest", "config_digest",
-    "train_mask_digest", "preprocessing_digest",
-    "k_selection_digest", "stability_report_digest",
-    "null_model_digest",
-    "environment_digest", "run_manifest_digest")
+#: Mapping from the shared validator's problem-string tag to this
+#: auditor's Finding codes — one Finding per problem, additive to
+#: the richer audit checks below.
+_SHARED_PROBLEM_CODES = {
+    "PAYLOAD_MALFORMED": "PRODUCER_PAYLOAD_MALFORMED",
+    "PROVENANCE_MISSING": "PRODUCER_PROVENANCE_MISSING",
+    "SCHEMA_MALFORMED": "PRODUCER_SCHEMA_MALFORMED",
+    "DIGEST_MALFORMED": "PRODUCER_DIGEST_MALFORMED",
+    "DIGEST_MISMATCH": "PRODUCER_DIGEST_MISMATCH",
+    "STATUS_ERROR": "PRODUCER_STATUS_ERROR"}
 
 _SEED_COVERAGE_STATES = frozenset({"converged", "failed"})
 
@@ -1028,6 +1024,16 @@ def audit_producer_payload(payload: Any) -> list[Finding]:
         return [Finding("PRODUCER_PAYLOAD_MALFORMED",
                         "artifact_payload",
                         "producer payload is not a mapping")]
+    # R8-C01: the shared producer provenance floor — the same
+    # validator ``freeze_regime_artifact`` and the association
+    # adapter run.  Additive to the richer checks below; each
+    # problem maps to one Finding by tag.
+    for _prob in validate_producer_payload(payload):
+        _tag, _, _detail = _prob.partition(": ")
+        findings.append(Finding(
+            _SHARED_PROBLEM_CODES.get(_tag,
+                                      "PRODUCER_SCHEMA_MALFORMED"),
+            "artifact_payload", _detail or _prob))
     for field in _PRODUCER_REQUIRED_FIELDS:
         if field not in payload:
             findings.append(Finding(
