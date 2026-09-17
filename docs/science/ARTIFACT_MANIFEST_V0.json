@@ -1,11 +1,11 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "cc2218ba10f27c59b5dee1b190c79c4c1c33d4b6",
+  "content_head": "de770ae86f35ac682837d62ae5ef280a6853514d",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
-      "sha256": "f399755b72a59172428ab117d8a558a657f3527242c8092270e02d036d2fd27b",
-      "size_bytes": 8231
+      "sha256": "868d567f7dcfbebf54897139d8630b7b8db7bae7f7975d0723263a6a11f203f0",
+      "size_bytes": 8553
     },
     {
       "relpath": ".gitignore",
@@ -14,13 +14,13 @@
     },
     {
       "relpath": "README.md",
-      "sha256": "643931a04409c2af72b07be6313ee5c26e766462687997f550009cf134b46956",
-      "size_bytes": 6181
+      "sha256": "7ce63135fbefcaf98f0b6d34d8613ed17d7fa78a7bf27c20dd220b561547c767",
+      "size_bytes": 6236
     },
     {
       "relpath": "docs/science/GAP_REGISTER_V0.md",
-      "sha256": "bcbb92b6456f7ece07b1821181683bcf1f7c4798d73769348fd866e5f0e0676f",
-      "size_bytes": 56904
+      "sha256": "21bf70b55db67399043d4913790b7b2e4544af9efd7e380d4c4bacf9b7754cdf",
+      "size_bytes": 64174
     },
     {
       "relpath": "docs/science/GOVERNANCE_EXERCISE_RECORD_V0.md",
@@ -49,8 +49,8 @@
     },
     {
       "relpath": "docs/science/P0_BASELINE_LEDGER.md",
-      "sha256": "8a67a01cd20dadfafa656656142b71b8919c4111fa02e943ac7cce6cfdce73df",
-      "size_bytes": 9797
+      "sha256": "f5bf7e671435322e1953153613ea51fe464be068e0e492ac82ee0b7ebf5a590f",
+      "size_bytes": 10683
     },
     {
       "relpath": "docs/science/P3_ATTESTATION_RECORD_V0.md",
@@ -64,8 +64,8 @@
     },
     {
       "relpath": "docs/science/SOURCE_FEASIBILITY_RECORDS_V0.md",
-      "sha256": "bc098f21a06dbc1bbbd4274b298e09de31324cd574fc7add8d7bff5eee0ef7a1",
-      "size_bytes": 11323
+      "sha256": "01a188dee5334262f14857a11586f9a2c0cd30d721441897fe54a6ab5c78bdf8",
+      "size_bytes": 15674
     },
     {
       "relpath": "docs/science/STATUS_SCOPE_RECONCILIATION_NOTE_20260915.md",
@@ -79,8 +79,8 @@
     },
     {
       "relpath": "docs/science/run_a/RUN_A_EVIDENCE_SUMMARY_V0.md",
-      "sha256": "aef33e950dab635a19ad35338ea9d0f1fa2e3cfb90fa25a7a7420ec9f0b46fc5",
-      "size_bytes": 11434
+      "sha256": "bc96809ba6fa3e7bf7395250cd2b7647222373be6e71cb6be248c75da483820d",
+      "size_bytes": 12773
     },
     {
       "relpath": "docs/science/run_a/SCOPE_OVERLAY_V0.md",
@@ -149,18 +149,18 @@
     },
     {
       "relpath": "nepal/experiment_v0/adapters.py",
-      "sha256": "b223649d038fe95c4f7e889e789fc7b24cb995047b8083cf4c15beee89c70634",
-      "size_bytes": 32365
+      "sha256": "fc885188267d2640898a4b66236c8e0e08f2abf3d7ec7f3c87096f16741b186f",
+      "size_bytes": 33035
     },
     {
       "relpath": "nepal/experiment_v0/association.py",
-      "sha256": "98559c9c5a069267f3421527a517f16e009b85fd44b6a3c54ee754b4a12f4f1e",
-      "size_bytes": 134193
+      "sha256": "5472cf98cde687eaca868d19e6b922d58ba8141d236d713650ace2a7e228bfe6",
+      "size_bytes": 138684
     },
     {
       "relpath": "nepal/experiment_v0/audit.py",
-      "sha256": "cf308371be264fedf5d2d5d88fdca6d3758c31f262f1063b5511e869d991bed6",
-      "size_bytes": 76509
+      "sha256": "d77835d9907fc94de926fc3f5806c61df992f2ece709034c854e158c5873d6a9",
+      "size_bytes": 76803
     },
     {
       "relpath": "nepal/experiment_v0/baselines.py",
@@ -169,8 +169,8 @@
     },
     {
       "relpath": "nepal/experiment_v0/evaluation.py",
-      "sha256": "d0c32ce96b932405d29a7105a391d54fb6c0e6bd89ab854b933725bbc6d69777",
-      "size_bytes": 89938
+      "sha256": "b1cc46d15467180707fb5dd69f3a2552e6c1f2e542e545537986678de1f8ac59",
+      "size_bytes": 92509
     },
     {
       "relpath": "nepal/experiment_v0/metrics.py",
@@ -179,8 +179,8 @@
     },
     {
       "relpath": "nepal/experiment_v0/vintages.py",
-      "sha256": "e5a76144d7afd34fdec322e71a8ae9e2e089ccd9f1664ac113f9649cd62e76c8",
-      "size_bytes": 20515
+      "sha256": "e120c027e56b7302476f0bdcc693cb32066944e0a7c65fee64b64472e495345a",
+      "size_bytes": 24489
     },
     {
       "relpath": "nepal/feature_extraction.py",
@@ -199,8 +199,8 @@
     },
     {
       "relpath": "nepal/research_v0/_hashing.py",
-      "sha256": "037b788cb1c0a625cdbb363c9ebf725bfab055b17f4772e59672f4ee7e6d533c",
-      "size_bytes": 8587
+      "sha256": "af57f42de0b3af0162022e0bb6d57c5b9df6875318df171c1f239886e5214d06",
+      "size_bytes": 13059
     },
     {
       "relpath": "nepal/research_v0/cli.py",
@@ -218,9 +218,14 @@
       "size_bytes": 16813
     },
     {
+      "relpath": "nepal/research_v0/producer_validation.py",
+      "sha256": "ce87582ae1b8d2de113475b6af7b873562ec8827a0bb1071cf648c1778fb895e",
+      "size_bytes": 32046
+    },
+    {
       "relpath": "nepal/research_v0/records.py",
-      "sha256": "be568e1a4a283fcb28c347ac06e336317d4bc9fb2e59ba8d93898b22acba887f",
-      "size_bytes": 55889
+      "sha256": "652be89b051a5c5aedd8a6aa4a4af6cb11383a94b138cc5b048e98e15bf93435",
+      "size_bytes": 57056
     },
     {
       "relpath": "nepal/run_ledger_repair.py",
@@ -239,13 +244,13 @@
     },
     {
       "relpath": "nepal/science_v0/fmx_audit.py",
-      "sha256": "6fa47c5789ca7ec8a6e7864043b6a1128fa9a2e422a5d970906559f798815add",
-      "size_bytes": 13154
+      "sha256": "5065cfcd357de00b5c4130e0928ce045ad5a7492517b2a91358d30b0fe53b098",
+      "size_bytes": 17054
     },
     {
       "relpath": "nepal/science_v0/regimes.py",
-      "sha256": "fbdfaeca6e852f190e45fcce389a5881461b8af8075290b23171c5b917de6fbd",
-      "size_bytes": 110170
+      "sha256": "16c37e4b6c05c74d94f3250ab2fedefe23bffbb589b0f7ab54c9f05a5124c4d8",
+      "size_bytes": 113942
     },
     {
       "relpath": "tests/fixtures/__init__.py",
@@ -259,28 +264,28 @@
     },
     {
       "relpath": "tests/fixtures/synthetic_exp_b2.py",
-      "sha256": "d3ea6df6abd4cf15683152926f44e459d7008e93dca1128d0be6fde03ceb9a1e",
-      "size_bytes": 2387
+      "sha256": "d785aa9f32298a7128eb270c9c6e360775775120bcdb38d682c9ffe277da09f5",
+      "size_bytes": 2416
     },
     {
       "relpath": "tests/fixtures/synthetic_exp_b3.py",
-      "sha256": "8828194cc08c9b11c705fb8d255263c37d5fad65f5dcc12923e4fad397a8f36d",
-      "size_bytes": 19237
+      "sha256": "f2c81e34cef1b53a5eb7c6424508dc15e4c4b1e7373553f56f9928e5df279969",
+      "size_bytes": 21372
     },
     {
       "relpath": "tests/fixtures/synthetic_exp_b4.py",
-      "sha256": "f9d3cb2beea80f5120d1f6d93cc683a67ea27eebc40f5395170a484970da0d98",
-      "size_bytes": 23782
+      "sha256": "fcec16d3806043749ee12a5f9039f5e2a108a6bdfb537beb63bd5eef88a409ef",
+      "size_bytes": 25432
     },
     {
       "relpath": "tests/test_experiment_v0_adapters.py",
-      "sha256": "bc28fb304f7d140928567119a769da60e20ad1348638951b6a99c96a467f3273",
-      "size_bytes": 19716
+      "sha256": "9cb7839342d5322c0df239c8b94a7b6801310280bd556d490a25ff6c29f80a24",
+      "size_bytes": 22687
     },
     {
       "relpath": "tests/test_experiment_v0_b1_association.py",
-      "sha256": "310fa30aa029ae1df5be956c23f8f610dcf3f082f36ee7f239769046ee8add6a",
-      "size_bytes": 68555
+      "sha256": "0a2c679d4473db0d262849398eb605e21d00f1b1e56afa260bd5cb591661acbb",
+      "size_bytes": 73055
     },
     {
       "relpath": "tests/test_experiment_v0_b2_vintages.py",
@@ -324,18 +329,33 @@
     },
     {
       "relpath": "tests/test_r6_provenance.py",
-      "sha256": "d94d24d9db2a11a74b48bca50d6fd7c272add13f47efda22efcf5e6b3bcc18b7",
-      "size_bytes": 29972
+      "sha256": "e04571dce664e8db3b4fe57154a29d9755cf8667ce8cfb4bd20fc7bf939a4687",
+      "size_bytes": 30435
     },
     {
       "relpath": "tests/test_r6_regimes.py",
-      "sha256": "f55665b4933fea847b2560233bae16d6cf2b38fd856edc74b4d49030238259b4",
-      "size_bytes": 24993
+      "sha256": "d436b79536e4f1bd7200a60f4428a3aa1da395181aeb3014c4cc19cd55c54edc",
+      "size_bytes": 27061
     },
     {
       "relpath": "tests/test_r7_hardening.py",
       "sha256": "568aa31d1554ef124d0b2913c07bbdf7107b8895aae44a820e6c7a8a2056d389",
       "size_bytes": 12618
+    },
+    {
+      "relpath": "tests/test_r8_fmx_assoc.py",
+      "sha256": "701eb0958eb319999c50be9d1226ac8994145588e8c7455eca33fb8ee85cf7cc",
+      "size_bytes": 10576
+    },
+    {
+      "relpath": "tests/test_r8_provenance.py",
+      "sha256": "e99e8197d84cffb2b28498f73e232786648ab66dae44896afd42a5dd1e2a9f0a",
+      "size_bytes": 14603
+    },
+    {
+      "relpath": "tests/test_r8_vintage.py",
+      "sha256": "2b6d0c1386a90e0fe9047cabddd9262dd1ae99c2abb665fea8e485d7bc09741b",
+      "size_bytes": 13334
     },
     {
       "relpath": "tests/test_research_v0_adversarial.py",
@@ -359,8 +379,8 @@
     },
     {
       "relpath": "tests/test_round5_hardening.py",
-      "sha256": "7844899b2f7d3f0c51ed763e118f771745d98f02ce3c71789c990856ed0113b7",
-      "size_bytes": 11929
+      "sha256": "ab4e05237a766cc23a366da7196f8d972dc299ef8f4533dc0ae102a97dc63f6a",
+      "size_bytes": 14168
     },
     {
       "relpath": "tests/test_run_a_reconciliation.py",
@@ -379,8 +399,8 @@
     },
     {
       "relpath": "tests/test_science_v0_fmx.py",
-      "sha256": "149702d1e4ee7a65999fd69d692a804a91ece05f5344dcf4fded5f16257bef56",
-      "size_bytes": 6944
+      "sha256": "05f92f073ce32ff153cfa763aa42ab6616d4edf7350efed9fa448f65dba2e3a6",
+      "size_bytes": 6996
     },
     {
       "relpath": "tests/test_science_v0_regimes.py",
@@ -388,9 +408,9 @@
       "size_bytes": 40161
     }
   ],
-  "generated": "2026-09-16",
+  "generated": "2026-09-17",
   "interpreter": ".venv/bin/python",
-  "manifest_commit": "cc2218ba10f27c59b5dee1b190c79c4c1c33d4b6",
+  "manifest_commit": "de770ae86f35ac682837d62ae5ef280a6853514d",
   "manifest_version": "ARTIFACT_MANIFEST_V0.3",
   "repository_relative_root": ".",
   "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -398,9 +418,9 @@
   "scope": "governed science artifacts: docs/science, nepal/research_v0, research tests, CI workflow, README \u2014 non-science sources excluded by design",
   "self_excluded": true,
   "test_results": {
-    "full_suite_venv": "2015 passed, 5 skipped (rasterio), 0 failed",
+    "full_suite_venv": "2073 passed, 5 skipped (rasterio), 0 failed, 57 warnings",
     "swarm_focused": "562 passed (round7 hardening 22 + round6 hardening 118 + round5 hardening 18 + regimes 93 + association 63 + evaluation 118 + audit 61 + adapters 41 + replay 25 + e2e 3)",
-    "adversarial_probes": "140 r6+r7 tests pass (strict bool gates, calendar dates, fit-surface intersection, null input digests, forecast-mode contract, byte-verified source evidence, adapter/freeze parity, findings-gated replay, verified producer binding, input_digest revalidation, bound baselines, feature-row membership, per-event precision horizons, mandatory report fields, finite permutation, RunManifestV0, unit-basin map, semantic config revalidation)",
+    "adversarial_probes": "r6+r7+r8 hardening lanes pass (shared producer validator at freeze/adapter/audit/association boundaries, typed fit_partition, forecast feature payload binding, vintage evidence_root byte verification, FMX label derivation + required metadata, spatial-shift support accounting); rebind/mode-confusion/bypass probes fail closed",
     "claim_scan": "clean on all governed files",
     "research_v0": "119 passed",
     "p5_io_contract": "34 passed",
