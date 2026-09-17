@@ -46,9 +46,9 @@ The empty Git shell is never the implementation root.
 - HEAD: Round-9 hardening content commit (bound via `content_head`
   in `ARTIFACT_MANIFEST_V0.json`; the manifest rebind lands as its
   direct child, same relationship as previous binds).
-- Full suite under pinned `.venv`: **2251 passed,
+- Full suite under pinned `.venv`: **2252 passed,
   5 skipped (rasterio), 0 failed** — verified at the Round-9
-  hardened content commit `e5bc23b`.
+  hardened content commit `ae1b03e`.
 - Manifest files governed: **82**.
 - New surface: `nepal/research_v0/producer_validation.py` hardened
   into a complete producer-validation boundary —
