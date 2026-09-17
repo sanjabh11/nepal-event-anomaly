@@ -1,6 +1,6 @@
 {
  "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
- "content_head": "e5bc23bc98b4f2e0ad650b77b16cbcbe51e2b596",
+ "content_head": "5ee8436a1d554be9f57bf17f8a98d1839453d5af",
  "files": [
   {
    "relpath": ".github/workflows/research-v0.yml",
@@ -14,8 +14,8 @@
   },
   {
    "relpath": "README.md",
-   "sha256": "0d2b4dd908d587a11322b0b0fa55326ba5ab1d765e74b7364dcac62667ca457b",
-   "size_bytes": 6774
+   "sha256": "84b67d0484947ad47cb9845c61c2118747623c50286eee4e5c84399d04ba8276",
+   "size_bytes": 6764
   },
   {
    "relpath": "docs/science/GAP_REGISTER_V0.md",
@@ -49,8 +49,8 @@
   },
   {
    "relpath": "docs/science/P0_BASELINE_LEDGER.md",
-   "sha256": "26f4d96db195e1eb6886b2eb448c574e3d31cdf495e99cac40d51649403a8db9",
-   "size_bytes": 12780
+   "sha256": "d670cbbdcf5573683488b4757756b3d2ea5f927435117c6ccd717472bf202dcc",
+   "size_bytes": 12793
   },
   {
    "relpath": "docs/science/P3_ATTESTATION_RECORD_V0.md",
@@ -415,7 +415,7 @@
  ],
  "generated": "2026-09-17",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "e5bc23bc98b4f2e0ad650b77b16cbcbe51e2b596",
+ "manifest_commit": "5ee8436a1d554be9f57bf17f8a98d1839453d5af",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
