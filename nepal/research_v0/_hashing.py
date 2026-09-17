@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import stat
 from collections import Counter
 from collections.abc import Mapping
 from pathlib import Path
@@ -43,6 +44,52 @@ def sha256_file(path: str | Path) -> str:
             if not chunk:
                 break
             digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _stat_signature(st) -> tuple:
+    """The identity tuple a TOCTOU re-check compares: inode, size,
+    and nanosecond mtime — a swapped or rewritten file cannot keep
+    all three."""
+    return (st.st_ino, st.st_size, st.st_mtime_ns)
+
+
+def _sha256_evidence_file(path: str | Path) -> str:
+    """Hash evidence bytes with TOCTOU hardening (R9-P03).
+
+    ``Path.lstat()`` (no-follow stat) runs BEFORE and AFTER the
+    read: the path must be a regular file (a post-resolution symlink
+    swap fails the mode check), and the (inode, size, mtime_ns)
+    signature must be identical on both sides — evidence that
+    changed mid-hash is rejected rather than bound.  ``lstat`` is
+    the pathlib no-follow stat; ``os`` itself stays import-banned at
+    the research_v0 isolation boundary.
+    """
+    p = Path(path)
+    try:
+        st0 = p.lstat()
+    except OSError as exc:
+        raise ValueError(f"cannot stat evidence file {p}: {exc}") \
+            from exc
+    if not stat.S_ISREG(st0.st_mode):
+        raise ValueError(f"not a regular file: {p}")
+    digest = hashlib.sha256()
+    with open(p, "rb") as handle:
+        while True:
+            chunk = handle.read(_CHUNK)
+            if not chunk:
+                break
+            digest.update(chunk)
+    try:
+        st1 = p.lstat()
+    except OSError as exc:
+        raise ValueError(
+            f"evidence file {p} disappeared during hashing: {exc}") \
+            from exc
+    if _stat_signature(st1) != _stat_signature(st0):
+        raise ValueError(
+            f"evidence file {p} changed during hashing — a moving "
+            "target is never a bound artifact")
     return digest.hexdigest()
 
 
@@ -109,9 +156,15 @@ def verify_source_evidence(manifest: Any) -> list[str]:
         return ["source manifest is not a mapping"]
     if manifest.get("fixture") is True:
         return []
-    if "fixture" in manifest and manifest["fixture"] is not True:
-        return [f"fixture must be a strict boolean True to bypass "
-                f"byte verification — got {manifest['fixture']!r}"]
+    # R9-P01: only a strict boolean marker is schema-valid — a
+    # truthy non-bool ("true", 1) is malformed, never a bypass; a
+    # boolean False is simply a non-fixture manifest that must
+    # byte-verify like any other.
+    if "fixture" in manifest and \
+            not isinstance(manifest["fixture"], bool):
+        return [f"fixture must be a strict boolean to bypass or "
+                f"decline byte verification — got "
+                f"{manifest['fixture']!r}"]
     root_raw = manifest.get("evidence_root")
     if not isinstance(root_raw, str) or not root_raw.strip():
         return ["evidence_root must be a non-empty string naming a "
@@ -150,8 +203,18 @@ def verify_source_evidence(manifest: Any) -> list[str]:
             problems.append(f"source_files[{i}].sha256 must be a "
                             "64-hex sha256")
             continue
+        joined = root_resolved / rel
+        # R9-P03: reject the symlink itself BEFORE resolution — an
+        # inside-root symlink's target is not the artifact the
+        # caller named, even when the target also lives inside the
+        # root (parity with verify_vintage_evidence).
+        if joined.is_symlink():
+            problems.append(f"source_files[{i}] relpath {rel!r} is "
+                            "a symlink — evidence files must be "
+                            "real files")
+            continue
         try:
-            resolved = (root_resolved / rel).resolve()
+            resolved = joined.resolve()
         except OSError as exc:
             problems.append(f"source_files[{i}] {rel!r} cannot be "
                             f"resolved: {exc}")
@@ -163,7 +226,7 @@ def verify_source_evidence(manifest: Any) -> list[str]:
                             "resolves outside evidence_root")
             continue
         try:
-            actual = sha256_file(resolved)
+            actual = _sha256_evidence_file(resolved)
         except ValueError as exc:
             problems.append(f"source_files[{i}] {rel!r}: {exc}")
             continue
@@ -273,7 +336,9 @@ def verify_vintage_evidence(vintage: Any,
                             "evidence_root")
             continue
         try:
-            actual = sha256_file(resolved)
+            # R9-P03 parity: stat-pinned hashing — the evidence file
+            # must be a stable regular file across the whole read.
+            actual = _sha256_evidence_file(resolved)
         except ValueError as exc:
             problems.append(f"{label} path {rel!r}: {exc}")
             continue

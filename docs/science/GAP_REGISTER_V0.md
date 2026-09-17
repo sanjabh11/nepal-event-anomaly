@@ -640,3 +640,93 @@ data, R01/R02 real regimes, A01 association, F01–F03 forecast,
 G01/G02 human approvals, O01 operations.  Postures unchanged:
 `DESIGN_DRAFT_COMPLETE`; P3 design-only; `NO_QUALIFYING_PILOT_SOURCE`;
 `WARNING_PATH_AUTHORIZED: NO`.
+
+## Round-9 promotion-closure census (2026-09-17)
+
+An independent audit reopened thirteen items at the Round-8 head —
+the `R9-` prefix is a report-local disambiguation prefix for the
+reopened finding IDs; it does not collide with the earlier round
+tables above.  **Every reopened Round-8 row below is marked
+`REOPENED at Round-8 head → RESOLVED by Round-9`** — the Round-8 rows
+themselves are preserved verbatim above as dated history, not edited.
+Behavioral coverage lives in `tests/test_r9_promotion.py` — a
+33-mutation matrix parameterized over `(mutation, boundary)` that
+builds a complete NEW-floor producer payload, applies one mutation,
+then *honestly rehashes every bound digest* (section digests,
+`assignment_digest`, `regime_artifact_digest`, `freeze_digest` — the
+B1 envelope rule) and asserts rejection at every applicable boundary:
+`freeze_regime_artifact`, `regime_assignment_from_artifact`,
+`audit_producer_payload`, and the `run_association`
+`producer_payload` binding.
+
+| Reopened row (Round-8 register family) | Status |
+|---|---|
+| R7-C01 / PROV shared producer validator (R9-P01, P04, P05, P07, P08, P09, P10, P12) | REOPENED at Round-8 head → RESOLVED by Round-9 |
+| R7-C02 / PROV-01 strict fixture + gate booleans (R9-P01, P12) | REOPENED at Round-8 head → RESOLVED by Round-9 |
+| Round-6 PROV-03 source byte-verification (R9-P02, P03) | REOPENED at Round-8 head → RESOLVED by Round-9 |
+| R7-C09 typed fit_partition (R9-P05) | REOPENED at Round-8 head → RESOLVED by Round-9 |
+| R7-C10 forecast feature payload (R9-P06) | REOPENED at Round-8 head → RESOLVED by Round-9 |
+| R7-C15 typed RunManifestV0 (R9-P04) | REOPENED at Round-8 head → RESOLVED by Round-9 |
+| R7-C04 semantic config revalidation (R9-P07) | REOPENED at Round-8 head → RESOLVED by Round-9 |
+| R7-C03 / REG-01 unit→basin partition (R9-P10, P11) | REOPENED at Round-8 head → RESOLVED by Round-9 |
+| ASSOC producer-payload binding / PROV-04 (R9-P11) | REOPENED at Round-8 head → RESOLVED by Round-9 |
+| REG-05/FMX feature-matrix + null-family digests (R9-P08, P12) | REOPENED at Round-8 head → RESOLVED by Round-9 |
+| DOC family — register/ledger/CI provenance (R9-D01) | REOPENED at Round-8 head → RESOLVED by Round-9 |
+
+Closure evidence — validator functions, bound artifact fields, and
+the test file carrying each:
+
+| Finding | Closure evidence |
+|---|---|
+| R9-P01 truthy fixture flags | `producer_validation.fixture_flag` — strict `isinstance(..., bool)`; `{"fixture": "true"/1/"yes"}` is SCHEMA_MALFORMED, never a synthetic bypass; tested at all four boundaries (`fixture-*` cases). |
+| R9-P02 fabricated source evidence | `_source_manifest_problems(..., verify_source_bytes=True)` → `_hashing.verify_source_evidence` runs at every boundary (freeze, adapter, audit, association binding); nonexistent roots, absent `source_files`, missing files, and digest-mismatched real bytes all reject (`nonexistent-root`, `missing-source_files`, `files-absent-on-disk`, `digest-mismatch-real-files`). |
+| R9-P03 inside-root symlink | `verify_source_evidence` calls `is_symlink()` on the declared path BEFORE resolution — an inside-root symlink whose declared sha256 is *correct for the target's bytes* still rejects (`inside-root-symlink`). |
+| R9-P04 run-manifest forgery | `_run_manifest_problems` — `record_type == "RunManifestV0"` enforced, `deserialize_record` exact field set (extra/missing fields reject), `canonical_json(rm) == canonical_json(rec.to_dict())`, `input_digests`/`output_digests` bind `input_bytes_digest`/`assignment_digest`, `environment_digest` and `seed == seeds_declared[0]` (7 mutation cases). |
+| R9-P05 fit-partition train rows | `_row_universe_problems` — `fit_partition.train_row_keys_digest` recomputes over the assignment rows whose `unit_basin_map` group is in `train_groups`; honest rehash of `fit_partition_digest` + envelope does not rescue a forged digest (`train_row_keys-digest-forged`). |
+| R9-P06 forecast payload rows | `_row_universe_problems` — `forecast_feature_payload.row_keys_digest` must equal the assignment row-universe digest and `row_count` the assignment row count (`ffp-row_keys-forged`, `ffp-row_count-off-by-one` on a FORECAST_REGIME payload). |
+| R9-P07 config cross-binding | `_config_cross_binding_problems` — `config.mode`/`config.seeds`/`config.source_manifest`/`heldout_groups`/`train_groups`/`k_candidates`/`missingness_policy`/`data_class` must agree with the artifact's flat declared fields (`config-mode-flip`, `config-seeds-changed`, `config-source_manifest-differs`). |
+| R9-P08 semantic feature matrix | `_input_values_problems` — `feature_matrix_digest` (artifact, `fit_partition`, forecast payload) recomputes over `input_values` under the 6-decimal `semantic_feature_matrix_digest` normalization; a consistently-forged digest still rejects (`feature_matrix_digest-forged`). |
+| R9-P09 degenerate covariances | `_model_problems` — symmetric + finite + non-positive-diagonal + strict positive-definiteness (`eigvalsh` min > 1e-10) in the SHARED floor, not only the auditor (`negative-diagonal`, `zero-covariance`, `rank-deficient`). |
+| R9-P10 unit→basin integrity | `_unit_basin_map_problems` — non-empty string pairs, unique units covering EXACTLY the assignment sidecar's units, groups ⊆ fit ∪ heldout, recomputed `unit_basin_map_digest` over `canonical_unit_basin_pairs` (4 cases incl. `unit-none`, coverage, duplication, stale digest). |
+| R9-P11 association map binding | `RegimeAssignmentArtifact` carries `unit_basin_map` from the payload; `run_association` requires the caller's `unit_basins` to equal the artifact's bound map and the producer payload's map to equal the artifact's (`TestP11UnitBasinAssociationBinding`). |
+| R9-P12 seed/gate/null/status | `_seed_stability_problems` (coverage keys = `seeds_declared`, declared-state vocabulary, converged-under-descriptive), `_gate_problems` (exact `REQUIRED_REGIME_GATE_NAMES` universe, boolean-only, status-consistent, `stability_report_digest` recompute), `_null_problems` (declared `shuffled`/`season_matched` families, `family_digest`/`null_model_digest` recompute) — 5 cases. |
+| R9-D01 docs/CI surface | This census + round-9 snapshot blocks in `P0_BASELINE_LEDGER.md`/`README.md`; `tests/test_r9_*.py` added to push/pull-request triggers and the `test_r[6789]_*.py` nullglob lane in `.github/workflows/research-v0.yml`. |
+
+### Round-9 independent adversary pass (V-residuals)
+
+After the 33-case matrix landed, an independent read-only adversary
+re-traced every boundary and reported twelve matrix-missed residuals
+(`R9-V1..V12`). All are **closed** in the same round; regression
+coverage lives in
+`tests/test_r9_promotion.py::TestR9AdversarialResiduals` (30 tests):
+
+| Residual | Closure |
+|---|---|
+| V1 — `run_association` verified-binding over payloads the adapter would reject | `_producer_payload_binding_problems` now enforces adapter admissibility on the bound payload: `status == DESCRIPTIVE_REGIME_ONLY`, `associable is True`, `data_class == "REANALYSIS"` — a `dataclasses.replace`'d artifact plus a self-consistent `CANDIDATE_ONLY`/`UNSTABLE`/non-associable payload cannot earn the `verified_producer_payload` claim. |
+| V2 — `fit_groups ∩ heldout_groups_declared` straddle | Disjointness enforced in `_unit_basin_map_problems` (flat fields) and `_fit_partition_problems` (typed record). |
+| V3 — duplicate `(unit, date)` assignment rows | `_row_universe_problems` requires one regime per unit-day. |
+| V4 — `input_bytes_digest` self-consistent only | `_input_values_problems` decodes `input_values` to the float64 byte domain and recomputes the contiguous-byte sha256 at every boundary. |
+| V5 — flat forecast fields under `RETROSPECTIVE_REGIME` | `_forecast_payload_problems` bans non-empty `forecast_vintage_digests`/`forecast_feature_set` under retrospective mode. |
+| V6 — presence-only type floors | `_scalar_floor_problems`: positive non-bool-int `k`, non-empty int `seeds`, distinct int `seeds_declared`, non-negative numeric `occupancy`, non-empty unique string `feature_cols`, `fitted_on == "TRAIN_ONLY"`, boolean `associable`/`terminal`, declared `status` vocabulary, numeric `modal_k_frequency`. |
+| V7 — assignment dates/units/labels unbounded | `_row_universe_problems` requires calendar-real ISO dates, non-empty unit ids, `regime_id ∈ [0, k)`. |
+| V8 — `environment_digest`/`run_manifest_digest` not required | Both added to `PRODUCER_REQUIRED_FIELDS`. |
+| V9 — model width unbound to `feature_cols` | `_model_problems` requires the fitted dimension to equal `len(feature_cols)`. |
+| V10 — `missingness_applied` unvalidated | `_missingness_problems`: non-empty policy, non-negative int counts, `fitted + dropped == total`, `fitted == n_train_rows`. |
+| V11 — secondary binding surfaces | `per_seed_best_k` values ⊆ `config.k_candidates`; `fit_partition`/`forecast_feature_payload` reject undeclared fields; `fit_partition.cutoff_iso` calendar-valid; `forecast_feature_set ⊆ feature_cols`; `forecast_vintage_digests` sha256-shaped; null `n_succeeded + n_failed ≤ n_replicates` (a skipped family legitimately reports zero executed — the bound is `≤`, not `=`). |
+| V12 — unhashable `input_values` element raised `TypeError` | `_input_values_problems` type-guards the nonfinite-token membership test — malformed elements emit `SCHEMA_MALFORMED`, never an uncaught exception. |
+
+The mutation matrix provides failure evidence (the rejection string
+must name the finding's category — a stale-envelope rejection alone
+is not counted) and a no-false-negative note per case; the unmutated
+canonical payload is verified to pass freeze, adapter, audit, and the
+association producer-payload binding first (positive controls), so a
+mutation that still passes is reported as an unfixed finding, not
+absorbed.
+
+Still external/data-gated — never marked resolved, unchanged by this
+census: **S01–S04** source qualification, **E01–E03** event package,
+**M01** FMX on real data, **R01/R02** real regimes, **A01**
+association, **F01–F03** forecast, **G01/G02** human approvals,
+**O01** operations.  Postures unchanged:
+`DESIGN_DRAFT_COMPLETE`; P3 design-only; `NO_QUALIFYING_PILOT_SOURCE`;
+`WARNING_PATH_AUTHORIZED: NO`.

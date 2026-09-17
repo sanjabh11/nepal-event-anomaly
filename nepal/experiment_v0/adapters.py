@@ -34,7 +34,7 @@ from nepal.research_v0.records import (
 from nepal.research_v0._hashing import sha256_bytes, sha256_canonical
 from nepal.research_v0.gates import REQUIRED_REGIME_GATE_NAMES
 from nepal.research_v0.producer_validation import (
-    validate_producer_payload)
+    canonical_unit_basin_pairs, validate_producer_payload)
 
 from .association import RegimeAssignmentArtifact
 from .vintages import VintageRequest, build_vintage
@@ -675,6 +675,19 @@ def regime_assignment_from_artifact(
     seeds = p.get("seeds", ())
     if not isinstance(seeds, (list, tuple)):
         raise ValueError("regime artifact seeds: expected a sequence")
+    # R9-P11 defense-in-depth: the carried unit_basin_map_digest must
+    # recompute over the payload's own canonical pairs before it is
+    # stamped onto the artifact.  The shared floor recomputes this
+    # too — the adapter copy keeps the adapter's own binding exact
+    # even if the floor's ordering ever changes.
+    _ubm_pairs = canonical_unit_basin_pairs(p.get("unit_basin_map"))
+    _ubm_declared = p.get("unit_basin_map_digest")
+    if _ubm_declared is not None and _ubm_declared != \
+            sha256_canonical(_ubm_pairs):
+        raise ValueError(
+            "unit_basin_map_digest does not recompute over the "
+            "payload's canonical unit->basin pairs — the bound "
+            "partition was altered post-production")
     record = RegimeAssignmentArtifact.from_dict({
         "artifact_id": artifact_id,
         "regime_digest": p["freeze_digest"],
@@ -692,6 +705,13 @@ def regime_assignment_from_artifact(
         "label_blinding": p["label_blinding"],
         "seeds": list(seeds),
         "mode": p["mode"],
+        # R9-P11: the producer's bound unit->basin partition rides
+        # the artifact — run_association byte-compares the caller's
+        # unit_basins against it, so a caller remap cannot quietly
+        # re-group units the producer assigned elsewhere.
+        "unit_basin_map": canonical_unit_basin_pairs(
+            p.get("unit_basin_map")),
+        "unit_basin_map_digest": p.get("unit_basin_map_digest", ""),
     })
     problems = record.problems()
     if problems:

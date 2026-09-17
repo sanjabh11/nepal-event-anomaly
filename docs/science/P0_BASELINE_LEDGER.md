@@ -41,7 +41,45 @@ The empty Git shell is never the implementation root.
   (bound head is the manifest's own field — see
   `ARTIFACT_MANIFEST_V0.json` for the current value).
 
-## Last fully-verified baseline (round-8 hardening)
+## Last fully-verified baseline (round-9 hardening)
+
+- HEAD: Round-9 hardening content commit (bound via `content_head`
+  in `ARTIFACT_MANIFEST_V0.json`; the manifest rebind lands as its
+  direct child, same relationship as previous binds).
+- Full suite under pinned `.venv`: **2251 passed,
+  5 skipped (rasterio), 0 failed** — recount pending the final
+  coordinated commit.
+- Manifest files governed: **82**.
+- New surface: `nepal/research_v0/producer_validation.py` hardened
+  into a complete producer-validation boundary —
+  `validate_producer_payload(payload, *, verify_source_bytes=True)`
+  now runs byte-verified source-evidence binding at every boundary
+  (freeze, adapter, audit, association producer-payload binding);
+  strict `RunManifestV0` deserialization; recomputed row universes
+  and the 6-decimal semantic feature-matrix digest over
+  `input_values`; config↔artifact cross-binding; a strict
+  positive-definite covariance floor; exact seed/gate/null/status
+  semantics; and `unit_basin_map` + `unit_basin_map_digest` bound
+  from the payload through the adapted artifact into
+  `run_association`'s `unit_basins` equality check.
+  An independent adversary pass then closed twelve residual
+  holes the matrix missed (`R9-V1..V12`: association-binding
+  admissibility, fit∩heldout disjointness, row uniqueness,
+  calendar/label bounds, material-bound `input_bytes_digest`,
+  scalar type floors, forecast-field mode bans, required bound
+  digests, model/feature-width binding, missingness accounting,
+  typed-section field exactness, null-replicate bound, and a
+  crash-not-finding decode path).
+  `tests/test_r9_promotion.py` carries the 33-mutation ×
+  4-boundary promotion-closure matrix plus the 30-test
+  `TestR9AdversarialResiduals` regression class.
+- Prior baseline retained as history: round-8 hardening,
+  **2073 passed, 5 skipped (rasterio), 0 failed, 57 warnings** —
+  retained verbatim as the prior verified baseline below; round-7
+  content `cc2218b`, 77 manifest files, 2015/5/0/57, 562 focused;
+  round-6 content `aceedff`, 76 files, 1993/5/0/57, 540 focused.
+
+## Prior verified baseline (round-8 hardening)
 
 - HEAD: Round-8 hardening content commit (bound via `content_head`
   in `ARTIFACT_MANIFEST_V0.json`; the manifest rebind lands as its

@@ -7,6 +7,9 @@ import pandas as pd
 import pytest
 
 from nepal.research_v0._hashing import sha256_canonical
+from nepal.research_v0.producer_validation import (
+    canonical_unit_basin_pairs, row_key,
+    semantic_feature_matrix_digest, sorted_row_key_digest)
 from nepal.science_v0.regimes import (
     RegimeRunConfig, _null_envelope, freeze_regime_artifact,
     run_regimes)
@@ -187,23 +190,77 @@ class TestGateUniverseShared:
 
     def test_freeze_rejects_nonuniverse_gates(self):
         """A hand-assembled artifact reaching freeze with an
-        off-universe gate map fails closed."""
+        off-universe gate map fails closed — every other bound
+        digest recomputes honestly so only the gate surface is
+        exercised."""
         assignments = [["u1", "2020-01-01", 0],
                        ["u1", "2020-01-02", 1]]
+        assignment_digest = sha256_canonical(assignments)
         vals = [[1.0, 2.0], [3.0, 4.0]]
         import numpy as _np
         raw = _np.asarray(vals, dtype=_np.float64)
+        import hashlib
+        input_bytes_digest = hashlib.sha256(
+            raw.tobytes()).hexdigest()
+        fm_digest = semantic_feature_matrix_digest(vals)
         gates = {g: True for g in REQUIRED_REGIME_GATE_NAMES}
         gates["forged_extra"] = True
         seeds = [1, 2, 3]
+        ubm = [["u1", "g1"]]
+        train_keys = [row_key(u, d) for u, d, _ in assignments]
+        row_universe_digest = sorted_row_key_digest(train_keys)
+        k1_bic = [410.5, 420.25, 430.75]
+        null_fams = {}
+        for fam in ("shuffled", "season_matched"):
+            rec = {"statistic": "silhouette", "observed": 0.6,
+                   "n_replicates": 2, "n_succeeded": 2,
+                   "n_failed": 0, "p_value": 0.02, "alpha": 0.05,
+                   "status": "PASS", "reason": None,
+                   "selection": "bic_sweep_declared_candidates",
+                   "null_k_distribution": {"1": 2},
+                   "null_stat_min": 0.05, "null_stat_max": 0.15,
+                   "replicates": [
+                       {"i": i,
+                        "gen_seed": seeds[0] + 1000003 * (i + 1),
+                        "fit_seed": seeds[i % len(seeds)], "k": 1,
+                        "stat": s, "ok": True}
+                       for i, s in enumerate((0.05, 0.15))]}
+            rec["family_digest"] = sha256_canonical({
+                "family": fam, "seed_cycle": list(seeds),
+                "n_replicates": rec["n_replicates"],
+                "statistic": rec["statistic"],
+                "p_value": rec["p_value"],
+                "observed": rec.get("observed"),
+                "alpha": rec.get("alpha"),
+                "n_succeeded": rec.get("n_succeeded"),
+                "n_failed": rec.get("n_failed"),
+                "status": rec.get("status"),
+                "reason": rec.get("reason"),
+                "selection": rec.get("selection"),
+                "null_stat_min": rec["null_stat_min"],
+                "null_stat_max": rec["null_stat_max"],
+                "null_k_distribution":
+                    rec["null_k_distribution"],
+                "replicates": rec["replicates"]})
+            null_fams[fam] = rec
         fit_partition = {
             "record_type": "fit_partition/v0",
             "train_groups": ["g1"], "heldout_groups": [],
-            "n_train_rows": 1, "n_rows": 2,
-            "train_row_keys_digest": "f" * 64,
+            "n_train_rows": len(train_keys), "n_rows": 2,
+            "train_row_keys_digest": sorted_row_key_digest(
+                train_keys),
             "cutoff_iso": "2020-01-01",
-            "feature_matrix_digest": "e" * 64,
+            "feature_matrix_digest": fm_digest,
             "feature_cols": ["f1", "f2"]}
+        run_manifest = {
+            "record_type": "RunManifestV0",
+            "run_id": "r5-test-001", "worker_id": "test",
+            "created_at": "2020-01-02T00:00:00Z",
+            "environment_digest": "b" * 64, "seed": seeds[0],
+            "input_digests": [input_bytes_digest],
+            "output_digests": [assignment_digest],
+            "checkpoint_policy": "atomic_publish_or_quarantine",
+            "status": "COMPLETED"}
         art = {
             "status": "DESCRIPTIVE_REGIME_ONLY",
             "mode": "RETROSPECTIVE_REGIME",
@@ -223,40 +280,52 @@ class TestGateUniverseShared:
                       "means": [[1.5, 3.0]],
                       "covariances": [[[0.25, 0.0], [0.0, 0.25]]]},
             "feature_cols": ["f1", "f2"],
-            "feature_matrix_digest": "e" * 64,
+            "feature_matrix_digest": fm_digest,
             "assignments": assignments,
             "config": {"seeds": [1, 2, 3], "cadence": "1D",
                        "gap_policy": "calendar", "bootstrap_block_len": 7,
                        "k_candidates": [1, 2, 3],
                        "missingness_policy": "listwise",
                        "effort_split": "median",
-                       "mode": "RETROSPECTIVE_REGIME"},
+                       "mode": "RETROSPECTIVE_REGIME",
+                       "train_groups": ["g1"],
+                       "heldout_groups": [],
+                       "forecast_feature_set": [],
+                       "forecast_vintage_digests": [],
+                       "source_manifest": {"fixture": True}},
             "input_values": vals,
             "input_schema": {"feature_cols": ["f1", "f2"],
                              "n_rows": 2,
                              "dtypes": {"f1": "float64",
                                         "f2": "float64"},
                              "shape": [2, 2]},
-            "preprocessing": {"row_keys_digest": "a" * 64},
+            "preprocessing": {
+                "row_keys_digest": row_universe_digest},
             "stability": {"required_gates": gates},
-            "nulls": {"shuffled_js": 0.31},
+            "nulls": {"statistic": "silhouette", "observed": 0.6,
+                      "alpha": 0.05, "n_replicates": 2,
+                      "season_era_stratified": False,
+                      "k1_bic": k1_bic,
+                      "shuffled": null_fams["shuffled"],
+                      "season_matched":
+                          null_fams["season_matched"]},
             "fit_groups": ["g1"],
             "heldout_groups_declared": [],
             "fit_partition": fit_partition,
-            "n_train_rows": 1,
+            "n_train_rows": len(train_keys),
             "n_rows": 2,
             "train_mask_digest": "0" * 64,
             "k_selection_digest": "1" * 64,
-            "null_model_digest": "2" * 64,
-            "unit_basin_map": [["u1", "g1"]],
-            "run_manifest": {
-                "run_id": "r5-test-001", "worker_id": "test",
-                "created_at": "2020-01-02T00:00:00Z",
-                "environment_digest": "b" * 64, "seed": 1,
-                "input_digests": ["c" * 64],
-                "output_digests": ["d" * 64],
-                "checkpoint_policy": "atomic_publish_or_quarantine",
-                "status": "COMPLETED"},
+            "null_model_digest": sha256_canonical({
+                "k1_bic": k1_bic,
+                "null_families": {
+                    fam: rec["family_digest"]
+                    for fam, rec in null_fams.items()}}),
+            "unit_basin_map": ubm,
+            "unit_basin_map_digest": sha256_canonical(
+                canonical_unit_basin_pairs(ubm)),
+            "run_manifest": run_manifest,
+            "environment_digest": "b" * 64,
             "source_manifest": {"fixture": True},
             "missingness_applied": {"policy": "listwise",
                                     "train_rows_total": 2,
@@ -266,12 +335,9 @@ class TestGateUniverseShared:
             "associable": True,
             "disclaimer": "synthetic r5 artifact",
         }
-        art["assignment_digest"] = sha256_canonical(assignments)
+        art["assignment_digest"] = assignment_digest
         art["config_digest"] = sha256_canonical(art["config"])
-        from nepal.research_v0._hashing import sha256_file  # noqa
-        import hashlib
-        art["input_bytes_digest"] = hashlib.sha256(
-            raw.tobytes()).hexdigest()
+        art["input_bytes_digest"] = input_bytes_digest
         art["preprocessing_digest"] = sha256_canonical(
             art["preprocessing"])
         art["run_manifest_digest"] = sha256_canonical(

@@ -1020,20 +1020,19 @@ def audit_producer_payload(payload: Any) -> list[Finding]:
     so a fabricated-but-internally-consistent payload still fails
     when protocol evidence is absent."""
     findings: list[Finding] = []
-    if not isinstance(payload, Mapping):
-        return [Finding("PRODUCER_PAYLOAD_MALFORMED",
-                        "artifact_payload",
-                        "producer payload is not a mapping")]
-    # R8-C01: the shared producer provenance floor — the same
-    # validator ``freeze_regime_artifact`` and the association
-    # adapter run.  Additive to the richer checks below; each
-    # problem maps to one Finding by tag.
+    # R8-C01 / R9-P12: the shared producer provenance floor — the
+    # same validator ``freeze_regime_artifact`` and the association
+    # adapter run — on EVERY path, including non-mapping payloads.
+    # Additive to the richer checks below; each problem maps to one
+    # Finding by tag, and nothing downstream may loosen it.
     for _prob in validate_producer_payload(payload):
         _tag, _, _detail = _prob.partition(": ")
         findings.append(Finding(
             _SHARED_PROBLEM_CODES.get(_tag,
                                       "PRODUCER_SCHEMA_MALFORMED"),
             "artifact_payload", _detail or _prob))
+    if not isinstance(payload, Mapping):
+        return findings
     for field in _PRODUCER_REQUIRED_FIELDS:
         if field not in payload:
             findings.append(Finding(

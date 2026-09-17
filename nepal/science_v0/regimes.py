@@ -72,6 +72,25 @@ Round-6 hardening implemented here:
   resolve inside ``evidence_root`` and hash to its declared digest,
   and the verified multiset must equal ``source_digests``.
 
+Round-9 hardening implemented here:
+
+* R9-P01 — the source-manifest ``fixture`` marker is a strict
+  boolean via the shared ``fixture_flag`` floor; a truthy non-bool
+  (e.g. the string ``"true"``) is RUN_ERROR, never a synthetic
+  bypass.
+* R9-P02 — ``freeze_regime_artifact`` re-verifies non-fixture source
+  evidence defense-in-depth after the shared validator.
+* R9-P04 — the run manifest is deserialized through the typed
+  ``records.deserialize_record`` boundary (exact ``RunManifestV0``
+  record_type + field-set) and bound to input_bytes_digest,
+  assignment_digest, environment_digest, and seeds_declared[0].
+* R9 — feature-matrix and row-key digests are emitted through the
+  shared canonical helpers (``semantic_feature_matrix_digest``,
+  ``row_key``/``sorted_row_key_digest``), ``unit_basin_map_digest``
+  is bound inside the envelope, and the serialized config's
+  forecast fields/source_manifest are normalized to the artifact
+  copies.
+
 This module never reads event labels, never emits forecast or
 precursor language, and never tunes on locked test basins.
 """
@@ -100,8 +119,11 @@ from nepal.research_v0._hashing import (
 from nepal.research_v0.gates import REQUIRED_REGIME_GATE_NAMES
 from nepal.research_v0.policy import ForecastDataClass, RegimeMode
 from nepal.research_v0.producer_validation import (
+    canonical_unit_basin_pairs, fixture_flag, row_key,
+    semantic_feature_matrix_digest, sorted_row_key_digest,
     validate_producer_payload)
-from nepal.research_v0.records import RunManifestV0
+from nepal.research_v0.records import (
+    RunManifestV0, deserialize_record)
 
 STATUSES = frozenset({
     "DESCRIPTIVE_REGIME_ONLY",
@@ -810,7 +832,16 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
                           "a bound {source_id, source_digests, units, "
                           "feature_allowlist, lineage} record for "
                           "real inputs"}
-    if not sm.get("fixture"):
+    # R9-P01: the fixture marker is a strict boolean via the shared
+    # fixture_flag() floor — a truthy non-bool (e.g. the string
+    # "true") is malformed, never a synthetic bypass.
+    _is_fixture, _fixture_problems = fixture_flag(sm)
+    if _fixture_problems:
+        return {"status": "RUN_ERROR",
+                "reason": "source_manifest fixture marker invalid: "
+                          f"{_fixture_problems} — declare a boolean "
+                          "{'fixture': true|false}"}
+    if not _is_fixture:
         missing_sm = [k for k in ("source_id", "source_digests",
                                   "units", "feature_allowlist",
                                   "lineage", "evidence_root")
@@ -1948,8 +1979,18 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
         "python": sys.version.split()[0],
         "numpy": np.__version__})
     _max_date = pd.to_datetime(df[config.date_col]).max()
+    # R9-P07: serialize the config once — the artifact's config copy,
+    # config_digest, and the run_manifest run_id all bind this exact
+    # dict.  Forecast fields are normalized (sorted strings) so the
+    # serialized config matches the artifact's top-level copies
+    # field-for-field regardless of declaration order.
+    _config_dict = dataclasses.asdict(config)
+    _config_dict["forecast_vintage_digests"] = sorted(
+        str(d) for d in config.forecast_vintage_digests)
+    _config_dict["forecast_feature_set"] = sorted(
+        str(c) for c in config.forecast_feature_set)
     _run_manifest = RunManifestV0(
-        run_id=f"regimes-{_digest(dataclasses.asdict(config))[:16]}"
+        run_id=f"regimes-{_digest(_config_dict)[:16]}"
                f"-{_sha_bytes(input_bytes)[:16]}",
         worker_id="science_v0.regimes.run_regimes",
         created_at=_max_date.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -1970,9 +2011,10 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
     # the train row-key digest, the fit-window cutoff, the feature
     # matrix) so a downstream boundary cross-checks a single bound
     # structure instead of trusting scattered flat fields.
-    _fm_digest = _digest(
-        [[round(v, 6) if isinstance(v, float) else v
-          for v in row] for row in input_values])
+    # R9 single-source: the semantic feature-matrix digest is the
+    # shared canonical 6-decimal normalization — emission and the
+    # shared validator run ONE routine.
+    _fm_digest = semantic_feature_matrix_digest(input_values)
     _train_dates = pd.to_datetime(
         df.loc[train_mask, config.date_col])
     _fit_partition = {
@@ -1981,14 +2023,22 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
         "heldout_groups": sorted(heldout_groups),
         "n_train_rows": int(mask.sum()),
         "n_rows": int(len(df)),
-        "train_row_keys_digest": _digest(sorted(
-            f"{u}|{d}" for u, d in zip(
+        "train_row_keys_digest": sorted_row_key_digest(
+            [row_key(u, d) for u, d in zip(
                 df.loc[train_mask, config.unit_col].astype(str),
-                df.loc[train_mask, config.date_col].astype(str)))),
+                df.loc[train_mask, config.date_col].astype(str))]),
         "cutoff_iso": (_train_dates.max().strftime("%Y-%m-%d")
                        if len(_train_dates) else ""),
         "feature_matrix_digest": _fm_digest,
         "feature_cols": list(feature_cols)}
+
+    # C03: the unit→basin/group map — hoisted so the canonical pair
+    # digest binds the SAME emitted value inside the envelope (the
+    # shared validator requires unit_basin_map_digest).
+    _unit_basin_map = sorted(
+        (str(u), str(g)) for u, g in
+        df[[config.unit_col, config.group_col]].drop_duplicates()
+        .itertuples(index=False))
 
     artifact = {
         "mode": config.mode,
@@ -2025,12 +2075,12 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
             "n_rows": int(len(df)),
             "dtypes": {c: str(df[c].dtype) for c in feature_cols},
             "shape": [int(len(df)), int(len(feature_cols))]},
-        "config": dataclasses.asdict(config),
-        "config_digest": _digest(dataclasses.asdict(config)),
-        "source_manifest": (dict(config.source_manifest)
-                            if isinstance(config.source_manifest,
-                                          Mapping)
-                            else config.source_manifest),
+        "config": _config_dict,
+        "config_digest": _digest(_config_dict),
+        # R9-P07: the artifact's source_manifest IS the serialized
+        # config's copy — config.source_manifest and
+        # artifact.source_manifest can never diverge.
+        "source_manifest": _config_dict["source_manifest"],
         "environment_digest": _env_digest,
         # C15: a real typed RunManifestV0 serialized into the
         # artifact — its digest recomputes over the full record.
@@ -2041,10 +2091,11 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
         # C03: the unit→basin/group map is bound into the artifact —
         # downstream association cannot remap a unit to a different
         # basin than the producer declared.
-        "unit_basin_map": sorted(
-            (str(u), str(g)) for u, g in
-            df[[config.unit_col, config.group_col]].drop_duplicates()
-            .itertuples(index=False)),
+        "unit_basin_map": _unit_basin_map,
+        # R9: the canonical unit→basin pair digest — emitted BEFORE
+        # regime_artifact_digest so it is inside the bound envelope.
+        "unit_basin_map_digest": sha256_canonical(
+            canonical_unit_basin_pairs(_unit_basin_map)),
         "n_train_rows": int(mask.sum()),
         "n_rows": int(len(df)),
         "train_mask_digest": _digest(mask.tolist()),
@@ -2071,10 +2122,10 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
             "scaler_mean": prep._scaler.mean_.tolist(),
             "scaler_var": prep._scaler.var_.tolist(),
             "feature_order": list(feature_cols),
-            "row_keys_digest": _digest(sorted(
-                f"{u}|{d}" for u, d in zip(
+            "row_keys_digest": sorted_row_key_digest(
+                [row_key(u, d) for u, d in zip(
                     df[config.unit_col].astype(str),
-                    df[config.date_col].astype(str)))),
+                    df[config.date_col].astype(str))]),
             "train_mask_membership_digest": _digest(
                 sorted(str(i) for i in
                        df.index[train_mask][
@@ -2246,6 +2297,23 @@ def freeze_regime_artifact(artifact: dict) -> dict:
     if _shared:
         raise ValueError("cannot freeze: shared producer validation "
                          "failed: " + "; ".join(_shared))
+    # R9-P02: defense-in-depth — the shared validator byte-verifies
+    # non-fixture source manifests, but freeze re-verifies locally so
+    # a hand-assembled non-fixture artifact can never freeze on
+    # unverified bytes even if the shared floor changes.
+    _sm = artifact.get("source_manifest")
+    if isinstance(_sm, Mapping):
+        _is_fixture, _fixture_problems = fixture_flag(_sm)
+        if _fixture_problems:
+            raise ValueError(
+                "cannot freeze: source_manifest fixture marker "
+                "invalid: " + "; ".join(_fixture_problems))
+        if not _is_fixture:
+            _ev_problems = verify_source_evidence(_sm)
+            if _ev_problems:
+                raise ValueError(
+                    "cannot freeze: source_manifest evidence "
+                    "verification failed: " + "; ".join(_ev_problems))
     status = artifact.get("status")
     if status == "RUN_ERROR":
         raise ValueError("cannot freeze a RUN_ERROR artifact")
@@ -2326,14 +2394,41 @@ def freeze_regime_artifact(artifact: dict) -> dict:
     if not isinstance(rm, dict):
         raise ValueError("cannot freeze: run_manifest missing — the "
                          "typed run provenance record is required")
-    _rm_rec = RunManifestV0(
-        **{k: (tuple(v) if isinstance(v, list) and
-               k in ("input_digests", "output_digests") else v)
-           for k, v in rm.items() if k != "record_type"})
+    # R9-P04: exact typed deserialization — a forged record_type tag
+    # or an extra/missing field rejects before any binding check.
+    try:
+        _rm_rec = deserialize_record(rm)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"cannot freeze: run_manifest is not a "
+                         f"well-formed typed record: {exc}") from None
+    if type(_rm_rec) is not RunManifestV0:
+        raise ValueError("cannot freeze: run_manifest record_type "
+                         "must name RunManifestV0 exactly")
     _rm_problems = _rm_rec.problems()
     if _rm_problems:
         raise ValueError(f"cannot freeze: run_manifest invalid: "
                          f"{_rm_problems}")
+    # Cross-field binding: the manifest must name THIS artifact's
+    # input bytes, assignment output, environment, and declared seed.
+    if artifact.get("input_bytes_digest") not in \
+            tuple(_rm_rec.input_digests):
+        raise ValueError("cannot freeze: run_manifest.input_digests "
+                         "does not bind the artifact's "
+                         "input_bytes_digest")
+    if artifact.get("assignment_digest") not in \
+            tuple(_rm_rec.output_digests):
+        raise ValueError("cannot freeze: run_manifest.output_digests "
+                         "does not bind the artifact's "
+                         "assignment_digest")
+    if _rm_rec.environment_digest != \
+            artifact.get("environment_digest"):
+        raise ValueError("cannot freeze: run_manifest."
+                         "environment_digest does not match the "
+                         "artifact's environment_digest")
+    _decl_seeds = artifact.get("seeds_declared") or ()
+    if _rm_rec.seed != (_decl_seeds[0] if _decl_seeds else None):
+        raise ValueError("cannot freeze: run_manifest.seed does not "
+                         "match seeds_declared[0]")
     if artifact.get("run_manifest_digest") != _digest(rm):
         raise ValueError("run_manifest_digest mismatch — the typed "
                          "run manifest was altered after production")

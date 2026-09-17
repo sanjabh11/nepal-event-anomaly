@@ -108,17 +108,25 @@ def _feature_frame():
                                   + pd.Timedelta(days=day)
                                   ).strftime("%Y-%m-%d"),
                          "f1": f1, "f2": f2,
-                         "basin_group": _GROUP[unit],
+                         # R9-P11: the producer's group axis IS the
+                         # basin axis — the bound unit->basin map
+                         # must equal the association's caller map
+                         # byte-for-byte, so groups are basin names
+                         # (units are already basin-named here).
+                         "basin_group": unit,
                          "season": "JJA", "era": "e1"})
     return pd.DataFrame(rows)
 
 
 def _regime_artifact(df):
-    train_mask = df["basin_group"].isin(
-        ["grp_east", "grp_central", "grp_north"]).to_numpy()
+    # Fit surface = every basin outside the locked test regions —
+    # the same split _SPLIT declares over the grp_* holdout groups.
+    _fit = ("koshi", "bagmati", "gandaki", "seti")
+    _held = ("karnali", "mahakali")
+    train_mask = df["basin_group"].isin(_fit).to_numpy()
     cfg = RegimeRunConfig(
-        train_groups=("grp_east", "grp_central", "grp_north"),
-        heldout_groups=("grp_west", "grp_farwest"),
+        train_groups=_fit,
+        heldout_groups=_held,
         source_manifest={"fixture": True},
         bootstrap_block_len=12,
         effort_waiver_reason="synthetic e2e frame carries no "

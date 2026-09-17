@@ -10,10 +10,12 @@ from __future__ import annotations
 
 import dataclasses
 import hashlib
+import math
 from datetime import date as _date
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from nepal.experiment_v0 import association as _assoc
@@ -25,6 +27,9 @@ from nepal.experiment_v0.association import (
 from nepal.research_v0._hashing import canonical_json, sha256_canonical
 from nepal.research_v0.gates import (REQUIRED_REGIME_GATE_NAMES,
                                      scan_claims_text)
+from nepal.research_v0.producer_validation import (
+    canonical_unit_basin_pairs, row_key,
+    semantic_feature_matrix_digest, sorted_row_key_digest)
 from nepal.research_v0.records import (NEUTRAL_RESEARCH_STATUSES,
                                      ControlWindowV0, EventLabelV0,
                                      HoldoutPlanV0,
@@ -47,7 +52,38 @@ REGION_BASINS = {
 }
 _BASIN_REGION = {"koshi": "koshi_eval", "gandaki": "gandaki_eval",
                  "karnali": "karnali_eval"}
-PLANTED_REGIME = "R_PLANT"
+# R9: the producer's raw regime ids are ints (GMM labels) — the
+# serialized payload stores ints and the artifact/report surface
+# sees their str() forms (the adapter's single permitted
+# int -> str conversion).  Fixture-side labels keep readable names
+# for row construction and map through _regime_index at the
+# payload/artifact boundary.
+_L_PLANT = "R_PLANT"
+_L_RARE = "R_RARE"
+_REGIME_IDS = {"R0": 0, "R1": 1, "R2": 2, _L_PLANT: 3, _L_RARE: 4}
+#: Artifact/report-side id of the planted regime — enrichment,
+#: novelty, and null rows are keyed by the str(int) regime id.
+PLANTED_REGIME = str(_REGIME_IDS[_L_PLANT])
+RARE_REGIME = str(_REGIME_IDS[_L_RARE])
+#: Producer fit/held-out group partition for the fixture payloads
+#: (mirrors the b4 fixture's basin split).
+FIT_GROUPS = ("gandaki", "koshi")
+HELDOUT_GROUPS = ("karnali",)
+
+
+def _regime_index(labels) -> dict:
+    """Deterministic label -> int id map for the serialized payload:
+    the named fixture regimes keep their fixed ids; ad-hoc labels
+    (e.g. basin-season composites) are appended in sorted order."""
+    idx = {lab: _REGIME_IDS[lab] for lab in labels
+           if lab in _REGIME_IDS}
+    nxt = max(_REGIME_IDS.values()) + 1
+    for lab in sorted(set(labels) - set(idx)):
+        idx[lab] = nxt
+        nxt += 1
+    return idx
+
+
 _BASE_DATE = _date(2020, 5, 25)
 _ASSIGN_END = _date(2020, 12, 15)
 _PLANT_BACKGROUND_MOD = 37  # sparse background share of the planted regime
@@ -264,14 +300,59 @@ def _artifact_payload_key(artifact) -> tuple:
             tuple(artifact.seeds), artifact.mode)
 
 
+def _null_family(family: str, seeds, stats) -> dict:
+    """A producer-shaped serialized null-family record whose
+    ``family_digest`` is computed exactly as ``run_regimes`` binds
+    it: sha256_canonical over the documented material dict."""
+    replicates = [
+        {"i": i, "gen_seed": int(seeds[0]) + 1000003 * (i + 1),
+         "fit_seed": int(seeds[i % len(seeds)]),
+         "k": 5, "stat": s, "ok": True,
+         "input_digest": _h(f"{family}-rep-{i}")}
+        for i, s in enumerate(stats)]
+    rec = {"statistic": "silhouette", "observed": 0.6,
+           "n_replicates": len(replicates),
+           "n_succeeded": len(replicates), "n_failed": 0,
+           "p_value": 0.02, "alpha": 0.05, "status": "PASS",
+           "reason": None,
+           "selection": "bic_sweep_declared_candidates",
+           "null_k_distribution": {"5": len(replicates)},
+           "null_stat_min": min(stats), "null_stat_max": max(stats),
+           "replicates": replicates}
+    rec["family_digest"] = sha256_canonical({
+        "family": family, "seed_cycle": list(seeds),
+        "n_replicates": rec["n_replicates"],
+        "statistic": rec["statistic"], "p_value": rec["p_value"],
+        "observed": rec.get("observed"),
+        "alpha": rec.get("alpha"),
+        "n_succeeded": rec.get("n_succeeded"),
+        "n_failed": rec.get("n_failed"),
+        "status": rec.get("status"),
+        "reason": rec.get("reason"),
+        "selection": rec.get("selection"),
+        "null_stat_min": rec["null_stat_min"],
+        "null_stat_max": rec["null_stat_max"],
+        "null_k_distribution": rec["null_k_distribution"],
+        "replicates": rec["replicates"]})
+    return rec
+
+
 def _producer_payload_for(assignments,
                           seeds=(11, 23, 42)) -> dict:
-    """A frozen producer-shaped payload binding ``assignments``
-    — carrying the FULL canonical producer schema (R8-C01: the shared
-    ``validate_producer_payload`` floor now runs at the association
-    binding boundary too, so a partial payload can no longer ride the
-    verified path) plus the digest chain ``freeze_regime_artifact`` /
-    ``regime_assignment_from_artifact`` recompute:
+    """A frozen producer-shaped payload binding ``assignments`` —
+    carrying the FULL canonical producer schema at the Round-9
+    floor: ``validate_producer_payload`` now recomputes the
+    semantic feature-matrix digest from ``input_values``, the
+    row-key digests from the assignment universe, the train row
+    keys via the bound unit->basin map, the typed run manifest,
+    and the config<->artifact cross-binding — every bound section
+    here is REAL (no placeholder digests) so an honest-forker
+    mutation is isolated to exactly the surface it tampers.
+
+    ``assignments`` rows are ``(unit, "YYYY-MM-DD", int_regime_id)``
+    — the producer's raw GMM labels; the artifact/report surface
+    sees their str() forms.  Digest chain identical to
+    ``freeze_regime_artifact`` / ``regime_assignment_from_artifact``:
     ``assignment_digest`` over the raw sidecar,
     ``regime_artifact_digest`` over the payload minus
     ``{regime_artifact_digest, freeze_digest, frozen}``, and
@@ -280,119 +361,182 @@ def _producer_payload_for(assignments,
     rows = [list(r) for r in sorted(assignments)]
     feature_cols = ["synth_f1", "synth_f2"]
     n_rows = len(rows)
-    groups_fit = sorted(set(UNIT_BASINS.values()))
-    groups_held = sorted(REGION_BASINS)
-    stability = {"seed_ari_min": 0.9, "modal_k_frequency": 1.0,
-                 "required_gates": {
-                     g: True for g in
-                     sorted(REQUIRED_REGIME_GATE_NAMES)}}
+    # k tracks the emitted label universe — ad-hoc labels (e.g.
+    # basin-season composites in the stratified-null test) append
+    # beyond the named regimes, and the R9 floor binds every
+    # regime_id to a declared component.
+    k = max(5, max((r[2] for r in rows), default=0) + 1)
+    unit_basin_map = sorted((u, b) for u, b in UNIT_BASINS.items())
+    group_of = dict(unit_basin_map)
+    train_keys = [row_key(u, d) for u, d, _ in rows
+                  if group_of[u] in FIT_GROUPS]
+    n_train_rows = len(train_keys)
+    row_universe_digest = sorted_row_key_digest(
+        [row_key(u, d) for u, d, _ in rows])
+    # Deterministic synthetic feature matrix — one encoded row per
+    # frame row, honest float64 bytes + semantic digest.
+    input_values = [
+        [round(math.sin(0.31 * i + c) + 0.001 * i * (c + 1), 6)
+         for c in range(len(feature_cols))]
+        for i in range(n_rows)]
+    input_bytes_digest = hashlib.sha256(
+        np.ascontiguousarray(
+            np.asarray(input_values, dtype=np.float64))
+        .tobytes()).hexdigest()
+    feature_matrix_digest = semantic_feature_matrix_digest(
+        input_values)
+    env_digest = _h("synth-b1-env")
+    assignment_digest = sha256_canonical(rows)
+    seeds = list(seeds)
+    stability = {
+        "seed_ari_min": 0.9, "modal_k_frequency": 1.0,
+        "required_gates": {
+            g: True for g in sorted(REQUIRED_REGIME_GATE_NAMES)}}
+    config = {"seeds": list(seeds),
+              "k_candidates": list(range(1, k + 1)),
+              "null_alpha": 0.05, "cadence": "1D",
+              "gap_policy": "calendar", "bootstrap_block_len": 7,
+              "missingness_policy": "listwise",
+              "effort_split": "median",
+              "mode": "RETROSPECTIVE_REGIME",
+              "train_groups": list(FIT_GROUPS),
+              "heldout_groups": list(HELDOUT_GROUPS),
+              "forecast_feature_set": [],
+              "forecast_vintage_digests": [],
+              "source_manifest": {"fixture": True}}
+    k1_bic = [1010.5, 1020.25, 1030.75]
+    nulls = {"statistic": "silhouette", "observed": 0.6,
+             "alpha": 0.05, "n_replicates": 4,
+             "season_era_stratified": False,
+             "k1_bic": k1_bic,
+             "shuffled": _null_family(
+                 "shuffled", seeds, [0.10, 0.20, 0.15, 0.05]),
+             "season_matched": _null_family(
+                 "season_matched", seeds,
+                 [0.30, 0.25, 0.20, 0.10])}
+    run_manifest = {
+        "record_type": "RunManifestV0",
+        "run_id": "synth-b1-run-001", "worker_id": "synthetic-fixture",
+        "created_at": "2020-12-15T00:00:00Z",
+        "environment_digest": env_digest, "seed": seeds[0],
+        "input_digests": [input_bytes_digest],
+        "output_digests": [assignment_digest],
+        "checkpoint_policy": "atomic_publish_or_quarantine",
+        "status": "COMPLETED"}
+    fit_partition = {
+        "record_type": "fit_partition/v0",
+        "train_groups": sorted(FIT_GROUPS),
+        "heldout_groups": sorted(HELDOUT_GROUPS),
+        "n_train_rows": n_train_rows, "n_rows": n_rows,
+        "train_row_keys_digest": sorted_row_key_digest(train_keys),
+        "cutoff_iso": "2020-12-15",
+        "feature_matrix_digest": feature_matrix_digest,
+        "feature_cols": list(feature_cols)}
     preprocessing = {"imputer_strategy": "median",
                      "imputer_statistics": [0.0, 0.0],
                      "scaler_mean": [0.0, 0.0],
                      "scaler_var": [1.0, 1.0],
                      "feature_order": list(feature_cols),
-                     "row_keys_digest": _h("synth-b1-rowkeys"),
+                     "row_keys_digest": row_universe_digest,
                      "train_mask_membership_digest":
                          _h("synth-b1-maskmembers")}
-    config = {"seeds": list(seeds), "k_candidates": [1, 2, 3],
-              "null_alpha": 0.05, "cadence": "1D",
-              "gap_policy": "calendar", "bootstrap_block_len": 7,
-              "missingness_policy": "listwise",
-              "effort_split": "median",
-              "mode": "RETROSPECTIVE_REGIME"}
-    fit_partition = {
-        "record_type": "fit_partition/v0",
-        "train_groups": groups_fit,
-        "heldout_groups": groups_held,
-        "n_train_rows": n_rows, "n_rows": n_rows,
-        "train_row_keys_digest": _h("synth-b1-trainkeys"),
-        "cutoff_iso": "2020-12-15",
-        "feature_matrix_digest": _h("synth-b1-fmx"),
-        "feature_cols": list(feature_cols)}
-    run_manifest = {
-        "run_id": "synth-b1-run-001", "worker_id": "synthetic-fixture",
-        "created_at": "2020-12-15T00:00:00Z",
-        "environment_digest": _h("synth-b1-env"), "seed": 11,
-        "input_digests": [_h("synth-b1-input")],
-        "output_digests": [_h("synth-b1-assignments")],
-        "checkpoint_policy": "atomic_publish_or_quarantine",
-        "status": "COMPLETED"}
     payload = {
         "record_type": "FrozenRegimeArtifactV0",
-        "assignments": rows,
-        "frozen": True,
         "mode": "RETROSPECTIVE_REGIME",
+        "data_class": "REANALYSIS",
         "fitted_on": "TRAIN_ONLY",
         "label_blinding": True,
-        "data_class": "REANALYSIS",
         "status": "DESCRIPTIVE_REGIME_ONLY",
         "terminal": True,
         "associable": True,
-        "seeds": list(seeds),
+        "seeds": seeds,
         "seeds_declared": list(seeds),
         "seed_coverage": {str(s): "converged" for s in seeds},
-        "k": 3,
-        "per_seed_best_k": {str(s): 3 for s in seeds},
+        "k": k,
+        "per_seed_best_k": {str(s): k for s in seeds},
         "modal_k_frequency": 1.0,
-        "occupancy": [0.5, 0.3, 0.2],
+        "occupancy": [1.0 / k] * k,
+        "assignments": rows,
+        "assignment_digest": assignment_digest,
         "feature_cols": list(feature_cols),
-        "feature_matrix_digest": _h("synth-b1-fmx"),
-        "input_bytes_digest": _h("synth-b1-inputbytes"),
+        "feature_matrix_digest": feature_matrix_digest,
+        "input_values": input_values,
+        "input_bytes_digest": input_bytes_digest,
         "input_schema": {"feature_cols": list(feature_cols),
                          "n_rows": n_rows,
                          "dtypes": {c: "float64"
                                     for c in feature_cols},
                          "shape": [n_rows, len(feature_cols)]},
-        "model": {"weights": [0.5, 0.3, 0.2],
-                  "means": [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],
-                  "covariances": [[[0.25, 0.0], [0.0, 0.25]],
-                                  [[0.25, 0.0], [0.0, 0.25]],
-                                  [[0.25, 0.0], [0.0, 0.25]]]},
+        "model": {"weights": [1.0 / k] * k,
+                  "means": [[4.0 - i, -3.0 + i]
+                            for i in range(k)],
+                  "covariances": [
+                      [[0.16, 0.0], [0.0, 0.16]] for _ in range(k)]},
         "config": config,
         "config_digest": sha256_canonical(config),
-        "fit_groups": groups_fit,
-        "heldout_groups_declared": groups_held,
+        "fit_groups": sorted(FIT_GROUPS),
+        "heldout_groups_declared": sorted(HELDOUT_GROUPS),
         "fit_partition": fit_partition,
-        "unit_basin_map": sorted(UNIT_BASINS.items()),
+        "unit_basin_map": unit_basin_map,
+        "unit_basin_map_digest": sha256_canonical(
+            canonical_unit_basin_pairs(unit_basin_map)),
         "run_manifest": run_manifest,
-        "n_train_rows": n_rows,
+        "n_train_rows": n_train_rows,
         "n_rows": n_rows,
         "train_mask_digest": _h("synth-b1-mask"),
         "stability": stability,
-        "nulls": {"shuffled_js": 0.31, "season_matched_js": 0.008},
+        "nulls": nulls,
         "preprocessing": preprocessing,
         "preprocessing_digest": sha256_canonical(preprocessing),
         "k_selection_digest": _h("synth-b1-ksel"),
         "stability_report_digest": sha256_canonical(stability),
-        "null_model_digest": _h("synth-b1-nullmodel"),
+        "null_model_digest": sha256_canonical({
+            "k1_bic": k1_bic,
+            "null_families": {
+                "shuffled": nulls["shuffled"]["family_digest"],
+                "season_matched":
+                    nulls["season_matched"]["family_digest"]}}),
         "source_manifest": {"fixture": True},
         "missingness_applied": {"policy": "listwise",
-                                "train_rows_total": n_rows,
-                                "train_rows_fitted": n_rows,
+                                "train_rows_total": n_train_rows,
+                                "train_rows_fitted": n_train_rows,
                                 "train_rows_dropped": 0},
-        "environment_digest": _h("synth-b1-env"),
+        "environment_digest": env_digest,
         "disclaimer": "synthetic fixture — interface evidence only",
     }
     payload["fit_partition_digest"] = sha256_canonical(fit_partition)
     payload["run_manifest_digest"] = sha256_canonical(run_manifest)
-    payload["assignment_digest"] = sha256_canonical(rows)
     payload["regime_artifact_digest"] = sha256_canonical(
-        {k: v for k, v in payload.items() if k != "frozen"})
+        {k: v for k, v in payload.items()
+         if k not in ("regime_artifact_digest", "frozen")})
+    payload["frozen"] = True
     payload["freeze_digest"] = sha256_canonical(
-        {k: v for k, v in payload.items() if k != "frozen"})
+        {k: v for k, v in payload.items()
+         if k not in ("freeze_digest", "frozen")})
     return payload
 
 
 def _rows_to_artifact(rows: dict[tuple[str, str], str],
                       artifact_id: str = "regime-syn-b1",
                       **kw) -> RegimeAssignmentArtifact:
-    assignments = tuple(sorted(
-        (u, d, r) for (u, d), r in rows.items()))
+    """Build a frozen assignment artifact + its bound producer
+    payload.  ``rows`` values are fixture-side regime LABELS; the
+    serialized payload stores the producer's int ids (via
+    ``_regime_index``) and the artifact carries their str() forms —
+    the adapter's single permitted conversion — so report-side
+    lookups use ``PLANTED_REGIME``/``RARE_REGIME`` (str ids)."""
+    idx = _regime_index(rows.values())
+    payload_rows = sorted([u, d, idx[lab]]
+                          for (u, d), lab in rows.items())
+    assignments = tuple(sorted((u, d, str(idx[lab]))
+                               for (u, d), lab in rows.items()))
     seeds = kw.pop("seeds", (11, 23, 42))
-    payload = _producer_payload_for(assignments, seeds=seeds)
+    payload = _producer_payload_for(payload_rows, seeds=seeds)
     kw.setdefault("regime_digest", payload["freeze_digest"])
     kw.setdefault("producer_payload_digest",
                   payload["freeze_digest"])
+    kw.setdefault("unit_basin_map",
+                  tuple(sorted(UNIT_BASINS.items())))
     artifact = RegimeAssignmentArtifact(
         artifact_id=artifact_id,
         assignments=assignments,
@@ -418,10 +562,10 @@ def planted_artifact(events: list[EventLabelV0]
         for d in all_dates:
             doy = d.timetuple().tm_yday
             if doy % _PLANT_BACKGROUND_MOD == 0:
-                rows[(unit, d.isoformat())] = PLANTED_REGIME
+                rows[(unit, d.isoformat())] = _L_PLANT
             elif doy % 53 == 0:
                 # A sparse "rare" regime exercises the novelty slice.
-                rows[(unit, d.isoformat())] = "R_RARE"
+                rows[(unit, d.isoformat())] = _L_RARE
             else:
                 rows[(unit, d.isoformat())] = "R%d" % (
                     int(_h(f"base|{unit}|{d.isoformat()}")[:8], 16)
@@ -436,7 +580,7 @@ def planted_artifact(events: list[EventLabelV0]
                               "%Y-%m-%dT%H:%M:%SZ").date()
         for d in _dates_between(s, e):
             for u in basin_units[ev.basin_id]:
-                rows[(u, d.isoformat())] = PLANTED_REGIME
+                rows[(u, d.isoformat())] = _L_PLANT
     return _rows_to_artifact(rows)
 
 
@@ -762,8 +906,8 @@ def test_slices_pooled_basin_season(planted):
         assert isinstance(cells, dict)
     # Novelty slice: the sparse R_RARE regime is reported under the
     # rarity threshold with a full enrichment cell.
-    assert "R_RARE" in report.novelty["rare_regimes"]
-    assert report.novelty["enrichment"]["R_RARE"]["control_share"] \
+    assert RARE_REGIME in report.novelty["rare_regimes"]
+    assert report.novelty["enrichment"][RARE_REGIME]["control_share"] \
         <= report.novelty["rare_threshold"]
     assert report.transitions  # transition-pair rows present
 
@@ -1175,13 +1319,13 @@ def _rows_with(plant_cells: set, event_cells: set,
         for d in _dates_between(_BASE_DATE, _ASSIGN_END):
             key = (unit, d.isoformat())
             if key in plant_cells:
-                rows[key] = PLANTED_REGIME
+                rows[key] = _L_PLANT
             elif key in event_cells:
                 rows[key] = "R%d" % (
                     int(_h(f"base|{unit}|{d.isoformat()}")[:8], 16)
                     % 3)
             elif d.timetuple().tm_yday % background_mod == 0:
-                rows[key] = PLANTED_REGIME
+                rows[key] = _L_PLANT
             else:
                 rows[key] = "R%d" % (
                     int(_h(f"base|{unit}|{d.isoformat()}")[:8], 16)

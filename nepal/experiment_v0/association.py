@@ -43,7 +43,7 @@ from typing import Any, Collection, Mapping, Optional, Sequence
 
 from nepal.research_v0._hashing import sha256_canonical
 from nepal.research_v0.producer_validation import (
-    validate_producer_payload)
+    canonical_unit_basin_pairs, validate_producer_payload)
 from nepal.research_v0.policy import (TargetState, parse_strict_utc,
                                       require_finite_seconds)
 from nepal.research_v0.records import (POSITIVE_ADMISSIBLE_ADJUDICATION,
@@ -524,6 +524,29 @@ def _assignment_digest(assignments) -> str:
     return sha256_canonical(_canonical_assignment_rows(assignments))
 
 
+def _canonical_unit_basin_pairs(ubm) -> list:
+    """The canonical serialized form of a unit->basin partition —
+    sorted ``[unit, group]`` string pairs, deduplicated.  Delegates
+    to the shared floor's ``canonical_unit_basin_pairs`` (this
+    wrapper additionally tolerates a Mapping via ``.items()``) so
+    the artifact's stamped digest is byte-identical to the
+    producer's ``unit_basin_map_digest`` over the same partition.
+    Malformed (non-pair) entries contribute nothing here; they
+    surface via the caller's own well-formedness checks."""
+    pairs = list(ubm.items()) if isinstance(ubm, Mapping) else \
+        list(ubm or ())
+    return canonical_unit_basin_pairs(pairs)
+
+
+def _unit_basin_map_digest(ubm) -> str:
+    """``sha256_canonical`` over the canonical unit->basin pairs —
+    the recomputably-bound self-digest the artifact's
+    ``unit_basin_map_digest`` field carries, identical to the
+    producer payload's ``unit_basin_map_digest`` over the same
+    partition."""
+    return sha256_canonical(_canonical_unit_basin_pairs(ubm))
+
+
 @dataclass(frozen=True)
 class RegimeAssignmentArtifact:
     """Frozen synthetic regime-assignment artifact (stand-in for a real
@@ -548,6 +571,19 @@ class RegimeAssignmentArtifact:
     # simple; ``problems()`` recomputes and compares — a stamped
     # value that disagrees with the rows is tampering.
     assignment_digest: str = ""
+    # R9-P11: the producer's bound unit->basin partition, stamped
+    # verbatim by the adapter.  ``run_association`` requires the
+    # caller's ``unit_basins`` map to equal this partition
+    # pair-for-pair — a caller may never remap a unit to a different
+    # group than the producer bound.  ``__post_init__`` normalizes
+    # entries to sorted ``(str, str)`` pairs; an empty map is
+    # INVALID for association (``problems()``).
+    unit_basin_map: tuple[tuple[str, str], ...] = ()
+    # Recomputably-bound self-digest over the canonical unit->basin
+    # pairs — same stamping/verification pattern as
+    # ``assignment_digest``; carries the producer payload's
+    # ``unit_basin_map_digest`` across the adapter boundary.
+    unit_basin_map_digest: str = ""
     fitted_on: str = "TRAIN_ONLY"
     label_blinding: bool = True
     seeds: tuple[int, ...] = ()
@@ -566,6 +602,25 @@ class RegimeAssignmentArtifact:
             object.__setattr__(
                 self, "assignment_digest",
                 _assignment_digest(self.assignments))
+        # R9-P11: normalize the bound unit->basin map to sorted
+        # (str, str) pairs — non-pair entries drop out of the
+        # canonical field and are remembered on the private flag so
+        # problems() can still report them.
+        ubm_pairs: list[tuple[str, str]] = []
+        ubm_malformed = False
+        for e in self.unit_basin_map or ():
+            if isinstance(e, (list, tuple)) and len(e) == 2:
+                ubm_pairs.append((str(e[0]), str(e[1])))
+            else:
+                ubm_malformed = True
+        object.__setattr__(
+            self, "unit_basin_map", tuple(sorted(ubm_pairs)))
+        object.__setattr__(
+            self, "_unit_basin_map_malformed", ubm_malformed)
+        if not self.unit_basin_map_digest:
+            object.__setattr__(
+                self, "unit_basin_map_digest",
+                _unit_basin_map_digest(self.unit_basin_map))
 
     def problems(self) -> list[str]:
         problems: list[str] = []
@@ -625,6 +680,39 @@ class RegimeAssignmentArtifact:
                             "from the canonical assignment rows — "
                             "the frozen rows were altered after "
                             "stamping")
+        # R9-P11: the producer's bound unit->basin partition is a
+        # required, self-digested field — an artifact that cannot
+        # name its partition cannot bind a caller map.
+        if getattr(self, "_unit_basin_map_malformed", False):
+            problems.append("every unit_basin_map entry must be a "
+                            "(unit_id, group) pair")
+        if not self.unit_basin_map:
+            problems.append("unit_basin_map must be non-empty — "
+                            "the producer's unit->basin partition "
+                            "is required for association")
+        else:
+            ubm_units = [u for u, _ in self.unit_basin_map]
+            if len(set(ubm_units)) != len(ubm_units):
+                problems.append("unit_basin_map has duplicate unit "
+                                "ids — the partition is not "
+                                "well-defined")
+            for u, g in self.unit_basin_map:
+                if not str(u).strip() or not str(g).strip():
+                    problems.append("unit_basin_map units and "
+                                    "groups must be non-empty "
+                                    "strings")
+                    break
+        if not isinstance(self.unit_basin_map_digest, str) or \
+                not _SHA256_RE.match(self.unit_basin_map_digest):
+            problems.append("unit_basin_map_digest must be a "
+                            "64-hex sha256 over the canonical "
+                            "unit->basin pairs")
+        elif self.unit_basin_map_digest != _unit_basin_map_digest(
+                self.unit_basin_map):
+            problems.append("unit_basin_map_digest does not "
+                            "recompute from the canonical "
+                            "unit->basin pairs — the bound "
+                            "partition was altered after stamping")
         if self.fitted_on != "TRAIN_ONLY":
             problems.append("assignments must be fitted on training "
                             "groups only")
@@ -665,6 +753,10 @@ class RegimeAssignmentArtifact:
                 [list(r) for r in self.assignments]),
             "producer_payload_digest": self.producer_payload_digest,
             "assignment_digest": self.assignment_digest,
+            # Canonical ordering: sorted (unit, group) pairs.
+            "unit_basin_map": [list(p)
+                               for p in self.unit_basin_map],
+            "unit_basin_map_digest": self.unit_basin_map_digest,
             "fitted_on": self.fitted_on,
             "label_blinding": self.label_blinding,
             "seeds": list(self.seeds),
@@ -688,6 +780,9 @@ class RegimeAssignmentArtifact:
             producer_payload_digest=d.get(
                 "producer_payload_digest", ""),
             assignment_digest=d.get("assignment_digest", ""),
+            unit_basin_map=tuple(
+                tuple(p) for p in d.get("unit_basin_map") or ()),
+            unit_basin_map_digest=d.get("unit_basin_map_digest", ""),
             fitted_on=d.get("fitted_on", "TRAIN_ONLY"),
             label_blinding=d.get("label_blinding", True),
             seeds=tuple(d.get("seeds", ())),
@@ -703,7 +798,8 @@ def _strict_artifact_payload_problems(d: Any) -> list[str]:
     fields), and assignment dates calendar-valid."""
     fields = ("artifact_id", "regime_digest", "assignments",
               "producer_payload_digest", "assignment_digest",
-              "fitted_on", "label_blinding", "seeds", "mode")
+              "fitted_on", "label_blinding", "seeds", "mode",
+              "unit_basin_map", "unit_basin_map_digest")
     problems: list[str] = []
     if not isinstance(d, Mapping):
         return ["payload must be a JSON-object mapping"]
@@ -735,6 +831,21 @@ def _strict_artifact_payload_problems(d: Any) -> list[str]:
             for s in seeds:
                 if type(s) is not int:
                     problems.append("every seed must be an integer")
+                    break
+    if "unit_basin_map" in d:
+        ubm = d["unit_basin_map"]
+        if not isinstance(ubm, (list, tuple)) or isinstance(
+                ubm, (str, bytes)):
+            problems.append("field 'unit_basin_map' must be a "
+                            "sequence of (unit, group) pairs")
+        else:
+            for pair in ubm:
+                if not isinstance(pair, (list, tuple)) or \
+                        isinstance(pair, (str, bytes)) or \
+                        len(pair) != 2 or \
+                        any(type(x) is not str for x in pair):
+                    problems.append("unit_basin_map entries must be "
+                                    "(unit, group) string pairs")
                     break
     if "assignments" in d:
         rows = d["assignments"]
@@ -1880,6 +1991,37 @@ def _holdout_binding_problems(
     it never alters the artifact.
     """
     problems: list[str] = []
+    # R9-P11: the caller's unit->basin map must equal the producer's
+    # bound map carried on the artifact — byte-for-byte after
+    # canonical normalization.  A caller-supplied remap (same units,
+    # different groups; extra units; missing units) is a binding
+    # violation, not a convenience override.
+    if not isinstance(unit_basins, Mapping):
+        problems.append("unit_basins must be a mapping of "
+                        "unit_id -> basin")
+        # Substitute the empty map for the rest of the binding
+        # checks — a non-mapping would crash downstream lookups
+        # rather than collect problems.
+        unit_basins = {}
+        caller_pairs: list = []
+    else:
+        caller_pairs = canonical_unit_basin_pairs(
+            [[u, b] for u, b in unit_basins.items()])
+        artifact_pairs = [list(p) for p in artifact.unit_basin_map]
+        if caller_pairs != artifact_pairs:
+            _c, _a = dict(caller_pairs), dict(artifact_pairs)
+            remapped = sorted(u for u in set(_c) & set(_a)
+                              if _c[u] != _a[u])
+            missing_caller = sorted(set(_a) - set(_c))
+            extra_caller = sorted(set(_c) - set(_a))
+            detail = (f"remapped units {remapped}" if remapped else
+                      f"units missing from caller map "
+                      f"{missing_caller}" if missing_caller else
+                      f"caller-only units {extra_caller}")
+            problems.append(
+                f"unit_basins does not equal the artifact's bound "
+                f"unit_basin_map ({detail}) — the caller cannot "
+                "remap the producer's declared partition")
     if type(holdout) is not HoldoutPlanV0:
         return ["holdout must be a HoldoutPlanV0 record"]
     problems.extend(f"holdout: {p}" for p in holdout.problems())
@@ -2177,6 +2319,41 @@ def _producer_payload_binding_problems(
             list(seeds) != list(artifact.seeds):
         problems.append("producer_payload seeds do not match the "
                         "artifact's declared seeds")
+    # R9-P11: the payload's bound unit->basin map must equal the
+    # artifact's carried map — the third vertex of the
+    # producer/artifact/caller byte-equality triangle (the
+    # caller-map half is enforced in the input binding).
+    p_ubm = canonical_unit_basin_pairs(payload.get("unit_basin_map"))
+    if p_ubm != [list(p) for p in artifact.unit_basin_map]:
+        problems.append("producer_payload unit_basin_map does not "
+                        "equal the artifact's bound map — the "
+                        "payload declares a different unit->basin "
+                        "partition than the artifact it claims to "
+                        "have produced")
+    # R9-V1: the bound payload must be adapter-admissible — the
+    # digest chain proves the artifact binds THIS payload, but
+    # only the admissibility floor proves the payload is one the
+    # canonical adapter would have emitted an artifact for.  A
+    # dataclasses.replace'd artifact plus a self-consistent
+    # CANDIDATE/UNSTABLE/non-associable payload must never earn
+    # the verified binding.
+    if payload.get("status") != "DESCRIPTIVE_REGIME_ONLY":
+        problems.append(
+            f"producer_payload status {payload.get('status')!r} "
+            "is not associable — the verified binding admits only "
+            "a fully-gated DESCRIPTIVE_REGIME_ONLY producer "
+            "artifact, exactly as "
+            "adapters.regime_assignment_from_artifact requires")
+    if payload.get("associable") is not True:
+        problems.append("producer_payload is not marked "
+                        "associable — association admits only "
+                        "associable=true payloads")
+    if payload.get("data_class") != "REANALYSIS":
+        problems.append(
+            f"producer_payload data_class "
+            f"{payload.get('data_class')!r} != 'REANALYSIS' — "
+            "the association lane binds retrospective reanalysis "
+            "regimes only")
     return problems
 
 
@@ -2239,6 +2416,10 @@ def _association_input_manifest(
                       if isinstance(opportunities, Mapping)
                       else ())),
         "unit_basins": _map_str(unit_basins),
+        # R9-P11: the producer's bound map digest — the report's
+        # input_digest binds the artifact-carried partition, not
+        # merely the caller-supplied rendering of it.
+        "unit_basin_map_digest": artifact.unit_basin_map_digest,
         "region_basins": {
             str(k): _basin_list(v)
             for k, v in sorted(

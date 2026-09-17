@@ -44,6 +44,9 @@ from nepal.experiment_v0.association import (ASSOCIATION_STATUSES,
                                              run_association)
 from nepal.research_v0._hashing import sha256_canonical
 from nepal.research_v0.gates import REQUIRED_REGIME_GATE_NAMES
+from nepal.research_v0.producer_validation import (
+    canonical_unit_basin_pairs, row_key,
+    semantic_feature_matrix_digest, sorted_row_key_digest)
 from nepal.research_v0.records import RegimeArtifactV0
 from nepal.science_v0.regimes import freeze_regime_artifact
 
@@ -100,8 +103,18 @@ def _producer_payload(**overrides) -> dict:
     families — so every recomputed binding is exercised."""
     arr = np.ascontiguousarray(
         np.asarray(_INPUT_VALUES, dtype=np.float64))
+    input_bytes_digest = hashlib.sha256(arr.tobytes()).hexdigest()
+    fm_digest = semantic_feature_matrix_digest(_INPUT_VALUES)
     assignments = [["u1", "2020-06-01", 0], ["u1", "2020-06-02", 1],
                    ["u2", "2020-06-01", 0]]
+    assignment_digest = sha256_canonical(assignments)
+    ubm = [["u1", "g0"], ["u2", "g1"]]
+    group_of = dict(ubm)
+    fit_groups = ["g0", "g1", "g2"]
+    train_keys = [row_key(u, d) for u, d, _ in assignments
+                  if group_of[u] in fit_groups]
+    row_universe_digest = sorted_row_key_digest(
+        [row_key(u, d) for u, d, _ in assignments])
     stability = {"seed_ari_min": 0.91, "modal_k_frequency": 1.0,
                  "required_gates": {g: True for g in
                                     sorted(REQUIRED_REGIME_GATE_NAMES)}}
@@ -110,8 +123,29 @@ def _producer_payload(**overrides) -> dict:
                      "scaler_mean": [0.0, 0.0],
                      "scaler_var": [1.0, 1.0],
                      "feature_order": ["f1", "f2"],
-                     "row_keys_digest": "a" * 64,
+                     "row_keys_digest": row_universe_digest,
                      "train_mask_membership_digest": "b" * 64}
+    k1_bic = [820.5, 830.25, 840.75]
+    nulls = {"statistic": "silhouette", "observed": 0.6,
+             "alpha": 0.05, "n_replicates": 4,
+             "season_era_stratified": False,
+             "k1_bic": k1_bic,
+             "shuffled": _null_family(
+                 "shuffled", _SEEDS, [0.10, 0.20, 0.15, 0.05]),
+             "season_matched": _null_family(
+                 "season_matched", _SEEDS,
+                 [0.30, 0.25, 0.20, 0.10])}
+    run_manifest = {
+        "record_type": "RunManifestV0",
+        "run_id": "prov-test-run-001",
+        "worker_id": "test-worker",
+        "created_at": "2020-06-02T00:00:00Z",
+        "environment_digest": "e" * 64,
+        "seed": _SEEDS[0],
+        "input_digests": [input_bytes_digest],
+        "output_digests": [assignment_digest],
+        "checkpoint_policy": "atomic_publish_or_quarantine",
+        "status": "COMPLETED"}
     art = {
         "mode": "RETROSPECTIVE_REGIME", "data_class": "REANALYSIS",
         "fitted_on": "TRAIN_ONLY", "label_blinding": True,
@@ -121,12 +155,11 @@ def _producer_payload(**overrides) -> dict:
         "modal_k_frequency": 1.0,
         "occupancy": [0.6, 0.4],
         "assignments": assignments,
-        "assignment_digest": sha256_canonical(assignments),
+        "assignment_digest": assignment_digest,
         "feature_cols": ["f1", "f2"],
-        "feature_matrix_digest": "c" * 64,
+        "feature_matrix_digest": fm_digest,
         "input_values": copy.deepcopy(_INPUT_VALUES),
-        "input_bytes_digest": hashlib.sha256(
-            arr.tobytes()).hexdigest(),
+        "input_bytes_digest": input_bytes_digest,
         "input_schema": {"feature_cols": ["f1", "f2"], "n_rows": 3,
                          "dtypes": {"f1": "float64", "f2": "float64"},
                          "shape": [3, 2]},
@@ -135,44 +168,36 @@ def _producer_payload(**overrides) -> dict:
                    "gap_policy": "calendar", "bootstrap_block_len": 7,
                    "missingness_policy": "listwise",
                    "effort_split": "median",
-                   "mode": "RETROSPECTIVE_REGIME"},
+                   "mode": "RETROSPECTIVE_REGIME",
+                   "train_groups": list(fit_groups),
+                   "heldout_groups": ["g3"],
+                   "forecast_feature_set": [],
+                   "forecast_vintage_digests": [],
+                   "source_manifest": {"fixture": True}},
         "model": {"weights": [0.6, 0.4],
                   "means": [[1.0, 2.0], [4.0, 5.0]],
                   "covariances": [[[0.25, 0.0], [0.0, 0.25]],
                                   [[0.5, 0.0], [0.0, 0.5]]]},
-        "fit_groups": ["g0", "g1", "g2"],
+        "fit_groups": fit_groups,
         "heldout_groups_declared": ["g3"],
         "fit_partition": {
             "record_type": "fit_partition/v0",
-            "train_groups": ["g0", "g1", "g2"],
+            "train_groups": list(fit_groups),
             "heldout_groups": ["g3"],
-            "n_train_rows": 3, "n_rows": 3,
-            "train_row_keys_digest": "f" * 64,
+            "n_train_rows": len(train_keys), "n_rows": 3,
+            "train_row_keys_digest": sorted_row_key_digest(
+                train_keys),
             "cutoff_iso": "2020-06-02",
-            "feature_matrix_digest": "c" * 64,
+            "feature_matrix_digest": fm_digest,
             "feature_cols": ["f1", "f2"]},
-        "unit_basin_map": [["u1", "g0"], ["u2", "g1"]],
-        "run_manifest": {
-            "run_id": "prov-test-run-001",
-            "worker_id": "test-worker",
-            "created_at": "2020-06-02T00:00:00Z",
-            "environment_digest": "e" * 64,
-            "seed": 11,
-            "input_digests": ["c" * 64],
-            "output_digests": ["d" * 64],
-            "checkpoint_policy": "atomic_publish_or_quarantine",
-            "status": "COMPLETED"},
-        "n_train_rows": 3, "n_rows": 3,
+        "unit_basin_map": ubm,
+        "unit_basin_map_digest": sha256_canonical(
+            canonical_unit_basin_pairs(ubm)),
+        "run_manifest": run_manifest,
+        "n_train_rows": len(train_keys), "n_rows": 3,
         "train_mask_digest": "d" * 64,
         "stability": stability,
-        "nulls": {"statistic": "silhouette", "observed": 0.6,
-                  "alpha": 0.05, "n_replicates": 4,
-                  "season_era_stratified": False,
-                  "shuffled": _null_family(
-                      "shuffled", _SEEDS, [0.10, 0.20, 0.15, 0.05]),
-                  "season_matched": _null_family(
-                      "season_matched", _SEEDS,
-                      [0.30, 0.25, 0.20, 0.10])},
+        "nulls": nulls,
         "preprocessing": preprocessing,
         "missingness_applied": {"policy": "listwise",
                                 "train_rows_total": 3,
@@ -182,16 +207,7 @@ def _producer_payload(**overrides) -> dict:
         "terminal": True, "associable": True,
         "source_manifest": {"fixture": True},
         "environment_digest": "e" * 64,
-        "run_manifest_digest": sha256_canonical({
-            "run_id": "prov-test-run-001",
-            "worker_id": "test-worker",
-            "created_at": "2020-06-02T00:00:00Z",
-            "environment_digest": "e" * 64,
-            "seed": 11,
-            "input_digests": ["c" * 64],
-            "output_digests": ["d" * 64],
-            "checkpoint_policy": "atomic_publish_or_quarantine",
-            "status": "COMPLETED"}),
+        "run_manifest_digest": sha256_canonical(run_manifest),
         "disclaimer": "synthetic fixture — interface evidence only",
     }
     art["config_digest"] = sha256_canonical(art["config"])
@@ -200,7 +216,12 @@ def _producer_payload(**overrides) -> dict:
         art["fit_partition"])
     art["k_selection_digest"] = "1" * 64
     art["stability_report_digest"] = sha256_canonical(stability)
-    art["null_model_digest"] = "2" * 64
+    art["null_model_digest"] = sha256_canonical({
+        "k1_bic": k1_bic,
+        "null_families": {
+            "shuffled": nulls["shuffled"]["family_digest"],
+            "season_matched":
+                nulls["season_matched"]["family_digest"]}})
     art["regime_artifact_digest"] = sha256_canonical(art)
     art["freeze_digest"] = sha256_canonical(dict(art))
     art["frozen"] = True
@@ -252,8 +273,16 @@ class TestProv02aAdapterFreezeParity:
             regime_assignment_from_artifact(p, artifact_id="x")
 
     def test_input_values_tamper_rejected(self):
+        """R9: the tampered matrix is still rejected when every
+        OTHER binding is honestly re-digested — only the exact
+        input_bytes_digest binding can fire."""
         p = _producer_payload()
         p["input_values"][0][0] = 9.5
+        fm = semantic_feature_matrix_digest(p["input_values"])
+        p["feature_matrix_digest"] = fm
+        p["fit_partition"]["feature_matrix_digest"] = fm
+        p["fit_partition_digest"] = sha256_canonical(
+            p["fit_partition"])
         _repair_outer_digests(p)
         with pytest.raises(ValueError, match="input_bytes_digest"):
             regime_assignment_from_artifact(p, artifact_id="x")
@@ -293,6 +322,18 @@ class TestProv02aAdapterFreezeParity:
         p["n_rows"] = 3
         p["input_bytes_digest"] = hashlib.sha256(
             np.ascontiguousarray(arr).tobytes()).hexdigest()
+        # R9: rebind every binding that depends on the swapped
+        # matrix — the semantic feature-matrix digests and the
+        # run_manifest's input digest must track the new bytes.
+        fm = semantic_feature_matrix_digest(vals)
+        p["feature_matrix_digest"] = fm
+        p["fit_partition"]["feature_matrix_digest"] = fm
+        p["fit_partition_digest"] = sha256_canonical(
+            p["fit_partition"])
+        p["run_manifest"]["input_digests"] = \
+            [p["input_bytes_digest"]]
+        p["run_manifest_digest"] = sha256_canonical(
+            p["run_manifest"])
         _repair_outer_digests(p)
         rec = regime_assignment_from_artifact(p, artifact_id="ra-tok")
         assert rec.problems() == []
@@ -398,8 +439,16 @@ def _verify_source_evidence():
 
 class TestProv03SourceEvidence:
     def _payload_with_manifest(self, manifest: dict) -> dict:
+        """Swap the bound source manifest — R9-P07 binds
+        ``config.source_manifest`` to the artifact's top-level copy,
+        so an honest probe must mutate both and re-digest the config
+        block before repairing the envelope."""
         payload = _producer_payload()
         payload["source_manifest"] = manifest
+        payload["config"]["source_manifest"] = copy.deepcopy(
+            manifest)
+        payload["config_digest"] = sha256_canonical(
+            payload["config"])
         _repair_outer_digests(payload)
         return payload
 
@@ -457,13 +506,12 @@ class TestProv03SourceEvidence:
         """The schema-level floor is independent of byte
         verification: a non-fixture manifest lacking evidence_root
         is a provenance finding even before file checks run."""
-        payload = _producer_payload()
-        payload["source_manifest"] = {
+        manifest = {
             "source_id": "real_src", "units": {"f1": "mm"},
             "source_digests": ["a" * 64],
             "feature_allowlist": ["f1", "f2"],
             "lineage": {"fetch": "test"}}
-        _repair_outer_digests(payload)
+        payload = self._payload_with_manifest(manifest)
         findings = audit_producer_payload(payload)
         assert any("evidence_root" in f.detail for f in findings)
 

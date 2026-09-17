@@ -841,6 +841,15 @@ class TestProvC03FreezeAudit:
     def test_tampered_input_values_rejected(self):
         art = _art_std()
         art["input_values"][0][0] = 12345.6789
+        # R9-P08: honestly rebind the semantic matrix digests so
+        # ONLY the exact input-bytes binding can fire.
+        from nepal.research_v0.producer_validation import (
+            semantic_feature_matrix_digest)
+        fm = semantic_feature_matrix_digest(art["input_values"])
+        art["feature_matrix_digest"] = fm
+        art["fit_partition"]["feature_matrix_digest"] = fm
+        art["fit_partition_digest"] = _digest(
+            art["fit_partition"])
         _redigest(art)
         with pytest.raises(ValueError, match="input_bytes_digest"):
             freeze_regime_artifact(art)
@@ -861,12 +870,16 @@ class TestProvC03FreezeAudit:
 
     def test_candidate_requires_recorded_failure(self):
         art = _art_std()
-        # force all gates True while keeping a CANDIDATE status
+        # force all gates True while keeping a CANDIDATE status —
+        # rebind the stability digest honestly so ONLY the
+        # status/gate consistency binding can fire
         for g in art["stability"]["required_gates"]:
             art["stability"]["required_gates"][g] = True
+        art["stability_report_digest"] = _digest(
+            art["stability"])
         art["status"] = "CANDIDATE_ONLY"
         _redigest(art)
-        with pytest.raises(ValueError, match="failure"):
+        with pytest.raises(ValueError, match="required gate"):
             freeze_regime_artifact(art)
 
     def test_missing_config_payload_rejected(self):

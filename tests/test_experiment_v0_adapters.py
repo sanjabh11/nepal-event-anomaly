@@ -13,10 +13,51 @@ from nepal.experiment_v0.adapters import (
     holdout_plan_from_assignment, opportunity_from_science,
     regime_assignment_from_artifact, vintage_from_request)
 from nepal.experiment_v0.vintages import VintageRequest
+from nepal.research_v0._hashing import sha256_canonical
 from nepal.research_v0.gates import scan_claims_text
+from nepal.research_v0.producer_validation import (
+    canonical_unit_basin_pairs, row_key,
+    semantic_feature_matrix_digest, sorted_row_key_digest)
 from nepal.research_v0.records import EventLabelV0, HoldoutPlanV0
 
 from tests.fixtures.synthetic_exp_b2 import synthetic_vintage_request
+
+
+def _null_family(family: str, seeds, stats) -> dict:
+    """A producer-shaped serialized null-family record whose
+    ``family_digest`` is computed exactly as ``run_regimes`` binds
+    it: sha256_canonical over the documented material dict."""
+    replicates = [
+        {"i": i, "gen_seed": int(seeds[0]) + 1000003 * (i + 1),
+         "fit_seed": int(seeds[i % len(seeds)]),
+         "k": 2, "stat": s, "ok": True,
+         "input_digest": sha256_canonical(f"{family}-rep-{i}")}
+        for i, s in enumerate(stats)]
+    rec = {"statistic": "silhouette", "observed": 0.6,
+           "n_replicates": len(replicates),
+           "n_succeeded": len(replicates), "n_failed": 0,
+           "p_value": 0.02, "alpha": 0.05, "status": "PASS",
+           "reason": None,
+           "selection": "bic_sweep_declared_candidates",
+           "null_k_distribution": {"2": len(replicates)},
+           "null_stat_min": min(stats), "null_stat_max": max(stats),
+           "replicates": replicates}
+    rec["family_digest"] = sha256_canonical({
+        "family": family, "seed_cycle": list(seeds),
+        "n_replicates": rec["n_replicates"],
+        "statistic": rec["statistic"], "p_value": rec["p_value"],
+        "observed": rec.get("observed"),
+        "alpha": rec.get("alpha"),
+        "n_succeeded": rec.get("n_succeeded"),
+        "n_failed": rec.get("n_failed"),
+        "status": rec.get("status"),
+        "reason": rec.get("reason"),
+        "selection": rec.get("selection"),
+        "null_stat_min": rec["null_stat_min"],
+        "null_stat_max": rec["null_stat_max"],
+        "null_k_distribution": rec["null_k_distribution"],
+        "replicates": rec["replicates"]})
+    return rec
 
 
 def _identity_payload(**overrides):
@@ -274,6 +315,29 @@ def _frozen_regime_payload(**overrides):
     assignments = [("u1", "2020-06-01", 0), ("u1", "2020-06-02", 1),
                    ("u2", "2020-06-01", 0)]
     seeds = [7, 42, 2024]
+    feature_cols = ["f1", "f2"]
+    n_rows = len(assignments)
+    unit_basin_map = [["u1", "g0"], ["u2", "g1"]]
+    group_of = dict(unit_basin_map)
+    fit_groups = ["g0", "g1"]
+    heldout = ["g3"]
+    train_keys = [row_key(u, d) for u, d, _ in assignments
+                  if group_of[u] in fit_groups]
+    n_train_rows = len(train_keys)
+    row_universe_digest = sorted_row_key_digest(
+        [row_key(u, d) for u, d, _ in assignments])
+    input_values = [[0.1 * (i + 1), -0.05 * (i + 1)]
+                    for i in range(n_rows)]
+    import numpy as _np
+    import hashlib as _hl
+    input_bytes_digest = _hl.sha256(
+        _np.ascontiguousarray(
+            _np.asarray(input_values, dtype=_np.float64))
+        .tobytes()).hexdigest()
+    feature_matrix_digest = semantic_feature_matrix_digest(
+        input_values)
+    env_digest = "2" * 64
+    assignment_digest = _canon(assignments)
     stability = {
         "required_gates": {
             "seed_policy": True, "modal_k_unanimous": True,
@@ -285,33 +349,55 @@ def _frozen_regime_payload(**overrides):
             "shuffled_null": True, "season_matched_null": True,
         },
     }
+    config = {"seeds": list(seeds), "k_candidates": [1, 2, 3],
+              "null_alpha": 0.05, "cadence": "1D",
+              "gap_policy": "calendar", "bootstrap_block_len": 7,
+              "missingness_policy": "listwise",
+              "effort_split": "median",
+              "mode": "RETROSPECTIVE_REGIME",
+              "train_groups": list(fit_groups),
+              "heldout_groups": list(heldout),
+              "forecast_feature_set": [],
+              "forecast_vintage_digests": [],
+              "source_manifest": {"fixture": True}}
     preprocessing = {"imputer_strategy": "median",
                      "imputer_statistics": [0.0, 0.0],
                      "scaler_mean": [0.0, 0.0],
                      "scaler_var": [1.0, 1.0],
-                     "feature_order": ["f1", "f2"],
-                     "row_keys_digest": "e" * 64,
+                     "feature_order": list(feature_cols),
+                     "row_keys_digest": row_universe_digest,
                      "train_mask_membership_digest": "f" * 64}
     fit_partition = {
         "record_type": "fit_partition/v0",
-        "train_groups": ["g0", "g1", "g2"],
-        "heldout_groups": ["g3"],
-        "n_train_rows": 2,
-        "n_rows": 3,
-        "train_row_keys_digest": "1" * 64,
+        "train_groups": list(fit_groups),
+        "heldout_groups": list(heldout),
+        "n_train_rows": n_train_rows,
+        "n_rows": n_rows,
+        "train_row_keys_digest": sorted_row_key_digest(train_keys),
         "cutoff_iso": "2020-06-02",
-        "feature_matrix_digest": "b" * 64,
-        "feature_cols": ["f1", "f2"]}
+        "feature_matrix_digest": feature_matrix_digest,
+        "feature_cols": list(feature_cols)}
     run_manifest = {
+        "record_type": "RunManifestV0",
         "run_id": "adapter-test-run-001",
         "worker_id": "test-worker",
         "created_at": "2020-06-02T00:00:00Z",
-        "environment_digest": "2" * 64,
-        "seed": 7,
-        "input_digests": ["3" * 64],
-        "output_digests": ["4" * 64],
+        "environment_digest": env_digest,
+        "seed": seeds[0],
+        "input_digests": [input_bytes_digest],
+        "output_digests": [assignment_digest],
         "checkpoint_policy": "atomic_publish_or_quarantine",
         "status": "COMPLETED"}
+    k1_bic = [1010.5, 1020.25, 1030.75]
+    nulls = {"statistic": "silhouette", "observed": 0.6,
+             "alpha": 0.05, "n_replicates": 4,
+             "season_era_stratified": False,
+             "k1_bic": k1_bic,
+             "shuffled": _null_family(
+                 "shuffled", seeds, [0.10, 0.20, 0.15, 0.05]),
+             "season_matched": _null_family(
+                 "season_matched", seeds,
+                 [0.30, 0.25, 0.20, 0.10])}
     art = {
         "mode": "RETROSPECTIVE_REGIME",
         "data_class": "REANALYSIS",
@@ -324,41 +410,53 @@ def _frozen_regime_payload(**overrides):
         "per_seed_best_k": {str(s): 2 for s in seeds},
         "modal_k_frequency": 1.0,
         "assignments": assignments,
-        "assignment_digest": _canon(assignments),
-        "feature_cols": ["f1", "f2"],
-        "feature_matrix_digest": "b" * 64,
-        "input_bytes_digest": "5" * 64,
-        "input_schema": {"feature_cols": ["f1", "f2"], "n_rows": 3,
-                         "dtypes": {"f1": "float64", "f2": "float64"},
-                         "shape": [3, 2]},
+        "assignment_digest": assignment_digest,
+        "feature_cols": list(feature_cols),
+        "feature_matrix_digest": feature_matrix_digest,
+        "input_values": input_values,
+        "input_bytes_digest": input_bytes_digest,
+        "input_schema": {"feature_cols": list(feature_cols),
+                         "n_rows": n_rows,
+                         "dtypes": {c: "float64"
+                                    for c in feature_cols},
+                         "shape": [n_rows, len(feature_cols)]},
         "model": {"weights": [0.6, 0.4],
                   "means": [[1.0, 2.0], [4.0, 5.0]],
                   "covariances": [[[0.25, 0.0], [0.0, 0.25]],
                                   [[0.5, 0.0], [0.0, 0.5]]]},
-        "config_digest": "c" * 64,
-        "fit_groups": ["g0", "g1", "g2"],
-        "heldout_groups_declared": ["g3"],
+        "config": config,
+        "config_digest": _canon(config),
+        "fit_groups": list(fit_groups),
+        "heldout_groups_declared": list(heldout),
         "fit_partition": fit_partition,
-        "unit_basin_map": [["u1", "g0"], ["u2", "g1"]],
+        "unit_basin_map": unit_basin_map,
+        "unit_basin_map_digest": _canon(
+            canonical_unit_basin_pairs(unit_basin_map)),
         "run_manifest": run_manifest,
         "run_manifest_digest": _canon(run_manifest),
-        "n_train_rows": 2,
-        "n_rows": 3,
+        "n_train_rows": n_train_rows,
+        "n_rows": n_rows,
         "train_mask_digest": "d" * 64,
         "occupancy": [0.6, 0.4],
         "stability": stability,
-        "nulls": {"shuffled_js": 0.31, "season_matched_js": 0.008},
+        "nulls": nulls,
         "preprocessing": preprocessing,
         "k_selection_digest": "6" * 64,
-        "null_model_digest": "7" * 64,
+        "null_model_digest": _canon({
+            "k1_bic": k1_bic,
+            "null_families": {
+                "shuffled": nulls["shuffled"]["family_digest"],
+                "season_matched":
+                    nulls["season_matched"]["family_digest"]}}),
         "status": "DESCRIPTIVE_REGIME_ONLY",
         "terminal": True,
         "associable": True,
         "source_manifest": {"fixture": True},
         "missingness_applied": {"policy": "listwise",
-                                "train_rows_total": 3,
-                                "train_rows_fitted": 3,
+                                "train_rows_total": n_train_rows,
+                                "train_rows_fitted": n_train_rows,
                                 "train_rows_dropped": 0},
+        "environment_digest": env_digest,
         "disclaimer": "synthetic",
     }
     art["preprocessing_digest"] = _canon(preprocessing)
@@ -448,7 +546,7 @@ def test_regime_nonstring_identity_rejected():
     p["freeze_digest"] = _canon(
         {k: v for k, v in p.items()
          if k not in ("freeze_digest", "frozen")})
-    with pytest.raises(ValueError, match="strings"):
+    with pytest.raises(ValueError, match="string"):
         regime_assignment_from_artifact(p, artifact_id="x")
 
 
@@ -506,7 +604,19 @@ def test_regime_missing_i05_provenance_rejected():
 def _repair_digests(p):
     """Recompute the self-referential digests exactly as the
     producer/freeze path does, so a test can corrupt ONE claim and
-    keep every other binding valid."""
+    keep every other binding valid.  Section digests are rebound
+    from the (possibly mutated) section contents — the R9 floor
+    recomputes ``stability_report_digest`` over the carried
+    stability block, so an in-section mutation must re-bind it to
+    isolate the intended problem."""
+    if isinstance(p.get("stability"), dict):
+        p["stability_report_digest"] = _canon(p["stability"])
+    if isinstance(p.get("preprocessing"), dict):
+        p["preprocessing_digest"] = _canon(p["preprocessing"])
+    if isinstance(p.get("fit_partition"), dict):
+        p["fit_partition_digest"] = _canon(p["fit_partition"])
+    if isinstance(p.get("run_manifest"), dict):
+        p["run_manifest_digest"] = _canon(p["run_manifest"])
     p["assignment_digest"] = _canon(p["assignments"])
     p["regime_artifact_digest"] = _canon(
         {k: v for k, v in p.items()
@@ -540,7 +650,7 @@ def test_regime_descriptive_without_gate_map_rejected():
         p = _frozen_regime_payload()
         mutation(p)
         _repair_digests(p)
-        with pytest.raises(ValueError, match="required_gates"):
+        with pytest.raises(ValueError, match="stability"):
             regime_assignment_from_artifact(p, artifact_id="x")
 
 

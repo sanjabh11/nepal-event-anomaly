@@ -105,12 +105,21 @@ Test-suite honesty: the full suite under the pinned `.venv` recorded
 `P0_BASELINE_LEDGER.md` (historical snapshot). Later dated snapshots:
 1306 at the round-2 reconciliation head, 1641 after the first swarm
 integration, 1828 at the post-audit residual-repair head. Last
-fully-verified baseline (round-8 hardening content commit; the
+fully-verified baseline (round-9 hardening content commit; the
 manifest's `content_head` names the commit whose tree the manifest
 hashes — the manifest commit itself follows the content commit):
-**2073 passed / 5 skipped / 0 failed / 57 warnings**. The prior
-verified baseline (round-7 content commit `cc2218b`; 77 manifest
-files): **2015 passed / 5 skipped / 0 failed / 57 warnings**, with
+**2251 passed / 5 skipped / 0 failed** across
+**82** manifest-governed files — recount pending the
+final coordinated commit. The round-9 surface hardens the producer
+boundary end-to-end: a complete `validate_producer_payload`
+shared floor at every boundary, `unit_basin_map` binding carried
+through the adapted artifact into association, and source-byte
+verification of non-fixture evidence at every boundary;
+`tests/test_r9_promotion.py` carries the 33-mutation × 4-boundary
+promotion-closure matrix. The prior verified baseline (round-8
+hardening): **2073 passed / 5 skipped / 0 failed / 57 warnings**;
+before that, round-7 content commit `cc2218b` (77 manifest files):
+**2015 passed / 5 skipped / 0 failed / 57 warnings**, with
 562 focused-lane tests green — retained as dated history, as is
 round-6 (content `aceedff`, 76 files, 1993/5/0/57, 540 focused).
 The 5 skips are `rasterio`-dependent
