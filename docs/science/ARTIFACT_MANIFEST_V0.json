@@ -1,6 +1,6 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "8585e5fcbb9d6f8131701e7ca6909fe15f7bf254",
+  "content_head": "8e17cfd2bc845586a33ee4cca38cd629363ad729",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
@@ -279,8 +279,8 @@
     },
     {
       "relpath": "nepal/seismic_sidecar/__init__.py",
-      "sha256": "aa45d10329c20518a38f179e13ccd90086e4375c88d8a5db6b2074a4e85fdca5",
-      "size_bytes": 2713
+      "sha256": "8d337985c3f0dd7ec38cc84176351fe302535fadc2cc294ee7d93f68044f737d",
+      "size_bytes": 2771
     },
     {
       "relpath": "nepal/seismic_sidecar/contracts.py",
@@ -540,7 +540,7 @@
   ],
   "generated": "2026-09-18",
   "interpreter": ".venv/bin/python",
-  "manifest_commit": "8585e5fcbb9d6f8131701e7ca6909fe15f7bf254",
+  "manifest_commit": "8e17cfd2bc845586a33ee4cca38cd629363ad729",
   "manifest_version": "ARTIFACT_MANIFEST_V0.3",
   "repository_relative_root": ".",
   "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
