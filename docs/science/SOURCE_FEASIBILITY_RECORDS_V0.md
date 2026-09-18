@@ -90,7 +90,7 @@ intake.**  The dated rows below are preserved verbatim.
 qualified for forecast use:
 
 - TIGGE (ECDS/CMA) — per-centre CC BY / CC BY-NC split documented; registration delayed 48 h / issue-time retrieval + per-centre license review required / `CANDIDATE_ONLY`.
-- NCAR RDA ds084001 GFS — CC BY 4.0; bounded span 2015→2025 verified / `CANDIDATE_ONLY`.
+- NCAR RDA ds084001 GFS — CC BY 4.0; RDA-listed span 2015-01-15 → 2026-10-02 (early-2026 freeze/AWS-migration caveat — tail availability PAYLOAD-GATED) / `CANDIDATE_ONLY`.
 - NCEI NOMADS — free; cycle completeness unverified / `CANDIDATE_ONLY`.
 - GEFSv12 reforecast (AWS) — free; reforecast only — does not prove operational availability / `CANDIDATE_ONLY`.
 - S2S database (ECDS) — per-centre mixed licenses incl. CC BY-NC; review required / `CANDIDATE_ONLY`.
@@ -116,7 +116,7 @@ qualified for forecast use:
 
 | Source | Version/DOI | License | Coverage | Time precision | Spatial semantics | Non-event frame | Posture |
 |---|---|---|---|---|---|---|---|
-| ICIMOD HMAGLOFDB | v1.3.0 (RDS DOI 10.26066/RDS.1973283; zenodo.18257243; paper essd-15-3941) | RESOLVED — CC BY 4.0 governs (RDS declaration; Zenodo CC0 tag superseded, conservatively read as CC BY 4.0). Prior status 2026-09-16: UNRESOLVED — RDS CC BY 4.0 vs Zenodo CC0 | HMA 766 events 1533–2025; Nepal ~7.6% (~53) in v1.0 | paper/v1.0-era: day ~27% (±3d), month ~45%, year uncertain ~27% — v1.3 distribution PAYLOAD-GATED; `Sat_evidence` brackets | `Lat/Lon_lake` (within-lake, not breach) + `Lat/Lon_impact` (Observation/Deposit tag) | PAYLOAD-GATED — lake joins via `GL_ID`/`LakeDB_ID`/`G_ID` columns (GLM3-corrected — not `GF_ID`; coverage unverified until bytes; ICIMOD 2015 Koshi/Gandaki/Karnali; NSIDC HMA_GLI; Wang 2020 ESSD; zenodo.17948783) | CANDIDATE_ONLY (strongest candidate) |
+| ICIMOD HMAGLOFDB | v1.3.0 (RDS DOI 10.26066/RDS.1973283; zenodo.18257243; paper essd-15-3941) | RESOLVED — CC BY 4.0 governs (RDS declaration; Zenodo CC0 tag superseded, conservatively read as CC BY 4.0). Prior status 2026-09-16: UNRESOLVED — RDS CC BY 4.0 vs Zenodo CC0 | HMA 766 events 1533–2025; Nepal ~7.6% (~53) in v1.0 | published v1.0: day 39% / month 47% / year-uncertain 26% (±3d) — v1.3 distribution PAYLOAD-GATED; `Sat_evidence` brackets | `Lat/Lon_lake` (within-lake, not breach) + `Lat/Lon_impact` (Observation/Deposit tag) | PAYLOAD-GATED — lake joins via `GL_ID`/`LakeDB_ID`/`G_ID` columns (GLM3-corrected — not `GF_ID`; coverage unverified until bytes; ICIMOD 2015 Koshi/Gandaki/Karnali; NSIDC HMA_GLI; Wang 2020 ESSD; zenodo.17948783) | CANDIDATE_ONLY (strongest candidate) |
 | Recurrence note | — | — | `_Z` suffix on GF_ID (paper-reported; v1.3 semantics PAYLOAD-GATED); 23% of events from 3 ephemeral ice-dammed lakes | — | — | Group by base GF_ID per paper; exact semantics PAYLOAD-GATED | — |
 
 ## Ice/rock avalanche / glacier failure
@@ -156,7 +156,7 @@ qualified for forecast use:
 | Source | Class | Span | Access | Verdict |
 |---|---|---|---|---|
 | TIGGE (ECDS/CMA) | ARCHIVED_OPERATIONAL ensembles | 2006→ | Registration **delayed 48 h**; **per-provider licenses incl. CC BY and CC BY-NC** | Candidate — metadata verified; issue-time retrieval + per-centre license still required |
-| NCAR RDA ds084001 GFS 0.25° | ARCHIVED_OPERATIONAL | **2015-01-15 → 2025-05-28 (bounded archive, per official RDA page)** | Free, CC-BY-4.0 | Candidate — bounded span verified |
+| NCAR RDA ds084001 GFS 0.25° | ARCHIVED_OPERATIONAL | **2015-01-15 → 2026-10-02 (per official RDA page; early-2026 freeze/AWS-migration caveat — tail availability PAYLOAD-GATED until retrieval)** | Free, CC-BY-4.0 | Candidate — RDA span recorded; completeness unverified |
 | NCEI NOMADS archive | ARCHIVED_OPERATIONAL | GEFS 2008–2020; GFS 1° 2005→ | Free | Candidate — cycle completeness unverified |
 | GEFSv12 reforecast (AWS noaa-gefs-retrospective) | REFORECAST — **not** an archive of real-time operational runs | 2000–2019, 5–11 members | Free, no account | Candidate — reforecast only; does not prove operational availability |
 | S2S database (ECDS) | REFORECAST + ARCHIVED real-time | 1981→ centre-dependent | Free; mixed licenses incl. CC BY-NC per centre | Candidate — per-centre license review required |

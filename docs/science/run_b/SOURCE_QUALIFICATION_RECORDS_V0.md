@@ -174,18 +174,18 @@ declared role.
   redistribution_terms: "CC BY 4.0 attribution governs bytes if obtained — metadata-tag resolution only; not byte-verified and not by itself a grant of access"
   nepal_coverage: "HMA 766 events 1533–2025; ~7.6% (~53) Nepal in v1.0 — v1.3.0 Nepal count unverified"
   event_count_if_known: "766 events (HMA); ~53 Nepal (v1.0 count)"
-  timing_class: "EXACT_DAY ~27% (±3d caveat); month ~45%; year-uncertain ~27%; Sat_evidence brackets"
+  timing_class: "published v1.0 statistics: EXACT_DAY 39% / month 47% / year-uncertain 26% (±3d caveat; Sat_evidence brackets) — v1.3 distribution PAYLOAD-GATED until bytes; canonical day semantics: event day is the last-day-or-peak-flood day for multi-day events"
   spatial_semantics: "lake_point (within-lake, not breach point) + impact_point (Observation/Deposit tag)"
   observation_opportunity: "PAYLOAD-GATED — GLM3 independent review: the lake-inventory join keys are GL_ID / LakeDB_ID / G_ID (payload columns, coverage unverified until bytes), NOT the GF_ID event key; event-free lake periods feasible only IF the join coverage and owner-approved external linkage exist (see opportunity_frame below)"
   non_event_feasibility: "feasible via lake-level opportunity frame (ICIMOD 2015 Koshi/Gandaki/Karnali; NSIDC HMA_GLI; Wang 2020 ESSD; zenodo.17948783) — admissibility of the external frame is an owner-policy question, not settled here"
   current_status:
     license: "RESOLVED — CC BY 4.0 governs (RDS declaration; Zenodo CC0 tag superseded, conservatively read as CC BY 4.0)"
-    payload_verification: "PENDING (no bytes acquired)"
+    payload_verification: "PENDING (no bytes acquired); Zenodo record lists a 107,879-byte payload with a published MD5 — recorded as metadata only; acquisition requires independent SHA-256 byte-binding"
     nepal_v1_3_count: "PENDING (v1.0 said ~53/7.6%; v1.3 count unverified until bytes)"
     opportunity_frame: "PENDING-OWNER-POLICY (no native non-event frame; external lake-inventory linkage needs owner decision)"
   reviewer: "RunB metadata review; second review pending at intake"
   decision: CANDIDATE
-  blocker: "Nepal count in v1.3.0 (payload-gated); GL_ID/LakeDB_ID/G_ID join coverage (payload-gated); opportunity-frame owner policy (external lake-inventory linkage vs source-native frame); day-precision share limits horizon admissibility — the ~27% figure is a paper/v1.0-era claim, v1.3 distribution PAYLOAD-GATED"
+  blocker: "Nepal count in v1.3.0 (payload-gated); GL_ID/LakeDB_ID/G_ID join coverage (payload-gated); opportunity-frame owner policy (external lake-inventory linkage vs source-native frame); day-precision share limits horizon admissibility — published v1.0 reports 39% day / 47% month / 26% year-uncertain; v1.3 distribution PAYLOAD-GATED"
   confidence: "medium-high — nearest candidate vertical-wide"
 
 - source_id: hmaglofdb_recurrence_note
@@ -193,11 +193,11 @@ declared role.
   doi_or_url: "same record as icimod_hmaglofdb_v1_3_0"
   license_evidence: "inherits parent record"
   redistribution_terms: "inherits parent record"
-  nepal_coverage: "paper-reported: _Z recurrence suffix on GF_ID; 23% of events from 3 ephemeral ice-dammed lakes — suffix convention UNVERIFIED for v1.3 payload"
+  nepal_coverage: "schema: GF_ID is the integer event-identity key; the Repeat field is the recurrence indicator; the _Z suffix convention is paper-reported but UNVERIFIED against the integer GF_ID schema until payload inspection; paper reports 23% of events from 3 ephemeral ice-dammed lakes"
   event_count_if_known: "23% recurrence share"
   timing_class: "inherits parent"
   spatial_semantics: "inherits parent"
-  observation_opportunity: "paper-reported: recurrence grouped by base GF_ID before dedup — exact suffix/grouping semantics PAYLOAD-GATED"
+  observation_opportunity: "paper-reported: recurrence grouped by base GF_ID (integer event key; Repeat field flags recurrence; _Z suffix convention UNVERIFIED until payload inspection) before dedup"
   non_event_feasibility: "inherits parent"
   reviewer: "RunB metadata review"
   decision: CANDIDATE
@@ -524,7 +524,7 @@ conservative issue+dissemination latency margin (D2 §1).
   confidence: "medium"
 
 - source_id: ncar_rda_ds084001_gfs
-  exact_version: "ds084001; bounded archive 2015-01-15 → 2025-05-28"
+  exact_version: "ds084001; RDA-listed span 2015-01-15 → 2026-10-02 — early-2026 freeze/AWS-migration caveat, tail availability PAYLOAD-GATED"
   doi_or_url: "NCAR RDA ds084001"
   license_evidence: "free, CC-BY-4.0 (verified on RDA record)"
   redistribution_terms: "attribution"
@@ -536,7 +536,7 @@ conservative issue+dissemination latency margin (D2 §1).
   non_event_feasibility: "n/a"
   reviewer: "RunB metadata review"
   decision: CANDIDATE
-  blocker: "cycle completeness + per-cycle issue-time retrievability unverified; bounded span ends 2025-05-28"
+  blocker: "cycle completeness + per-cycle issue-time retrievability unverified; RDA-listed span ends 2026-10-02 (early-2026 freeze/AWS migration — tail-cycle availability must be proven at retrieval)"
   confidence: "medium-high"
 
 - source_id: ncei_nomads_archive

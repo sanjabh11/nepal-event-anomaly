@@ -954,3 +954,38 @@ SRC-01 codeable/docable; the rest owner-gated.  Closed:
 
 Owner-gated (unchanged): P5 authorization, opportunity-frame
 Option A/B, independent reviews, real bytes, governance.
+
+## Round-11.4 documentation/source-matrix repair (2026-09-18)
+
+The live R11.4 audit found the R11.3 code findings closed but
+external-claim drift across the governed documents.  Serial
+reconciliation only — no code, no bytes, no posture change:
+
+- **#2 ds084001** — span corrected to `2015-01-15 → 2026-10-02`
+  per the RDA record with the early-2026 freeze/AWS-migration
+  caveat; tail availability marked PAYLOAD-GATED in all five
+  documents that carried the stale `2025-05-28` end.
+- **#3 NODD** — NODD rolling buckets (incl. post-2020 material)
+  classified `CURRENT_FEED` and explicitly excluded from
+  `ARCHIVED_OPERATIONAL` evidence; GEFSv12 reforecast row notes
+  that only the fixed product qualifies.
+- **#4 timing** — published v1.0 statistics recorded as
+  39% day / 47% month / 26% year-uncertain across all cards;
+  v1.3 distribution remains PAYLOAD-GATED.
+- **#5 semantics** — day = last-day-or-peak-flood for multi-day
+  events; `GF_ID` = integer event key; `Repeat` = recurrence
+  field; `_Z` suffix convention UNVERIFIED until payload
+  inspection.
+- **#6 licence** — all four surfaces recorded (RDS CC BY 4.0,
+  Zenodo CC0 tag, GitHub LICENSE, GitHub README — the latter two
+  metadata-only/not re-fetched); conservative CC BY 4.0 governing
+  read retained without implying access authorization.
+- **#7 payload identity** — Zenodo 107,879-byte payload + published
+  MD5 recorded as metadata only; independent SHA-256 required
+  after acquisition.
+- **#9 target date** — the 2026-08-26 ice-rock avalanche recorded
+  as a separate vertical: not a HMAGLOFDB GLOF label and outside
+  the frozen GLOF source span.
+
+Owner-gated (unchanged): P5 authorization, opportunity-frame
+Option A/B, real bytes, independent intake review, governance.

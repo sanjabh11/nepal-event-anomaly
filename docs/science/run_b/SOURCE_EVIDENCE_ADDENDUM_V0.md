@@ -42,7 +42,7 @@ and was NOT performed.
   version_publication_date: "v1.3.0; 2026-01-15; concept DOI 10.5281/zenodo.7066940"
   resolution: RESOLVED
   notes: "CONFLICT RESOLVED as a cross-version tag change, not a single-record contradiction. Version history retrieved: 7066941 (2022-09-10)=other-open; 8157891 v1.0.0 (2023-07-18)=other-open; 10453155 v1.1.0 (2024-01-03)=cc-by-4.0; 14602271 v1.2.0 (2025-01-05)=cc-zero; 18257425 v1.3.0 (2026-01-15)=cc-zero. The CC BY 4.0 trace in the qualification doc was the v1.1.0 tag and/or the NHESS article licence (Copernicus journals are CC BY). Current v1.3.0 data record is CC0-1.0. Conservative governing term for the family if any doubt persists: CC BY 4.0 attribution — a superset obligation of CC0."
-  remaining_blockers: "Nepal subset count = intake-gated, requires data download — NOT performed; repo-level LICENSE/README text not re-fetched (metadata-only bound)"
+  remaining_blockers: "Nepal subset count = intake-gated, requires data download — NOT performed; GitHub LICENSE and GitHub README are the third/fourth licence surfaces and were NOT re-fetched (metadata-only bound) — the conservative governing read remains RDS CC BY 4.0"
 
 - source_id: kneib_s1_everest_deposits
   api_endpoint: "https://zenodo.org/api/records/10895011"
@@ -237,10 +237,10 @@ and was NOT performed.
   retrieval_utc: "2026-09-15T06:28:08Z"
   license_tag_retrieved: "'This work is licensed under a Creative Commons Attribution 4.0 International License' (link rel=license → creativecommons.org/licenses/by/4.0/)"
   license_url: "https://creativecommons.org/licenses/by/4.0/"
-  version_publication_date: "ds084001/d084001 (GDEX presentation); bounded archive 2015-01-15 → 2025-05-28 per qualification doc"
+  version_publication_date: "ds084001/d084001 (GDEX presentation); RDA-listed span 2015-01-15 → 2026-10-02 — early-2026 freeze/AWS-migration caveat; tail availability PAYLOAD-GATED"
   resolution: RESOLVED
   notes: "CC BY 4.0 confirmed on the landing page — consistent with the qualification doc's 'verified on RDA record'."
-  remaining_blockers: "cycle completeness and per-cycle issue-time retrievability = intake-gated (G14); bounded span ends 2025-05-28"
+  remaining_blockers: "cycle completeness and per-cycle issue-time retrievability = intake-gated (G14); RDA-listed span ends 2026-10-02 — the early-2026 freeze/AWS migration means tail-cycle availability must be proven at retrieval, not assumed from the listing"
 ```
 
 ## Not re-queried in this lane
@@ -271,6 +271,7 @@ here (decisions and open items unchanged): `nepal_drr_portal_moha`,
 | NSIDC HMA_LS_Cat V002 | RESOLVED — no license class on record; citation-required + Earthdata Login |
 | TIGGE / S2S licence classes | RESOLVED — verbatim per-centre CC BY 4.0 / CC BY-NC 4.0 maps retrieved |
 | ds084001 license | RESOLVED — CC BY 4.0 confirmed |
+| HMAGLOFDB licence surfaces (all four recorded; governing read remains conservative CC BY 4.0 — metadata surfaces, not access authorization) | RDS declaration: CC BY 4.0 · Zenodo record tag: CC0 · GitHub LICENSE file: not re-fetched (metadata-only) · GitHub README: not re-fetched (metadata-only) |
 
 Remaining `CONFLICT_REMAINS` / `UNREACHABLE` / `NOT_FOUND`: none across
 queried records. One partial reachability note: the USGS copyrights

@@ -51,7 +51,7 @@ whole bracket (B09: `uncertainty_seconds >= end - start`). The declared
 | Intake timing class | Interval convention | `uncertainty_seconds` | Measured class | Admissible horizons |
 |---|---|---|---|---|
 | exact timestamp (≤1h known) | `[t−u, t+u]` or `[t0, t1]` | measured bracket | `EXACT_TIMESTAMP` | any passing the width gate |
-| day precision (HiAVAL ~95%, HMAGLOFDB ~27%, COOLR, report logs) | `[day 00:00Z, day 24:00Z)` | `86400` | `EXACT_DAY` | 48h/72h/7d/14d/30d subject to latency gate |
+| day precision (HiAVAL ~95%, HMAGLOFDB published v1.0: 39%, COOLR, report logs) — canonical day semantics: event day is the last-day-or-peak-flood day for multi-day events | `[day 00:00Z, day 24:00Z)` | `86400` | `EXACT_DAY` | 48h/72h/7d/14d/30d subject to latency gate |
 | ±3-day bracket (HMAGLOFDB `Sat_evidence`) | `[t−3d, t+3d]` | `518400` | `INTERVAL_LE_7D` | 7d/14d/30d only |
 | scene interval 6–12d (Kneib S1; Burrows timed subset) | `[scene_i, scene_j]` | full bracket width | `INTERVAL_8_30D` | **30d only** |
 | month precision | calendar month | month width (28–31 d) | `COARSE_OR_UNRESOLVED` (declared `month` maps coarse) | none — descriptive only |

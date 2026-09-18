@@ -98,7 +98,7 @@ all of the following can be produced:
 |---|---|
 | `data_class` | `REFORECAST` — fixed-model hindcast; **not** an archive of operational issue-time runs and cannot prove operational availability (policy §7). |
 | Access mode | Public AWS S3 bucket, anonymous HTTPS; also NOAA `rzdm` FTP mirror (bandwidth-limited). No account required. |
-| Licence/terms | NOAA NODD open-data terms: public use with attribution requested; no endorsement implication. Compatible with research use. |
+| Licence/terms | NOAA NODD open-data terms: public use with attribution requested; no endorsement implication. Compatible with research use. **Classification note:** NODD rolling buckets are unofficial current-feed mirrors — they cannot serve as `ARCHIVED_OPERATIONAL` evidence; only the fixed reforecast product qualifies this row. |
 | issue/init/valid/vintage fields | 00 UTC init in path `GEFSv12/reforecast/YYYY/YYYYMMDD00/`; valid = init + step. `issue_time` is not operational — record the *notional* issue as `init + preregistered margin` and the data class as `REFORECAST`. |
 | Public-availability delay | N/A for reforecast (fixed retrospective product). |
 | Cycle completeness | Daily 00Z, 2000-01-01 → 2019-12-31; directory-tree structure makes completeness mechanically checkable at intake. |
@@ -116,11 +116,11 @@ all of the following can be produced:
 | Licence/terms | **CC BY 4.0** (verified 2026-09-15, `run_b/SOURCE_EVIDENCE_ADDENDUM_V0.md`). |
 | issue/init/valid/vintage fields | 00/06/12/18Z cycles, init + forecast hour in filename/keys; valid = init + step. No issue-time field → conservative margin rule. |
 | Public-availability delay | No declared delay; retrieval latency margin still required (§1 gate 4). |
-| Cycle completeness | **Bounded archive: 2015-01-15 → 2025-05-28** (per official RDA page; verified). Cycle-level completeness spot-check required at intake. |
+| Cycle completeness | **RDA-listed span: 2015-01-15 → 2026-10-02** (per official RDA page; early-2026 freeze/AWS-migration caveat — the listed end is a listing claim, not retrieved evidence; tail-cycle availability PAYLOAD-GATED). Cycle-level completeness spot-check required at intake. |
 | Member counts | Deterministic — 1 member (no ensemble). |
 | Spatial coverage over Nepal | 0.25° global — best resolution in this matrix; still coarse vs. Himalayan orography. |
 | Retrieval evidence required | RDA request record, GRIB bytes + sha256, cycle completeness check, licence capture. |
-| **Verdict** | `CANDIDATE_ONLY` — strongest deterministic archive and best grid; single-member and bounded span are the gate items. |
+| **Verdict** | `CANDIDATE_ONLY` — strongest deterministic archive and best grid; single-member and tail-cycle availability (early-2026 freeze/AWS migration) are the gate items. |
 
 ### 3.5 NCEI NOMADS model archive (GEFS / GFS)
 
@@ -183,7 +183,7 @@ Himalayan domain is the admissible substitute.
 | Class | Members | Rule |
 |---|---|---|
 | `REANALYSIS` | ERA5, ERA5-Land, ERA5T, IMDAA | Retrospective regime path only; **never** scored as forecast skill; rejected by `ForecastVintageV0` and the forecast feature gate. |
-| `CURRENT_FEED` | ECMWF Open Data, NOMADS rolling, IMD plots | Not historical archives; rejected by `ForecastVintageV0`. |
+| `CURRENT_FEED` | ECMWF Open Data, NOMADS rolling, NOAA NODD rolling buckets (current-feed mirrors, incl. post-2020 material), IMD plots | Not historical archives — unofficial/rolling open-data mirrors are excluded from `ARCHIVED_OPERATIONAL` evidence and rejected by `ForecastVintageV0` for forecast-skill claims. |
 
 ## 4. Consolidated gate table
 
