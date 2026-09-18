@@ -35,6 +35,7 @@ on:
       - "tests/test_real_fmx_audit.py"
       - "tests/test_glof_poc_real_path.py"
       - "tests/test_regime_real_path.py"
+      - "tests/test_r11_5_release_closure.py"
       - "tests/test_framework_v1_*.py"
       - "conftest.py"
       - "requirements.txt"
@@ -71,6 +72,7 @@ on:
       - "tests/test_real_fmx_audit.py"
       - "tests/test_glof_poc_real_path.py"
       - "tests/test_regime_real_path.py"
+      - "tests/test_r11_5_release_closure.py"
       - "tests/test_framework_v1_*.py"
       - "conftest.py"
       - "requirements.txt"
@@ -223,7 +225,8 @@ jobs:
           tests/test_p5_glof_intake.py
           tests/test_real_fmx_audit.py
           tests/test_glof_poc_real_path.py
-          tests/test_regime_real_path.py -q -rs
+          tests/test_regime_real_path.py
+          tests/test_r11_5_release_closure.py -q -rs
 
       - name: Frozen framework_v1 contract tests
         # tests/test_framework_v1_*.py exercise the frozen
@@ -258,6 +261,24 @@ jobs:
         run: |
           PYTHONPATH=. python -B -m nepal.research_v0.cli \
             verify-manifest docs/science/ARTIFACT_MANIFEST_V0.json
+
+      - name: Manifest-commit identity guard (manifest_commit == content_head)
+        # R11.5 release proof: the manifest must name the FINAL content
+        # commit it binds — never a stale round's value, never the
+        # manifest-only rebind commit itself (P0_BASELINE_LEDGER:
+        # "content_head and manifest_commit name the final content commit").
+        run: |
+          set -e
+          PYTHONPATH=. python -B -c '
+          import json
+          m = json.load(open("docs/science/ARTIFACT_MANIFEST_V0.json"))
+          assert m["manifest_commit"] == m["content_head"], (
+              "stale manifest_commit: "
+              + m["manifest_commit"]
+              + " != content_head " + m["content_head"])
+          print("manifest_commit == content_head:",
+                m["manifest_commit"])
+          '
 
       - name: Disk reserve guard
         run: |
