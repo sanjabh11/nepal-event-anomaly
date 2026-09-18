@@ -1,6 +1,6 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "c751f8c3a7d851bebc56a18ec5c1d3d6a984c5af",
+  "content_head": "0ee203c309638a9766f02b8c03d7d73aa7c6a0e7",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
@@ -14,8 +14,8 @@
     },
     {
       "relpath": "README.md",
-      "sha256": "7c8e8b0179688f35211c062e89395d709d660877bdffa58de1e6f3d87a392cd1",
-      "size_bytes": 8063
+      "sha256": "68e84d736735f4e7428afbc9774d8b1c97e3950be3a98665bbaf84c1a06fde8a",
+      "size_bytes": 9071
     },
     {
       "relpath": "conftest.py",
@@ -24,8 +24,8 @@
     },
     {
       "relpath": "docs/science/GAP_REGISTER_V0.md",
-      "sha256": "b639c287bb897746a3b0ddad05ce0a3c07942417c41501ef6ca6ec6150bf7393",
-      "size_bytes": 103145
+      "sha256": "680f5696536754ae885c18866286eb8985bbbe989f837222c287a2dccb4d926b",
+      "size_bytes": 104134
     },
     {
       "relpath": "docs/science/GOVERNANCE_EXERCISE_RECORD_V0.md",
@@ -54,8 +54,8 @@
     },
     {
       "relpath": "docs/science/P0_BASELINE_LEDGER.md",
-      "sha256": "6169daa78fb346911ca070cc12981c42a6172ade28bd86b4b402619cd541f240",
-      "size_bytes": 21386
+      "sha256": "465ab6e226cc27656b6dca560ea2aa46daaf6565a92018f72f5d15f8bee967c1",
+      "size_bytes": 22336
     },
     {
       "relpath": "docs/science/P3_ATTESTATION_RECORD_V0.md",
@@ -66,6 +66,11 @@
       "relpath": "docs/science/P3_ATTESTATION_TEMPLATE.md",
       "sha256": "a34a1d433233636c13c6eb1fc63600041eeeabb6e2ea820c7d3e71432edf99f9",
       "size_bytes": 6351
+    },
+    {
+      "relpath": "docs/science/SEISMIC_SOURCE_QUALIFICATION_V0.md",
+      "sha256": "5870a32c0d672640c089ea388f7113d2b0b63baf7281d739968e0f5ca88a3a97",
+      "size_bytes": 3900
     },
     {
       "relpath": "docs/science/SOURCE_FEASIBILITY_RECORDS_V0.md",
@@ -279,13 +284,18 @@
     },
     {
       "relpath": "nepal/seismic_sidecar/__init__.py",
-      "sha256": "8d337985c3f0dd7ec38cc84176351fe302535fadc2cc294ee7d93f68044f737d",
-      "size_bytes": 2771
+      "sha256": "9d8327df6e728e402575b15f2ac5d44fb2f79772087c5afd0722014e5607a4f3",
+      "size_bytes": 3447
     },
     {
       "relpath": "nepal/seismic_sidecar/contracts.py",
-      "sha256": "db68e6c502b34258f00ed0f6f3008306a31f98ef125c4bdcc99efef309e8051f",
-      "size_bytes": 23385
+      "sha256": "b4ba61062df13ce240e01f06512cbe4d5b2b1ce4b1a727e3c3d9a7f84e334967",
+      "size_bytes": 24578
+    },
+    {
+      "relpath": "nepal/seismic_sidecar/events.py",
+      "sha256": "d1ca8abf4655d9fd080b1cdf1c676977d908a4e9db5e50f1ae9c71e8db5e4fb7",
+      "size_bytes": 14432
     },
     {
       "relpath": "nepal/seismic_sidecar/features.py",
@@ -293,14 +303,29 @@
       "size_bytes": 20738
     },
     {
+      "relpath": "nepal/seismic_sidecar/io.py",
+      "sha256": "26b452e4decdaae631888d0ad6fe867a2052404fb16ecee96e81c005365b62cb",
+      "size_bytes": 36850
+    },
+    {
       "relpath": "nepal/seismic_sidecar/observability.py",
       "sha256": "2f0dedc3c70dc298baa065812f2c0baf8d73c849c28fc17eb8dbcc7fbde613a4",
       "size_bytes": 16847
     },
     {
+      "relpath": "nepal/seismic_sidecar/provenance.py",
+      "sha256": "536a33b6f67e6fb22d3f8d8214739a1ec1f91b7ec7598dd99d58027c0cec0372",
+      "size_bytes": 24287
+    },
+    {
       "relpath": "nepal/seismic_sidecar/runner.py",
-      "sha256": "4192a465d109fefbbc4ed0f4a04a63cc6364e70ca54e293f5c5bdcd5956cf5df",
-      "size_bytes": 28786
+      "sha256": "e38b72cc20d3362c0fcbeba0fb845b7d9eebc1ff17708e12f6590718fb8eddc0",
+      "size_bytes": 30422
+    },
+    {
+      "relpath": "scripts/agent_write_lock.py",
+      "sha256": "e6ad9616b2e2c38f20e406328bd56d146da8d88cfea7ada125bc0e45e34d9589",
+      "size_bytes": 6985
     },
     {
       "relpath": "tests/fixtures/__init__.py",
@@ -519,8 +544,13 @@
     },
     {
       "relpath": "tests/test_seismic_sidecar_contract.py",
-      "sha256": "87cc720de57a7378074c2da4c6680b09c46672875ca772db2f17ef8014834731",
-      "size_bytes": 18169
+      "sha256": "4bf9c127af8bb7b7a4f61de5f4d93751be9eae63f339f372510c3f95d5ec598d",
+      "size_bytes": 18797
+    },
+    {
+      "relpath": "tests/test_seismic_sidecar_events.py",
+      "sha256": "63881ffc7074d2c34b65edc2b74cdfe8f79e8130a73bbe5265df06fc5cd1e2d1",
+      "size_bytes": 5873
     },
     {
       "relpath": "tests/test_seismic_sidecar_features.py",
@@ -528,19 +558,29 @@
       "size_bytes": 13847
     },
     {
+      "relpath": "tests/test_seismic_sidecar_io.py",
+      "sha256": "d16968c4fc70b5aa3885577a2163f80d12ae3046092a07e9768117518efaabc2",
+      "size_bytes": 20358
+    },
+    {
       "relpath": "tests/test_seismic_sidecar_observability.py",
       "sha256": "157767d26463de0591bcadc30df95e6104d44bc9ddc05753059c09d187258a5f",
       "size_bytes": 7942
     },
     {
+      "relpath": "tests/test_seismic_sidecar_provenance.py",
+      "sha256": "c61c08bd29e81ef94f2d027db55f9e4261f76358a9cdc53308d654e9745f620e",
+      "size_bytes": 9678
+    },
+    {
       "relpath": "tests/test_seismic_sidecar_runner.py",
-      "sha256": "8c12044519f2562c93c5390427096ce3be60ff6400f4841911e730fcafe85177",
-      "size_bytes": 25405
+      "sha256": "b77339b02b6dd097a2e1cbb6c476559c5b3ee14a036c6ea0b04ead3ea04b742c",
+      "size_bytes": 26884
     }
   ],
-  "generated": "2026-09-18",
+  "generated": "2026-09-19",
   "interpreter": ".venv/bin/python",
-  "manifest_commit": "c751f8c3a7d851bebc56a18ec5c1d3d6a984c5af",
+  "manifest_commit": "0ee203c309638a9766f02b8c03d7d73aa7c6a0e7",
   "manifest_version": "ARTIFACT_MANIFEST_V0.3",
   "repository_relative_root": ".",
   "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -548,10 +588,10 @@
   "scope": "governed science artifacts: docs/science, nepal/research_v0, research tests, CI workflow, README \u2014 non-science sources excluded by design",
   "self_excluded": true,
   "test_results": {
-    "full_suite_venv": "3203 passed, 6 skipped (5 rasterio + 1 documented lane skip), 0 failed, 57 warnings",
+    "full_suite_venv": "3267 passed, 6 skipped (5 rasterio + 1 documented lane skip), 0 failed, 57 warnings",
     "promotion_matrix": "699 passed (r9 179 + r10 520)",
     "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
-    "collection_guard": "repo-wide collection == tests/ (3209 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
+    "collection_guard": "repo-wide collection == tests/ (3273 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
     "claim_scan": "clean on all governed files",
     "research_v0": "123 passed",
     "p5_io_contract": "34 passed",
@@ -564,7 +604,9 @@
     "r11_5_real_path": "93 passed, 1 skipped (p5_glof_intake + real_fmx_audit + glof_poc_real_path + regime_real_path)",
     "r11_5_release_closure": "4 passed (manifest_commit identity, lane governance, collection census, CLI stale-commit rejection)",
     "seismic_addendum": "4 passed",
-    "seismic_sidecar": "122 passed (contract 42 + features 36 + observability 20 + runner 24, incl. one real engine artifact under SEISMIC_WAVEFORM_RETROSPECTIVE)",
-    "seismic_shared_regression": "shared-boundary regressions green (vocabulary isolation, record lane, engine lane, producer floor, adapter rejection)"
+    "seismic_sidecar": "143 passed component (contract 53 + features 31 + observability 25 + runner 34, incl. one real engine artifact under SEISMIC_WAVEFORM_RETROSPECTIVE)",
+    "seismic_sidecar_intake": "47 passed (io 24 + provenance 10 + events 13 \u2014 byte-parsed intake, generation provenance, event package)",
+    "seismic_focused_lane": "208 passed combined (143 component + 47 intake + 14 shared regression + 4 addendum)",
+    "seismic_shared_regression": "14 passed (vocabulary isolation, record lane, engine lane, producer floor, adapter rejection)"
   }
 }
