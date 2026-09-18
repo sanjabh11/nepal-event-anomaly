@@ -9,7 +9,9 @@ or scientific validation.
 **Inputs:** `HAZARD_EVENT_INVENTORY_DECISION_MATRIX_V0.md` (D1),
 `SOURCE_FEASIBILITY_RECORDS_V0.md` (metadata lane),
 `INFORMATION_CUTOFF_TARGET_POLICY_V0.md` (D2), `GAP_REGISTER_V0.md`,
-`nepal/research_v0/records.py` (contract surface).
+`nepal/research_v0/records.py` (contract surface), and
+`SEISMIC_EVENT_DETECTION_ADDENDUM_V0.md` (separate post-initiation
+sidecar role; no current source selection).
 
 ## Decision vocabulary
 

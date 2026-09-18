@@ -367,3 +367,15 @@ the CLI now independently rejects a stale or manifest-only
 Fresh canonical suite at `73fd1a8`: **3059 passed / 6 skipped /
 0 failed / 57 warnings** (3,065 collected).  Owner-gated items
 unchanged.
+
+## Seismic event-detection sidecar addendum (2026-09-18)
+
+The customer seismic recommendation is captured in
+`run_b/SEISMIC_EVENT_DETECTION_ADDENDUM_V0.md` as a separate,
+post-initiation research track. This documentation-only change records
+that the current Nepal weather/GLOF thin-PoC has no seismic predictor,
+separates T2A earthquake-catalog context from disabled geophone spectral
+code, and defines station observability, P5 and byte-binding gates for any
+future waveform sidecar. No payload bytes were retrieved; no source,
+pilot, warning or production posture changed. The focused documentation
+regression is `tests/test_research_v0_seismic_addendum.py`.

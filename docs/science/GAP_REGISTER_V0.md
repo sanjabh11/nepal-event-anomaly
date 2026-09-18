@@ -1090,3 +1090,25 @@ rebind `8c788a8`):
 
 Owner-gated (unchanged): P5 authorization, opportunity-frame
 Option A/B, real bytes, independent intake review, governance.
+
+## Seismic event-detection sidecar addendum (2026-09-18)
+
+The customer-requested seismic direction is recorded as a separate
+research-only sidecar rather than a change to the frozen Nepal
+weather/GLOF thin-PoC. `run_b/SEISMIC_EVENT_DETECTION_ADDENDUM_V0.md`
+records the boundary:
+
+- the Nepal feature frame has no seismic predictor or waveform loader;
+- `landslide_coseismic` and the USGS Gorkha source are trigger-label
+  surfaces only;
+- T2A's USGS path is earthquake-catalog context and its geophone FFT/PSD
+  path is disabled/unwired, so neither is treated as Nepal waveform
+  evidence;
+- a future sidecar may evaluate post-initiation abnormal detection using
+  station-level FDSN/StationXML evidence, with `UNOBSERVABLE` when coverage
+  or SNR is inadequate;
+- P5 authorization, byte-bound waveforms, independent review and the
+  observability gate remain open.
+
+No source status, pilot outcome, preregistration, frozen feature contract,
+warning authority or production status changes in this addendum.

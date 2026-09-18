@@ -16,6 +16,13 @@ bounded-acquisition authorization, documented in
 `run_a/RUN_A_EVIDENCE_SUMMARY_V0.md` and
 `run_a/HYBRID_ROUTE_RECONCILIATION_V0.md`.
 
+**Seismic sidecar pointer (2026-09-18):**
+`run_b/SEISMIC_EVENT_DETECTION_ADDENDUM_V0.md` defines a separate,
+post-initiation detection role. USGS event metadata and FDSN waveform
+stations remain `CANDIDATE_ONLY` until station-level observability,
+licence/access, byte provenance and P5 authorization are established.
+This pointer changes no source decision and authorizes no retrieval.
+
 **Supersession note (2026-09-16; amended 2026-09-18):** the License
 cells below are the dated 2026-09-13 metadata-lane record and are
 deliberately **not rewritten**, except the ICIMOD HMAGLOFDB cell,
