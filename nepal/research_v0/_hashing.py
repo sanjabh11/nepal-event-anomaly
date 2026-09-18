@@ -54,6 +54,122 @@ def _stat_signature(st) -> tuple:
     return (st.st_ino, st.st_size, st.st_mtime_ns)
 
 
+def _check_evidence_root(root_raw: Any,
+                         ) -> tuple[Path | None, list[str]]:
+    """The declared-evidence-root floor (R10-P08).
+
+    Policy: *no symlink anywhere beneath-and-including the declared
+    path*.  ``root_raw`` must be a non-empty string whose path
+    lstat-resolves to a real directory — the declared path's own leaf
+    component may not be a symlink — and every path component between
+    the root and an evidence leaf is lstat-checked by
+    ``_resolve_evidence_leaf`` before any byte is read.
+
+    Residual (documented): ancestor components ABOVE the declared
+    root are canonicalized by ``resolve()`` and are out of policy
+    scope — host-level conveniences like macOS's ``/var ->
+    /private/var`` must stay admissible or no temporary evidence
+    directory could ever verify.  A mid-path symlink inside the
+    declared root string is likewise normalized by ``resolve()``;
+    the byte binding is anchored at the resolved real directory.
+    Returns ``(resolved_root, problems)`` — ``resolved_root`` is
+    ``None`` exactly when problems is non-empty.  Never raises.
+    """
+    if not isinstance(root_raw, str) or not root_raw.strip():
+        return None, ["evidence_root must be a non-empty string "
+                      "naming a directory"]
+    root = Path(root_raw)
+    try:
+        st = root.lstat()
+    except OSError:
+        return None, [f"evidence_root {root} is not a directory"]
+    if stat.S_ISLNK(st.st_mode):
+        return None, [f"evidence_root {root} is a symlink — the "
+                      "declared evidence path itself must be real"]
+    if not stat.S_ISDIR(st.st_mode):
+        return None, [f"evidence_root {root} is not a directory"]
+    try:
+        root_resolved = root.resolve()
+    except OSError as exc:
+        return None, [f"cannot resolve evidence_root {root}: {exc}"]
+    return root_resolved, []
+
+
+def _resolve_evidence_leaf(
+        root_resolved: Path, rel: Any, label: str,
+        ) -> tuple[Path | None, str | None]:
+    """Resolve one declared relpath to a verified real leaf file.
+
+    Returns ``(leaf_path, None)`` on success or ``(None, problem)``
+    on any violation.  Fail-closed contract (R10-P08): the relpath
+    must be a non-empty relative path with no ``..`` escape; EVERY
+    path component from ``root_resolved`` down to the leaf is
+    lstat-checked — intermediate components must be real directories
+    (never symlinks), the leaf a real regular file (never a symlink);
+    the resolved leaf must stay inside the resolved root; and the
+    leaf's pre/post-read identity is pinned by
+    ``_sha256_evidence_file``.
+
+    TOCTOU residual (documented): fd-level ``O_NOFOLLOW``/``openat2``
+    hardening needs ``os.open``, which the research_v0 isolation
+    policy forbids — the component-walk + leaf identity-pin is the
+    enforceable equivalent: a swapped intermediate directory between
+    the walk and the read can still race the open, but the leaf
+    itself cannot be swapped or rewritten without the post-read
+    signature catching it.  Never raises.
+    """
+    if not isinstance(rel, str) or not rel.strip():
+        return None, f"{label} must be a non-empty relative path"
+    rel_path = Path(rel)
+    if rel_path.is_absolute():
+        return None, (f"{label} path {rel!r} is absolute — it must "
+                      "resolve inside evidence_root")
+    parts = rel_path.parts
+    if not parts or any(part == ".." for part in parts):
+        return None, (f"{label} path {rel!r} resolves outside "
+                      "evidence_root — '..' components are not "
+                      "admissible")
+    # Component walk: lstat EVERY intermediate component under the
+    # resolved root — a symlinked directory in the declared path is
+    # rejected before the leaf is ever opened.
+    acc = root_resolved
+    for part in parts[:-1]:
+        acc = acc / part
+        try:
+            st = acc.lstat()
+        except OSError as exc:
+            return None, (f"{label} path {rel!r}: intermediate "
+                          f"component {acc} cannot be stat'd: {exc}")
+        if stat.S_ISLNK(st.st_mode):
+            return None, (f"{label} path {rel!r}: component {acc} "
+                          "is a symlink — no symlink is admissible "
+                          "beneath the declared evidence_root")
+        if not stat.S_ISDIR(st.st_mode):
+            return None, (f"{label} path {rel!r}: component {acc} "
+                          "is not a directory")
+    leaf = root_resolved.joinpath(*parts)
+    try:
+        st = leaf.lstat()
+    except OSError as exc:
+        return None, (f"{label} path {rel!r}: leaf cannot be "
+                      f"stat'd: {exc}")
+    if stat.S_ISLNK(st.st_mode):
+        return None, (f"{label} path {rel!r} is a symlink — "
+                      "evidence files must be real files")
+    if not stat.S_ISREG(st.st_mode):
+        return None, (f"{label} path {rel!r} is not a regular file")
+    try:
+        resolved = leaf.resolve()
+    except OSError as exc:
+        return None, f"{label} path {rel!r} cannot be resolved: {exc}"
+    try:
+        resolved.relative_to(root_resolved)
+    except ValueError:
+        return None, (f"{label} path {rel!r} resolves outside "
+                      "evidence_root")
+    return leaf, None
+
+
 def _sha256_evidence_file(path: str | Path) -> str:
     """Hash evidence bytes with TOCTOU hardening (R9-P03).
 
@@ -141,10 +257,12 @@ def verify_source_evidence(manifest: Any) -> list[str]:
 
     Fail-closed contract for governed inputs (PROV-03):
     ``evidence_root`` must be a non-empty string naming a directory
-    that exists on disk; ``source_files`` must be a non-empty list of
-    ``{relpath, sha256}`` entries; every relpath must resolve INSIDE
-    the root (absolute paths and ``..`` escapes reject), name a real
-    non-symlink file, and hash to its declared digest; and the
+    that exists on disk (and is not itself a symlink); ``source_files``
+    must be a non-empty list of ``{relpath, sha256}`` entries; every
+    relpath must resolve INSIDE the root (absolute paths and ``..``
+    escapes reject), name a real non-symlink file with no symlink at
+    ANY intermediate path component beneath the root (R10-P08
+    component-walk), and hash to its declared digest; and the
     multiset of verified file digests must equal the manifest's
     ``source_digests``.  ``{"fixture": true}`` manifests carry no
     on-disk evidence by declaration and bypass byte verification.
@@ -165,68 +283,53 @@ def verify_source_evidence(manifest: Any) -> list[str]:
         return [f"fixture must be a strict boolean to bypass or "
                 f"decline byte verification — got "
                 f"{manifest['fixture']!r}"]
-    root_raw = manifest.get("evidence_root")
-    if not isinstance(root_raw, str) or not root_raw.strip():
-        return ["evidence_root must be a non-empty string naming a "
-                "directory"]
-    root = Path(root_raw)
-    if not root.is_dir():
-        return [f"evidence_root {root} is not a directory"]
-    try:
-        root_resolved = root.resolve()
-    except OSError as exc:
-        return [f"cannot resolve evidence_root {root}: {exc}"]
+    root_resolved, root_problems = _check_evidence_root(
+        manifest.get("evidence_root"))
+    if root_problems:
+        return root_problems
     files = manifest.get("source_files")
     if not isinstance(files, (list, tuple)) or not files:
         return ["source_files must be a non-empty list of "
                 "{relpath, sha256} bindings"]
     problems: list[str] = []
     verified: list[str] = []
+    seen_relpaths: set = set()
     for i, entry in enumerate(files):
         if not isinstance(entry, Mapping):
             problems.append(f"source_files[{i}] is not a "
                             "{relpath, sha256} mapping")
             continue
+        # R10-P11: the evidence binding record is exact — only
+        # {relpath, sha256} may be declared.
+        extra = sorted(set(entry) - {"relpath", "sha256"})
+        if extra:
+            problems.append(f"source_files[{i}] carries undeclared "
+                            f"fields {extra} — the evidence binding "
+                            "record admits exactly {relpath, sha256}")
         rel = entry.get("relpath")
         declared = entry.get("sha256")
-        if not isinstance(rel, str) or not rel.strip():
-            problems.append(f"source_files[{i}].relpath must be a "
-                            "non-empty relative path")
-            continue
-        if Path(rel).is_absolute():
-            problems.append(f"source_files[{i}] relpath {rel!r} is "
-                            "absolute — it must resolve inside "
-                            "evidence_root")
-            continue
+        if isinstance(rel, str) and rel.strip():
+            if rel in seen_relpaths:
+                problems.append(
+                    f"source_files[{i}] relpath {rel!r} is "
+                    "duplicated — one evidence binding per file")
+                continue
+            seen_relpaths.add(rel)
         if not isinstance(declared, str) or \
                 not _SHA256_RE.match(declared):
             problems.append(f"source_files[{i}].sha256 must be a "
                             "64-hex sha256")
             continue
-        joined = root_resolved / rel
-        # R9-P03: reject the symlink itself BEFORE resolution — an
-        # inside-root symlink's target is not the artifact the
-        # caller named, even when the target also lives inside the
-        # root (parity with verify_vintage_evidence).
-        if joined.is_symlink():
-            problems.append(f"source_files[{i}] relpath {rel!r} is "
-                            "a symlink — evidence files must be "
-                            "real files")
+        # R10-P08: component-walked resolution — no symlink at any
+        # component beneath the declared root, leaf pinned by the
+        # pre/post-read identity check inside _sha256_evidence_file.
+        leaf, prob = _resolve_evidence_leaf(
+            root_resolved, rel, f"source_files[{i}] relpath")
+        if prob is not None:
+            problems.append(prob)
             continue
         try:
-            resolved = joined.resolve()
-        except OSError as exc:
-            problems.append(f"source_files[{i}] {rel!r} cannot be "
-                            f"resolved: {exc}")
-            continue
-        try:
-            resolved.relative_to(root_resolved)
-        except ValueError:
-            problems.append(f"source_files[{i}] relpath {rel!r} "
-                            "resolves outside evidence_root")
-            continue
-        try:
-            actual = _sha256_evidence_file(resolved)
+            actual = _sha256_evidence_file(leaf)
         except ValueError as exc:
             problems.append(f"source_files[{i}] {rel!r}: {exc}")
             continue
@@ -256,12 +359,14 @@ def verify_vintage_evidence(vintage: Any,
     serialized mapping): the evidence root — the ``evidence_root``
     argument, or the record's own ``evidence_root`` field when the
     argument is ``None`` — must be a non-empty string naming a
-    directory that exists on disk; ``archive_payload_path`` and
-    ``retrieval_record_path`` must be non-empty relative paths that
-    resolve INSIDE the root (absolute paths, ``..`` escapes, and
-    symlinks all reject — ``os.path.realpath`` of each file must stay
-    inside the realpath of the root), name real files, and hash to the
-    declared ``archive_payload_sha256`` / ``retrieval_record_sha256``.
+    directory that exists on disk (and is not itself a symlink);
+    ``archive_payload_path`` and ``retrieval_record_path`` must be
+    non-empty relative paths that resolve INSIDE the root (absolute
+    paths, ``..`` escapes, and symlinks all reject — every path
+    component beneath the root is lstat-checked, so a symlinked
+    intermediate directory rejects too, R10-P08), name real files,
+    and hash to the declared ``archive_payload_sha256`` /
+    ``retrieval_record_sha256``.
 
     Returns human-readable problem strings — an empty list means both
     files exist inside the root and hash to the declared digests.
@@ -286,17 +391,9 @@ def verify_vintage_evidence(vintage: Any,
 
     root_raw = evidence_root if evidence_root is not None \
         else _field("evidence_root")
-    if not isinstance(root_raw, str) or not root_raw.strip():
-        return ["evidence_root must be a non-empty string naming a "
-                "directory"]
-    root = Path(root_raw)
-    if not root.is_dir():
-        return [f"evidence_root {root} is not a directory"]
-    try:
-        root_resolved = root.resolve()
-    except OSError as exc:
-        return [f"cannot resolve evidence_root {root}: {exc}"]
-    problems: list[str] = []
+    root_resolved, problems = _check_evidence_root(root_raw)
+    if problems:
+        return problems
     for label, path_field, digest_field in (
             ("archive_payload", "archive_payload_path",
              "archive_payload_sha256"),
@@ -304,41 +401,22 @@ def verify_vintage_evidence(vintage: Any,
              "retrieval_record_sha256")):
         rel = _field(path_field)
         declared = _field(digest_field)
-        if not isinstance(rel, str) or not rel.strip():
-            problems.append(f"{path_field} must be a non-empty "
-                            "relative path")
-            continue
-        if Path(rel).is_absolute():
-            problems.append(f"{label} path {rel!r} is absolute — it "
-                            "must resolve inside evidence_root")
-            continue
         if not isinstance(declared, str) or \
                 not _SHA256_RE.match(declared):
             problems.append(f"{digest_field} must be a 64-hex sha256")
             continue
-        joined = root_resolved / rel
-        # Reject the symlink itself before resolution: an inside-root
-        # symlink's target is not the artifact the caller named.
-        if joined.is_symlink():
-            problems.append(f"{label} path {rel!r} is a symlink — "
-                            "evidence files must be real files")
-            continue
-        try:
-            resolved = joined.resolve()
-        except OSError as exc:
-            problems.append(f"{label} path {rel!r} cannot be "
-                            f"resolved: {exc}")
-            continue
-        try:
-            resolved.relative_to(root_resolved)
-        except ValueError:
-            problems.append(f"{label} path {rel!r} resolves outside "
-                            "evidence_root")
+        # R10-P08: component-walked resolution — no symlink at any
+        # component beneath the declared root, leaf pinned by the
+        # pre/post-read identity check inside _sha256_evidence_file.
+        leaf, prob = _resolve_evidence_leaf(
+            root_resolved, rel, f"{label} path")
+        if prob is not None:
+            problems.append(prob)
             continue
         try:
             # R9-P03 parity: stat-pinned hashing — the evidence file
             # must be a stable regular file across the whole read.
-            actual = _sha256_evidence_file(resolved)
+            actual = _sha256_evidence_file(leaf)
         except ValueError as exc:
             problems.append(f"{label} path {rel!r}: {exc}")
             continue

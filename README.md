@@ -105,19 +105,27 @@ Test-suite honesty: the full suite under the pinned `.venv` recorded
 `P0_BASELINE_LEDGER.md` (historical snapshot). Later dated snapshots:
 1306 at the round-2 reconciliation head, 1641 after the first swarm
 integration, 1828 at the post-audit residual-repair head. Last
-fully-verified baseline (round-9 hardening content commit; the
+fully-verified baseline (round-10 hardening content commit; the
 manifest's `content_head` names the commit whose tree the manifest
 hashes — the manifest commit itself follows the content commit):
-**2252 passed / 5 skipped / 0 failed** across
-**82** manifest-governed files — bound to the round-9
-hardened head. The round-9 surface hardens the producer
-boundary end-to-end: a complete `validate_producer_payload`
-shared floor at every boundary, `unit_basin_map` binding carried
-through the adapted artifact into association, and source-byte
-verification of non-fixture evidence at every boundary;
-`tests/test_r9_promotion.py` carries the 33-mutation × 4-boundary
-promotion-closure matrix. The prior verified baseline (round-8
-hardening): **2073 passed / 5 skipped / 0 failed / 57 warnings**;
+**2757 passed / 5 skipped / 0 failed / 57 warnings** across
+**84** manifest-governed files — bound to the round-10
+hardened head. The round-10 surface closes the sixteen findings a
+Round-10 independent audit raised against the round-9 floor:
+bounded numeric parsing (no malformed value crashes a boundary),
+complete serialized-config semantics, exact field schemas across
+the whole envelope, the status×terminal×associable state machine,
+complete null-family validation, non-coercing artifact
+construction with exact unit→basin coverage, component-walk
+symlink policy, and typed byte-bound `forecast_vintages` for
+associable forecast artifacts; `tests/test_r10_promotion.py`
+carries the 503-test mutation matrix (forged-artifact association
+evidence at every boundary), and the root `conftest.py` pins
+canonical collection to `tests/` so the ignored external data
+symlink can never be collected. The prior verified baseline
+(round-9 hardening): **2252 passed / 5 skipped / 0 failed** across
+82 manifest files; the round-8 baseline:
+**2073 passed / 5 skipped / 0 failed / 57 warnings**;
 before that, round-7 content commit `cc2218b` (77 manifest files):
 **2015 passed / 5 skipped / 0 failed / 57 warnings**, with
 562 focused-lane tests green — retained as dated history, as is

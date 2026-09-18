@@ -245,7 +245,7 @@ class TestGateUniverseShared:
             null_fams[fam] = rec
         fit_partition = {
             "record_type": "fit_partition/v0",
-            "train_groups": ["g1"], "heldout_groups": [],
+            "train_groups": ["g1"], "heldout_groups": ["g_holdout"],
             "n_train_rows": len(train_keys), "n_rows": 2,
             "train_row_keys_digest": sorted_row_key_digest(
                 train_keys),
@@ -289,7 +289,7 @@ class TestGateUniverseShared:
                        "effort_split": "median",
                        "mode": "RETROSPECTIVE_REGIME",
                        "train_groups": ["g1"],
-                       "heldout_groups": [],
+                       "heldout_groups": ["g_holdout"],
                        "forecast_feature_set": [],
                        "forecast_vintage_digests": [],
                        "source_manifest": {"fixture": True}},
@@ -310,7 +310,7 @@ class TestGateUniverseShared:
                       "season_matched":
                           null_fams["season_matched"]},
             "fit_groups": ["g1"],
-            "heldout_groups_declared": [],
+            "heldout_groups_declared": ["g_holdout"],
             "fit_partition": fit_partition,
             "n_train_rows": len(train_keys),
             "n_rows": 2,

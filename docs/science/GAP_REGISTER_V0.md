@@ -730,3 +730,65 @@ association, **F01–F03** forecast, **G01/G02** human approvals,
 **O01** operations.  Postures unchanged:
 `DESIGN_DRAFT_COMPLETE`; P3 design-only; `NO_QUALIFYING_PILOT_SOURCE`;
 `WARNING_PATH_AUTHORIZED: NO`.
+
+## Round-10 promotion-closure census (2026-09-17)
+
+A Round-10 independent audit found the Round-9 floor green at its
+tested layer but reopened its "complete shared floor" claim: the
+crash-class surface (P01), serialized-config completeness (P02),
+status state machine (P09), unknown-field tolerance (P11), typed
+forecast-vintage binding (P12), and several boundary/test-surface
+gaps were live. All sixteen findings are **closed in this round**;
+the affected Round-9 rows are re-annotated below as
+`RESOLVED by Round-9 → PARTIAL at Round-10 audit → RESOLVED by
+Round-10`. Regression coverage lives in
+`tests/test_r10_promotion.py` (503 tests: 89 payload mutations ×
+floor/freeze/adapter/audit/association with forged-artifact
+association evidence — no canonical-artifact fallback — plus
+direct-construction, vintage-acceptance, run-level, and accounting
+classes). Full suite at closure: **2757 passed, 5 skipped
+(rasterio quarantine), 0 failed, 57 warnings**.
+
+| Finding | Closure |
+|---|---|
+| R10-P01 numeric overflow crashes | `_finite_float` — one bounded numeric parser catching TypeError/ValueError/OverflowError, rejecting bools and non-finite values — applied at every numeric consumption site (input_values, weights, means, covariances, occupancy, modal_k_frequency, null stats/alpha/p_value, replicate stats, missingness, stability scores). No numeric probe raises through any boundary; audit's own richer model checks were wrapped identically. |
+| R10-P02 incomplete config semantics | `_config_semantic_problems` validates every serialized `RegimeRunConfig` field: cadence/gap_policy/fold_seed_policy/effort_split vocabularies, `bootstrap_block_len`/`n_bootstrap`/`n_null_replicates` floors, `null_alpha`/`max_missingness`/`elev_ablation_ari_max`/`era_drift_max` ranges, `label_blinding is True`, `fitted_on == "TRAIN_ONLY"`, distinct K candidates ⊆ {1..5} containing 1, non-empty disjoint train/heldout groups (run parity — an empty holdout can never be emitted), column-name fields as non-empty strings (frame membership remains run-preflight — the payload carries no frame; covered by `TestRunLevelColumnMembership`), forecast field presence/absence by mode. |
+| R10-P03 duplicate ordered values | Duplicates reject in `k_candidates`, `train_groups`, `heldout_groups`, `forecast_feature_set`, `forecast_vintage_digests`, `seeds`/`seeds_declared`/`fit_groups`/`feature_cols`/`per_seed_best_k`/`seed_coverage` keys — canonical order preserved where semantic. |
+| R10-P04 malformed unit/group values | `run_regimes` preflight rejects missing/blank/non-string values in unit/group/season (and declared era) carrier columns BEFORE any `astype(str)` — a frame producing `"None"`/`"nan"`/empty identifiers returns RUN_ERROR and never reaches emission. |
+| R10-P05 weak digest/count types | `_preprocessing_problems`: exact field set; `row_keys_digest` 64-hex AND recomputed over the assignment row universe; `train_mask_membership_digest` 64-hex; `feature_order == feature_cols` ordered; scaler/imputer lists finite with exact lengths. `forecast_feature_payload.row_count` strict positive int equal to the assignment count. |
+| R10-P06 direct artifact coercion | `RegimeAssignmentArtifact.__post_init__` no longer `str()`-coerces map entries — non-string/blank values flag `_unit_basin_map_malformed` and are excluded; `problems()` additionally requires the map's unit set to equal the assignment universe exactly (missing/extra both reject). `_strict_artifact_payload_problems` applies the same non-coercion at deserialization. `local_artifact_unverified` remains descriptive-only (controlled residual — never SUPPORTED). |
+| R10-P07 source-manifest schema | Exact schema for non-fixture manifests: `source_id`/`lineage`/`evidence_root` non-empty strings, `units`/`feature_allowlist` non-empty sequences of non-empty strings, `source_digests` 64-hex sequence, `source_files` `{relpath, sha256}` records with no extra fields, duplicate relpaths rejected; run-level parity check added in `run_regimes` preflight. |
+| R10-P08 symlink/TOCTOU policy | `_hashing` walks every path component under the evidence root — any symlink at any depth (including a symlinked root or intermediate directory) rejects; leaf pinned by pre/post `lstat` identity (documented: fd-level O_NOFOLLOW is isolation-forbidden; component-walk + identity-pin is the enforceable equivalent). Applies to source evidence and vintage evidence identically. |
+| R10-P09 status state machine | Exact machine in the shared floor: `DESCRIPTIVE_REGIME_ONLY → terminal∧associable`; `UNSUPERVISED_STRUCTURE_NOT_STABLE → terminal∧¬associable`; `CANDIDATE_ONLY → ¬terminal∧¬associable`; `RUN_ERROR` and undeclared statuses reject — enforced identically at all four boundaries. |
+| R10-P10 null-family validation | `nulls` section and each family record carry exact field sets; family `status` restricted to the emitted vocabulary; `p_value`/`alpha` in [0,1]; `statistic == "silhouette"`; `null_stat_min ≤ max`; `null_k_distribution` keys ⊆ `k_candidates` with non-negative int counts ≤ `n_replicates`; `reason` required non-empty iff status != PASS; `replicates` (optional) validated per-record (index range/uniqueness, `fit_seed ⊆ seeds_declared`, `k ⊆ k_candidates`, `ok` bool, `stat` finite-or-null, 64-hex-or-null `input_digest`, ok-count == n_succeeded); family digests recompute over the full record. |
+| R10-P11 unknown-field tolerance | `PRODUCER_ALLOWED_FIELDS` — the exact emitted envelope plus declared optionals (`frozen`, `freeze_digest`, `forecast_feature_payload`, `forecast_vintages`, `ambiguous_fraction`, `mean_max_posterior`, `missingness`) — any undeclared top-level field rejects; exact field sets also enforced for config/model/input_schema/preprocessing/stability/fit_partition/nulls+families/missingness_applied/source_manifest/forecast_feature_payload/vintage records. |
+| R10-P12 typed vintage binding | `forecast_vintages` — optional artifact-level section of serialized `ForecastVintageV0` records. `FORECAST_REGIME + associable` requires non-empty records that deserialize exactly (record_type tag, exact fields, `problems()==[]`), cover the declared digests bijectively (`sha256_canonical(rec.to_dict())`), and carry non-empty `evidence_root` passing `verify_vintage_evidence` byte checks — no metadata-only vintage qualifies a forecast-ready artifact. Non-associable forecast artifacts may carry metadata-only candidates; `RETROSPECTIVE_REGIME` forbids the section. `RegimeRunConfig.forecast_vintages` emits the records (artifact-level, never in serialized config). |
+| R10-T01 weak association evidence | Every R10 mutation binds a forged artifact (`dataclasses.replace` with the mutation's honest digests + map) — no canonical-artifact fallback; association rejection must name the finding's category. |
+| R10-T02 speculative fallbacks | Import fallbacks and "lanes not landed" wording removed from `tests/test_r9_promotion.py`; the shared helpers are mandatory. |
+| R10-CI-01 test census | Root `conftest.py` pins `collect_ignore = ["data"]` — repository-wide collection equals `tests/` exactly (2762 nodes, zero from the ignored external symlink). CI adds a canonical-collection guard step (tests/ == repo-wide counts) and a `reconciled-geospatial-optional` job (`continue-on-error`, rasterio stays quarantined, no data/ writes). |
+| R10-D01 doc accuracy | This addendum; R9 rows below re-annotated; ledger/README counts refreshed at the final head. |
+
+### Round-9 rows re-annotated
+
+| R9 row | Re-annotation |
+|---|---|
+| R9-P01 fixture flags, R9-P02 source evidence, R9-P04 run manifest, R9-P05/P06 row universes, R9-P08 semantic matrix, R9-P09 PSD | RESOLVED by Round-9 — upheld at Round-10 (no reopen). |
+| R9-P03 symlink | RESOLVED by Round-9 → **PARTIAL** at Round-10 (leaf-only check missed intermediate components) → RESOLVED by Round-10 (component-walk + identity pin). |
+| R9-P07 config cross-binding | RESOLVED by Round-9 → **PARTIAL** (cross-binding yes, per-field semantics no) → RESOLVED by Round-10 (`_config_semantic_problems`). |
+| R9-P10/P11 unit→basin + association map | RESOLVED by Round-9 → **PARTIAL** (coercion at direct construction, no coverage check, malformed producer-side values) → RESOLVED by Round-10 (non-coercion + exact coverage + run preflight). |
+| R9-P12 seed/gate/null/status | RESOLVED by Round-9 → **PARTIAL** (state machine and null-family semantics incomplete) → RESOLVED by Round-10. |
+| R9-V6 scalar floors | RESOLVED by Round-9 → **PARTIAL** (crash-class — coercions raised instead of rejecting) → RESOLVED by Round-10 (`_finite_float` everywhere incl. audit). |
+| R9-V11 secondary surfaces | RESOLVED by Round-9 → **PARTIAL** (envelope/config/preprocessing unknown fields tolerated; `cutoff_iso` unbound) → RESOLVED by Round-10 (exact schemas + `cutoff_iso` recomputed as max train date). |
+| R9-V12 unhashable input guard | RESOLVED by Round-9 — upheld (extended to the full numeric surface by R10-P01). |
+
+### Round-10 coordinator adversarial pass (post-merge, executable)
+
+~60 executable probes beyond the matrix — crash-class (nan/inf/10**400/dicts/generators/sets in every numeric surface), exactness (extra+missing fields in all 11 sections, wrong-type same-name), consistency (config↔payload divergence in mode/seeds/k_candidates, seed_coverage/per_seed/run_manifest key drift, feature_cols disagreements, n_train_rows accounting, regime_id≥k, map coverage, row drops), temporal (impossible dates, vintage ordering), IO-class (symlinked root/intermediate, traversal, directory-as-file), fixture-class (marker+field combos, divergent config↔payload manifests). One residual was found and fixed in-round: `fit_partition.cutoff_iso` was bound only as a calendar-valid string — the producer emits `max(train-row date)`, so the floor now recomputes it (`1999`/`2099` forged cutoffs reject). No other probe escaped structured rejection at any boundary.
+
+Still external/data-gated — never marked resolved, unchanged by this
+census: **S01–S04** source qualification, **E01–E03** event package,
+**M01** FMX on real data, **R01/R02** real regimes, **A01**
+association, **F01–F03** forecast, **G01/G02** human approvals,
+**O01** operations.  Postures unchanged:
+`DESIGN_DRAFT_COMPLETE`; P3 design-only; `NO_QUALIFYING_PILOT_SOURCE`;
+`WARNING_PATH_AUTHORIZED: NO`.

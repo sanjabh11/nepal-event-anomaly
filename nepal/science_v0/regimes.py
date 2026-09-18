@@ -91,6 +91,30 @@ Round-9 hardening implemented here:
   forecast fields/source_manifest are normalized to the artifact
   copies.
 
+Round-10 hardening implemented here:
+
+* R10-P04 — the unit/group/season (and declared era) carrier
+  columns are preflighted for missing and whitespace-only values
+  BEFORE any mask/fit access: ``.astype(str)`` would silently turn
+  NaN into the literal 'nan' and None into 'None', so a malformed
+  frame could inject phantom labels into unit_basin_map, the
+  assignment sidecar, and the null strata.
+* R10 — ``RegimeRunConfig.forecast_vintages`` binds the serialized
+  ForecastVintageV0-shaped evidence records behind
+  ``forecast_vintage_digests``: FORECAST_REGIME emits them verbatim
+  as the artifact-level ``forecast_vintages`` section inside the
+  ``regime_artifact_digest`` envelope (an associable forecast
+  artifact carries its vintage records, not only their digests);
+  the serialized config keeps exactly the declared 32-field
+  contract — the records are evidence, never configuration.
+* R10-P07 parity — the non-fixture ``source_manifest`` preflight
+  mirrors the shared floor's exact typed contract (declared keys
+  only, non-empty-string ``source_id``/``lineage``/
+  ``evidence_root``, non-empty string sequences for ``units``/
+  ``feature_allowlist``, 64-hex ``source_digests``/
+  ``source_files[].sha256``, no duplicate relpaths) so the run can
+  never emit an artifact freeze would reject on manifest shape.
+
 This module never reads event labels, never emits forecast or
 precursor language, and never tunes on locked test basins.
 """
@@ -600,6 +624,13 @@ class RegimeRunConfig:
     mode: str = "RETROSPECTIVE_REGIME"
     forecast_vintage_digests: tuple = ()
     forecast_feature_set: tuple = ()
+    # R10: the serialized ForecastVintageV0-shaped evidence records
+    # behind ``forecast_vintage_digests`` — a FORECAST_REGIME run may
+    # bind the actual vintage records (not only their digests) so the
+    # artifact carries the evidence the shared floor requires of an
+    # associable forecast artifact.  Artifact-level evidence, never
+    # serialized into the bound config.
+    forecast_vintages: tuple = ()
 
 
 def _modal_k(ks: list[int]) -> int:
@@ -669,6 +700,30 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
         return {"status": "RUN_ERROR",
                 "reason": "era_boundaries declared but era_col is "
                           "None — the drift axis has no era carrier"}
+    # R10-P04: the partition carriers must be real values BEFORE any
+    # mask/fit access — ``.astype(str)`` would silently turn NaN into
+    # the literal 'nan' and None into 'None', so a missing or blank
+    # unit/group/season would enter unit_basin_map, the assignment
+    # sidecar, and the null-strata as a phantom label.  Reject any
+    # missing or whitespace-only value in the declared columns.
+    _value_cols = ((config.unit_col, "unit"),
+                   (config.group_col, "group"),
+                   (config.season_col, "season")) + \
+        (((config.era_col, "era"),)
+         if config.era_col is not None else ())
+    for _vc, _vlabel in _value_cols:
+        _series = df[_vc]
+        _bad = _series.isna() | ~_series.map(
+            lambda v: bool(str(v).strip()))
+        if bool(_bad.any()):
+            _n = int(_bad.sum())
+            return {"status": "RUN_ERROR",
+                    "reason": f"{_vlabel} column {_vc!r} carries "
+                              f"{_n} missing or blank value(s) — "
+                              "null/'nan'/'None' labels cannot enter "
+                              "the unit->group partition, the "
+                              "assignment sidecar, or the null "
+                              "strata"}
     if not config.label_blinding or config.fitted_on != "TRAIN_ONLY":
         return {"status": "RUN_ERROR",
                 "reason": "label_blinding and TRAIN_ONLY are mandatory"}
@@ -772,8 +827,23 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
                     "reason": f"forecast_feature_set members "
                               f"{outside} are outside the declared "
                               "feature columns"}
+        # R10: declared forecast_vintages are serialized
+        # ForecastVintageV0-shaped records — the run only needs the
+        # mapping shape (deep validation is the shared floor's job);
+        # the artifact carries them verbatim as top-level evidence.
+        if config.forecast_vintages:
+            if not isinstance(config.forecast_vintages,
+                              (list, tuple)) or \
+                    any(not isinstance(v, Mapping)
+                        for v in config.forecast_vintages):
+                return {"status": "RUN_ERROR",
+                        "reason": "forecast_vintages entries must be "
+                                  "serialized ForecastVintageV0 "
+                                  "mappings — the run binds records, "
+                                  "not opaque blobs"}
     elif config.forecast_vintage_digests or \
-            config.forecast_feature_set:
+            config.forecast_feature_set or \
+            config.forecast_vintages:
         return {"status": "RUN_ERROR",
                 "reason": "RETROSPECTIVE_REGIME must not carry "
                           "forecast_vintage_digests or "
@@ -851,15 +921,86 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
                     "reason": f"non-fixture source_manifest lacks "
                               f"{missing_sm} — an ungoverned frame "
                               "cannot produce a terminal artifact"}
-        if isinstance(sm.get("source_digests"), Sequence) and \
-                not isinstance(sm["source_digests"],
-                               (str, bytes)):
-            if any(not isinstance(d, str) or
-                   not re.fullmatch(r"[0-9a-f]{64}", d)
-                   for d in sm["source_digests"]):
+        # R10-P07 parity: the non-fixture manifest is an exact typed
+        # record — the shared floor rejects undeclared keys and
+        # wrong-typed fields, so the run must refuse them up front or
+        # it would emit an artifact freeze cannot certify.
+        _sm_allowed = {"source_id", "source_digests", "units",
+                       "feature_allowlist", "lineage",
+                       "evidence_root", "fixture", "source_files"}
+        _sm_unknown = sorted(set(sm) - _sm_allowed)
+        if _sm_unknown:
+            return {"status": "RUN_ERROR",
+                    "reason": f"non-fixture source_manifest carries "
+                              f"undeclared fields {_sm_unknown} — "
+                              "the evidence contract admits exactly "
+                              f"{sorted(_sm_allowed)}"}
+        for _k in ("source_id", "lineage", "evidence_root"):
+            _v = sm.get(_k)
+            if not isinstance(_v, str) or not _v.strip():
                 return {"status": "RUN_ERROR",
-                        "reason": "source_manifest.source_digests "
-                                  "entries must be 64-hex sha256"}
+                        "reason": f"source_manifest.{_k} must be a "
+                                  "non-empty string"}
+        for _k in ("units", "feature_allowlist"):
+            _v = sm.get(_k)
+            if not isinstance(_v, (list, tuple)) or not _v or \
+                    any(not isinstance(u, str) or not u.strip()
+                        for u in _v):
+                return {"status": "RUN_ERROR",
+                        "reason": f"source_manifest.{_k} must be a "
+                                  "non-empty sequence of non-empty "
+                                  "strings"}
+        _sds = sm.get("source_digests")
+        if not isinstance(_sds, Sequence) or \
+                isinstance(_sds, (str, bytes)) or not _sds:
+            return {"status": "RUN_ERROR",
+                    "reason": "source_manifest.source_digests must "
+                              "be a non-empty sequence of 64-hex "
+                              "sha256 digests"}
+        if any(not isinstance(d, str) or
+               not re.fullmatch(r"[0-9a-f]{64}", d)
+               for d in _sds):
+            return {"status": "RUN_ERROR",
+                    "reason": "source_manifest.source_digests "
+                              "entries must be 64-hex sha256"}
+        _sfiles = sm.get("source_files")
+        if not isinstance(_sfiles, (list, tuple)) or not _sfiles:
+            return {"status": "RUN_ERROR",
+                    "reason": "source_manifest.source_files must be "
+                              "a non-empty list of {relpath, sha256} "
+                              "bindings"}
+        _seen_rel: set = set()
+        for _i, _entry in enumerate(_sfiles):
+            if not isinstance(_entry, Mapping):
+                return {"status": "RUN_ERROR",
+                        "reason": f"source_manifest.source_files"
+                                  f"[{_i}] must be a {{relpath, "
+                                  "sha256}} mapping"}
+            _extra = sorted(set(_entry) - {"relpath", "sha256"})
+            if _extra:
+                return {"status": "RUN_ERROR",
+                        "reason": f"source_manifest.source_files"
+                                  f"[{_i}] carries undeclared "
+                                  f"fields {_extra}"}
+            _rel = _entry.get("relpath")
+            if not isinstance(_rel, str) or not _rel.strip():
+                return {"status": "RUN_ERROR",
+                        "reason": f"source_manifest.source_files"
+                                  f"[{_i}].relpath must be a "
+                                  "non-empty string"}
+            if _rel in _seen_rel:
+                return {"status": "RUN_ERROR",
+                        "reason": f"source_manifest.source_files "
+                                  f"relpath {_rel!r} is duplicated "
+                                  "— one evidence binding per file"}
+            _seen_rel.add(_rel)
+            if not isinstance(_entry.get("sha256"), str) or \
+                    not re.fullmatch(
+                        r"[0-9a-f]{64}", _entry["sha256"]):
+                return {"status": "RUN_ERROR",
+                        "reason": f"source_manifest.source_files"
+                                  f"[{_i}].sha256 must be a 64-hex "
+                                  "sha256"}
         # the declared allowlist must cover the requested features —
         # a feature outside the declared allowlist can never enter a
         # governed run
@@ -1985,6 +2126,11 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
     # serialized config matches the artifact's top-level copies
     # field-for-field regardless of declaration order.
     _config_dict = dataclasses.asdict(config)
+    # R10: forecast_vintages is artifact-level evidence (the records
+    # behind forecast_vintage_digests), never part of the bound
+    # configuration — the serialized config keeps exactly the
+    # declared 32-field contract.
+    _config_dict.pop("forecast_vintages", None)
     _config_dict["forecast_vintage_digests"] = sorted(
         str(d) for d in config.forecast_vintage_digests)
     _config_dict["forecast_feature_set"] = sorted(
@@ -2175,6 +2321,14 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
                 artifact["preprocessing"]["row_keys_digest"]}
         artifact["forecast_feature_payload"] = _ffp
         artifact["forecast_feature_payload_digest"] = _digest(_ffp)
+        # R10: the declared vintage evidence records ride the
+        # artifact verbatim (inside regime_artifact_digest) — an
+        # associable FORECAST artifact must carry the records its
+        # forecast_vintage_digests attest.  Undeclared means the key
+        # is simply absent.
+        if config.forecast_vintages:
+            artifact["forecast_vintages"] = [
+                dict(v) for v in config.forecast_vintages]
     artifact["preprocessing_digest"] = _digest(
         artifact["preprocessing"])
     artifact["regime_artifact_digest"] = _digest(

@@ -675,12 +675,33 @@ def regime_assignment_from_artifact(
     seeds = p.get("seeds", ())
     if not isinstance(seeds, (list, tuple)):
         raise ValueError("regime artifact seeds: expected a sequence")
+    # R10-P06: the bound partition is validated before
+    # canonicalization — canonical_unit_basin_pairs string-coerces,
+    # so a malformed pair (("u", None) -> "None") must reject here,
+    # never ride the adapter onto the artifact as a plausible
+    # string.  No coercion across the boundary.
+    _raw_ubm = p.get("unit_basin_map")
+    if _raw_ubm is not None:
+        if not isinstance(_raw_ubm, (list, tuple)) or \
+                isinstance(_raw_ubm, (str, bytes)):
+            raise ValueError(
+                "regime artifact unit_basin_map must be a "
+                "sequence of (unit, group) pairs")
+        for _pair in _raw_ubm:
+            if not isinstance(_pair, (list, tuple)) or \
+                    isinstance(_pair, (str, bytes)) or \
+                    len(_pair) != 2 or \
+                    any(not isinstance(x, str) or not x.strip()
+                        for x in _pair):
+                raise ValueError(
+                    "regime artifact unit_basin_map entries must "
+                    "be (unit, group) pairs of non-empty strings")
     # R9-P11 defense-in-depth: the carried unit_basin_map_digest must
     # recompute over the payload's own canonical pairs before it is
     # stamped onto the artifact.  The shared floor recomputes this
     # too — the adapter copy keeps the adapter's own binding exact
     # even if the floor's ordering ever changes.
-    _ubm_pairs = canonical_unit_basin_pairs(p.get("unit_basin_map"))
+    _ubm_pairs = canonical_unit_basin_pairs(_raw_ubm)
     _ubm_declared = p.get("unit_basin_map_digest")
     if _ubm_declared is not None and _ubm_declared != \
             sha256_canonical(_ubm_pairs):
@@ -709,8 +730,7 @@ def regime_assignment_from_artifact(
         # the artifact — run_association byte-compares the caller's
         # unit_basins against it, so a caller remap cannot quietly
         # re-group units the producer assigned elsewhere.
-        "unit_basin_map": canonical_unit_basin_pairs(
-            p.get("unit_basin_map")),
+        "unit_basin_map": _ubm_pairs,
         "unit_basin_map_digest": p.get("unit_basin_map_digest", ""),
     })
     problems = record.problems()

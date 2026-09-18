@@ -455,9 +455,9 @@ class TestProv03SourceEvidence:
     def _manifest(self, root, sha: str) -> dict:
         return {"source_id": "real_src_v0",
                 "source_digests": [sha],
-                "units": {"f1": "mm", "f2": "degC"},
+                "units": ["unit-a", "unit-b"],
                 "feature_allowlist": ["f1", "f2"],
-                "lineage": {"fetch": "synthetic-test"},
+                "lineage": "synthetic-test-fetch",
                 "evidence_root": str(root),
                 "source_files": [
                     {"relpath": "source_a.csv", "sha256": sha}]}

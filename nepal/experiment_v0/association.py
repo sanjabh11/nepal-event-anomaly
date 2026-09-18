@@ -602,15 +602,20 @@ class RegimeAssignmentArtifact:
             object.__setattr__(
                 self, "assignment_digest",
                 _assignment_digest(self.assignments))
-        # R9-P11: normalize the bound unit->basin map to sorted
-        # (str, str) pairs — non-pair entries drop out of the
-        # canonical field and are remembered on the private flag so
-        # problems() can still report them.
+        # R9-P11 + R10-P06: normalize the bound unit->basin map to
+        # sorted (str, str) pairs.  An entry is admitted only as a
+        # 2-item sequence whose components are already non-empty
+        # strings — carried verbatim, never str()-coerced.  Anything
+        # else (None/int/blank components, wrong arity, non-sequence)
+        # drops out of the canonical field and is remembered on the
+        # private flag so problems() can still report it.
         ubm_pairs: list[tuple[str, str]] = []
         ubm_malformed = False
         for e in self.unit_basin_map or ():
-            if isinstance(e, (list, tuple)) and len(e) == 2:
-                ubm_pairs.append((str(e[0]), str(e[1])))
+            if isinstance(e, (list, tuple)) and len(e) == 2 and \
+                    isinstance(e[0], str) and e[0].strip() and \
+                    isinstance(e[1], str) and e[1].strip():
+                ubm_pairs.append((e[0], e[1]))
             else:
                 ubm_malformed = True
         object.__setattr__(
@@ -685,7 +690,9 @@ class RegimeAssignmentArtifact:
         # name its partition cannot bind a caller map.
         if getattr(self, "_unit_basin_map_malformed", False):
             problems.append("every unit_basin_map entry must be a "
-                            "(unit_id, group) pair")
+                            "(unit_id, group) pair of non-empty "
+                            "strings — no coercion across the "
+                            "boundary")
         if not self.unit_basin_map:
             problems.append("unit_basin_map must be non-empty — "
                             "the producer's unit->basin partition "
@@ -702,6 +709,26 @@ class RegimeAssignmentArtifact:
                                     "groups must be non-empty "
                                     "strings")
                     break
+            # R10-P06: a well-formed bound partition names exactly
+            # the units the assignment sidecar carries — a map
+            # missing fitted units cannot bind a caller partition,
+            # and a map declaring units the sidecar never fitted is
+            # not the producer's partition.
+            if not getattr(self, "_unit_basin_map_malformed", False):
+                assigned_units = {
+                    str(r[0]) for r in self.assignments
+                    if isinstance(r, (tuple, list)) and len(r) == 3}
+                map_units = set(ubm_units)
+                missing = sorted(assigned_units - map_units)
+                if missing:
+                    problems.append(
+                        "unit_basin_map is missing units present "
+                        f"in assignments: {missing}")
+                extra = sorted(map_units - assigned_units)
+                if extra:
+                    problems.append(
+                        "unit_basin_map declares units absent "
+                        f"from assignments: {extra}")
         if not isinstance(self.unit_basin_map_digest, str) or \
                 not _SHA256_RE.match(self.unit_basin_map_digest):
             problems.append("unit_basin_map_digest must be a "
@@ -840,12 +867,17 @@ def _strict_artifact_payload_problems(d: Any) -> list[str]:
                             "sequence of (unit, group) pairs")
         else:
             for pair in ubm:
+                # R10-P06: entries are admitted only as [str, str]
+                # pairs of non-empty strings — nothing is
+                # stringified into place.
                 if not isinstance(pair, (list, tuple)) or \
                         isinstance(pair, (str, bytes)) or \
                         len(pair) != 2 or \
-                        any(type(x) is not str for x in pair):
+                        any(type(x) is not str or not x.strip()
+                            for x in pair):
                     problems.append("unit_basin_map entries must be "
-                                    "(unit, group) string pairs")
+                                    "(unit, group) pairs of "
+                                    "non-empty strings")
                     break
     if "assignments" in d:
         rows = d["assignments"]
@@ -2005,10 +2037,23 @@ def _holdout_binding_problems(
         unit_basins = {}
         caller_pairs: list = []
     else:
+        # R10-P06/P03-adjacent: the caller map is validated before
+        # canonicalization — non-string or blank keys/values are a
+        # binding violation, never str()-coerced into a plausible
+        # pair (``None`` must not become ``"None"``).
+        bad_ubm = sorted(
+            repr(u) for u, b in unit_basins.items()
+            if not isinstance(u, str) or not u.strip()
+            or not isinstance(b, str) or not b.strip())
+        if bad_ubm:
+            problems.append(
+                "unit_basins must map non-empty string unit ids "
+                "to non-empty string basins — malformed entries "
+                f"at {bad_ubm[:5]}")
         caller_pairs = canonical_unit_basin_pairs(
             [[u, b] for u, b in unit_basins.items()])
         artifact_pairs = [list(p) for p in artifact.unit_basin_map]
-        if caller_pairs != artifact_pairs:
+        if not bad_ubm and caller_pairs != artifact_pairs:
             _c, _a = dict(caller_pairs), dict(artifact_pairs)
             remapped = sorted(u for u in set(_c) & set(_a)
                               if _c[u] != _a[u])
@@ -2055,7 +2100,11 @@ def _holdout_binding_problems(
                             "be a collection of basin names")
             continue
         for basin in basins:
-            basin = str(basin)
+            if not isinstance(basin, str) or not basin.strip():
+                problems.append(
+                    f"evaluation region {name!r} basins must be "
+                    f"non-empty strings — got {basin!r}")
+                continue
             if basin in basin_owner and basin_owner[basin] != name:
                 problems.append(
                     f"basin {basin!r} is claimed by both regions "
@@ -2323,7 +2372,22 @@ def _producer_payload_binding_problems(
     # artifact's carried map — the third vertex of the
     # producer/artifact/caller byte-equality triangle (the
     # caller-map half is enforced in the input binding).
-    p_ubm = canonical_unit_basin_pairs(payload.get("unit_basin_map"))
+    # R10-P06: entries are validated before canonicalization —
+    # canonical_unit_basin_pairs string-coerces, so a malformed
+    # pair (``("u", None)`` -> ``"None"``) must be flagged on its
+    # own, never silently normalized into the comparison.
+    p_ubm_raw = payload.get("unit_basin_map")
+    if isinstance(p_ubm_raw, (list, tuple)) and not isinstance(
+            p_ubm_raw, (str, bytes)) and any(
+            not isinstance(e, (list, tuple)) or
+            isinstance(e, (str, bytes)) or len(e) != 2 or
+            any(not isinstance(x, str) or not x.strip() for x in e)
+            for e in p_ubm_raw):
+        problems.append("producer_payload unit_basin_map entries "
+                        "must be (unit, group) pairs of non-empty "
+                        "strings — the bound partition is not "
+                        "coercible")
+    p_ubm = canonical_unit_basin_pairs(p_ubm_raw)
     if p_ubm != [list(p) for p in artifact.unit_basin_map]:
         problems.append("producer_payload unit_basin_map does not "
                         "equal the artifact's bound map — the "

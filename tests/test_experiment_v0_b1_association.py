@@ -79,7 +79,11 @@ def _regime_index(labels) -> dict:
            if lab in _REGIME_IDS}
     nxt = max(_REGIME_IDS.values()) + 1
     for lab in sorted(set(labels) - set(idx)):
-        idx[lab] = nxt
+        # Ad-hoc ids wrap into the declared component range — the
+        # floor binds every regime_id to a declared component and
+        # the producer's k_candidates universe is {1..5}, so more
+        # than five distinct labels share ids deterministically.
+        idx[lab] = nxt % 5
         nxt += 1
     return idx
 

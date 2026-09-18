@@ -41,7 +41,41 @@ The empty Git shell is never the implementation root.
   (bound head is the manifest's own field — see
   `ARTIFACT_MANIFEST_V0.json` for the current value).
 
-## Last fully-verified baseline (round-9 hardening)
+## Last fully-verified baseline (round-10 hardening)
+
+- HEAD: Round-10 hardening content commit (bound via `content_head`
+  in `ARTIFACT_MANIFEST_V0.json`; the manifest rebind lands as its
+  direct child, same relationship as previous binds).
+- Full suite under pinned `.venv`: **2757 passed,
+  5 skipped (rasterio), 0 failed, 57 warnings** — verified at the
+  Round-10 hardened content commit.
+- Manifest files governed: **84** (81 prior + root `conftest.py`
+  collection guard + `tests/test_r10_promotion.py` + ledger
+  updates).
+- A Round-10 independent audit reopened the Round-9 "complete
+  shared floor" claim — sixteen findings closed this round
+  (see `GAP_REGISTER_V0.md` Round-10 census): bounded numeric
+  parsing (`_finite_float` — no numeric probe raises through any
+  boundary, including the auditor's richer checks), complete
+  serialized-config semantics (`_config_semantic_problems`),
+  ordered-sequence duplicate rejection, null/blank partition
+  carrier preflight in `run_regimes`, exact digest/count typing,
+  non-coercing `RegimeAssignmentArtifact` construction with exact
+  map coverage, exact non-fixture source-manifest schema,
+  component-walk symlink policy with identity pinning, the exact
+  status×terminal×associable state machine, complete null-family
+  record validation, exact field sets across the whole envelope,
+  typed byte-bound `forecast_vintages` binding for associable
+  forecast artifacts, forged-artifact association evidence in the
+  mutation matrix, the canonical-collection guard
+  (repo-wide == `tests/`, the ignored external symlink never
+  collected), and this addendum.  `tests/test_r10_promotion.py`
+  carries 503 tests — 89 mutations × floor/freeze/adapter/audit/
+  association — plus the coordinator's ~60 executable adversarial
+  probes (one residual found and fixed in-round: `cutoff_iso`
+  rebound to the recomputed max train date).
+
+## Prior verified baseline (round-9 hardening)
 
 - HEAD: Round-9 hardening content commit (bound via `content_head`
   in `ARTIFACT_MANIFEST_V0.json`; the manifest rebind lands as its

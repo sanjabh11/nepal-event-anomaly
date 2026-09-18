@@ -159,7 +159,7 @@ class TestProv01StrictBoolGates:
         fit_partition = {
             "record_type": "fit_partition/v0",
             "train_groups": ["g1"],
-            "heldout_groups": [],
+            "heldout_groups": ["g_holdout"],
             "n_train_rows": len(train_keys),
             "n_rows": 2,
             "train_row_keys_digest": sorted_row_key_digest(
@@ -209,7 +209,7 @@ class TestProv01StrictBoolGates:
                        "effort_split": "median",
                        "mode": "RETROSPECTIVE_REGIME",
                        "train_groups": ["g1"],
-                       "heldout_groups": [],
+                       "heldout_groups": ["g_holdout"],
                        "forecast_feature_set": [],
                        "forecast_vintage_digests": [],
                        "source_manifest": {"fixture": True}},
@@ -229,7 +229,7 @@ class TestProv01StrictBoolGates:
                       "shuffled": null_fams["shuffled"],
                       "season_matched": null_fams["season_matched"]},
             "fit_groups": ["g1"],
-            "heldout_groups_declared": [],
+            "heldout_groups_declared": ["g_holdout"],
             "fit_partition": fit_partition,
             "n_train_rows": len(train_keys),
             "n_rows": 2,
@@ -629,9 +629,9 @@ class TestProv03SourceEvidence:
         manifest = {
             "source_id": "real_src",
             "source_digests": [d1, d2],
-            "units": {"f1": "mm", "f2": "mm", "f3": "mm"},
+            "units": ["unit-a", "unit-b"],
             "feature_allowlist": FEATURES,
-            "lineage": {"fetch": "test"},
+            "lineage": "test-fetch",
             "evidence_root": str(root),
             "source_files": [
                 {"relpath": "features.csv", "sha256": d1},

@@ -58,20 +58,9 @@ contract in the coordinated spec:
   covariances) and a semantically valid ``config`` consistent with
   the artifact's ``mode``/``seeds``/``source_manifest``.
 
-SPECULATIVE MARKERS — the Round-9 code lanes (workers A/B/C) had not
-landed when this matrix was written.  Places where the asserted API
-is contractual but not yet visible in the tree are marked
-``# SPECULATIVE``:
-
-* ``RegimeAssignmentArtifact.unit_basin_map`` /
-  ``unit_basin_map_digest`` (P11 relies on it);
-* ``validate_producer_payload(..., verify_source_bytes=...)`` and the
-  helpers ``fixture_flag`` / ``row_key`` / ``sorted_row_key_digest`` /
-  ``semantic_feature_matrix_digest`` / ``canonical_unit_basin_pairs``
-  (a guarded parity test covers these — local mirrors below encode the
-  documented semantics so the matrix runs either way);
-* the exact problem-string wording at each boundary — evidence is
-  matched on category-level regexes, not verbatim strings.
+Problem-string evidence is matched on category-level regexes, not
+verbatim strings — a bare digest-chain rejection proves nothing
+about the finding's own semantics.
 """
 from __future__ import annotations
 
@@ -86,8 +75,11 @@ from typing import Any, Callable, Mapping
 import numpy as np
 import pytest
 
+import tempfile
+
 from nepal.research_v0._hashing import sha256_canonical
 from nepal.research_v0.gates import REQUIRED_REGIME_GATE_NAMES
+from nepal.research_v0.records import ForecastVintageV0
 from nepal.science_v0.regimes import freeze_regime_artifact
 from nepal.experiment_v0.adapters import regime_assignment_from_artifact
 from nepal.experiment_v0.association import run_association
@@ -99,19 +91,12 @@ from tests.test_experiment_v0_b1_association import (
     REGION_BASINS, UNIT_BASINS, make_controls, make_events,
     make_holdout, make_opportunities)
 
-# SPECULATIVE — Round-9 shared-validator helpers.  Imported only for
-# the parity test; the canonical payload is built with the local
-# mirrors below so this file imports cleanly before the code lanes
-# land (and the matrix then demonstrates exactly which findings the
-# landed floor still misses).
-try:  # pragma: no cover - contract pending
-    from nepal.research_v0.producer_validation import (
-        canonical_unit_basin_pairs, fixture_flag, row_key,
-        semantic_feature_matrix_digest, sorted_row_key_digest,
-        validate_producer_payload)
-    _R9_HELPERS = True
-except ImportError:  # pragma: no cover
-    _R9_HELPERS = False
+# Round-9 shared-validator helpers — landed; the parity test below
+# proves the local mirrors encode identical semantics.
+from nepal.research_v0.producer_validation import (
+    canonical_unit_basin_pairs, fixture_flag, row_key,
+    semantic_feature_matrix_digest, sorted_row_key_digest,
+    validate_producer_payload)
 
 
 # ---------------------------------------------------------------------
@@ -286,6 +271,42 @@ def _null_family(payload: Mapping, fam: str, stat: float) -> dict:
     return rec
 
 
+# R10-P12: the byte-bound vintage evidence backing an associable
+# FORECAST_REGIME payload — real bytes under a session-temp root so
+# verify_vintage_evidence passes at every boundary.
+_FORECAST_VINTAGE_ROOT = Path(tempfile.mkdtemp(prefix="r9-vintage-"))
+
+
+def _forecast_vintage_records() -> tuple[list, list]:
+    """(serialized ForecastVintageV0 dicts, declared digests) — the
+    R10 ``forecast_vintages`` section and the digests it binds."""
+    root = _FORECAST_VINTAGE_ROOT
+    payload_bytes = b"synthetic r9 archive payload bytes"
+    record_bytes = b'{"request_id": "r9-vintage-0"}'
+    (root / "archive_payload.bin").write_bytes(payload_bytes)
+    (root / "retrieval_record.json").write_bytes(record_bytes)
+    rec = ForecastVintageV0(
+        vintage_id="r9-vintage-0", provider="synthetic-tigge",
+        data_class="ARCHIVED_OPERATIONAL",
+        initialization_time="2020-11-01T00:00:00Z",
+        issue_time="2020-11-01T06:00:00Z",
+        valid_start="2020-11-02T00:00:00Z",
+        valid_end="2020-11-08T00:00:00Z",
+        archive_availability="2020-11-01T07:00:00Z",
+        archive_payload_sha256=hashlib.sha256(
+            payload_bytes).hexdigest(),
+        retrieval_record_sha256=hashlib.sha256(
+            record_bytes).hexdigest(),
+        archive_payload_path="archive_payload.bin",
+        retrieval_record_path="retrieval_record.json",
+        model_version="synth-fc-v1",
+        license_id="synthetic-fixture",
+        archive_mechanism="synthetic-offline",
+        evidence_root=str(root))
+    d = rec.to_dict()
+    return [d], [sha256_canonical(d)]
+
+
 def _canonical_payload(mode: str = "RETROSPECTIVE_REGIME") -> dict:
     """A complete NEW-floor producer payload — see module docstring."""
     rows = _assignment_rows()
@@ -323,7 +344,7 @@ def _canonical_payload(mode: str = "RETROSPECTIVE_REGIME") -> dict:
         "source_manifest": dict(source_manifest),
         "mode": mode,
         "forecast_vintage_digests": (
-            [_sha_text("r9-vintage-0")] if forecast else []),
+            _forecast_vintage_records()[1] if forecast else []),
         "forecast_feature_set": (["synth_f1"] if forecast else []),
     }
     stability = {
@@ -426,6 +447,8 @@ def _canonical_payload(mode: str = "RETROSPECTIVE_REGIME") -> dict:
         "checkpoint_policy": "atomic_publish_or_quarantine",
         "status": "COMPLETED"}
     if forecast:
+        _fv, _fvd = _forecast_vintage_records()
+        payload["forecast_vintages"] = _fv
         payload["forecast_vintage_digests"] = list(
             config["forecast_vintage_digests"])
         payload["forecast_feature_set"] = list(
@@ -981,8 +1004,8 @@ class TestPositiveControls:
     def test_canonical_payload_adapts_and_carries_ubm(self):
         artifact = regime_assignment_from_artifact(
             _canonical_payload(), artifact_id="r9-canonical")
-        # SPECULATIVE — the Round-9 adapter must carry the bound
-        # unit→basin partition onto the contract artifact.
+        # The adapter must carry the bound unit→basin partition
+        # onto the contract artifact.
         assert dict(artifact.unit_basin_map) == dict(UNIT_BASINS)
 
     def test_canonical_payload_audits_clean(self):
@@ -1037,8 +1060,8 @@ class TestP11UnitBasinAssociationBinding:
         binding check still passes, so only the unit→basin equality
         gate can reject."""
         artifact = assoc["artifact"]
-        # SPECULATIVE — Round-9 artifact carries unit_basin_map; the
-        # caller's map must equal it byte-for-byte.
+        # The artifact carries unit_basin_map; the caller's map must
+        # equal it byte-for-byte.
         caller = dict(getattr(artifact, "unit_basin_map", UNIT_BASINS))
         assert caller.get("unit-koshi-0") == "koshi"
         caller["unit-koshi-0"] = "gandaki"   # still an eval basin
@@ -1074,14 +1097,12 @@ class TestP11UnitBasinAssociationBinding:
 
 
 # ---------------------------------------------------------------------
-# Contract-helper parity (SPECULATIVE — guarded until the lanes land)
+# Contract-helper parity — the local mirrors must encode identical
+# semantics to the landed shared-validator helpers
 # ---------------------------------------------------------------------
 
 class TestContractHelperParity:
     def test_helper_semantics_match_producer(self):
-        if not _R9_HELPERS:
-            pytest.skip("Round-9 producer_validation helpers not "
-                        "landed yet")
         is_fx, probs = fixture_flag({"fixture": True})
         assert is_fx is True and probs == []
         for bad in ("true", 1, "yes"):
@@ -1104,8 +1125,6 @@ class TestContractHelperParity:
             [("b", "g2"), ("a", "g1")])
 
     def test_validator_accepts_canonical_payload(self):
-        if not _R9_HELPERS:
-            pytest.skip("Round-9 producer_validation not landed yet")
         assert validate_producer_payload(_canonical_payload()) == []
         assert validate_producer_payload(
             _canonical_payload("FORECAST_REGIME")) == []

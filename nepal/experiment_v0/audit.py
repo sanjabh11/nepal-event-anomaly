@@ -509,8 +509,18 @@ def _reconstruct_association(assoc: Mapping[str, Any]):
                 f"record id {rec.opportunity_id!r}")
         opportunities[str(oid)] = rec
     holdout = _as_holdout(assoc["holdout"], "association")
-    unit_basins = {str(k): str(v)
-                   for k, v in (assoc.get("unit_basins") or {}).items()}
+    # R10-P06: the serialized unit->basin map is validated, never
+    # str()-coerced — a null/blank basin must reject here instead
+    # of replaying as the string "None".
+    unit_basins: dict[str, str] = {}
+    for k, v in (assoc.get("unit_basins") or {}).items():
+        if not isinstance(k, str) or not isinstance(v, str) or \
+                not k.strip() or not v.strip():
+            raise ValueError(
+                "association unit_basins must map non-empty "
+                "string unit ids to non-empty string basins — "
+                f"got {k!r}: {v!r}")
+        unit_basins[k] = v
     region_basins = assoc.get("region_basins") or {}
     return (artifact, events, controls, unit_basins, holdout,
             region_basins, opportunities,
@@ -629,61 +639,81 @@ def _producer_model_findings(payload: Mapping[str, Any],
     # feature dimension.
     import math as _m
     if not findings:
-        if any(not _m.isfinite(float(w)) or float(w) < 0.0
-               for w in weights):
-            findings.append(Finding(
+        try:
+            _numeric_problems = _model_numeric_findings(
+                weights, means, covs, _m)
+        except (TypeError, ValueError, OverflowError):
+            _numeric_problems = [Finding(
                 "PRODUCER_MODEL_INVALID", "artifact_payload.model",
-                "model.weights must be finite and non-negative"))
-        elif abs(sum(float(w) for w in weights) - 1.0) > 1e-6:
+                "model weights/means/covariances contain values "
+                "that cannot be represented as finite floats")]
+        findings.extend(_numeric_problems)
+    return findings
+
+
+def _model_numeric_findings(weights, means, covs, _m) -> list:
+    """Numeric sanity for a structurally-typed model — weights
+    finite/non-negative/summing to 1; means finite and
+    dimension-consistent; covariances square, finite, symmetric,
+    positive-semidefinite.  Every float() coercion may raise
+    TypeError/ValueError/OverflowError on pathological inputs — the
+    caller maps that to one structured finding."""
+    findings: list[Finding] = []
+    if any(not _m.isfinite(float(w)) or float(w) < 0.0
+           for w in weights):
+        findings.append(Finding(
+            "PRODUCER_MODEL_INVALID", "artifact_payload.model",
+            "model.weights must be finite and non-negative"))
+    elif abs(sum(float(w) for w in weights) - 1.0) > 1e-6:
+        findings.append(Finding(
+            "PRODUCER_MODEL_INVALID", "artifact_payload.model",
+            "model.weights do not sum to 1"))
+    d = len(means[0]) if means else 0
+    if any(len(row) != d for row in means):
+        findings.append(Finding(
+            "PRODUCER_MODEL_INVALID", "artifact_payload.model",
+            "model.means rows have inconsistent feature "
+            "dimensions"))
+    if any(not _m.isfinite(float(v)) for row in means
+           for v in row):
+        findings.append(Finding(
+            "PRODUCER_MODEL_INVALID", "artifact_payload.model",
+            "model.means contain non-finite values"))
+    for ci, cov in enumerate(covs):
+        if len(cov) != d or any(len(row) != d for row in cov):
             findings.append(Finding(
-                "PRODUCER_MODEL_INVALID", "artifact_payload.model",
-                "model.weights do not sum to 1"))
-        d = len(means[0]) if means else 0
-        if any(len(row) != d for row in means):
-            findings.append(Finding(
-                "PRODUCER_MODEL_INVALID", "artifact_payload.model",
-                "model.means rows have inconsistent feature "
-                "dimensions"))
-        if any(not _m.isfinite(float(v)) for row in means
+                "PRODUCER_MODEL_INVALID",
+                "artifact_payload.model",
+                f"model.covariances[{ci}] is not a {d}x{d} "
+                "square matrix"))
+            continue
+        if any(not _m.isfinite(float(v)) for row in cov
                for v in row):
             findings.append(Finding(
-                "PRODUCER_MODEL_INVALID", "artifact_payload.model",
-                "model.means contain non-finite values"))
-        for ci, cov in enumerate(covs):
-            if len(cov) != d or any(len(row) != d for row in cov):
-                findings.append(Finding(
-                    "PRODUCER_MODEL_INVALID",
-                    "artifact_payload.model",
-                    f"model.covariances[{ci}] is not a {d}x{d} "
-                    "square matrix"))
-                continue
-            if any(not _m.isfinite(float(v)) for row in cov
-                   for v in row):
-                findings.append(Finding(
-                    "PRODUCER_MODEL_INVALID",
-                    "artifact_payload.model",
-                    f"model.covariances[{ci}] contains non-finite "
-                    "values"))
-                continue
-            if any(abs(float(cov[i][j]) - float(cov[j][i])) > 1e-9
-                   for i in range(d) for j in range(d)):
-                findings.append(Finding(
-                    "PRODUCER_MODEL_INVALID",
-                    "artifact_payload.model",
-                    f"model.covariances[{ci}] is not symmetric"))
-                continue
-            try:
-                import numpy as _np
-                w = _np.linalg.eigvalsh(
-                    _np.asarray(cov, dtype=float))
-                if float(w.min()) < -1e-9:
-                    raise ValueError("not PSD")
-            except Exception:
-                findings.append(Finding(
-                    "PRODUCER_MODEL_INVALID",
-                    "artifact_payload.model",
-                    f"model.covariances[{ci}] is not "
-                    "positive-semidefinite"))
+                "PRODUCER_MODEL_INVALID",
+                "artifact_payload.model",
+                f"model.covariances[{ci}] contains non-finite "
+                "values"))
+            continue
+        if any(abs(float(cov[i][j]) - float(cov[j][i])) > 1e-9
+               for i in range(d) for j in range(d)):
+            findings.append(Finding(
+                "PRODUCER_MODEL_INVALID",
+                "artifact_payload.model",
+                f"model.covariances[{ci}] is not symmetric"))
+            continue
+        try:
+            import numpy as _np
+            w = _np.linalg.eigvalsh(
+                _np.asarray(cov, dtype=float))
+            if float(w.min()) < -1e-9:
+                raise ValueError("not PSD")
+        except Exception:
+            findings.append(Finding(
+                "PRODUCER_MODEL_INVALID",
+                "artifact_payload.model",
+                f"model.covariances[{ci}] is not "
+                "positive-semidefinite"))
     return findings
 
 
@@ -1654,8 +1684,19 @@ def replay_bundle(bundle: Mapping[str, Any]) -> dict[str, Any]:
                         f"does not match record id "
                         f"{rec.opportunity_id!r}")
                 f_opps[str(oid)] = rec
-            f_unit_basins = {str(k): str(v) for k, v in
-                             (fc.get("unit_basins") or {}).items()}
+            # R10-P06: same non-coercion rule as the association
+            # lane — blank/null basin values reject, they never
+            # replay as coerced strings.
+            f_unit_basins: dict[str, str] = {}
+            for k, v in (fc.get("unit_basins") or {}).items():
+                if not isinstance(k, str) or \
+                        not isinstance(v, str) or \
+                        not k.strip() or not v.strip():
+                    raise ValueError(
+                        "forecast unit_basins must map non-empty "
+                        "string unit ids to non-empty string "
+                        f"basins — got {k!r}: {v!r}")
+                f_unit_basins[k] = v
             f_region_basins = fc.get("region_basins") or {}
             report = evaluate(
                 cases, holdout=holdout,

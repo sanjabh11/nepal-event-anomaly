@@ -16,6 +16,7 @@ derivation ``nepal.experiment_v0.audit.replay_vintage_id`` uses.
 """
 from __future__ import annotations
 
+import copy
 import hashlib
 import math
 from datetime import date as _date
@@ -229,17 +230,25 @@ HELDOUT_GROUPS = ("karnali",)
 def _null_family(family: str, seeds, stats) -> dict:
     """A producer-shaped serialized null-family record whose
     ``family_digest`` is computed exactly as ``run_regimes`` binds
-    it: sha256_canonical over the documented material dict."""
+    it: sha256_canonical over the documented material dict.
+
+    R10: every replicate stat sits below ``observed`` so the emitted
+    ``p_value`` is the honest envelope fraction (0.0 < alpha), and
+    ``null_k_distribution`` stays inside the declared
+    ``k_candidates`` universe."""
     replicates = [
         {"i": i, "gen_seed": int(seeds[0]) + 1000003 * (i + 1),
          "fit_seed": int(seeds[i % len(seeds)]),
          "k": 5, "stat": s, "ok": True,
          "input_digest": _sha(f"{family}-rep-{i}")}
         for i, s in enumerate(stats)]
-    rec = {"statistic": "silhouette", "observed": 0.6,
+    observed = 0.6
+    p_value = float(sum(1 for s in stats if s >= observed)
+                    / len(stats))
+    rec = {"statistic": "silhouette", "observed": observed,
            "n_replicates": len(replicates),
            "n_succeeded": len(replicates), "n_failed": 0,
-           "p_value": 0.02, "alpha": 0.05, "status": "PASS",
+           "p_value": p_value, "alpha": 0.05, "status": "PASS",
            "reason": None,
            "selection": "bic_sweep_declared_candidates",
            "null_k_distribution": {"5": len(replicates)},
@@ -344,37 +353,136 @@ def planted_artifact_payload(events: Sequence[EventLabelV0]) -> dict:
         "season_matched_null": True,
         "effort": True,
     }
+    # R10: the stability block mirrors the real run_regimes emission
+    # field-for-field — every axis record carries the producer's own
+    # declared shape, not a reduced fixture subset.
+    _loro_fold = {
+        "status": "PASS", "js": 0.012, "js_vs_reference": 0.010,
+        "ari": 0.93, "ari_eval": 0.88, "reason": None,
+        "seeds_declared": list(seeds), "seed_failures": [],
+        "per_seed": {str(s): {"js": 0.012, "ari": 0.93,
+                              "ari_eval": 0.88,
+                              "js_vs_reference": 0.010}
+                     for s in seeds},
+        "n_eval_rows": n_rows // len(UNIT_BASINS)
+                       * 2}
     stability = {
         "seed_ari_min": 0.91,
         "seed_ari_max": 0.97,
         "modal_k_frequency": 1.0,
         "k_instability": False,
         "n_bootstrap": 200,
+        "seed_coverage": {str(s): "converged" for s in seeds},
+        "fold_seed_policy": "all",
+        "component_alignment": (
+            "minimum-cost assignment on standardized mean distance "
+            "to the reference modal-K model; lexicographic "
+            "component-index tie-break"),
+        "leave_one_region_out": {
+            "folds": {g: copy.deepcopy(_loro_fold) for g in
+                      sorted(FIT_GROUPS)},
+            "n_required": len(FIT_GROUPS),
+            "n_pass": len(FIT_GROUPS),
+            "locked_groups_excluded": sorted(HELDOUT_GROUPS)},
+        "locked_group_coverage": {
+            g: {"n_rows": n_rows // len(UNIT_BASINS) * 2,
+                "occupancy_js_vs_reference": 0.05,
+                "status": "REPORTED"}
+            for g in sorted(HELDOUT_GROUPS)},
+        "temporal_block_bootstrap": {
+            "n_replicates": 200, "n_succeeded": 200, "n_failures": 0,
+            "failure_rate": 0.0, "max_failure_rate": 0.10,
+            "procedure": ("contiguous-date block resample; "
+                          "preprocessing + GMM refit inside every "
+                          "replicate; components aligned to the "
+                          "reference model"),
+            "status": "PASS", "reason": None,
+            "block_len_dates": 7, "cadence": "1D",
+            "gap_policy": "calendar",
+            "weight_intervals_95": {f"w{i}": [0.05, 0.45]
+                                    for i in range(5)},
+            "means_intervals_95": {
+                f"comp{i}": {c: [-1.0, 1.0] for c in feature_cols}
+                for i in range(5)},
+            "occupancy_intervals_95": {f"occ{i}": [0.05, 0.45]
+                                       for i in range(5)},
+            "mean_max_posterior_interval_95": [0.80, 0.95],
+            "ari_min": 0.85, "ari_mean": 0.92},
+        "season_refits": {
+            "status": "NOT_APPLICABLE",
+            "reason": ("single declared season — the "
+                       "calendar-artifact axis has no refit "
+                       "complement"),
+            "folds": {"JJA": {"status": "SKIPPED", "js": None,
+                              "ari": None,
+                              "reason": "insufficient in-season "
+                                        "rows",
+                              "seeds_declared": list(seeds),
+                              "seed_failures": [],
+                              "per_seed": {}}}},
+        "elevation": {
+            "status": "NOT_APPLICABLE",
+            "reason": ("no elevation column declared in the run "
+                       "configuration")},
+        "missingness_sensitivity": {
+            "policy": "listwise", "status": "PASS", "reason": None,
+            "complete_rows": n_train_rows,
+            "js": 0.008, "ari": 0.95,
+            "seeds_declared": list(seeds), "seed_failures": [],
+            "per_seed": {str(s): {"js": 0.008, "ari": 0.95}
+                         for s in seeds},
+            "occupancy_js": 0.008},
+        "effort_sensitivity": {
+            "status": "NOT_APPLICABLE",
+            "reason": ("waived: synthetic fixture carries no "
+                       "observation-effort column")},
+        "era_drift": {
+            "status": "NOT_APPLICABLE",
+            "reason": "waived: synthetic fixture is single-era",
+            "boundaries": None, "pairs": {}},
+        "drift_max_abs_mean_shift": {},
         "required_gates": required_gates,
     }
+    # R10: the serialized config is the complete 32-field
+    # RegimeRunConfig contract — every bound field carries a valid
+    # declared value, including the waiver reasons the emitted
+    # stability axes cite.
     config = {
         "seeds": list(seeds), "k_candidates": [1, 2, 3, 4, 5],
-        "null_alpha": 0.05, "cadence": "1D",
-        "gap_policy": "calendar", "bootstrap_block_len": 7,
-        "missingness_policy": "listwise",
-        "effort_split": "median",
-        "mode": "RETROSPECTIVE_REGIME",
+        "n_bootstrap": 200, "n_null_replicates": 50,
+        "null_alpha": 0.05,
+        "season_col": "season", "group_col": "basin_group",
+        "era_col": None, "era_boundaries": [],
+        "elevation_col": None, "era_drift_max": 0.5,
+        "missingness_policy": "listwise", "max_missingness": 0.25,
+        "effort_col": None, "fold_seed_policy": "all",
+        "unit_col": "unit_id", "date_col": "date",
+        "label_blinding": True, "fitted_on": "TRAIN_ONLY",
         "train_groups": list(FIT_GROUPS),
         "heldout_groups": list(HELDOUT_GROUPS),
-        "forecast_feature_set": [],
-        "forecast_vintage_digests": [],
+        "cadence": "1D", "bootstrap_block_len": 7,
+        "gap_policy": "calendar",
+        "effort_waiver_reason": ("synthetic fixture carries no "
+                                 "observation-effort column"),
+        "era_waiver_reason": "synthetic fixture is single-era",
+        "effort_split": "median",
+        "elev_ablation_ari_max": 0.8,
         "source_manifest": {"fixture": True},
+        "mode": "RETROSPECTIVE_REGIME",
+        "forecast_vintage_digests": [],
+        "forecast_feature_set": [],
     }
     k1_bic = [1010.5, 1020.25, 1030.75]
     nulls = {"statistic": "silhouette", "observed": 0.6,
-             "alpha": 0.05, "n_replicates": 4,
+             "alpha": 0.05, "n_replicates": 50,
              "season_era_stratified": False,
              "k1_bic": k1_bic,
              "shuffled": _null_family(
-                 "shuffled", seeds, [0.10, 0.20, 0.15, 0.05]),
+                 "shuffled", seeds,
+                 [0.05 + 0.025 * (i % 10) for i in range(50)]),
              "season_matched": _null_family(
                  "season_matched", seeds,
-                 [0.30, 0.25, 0.20, 0.10])}
+                 [0.10 + 0.03 * (i % 9) for i in range(50)])}
     run_manifest = {
         "record_type": "RunManifestV0",
         "run_id": "synthetic-b4-run-001",
@@ -389,6 +497,8 @@ def planted_artifact_payload(events: Sequence[EventLabelV0]) -> dict:
     art = {
         "mode": "RETROSPECTIVE_REGIME",
         "data_class": "REANALYSIS",
+        "forecast_vintage_digests": [],
+        "forecast_feature_set": [],
         "fitted_on": "TRAIN_ONLY",
         "label_blinding": True,
         "k": 5,
@@ -401,6 +511,9 @@ def planted_artifact_payload(events: Sequence[EventLabelV0]) -> dict:
         "occupancy": [0.40, 0.25, 0.15, 0.12, 0.08],
         "assignments": assignments,
         "assignment_digest": assignment_digest,
+        "mean_max_posterior": 0.87,
+        "ambiguous_fraction": 0.04,
+        "missingness": {c: 0.0 for c in feature_cols},
         "feature_cols": feature_cols,
         "feature_matrix_digest": feature_matrix_digest,
         "input_values": input_values,
