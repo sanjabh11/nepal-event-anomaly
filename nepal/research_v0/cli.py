@@ -292,6 +292,15 @@ def _cmd_verify_manifest(args: argparse.Namespace) -> int:
     if not isinstance(manifest.get("content_head"), str) or \
             len(manifest["content_head"]) != 40:
         problems.append("content_head missing or not a 40-char SHA")
+    mc = manifest.get("manifest_commit")
+    if not isinstance(mc, str) or len(mc) != 40:
+        problems.append(
+            "manifest_commit missing or not a 40-char SHA")
+    elif mc != manifest.get("content_head"):
+        problems.append(
+            "manifest_commit does not equal content_head — it must "
+            "name the final content commit, never a stale or "
+            "manifest-only rebind commit")
     if not isinstance(manifest.get("baseline_head"), str) or \
             len(manifest["baseline_head"]) != 40:
         problems.append("baseline_head missing or not a 40-char SHA")

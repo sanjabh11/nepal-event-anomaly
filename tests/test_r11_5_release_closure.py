@@ -36,7 +36,7 @@ _COLLECTION_RE = re.compile(r"(\d+) tests collected")
 #: = manifest count + this module's own tests while the file is ungoverned.
 #: The manifest-only rebind adds the file and re-records collection_guard,
 #: after which the adjustment is zero and any drift trips the gate.
-_OWN_TEST_COUNT = 3
+_OWN_TEST_COUNT = 4
 
 
 def _manifest():
@@ -58,6 +58,32 @@ class TestR115ReleaseClosure:
         assert missing == [], (
             "R11.5 lane tests missing from the manifest: "
             + ", ".join(missing))
+
+    def test_cli_rejects_stale_manifest_commit(self, tmp_path):
+        """R11.5-1 — the verify-manifest CLI independently enforces
+        manifest_commit == content_head; a stale or manifest-only
+        rebind value must fail closed."""
+        import argparse
+        import hashlib
+        from nepal.research_v0.cli import _cmd_verify_manifest
+        root = tmp_path / "a" / "b"
+        root.mkdir(parents=True)
+        (tmp_path / "f.txt").write_bytes(b"x")
+        good = {"content_head": "a" * 40,
+                "baseline_head": "b" * 40,
+                "manifest_commit": "a" * 40,
+                "test_results": {"research_v0": "ok"},
+                "files": [{"relpath": "f.txt",
+                           "sha256": hashlib.sha256(b"x").hexdigest(),
+                           "size_bytes": 1}]}
+        mp = root / "m.json"
+        mp.write_text(json.dumps(good), encoding="utf-8")
+        assert _cmd_verify_manifest(
+            argparse.Namespace(file=str(mp))) == 0
+        stale = dict(good, manifest_commit="c" * 40)
+        mp.write_text(json.dumps(stale), encoding="utf-8")
+        assert _cmd_verify_manifest(
+            argparse.Namespace(file=str(mp))) == 1
 
     def test_collection_count_matches_manifest(self):
         m = _manifest()
