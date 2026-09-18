@@ -33,7 +33,8 @@ from .features import (
     semantic_feature_digest, validate_waveform_input, window_features)
 from .observability import (
     build_station_observability, derive_orientation_status,
-    great_circle_km, source_manifest_digest)
+    great_circle_km, reassess_observability,
+    source_manifest_digest)
 from .runner import run_seismic_descriptive_poc
 
 __all__ = [
@@ -48,7 +49,8 @@ __all__ = [
     "aggregate_daily", "band_feature_names",
     "build_station_observability", "build_window_rows",
     "cross_station_coherence", "derive_orientation_status",
-    "great_circle_km", "run_seismic_descriptive_poc",
+    "great_circle_km", "reassess_observability",
+    "run_seismic_descriptive_poc",
     "season_of_date", "semantic_feature_digest",
     "seismic_receipt_skeleton", "source_manifest_digest",
     "station_observability_from_dict", "validate_waveform_input",
