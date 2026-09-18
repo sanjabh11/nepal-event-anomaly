@@ -131,7 +131,7 @@ all of the following can be produced:
 | Licence/terms | US government work, attribution requested — treat as open; capture terms at intake. |
 | issue/init/valid/vintage fields | init + forecast hour; valid = init + step. No issue-time field → conservative margin rule. |
 | Public-availability delay | No declared delay; margin rule applies. |
-| Cycle completeness | GEFS ~2008–2020; GFS 1° ~2005→. Completeness unverified — spot-check at intake. |
+| Cycle completeness | GEFS official archive 2008-01-01 → 2020-09-23 (post-2020 GEFS is NODD-only — `CURRENT_FEED` class, not `ARCHIVED_OPERATIONAL` evidence); GFS 1° ~2005→. Completeness unverified — spot-check at intake. |
 | Member counts | GEFS ~21 members (era-dependent); verify per span. |
 | Spatial coverage over Nepal | 0.5°–1° global grids. |
 | Retrieval evidence required | Request record, bytes + sha256, per-span `model_version` (GEFS v10/v11/v12 drift across the span must be declared per vintage). |
@@ -190,7 +190,7 @@ Himalayan domain is the admissible substitute.
 | Provider | data_class | Access friction | Licence gate | Issue-time evidence | Completeness | Ensemble | Nepal coverage | Composite verdict |
 |---|---|---|---|---|---|---|---|---|
 | GEFSv12 reforecast | REFORECAST | none (anonymous) | open | notional only | mechanically checkable | 5 daily / 11 weekly | ~0.5° | **Closest to passing all gates** (reforecast lane) |
-| TIGGE (ECDS/MARS) | ARCHIVED_OPERATIONAL | registration | verified per-centre CC BY 4.0 / CC BY-NC 4.0 | margin rule | spot-check needed | 4–51 multi-centre | 0.25°–1.5° | Strongest ensemble archive; pending intake checks |
+| TIGGE (ECDS/MARS) | ARCHIVED_OPERATIONAL | registration | verified per-centre CC BY 4.0 / CC BY-NC 4.0 | margin rule | spot-check needed | 4–51 multi-centre | 0.25°–1.5° | `CANDIDATE_ONLY` — strongest ensemble archive; registration + per-centre licence gate |
 | S2S | REFORECAST + ARCHIVED_OPERATIONAL | registration | verified per-centre CC BY 4.0 / CC BY-NC 4.0 | margin rule | spot-check needed | 4–101 | 1.5° | Best subseasonal lane; coarse grid |
 | NCAR ds084001 | ARCHIVED_OPERATIONAL | registration | CC BY 4.0 | margin rule | bounded span, spot-check | 1 (deterministic) | 0.25° | Strongest deterministic archive |
 | NCEI NOMADS | ARCHIVED_OPERATIONAL | none | open | margin rule | spot-check needed | ~21 | 0.5°–1° | Secondary archive; version drift declared |

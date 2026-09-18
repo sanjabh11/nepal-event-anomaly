@@ -316,3 +316,17 @@ reconciliation of external claims — ds084001 span, NODD
 classification, v1.0 timing statistics, GF_ID/Repeat/_Z/day
 semantics, four licence surfaces, Zenodo payload identity,
 target-date scope.  No code or posture changes.
+
+## Round-11.4.1 (2026-09-18) — residual documentation repair
+
+Content head: this content commit (GLM-5.3 lane).  Basis: the
+R11.4 verified counts carry unchanged — **2962 passed /
+5 skipped / 0 failed / 57 warnings**, 2967 collected — because
+this round is documentation-only and no code or tests were
+touched; the canonical suite was not re-run per the dispatch
+rule.  Repairs: GitHub licence provenance (fetched 2026-09-18,
+GLM3 lane), TIGGE normalized to `CANDIDATE`/`CANDIDATE_ONLY`,
+`EVENT_PACKAGE_SPEC_V0.md` `_Z`/join-key correction, NCEI GEFS
+official end `2020-09-23`.  Verified by stale-claim greps,
+`git diff --check`, protected-path diff, and manifest rebind.
+No code or posture changes.

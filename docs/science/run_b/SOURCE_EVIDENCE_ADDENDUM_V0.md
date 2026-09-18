@@ -42,7 +42,7 @@ and was NOT performed.
   version_publication_date: "v1.3.0; 2026-01-15; concept DOI 10.5281/zenodo.7066940"
   resolution: RESOLVED
   notes: "CONFLICT RESOLVED as a cross-version tag change, not a single-record contradiction. Version history retrieved: 7066941 (2022-09-10)=other-open; 8157891 v1.0.0 (2023-07-18)=other-open; 10453155 v1.1.0 (2024-01-03)=cc-by-4.0; 14602271 v1.2.0 (2025-01-05)=cc-zero; 18257425 v1.3.0 (2026-01-15)=cc-zero. The CC BY 4.0 trace in the qualification doc was the v1.1.0 tag and/or the NHESS article licence (Copernicus journals are CC BY). Current v1.3.0 data record is CC0-1.0. Conservative governing term for the family if any doubt persists: CC BY 4.0 attribution — a superset obligation of CC0."
-  remaining_blockers: "Nepal subset count = intake-gated, requires data download — NOT performed; GitHub LICENSE and GitHub README are the third/fourth licence surfaces and were NOT re-fetched (metadata-only bound) — the conservative governing read remains RDS CC BY 4.0"
+  remaining_blockers: "Nepal subset count = intake-gated, requires data download — NOT performed; GitHub LICENSE: CC0-1.0; GitHub README: CC BY 4.0 — fetched 2026-09-18 by the GLM3 metadata lane. Metadata-only; no access authorization inferred — the conservative governing read remains RDS CC BY 4.0"
 
 - source_id: kneib_s1_everest_deposits
   api_endpoint: "https://zenodo.org/api/records/10895011"
@@ -271,7 +271,7 @@ here (decisions and open items unchanged): `nepal_drr_portal_moha`,
 | NSIDC HMA_LS_Cat V002 | RESOLVED — no license class on record; citation-required + Earthdata Login |
 | TIGGE / S2S licence classes | RESOLVED — verbatim per-centre CC BY 4.0 / CC BY-NC 4.0 maps retrieved |
 | ds084001 license | RESOLVED — CC BY 4.0 confirmed |
-| HMAGLOFDB licence surfaces (all four recorded; governing read remains conservative CC BY 4.0 — metadata surfaces, not access authorization) | RDS declaration: CC BY 4.0 · Zenodo record tag: CC0 · GitHub LICENSE file: not re-fetched (metadata-only) · GitHub README: not re-fetched (metadata-only) |
+| HMAGLOFDB licence surfaces (all four recorded; governing read remains conservative CC BY 4.0 — metadata surfaces, not access authorization) | RDS declaration: CC BY 4.0 · Zenodo record tag: CC0 · GitHub LICENSE: CC0-1.0 · GitHub README: CC BY 4.0 — fetched 2026-09-18 by the GLM3 metadata lane (metadata-only; no access authorization inferred) |
 
 Remaining `CONFLICT_REMAINS` / `UNREACHABLE` / `NOT_FOUND`: none across
 queried records. One partial reachability note: the USGS copyrights

@@ -155,9 +155,9 @@ qualified for forecast use:
 
 | Source | Class | Span | Access | Verdict |
 |---|---|---|---|---|
-| TIGGE (ECDS/CMA) | ARCHIVED_OPERATIONAL ensembles | 2006→ | Registration **delayed 48 h**; **per-provider licenses incl. CC BY and CC BY-NC** | Candidate — metadata verified; issue-time retrieval + per-centre license still required |
+| TIGGE (ECDS/CMA) | ARCHIVED_OPERATIONAL ensembles | 2006→ | Registration **delayed 48 h**; **per-provider licenses incl. CC BY and CC BY-NC** | `CANDIDATE_ONLY` — metadata verified; issue-time retrieval + per-centre license still required |
 | NCAR RDA ds084001 GFS 0.25° | ARCHIVED_OPERATIONAL | **2015-01-15 → 2026-10-02 (per official RDA page; early-2026 freeze/AWS-migration caveat — tail availability PAYLOAD-GATED until retrieval)** | Free, CC-BY-4.0 | Candidate — RDA span recorded; completeness unverified |
-| NCEI NOMADS archive | ARCHIVED_OPERATIONAL | GEFS 2008–2020; GFS 1° 2005→ | Free | Candidate — cycle completeness unverified |
+| NCEI NOMADS archive | ARCHIVED_OPERATIONAL | GEFS official archive 2008-01-01 → 2020-09-23 (post-2020 = NODD, not officially archived); GFS 1° 2005→ | Free | `CANDIDATE_ONLY` — cycle completeness unverified |
 | GEFSv12 reforecast (AWS noaa-gefs-retrospective) | REFORECAST — **not** an archive of real-time operational runs | 2000–2019, 5–11 members | Free, no account | Candidate — reforecast only; does not prove operational availability |
 | S2S database (ECDS) | REFORECAST + ARCHIVED real-time | 1981→ centre-dependent | Free; mixed licenses incl. CC BY-NC per centre | Candidate — per-centre license review required |
 | C3S seasonal | ARCHIVED initialized | hindcast 1993–2016; RT 2017→ | Free | Candidate — seasonal context only |

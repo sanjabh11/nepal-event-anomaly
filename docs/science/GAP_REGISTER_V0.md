@@ -978,7 +978,8 @@ reconciliation only — no code, no bytes, no posture change:
   inspection.
 - **#6 licence** — all four surfaces recorded (RDS CC BY 4.0,
   Zenodo CC0 tag, GitHub LICENSE, GitHub README — the latter two
-  metadata-only/not re-fetched); conservative CC BY 4.0 governing
+  metadata-only; fetched 2026-09-18 by the GLM3 metadata lane, see
+  R11.4.1 below); conservative CC BY 4.0 governing
   read retained without implying access authorization.
 - **#7 payload identity** — Zenodo 107,879-byte payload + published
   MD5 recorded as metadata only; independent SHA-256 required
@@ -986,6 +987,43 @@ reconciliation only — no code, no bytes, no posture change:
 - **#9 target date** — the 2026-08-26 ice-rock avalanche recorded
   as a separate vertical: not a HMAGLOFDB GLOF label and outside
   the frozen GLOF source span.
+
+Owner-gated (unchanged): P5 authorization, opportunity-frame
+Option A/B, real bytes, independent intake review, governance.
+
+## Round-11.4.1 residual documentation repair (2026-09-18)
+
+The GLM3 independent re-verification against the manifest-bound
+content head (`3c38443`) closed the stale-baseline finding but
+found four R11.4.1 residuals. GLM-5.3 (documentation-only lane)
+applied the repairs — no code, no bytes, no posture change:
+
+- **R11.4.1-1 GitHub provenance** — `SOURCE_EVIDENCE_ADDENDUM_V0.md`
+  recorded GitHub LICENSE/README as "not re-fetched" although the
+  GLM3 lane fetched them 2026-09-18; now recorded as LICENSE
+  `CC0-1.0` / README `CC BY 4.0` with retrieval date and lane,
+  metadata-only/no-access wording retained.
+- **R11.4.1-2 TIGGE vocabulary** — `tigge_ecds_cma` carried
+  `decision: BLOCKED` and sat in the consolidated `BLOCKED` row
+  while other documents said `CANDIDATE_ONLY`; normalized to
+  `CANDIDATE` with the registration/per-provider-licence blocker
+  preserved — `BLOCKED` is reserved for intrinsic disqualifiers
+  and procurement barriers.
+- **R11.4.1-3 `_Z`/join-key spec** — `EVENT_PACKAGE_SPEC_V0.md`
+  still prescribed unconditional `_Z`-suffix grouping and a
+  `GF_ID` lake-inventory join; now integer `GF_ID` + `Repeat`
+  govern recurrence, `_Z` is UNVERIFIED/PAYLOAD-GATED with no
+  deduplication on suffix alone, and lake joins go through
+  `GL_ID`/`LakeDB_ID`/`G_ID`.
+- **R11.4.1-4 NCEI precision** — official GEFS archive end
+  recorded as `2020-09-23` with the NODD `CURRENT_FEED`
+  distinction preserved in the records, feasibility table, and
+  archive matrix.
+
+Verification: stale-claim greps clean (`not re-fetched`,
+unconditional `_Z` grouping, `GF_ID` lake joins, TIGGE
+`BLOCKED`), `git diff --check` clean, protected-path diff empty,
+manifest verified post-rebind.
 
 Owner-gated (unchanged): P5 authorization, opportunity-frame
 Option A/B, real bytes, independent intake review, governance.

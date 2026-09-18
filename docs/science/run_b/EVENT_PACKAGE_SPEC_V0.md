@@ -27,7 +27,7 @@ control state is accepted (`derive_control_state` recomputes).
 | `hiaval_v1_3_0` | yes — day/month-class labels | no intrinsic frame | derived only | yes | yes |
 | `kneib_s1_everest_deposits` | yes — scene-interval brackets | `Sentinel1_date` scene-pair enumeration → OBSERVED_FULL/PARTIAL | derived from S1 frame | yes | yes |
 | `safe_hma_annual_deposits` | yes — year-class (descriptive only) | partial, detection-conditional | no NEGATIVE possible | yes | yes |
-| `icimod_hmaglofdb_v1_3_0` | yes — ±3d / month / year classes | lake-level frame via GF_ID ↔ ICIMOD/RGI lake inventories | derived from lake frame | yes | yes |
+| `icimod_hmaglofdb_v1_3_0` | yes — ±3d / month / year classes | lake-level frame via `GL_ID`/`LakeDB_ID`/`G_ID` ↔ ICIMOD/RGI lake inventories | derived from lake frame | yes | yes |
 | `essd_2026_481_glacier_failure_db` | yes — day/month/year + Min/Max-Date | RGI v7 glacier denominator | derived from glacier population | yes | yes |
 | `zhong_2024_ria_inventory` | yes — per-event dates | none enumerated | no NEGATIVE possible | yes | yes |
 | `burrows_timed_monsoon_landslides` | yes — ~12-day windows on timed subset; untimed rows are `CENSORED_OR_AMBIGUOUS` labels, never dropped | S1 image-opportunity frame | derived from image frame | yes | yes |
@@ -80,9 +80,14 @@ relabeled as release timestamps, and narrowing must be recorded in
   `parent_event_id`/`duplicate_of` must reference bound event IDs —
   self-reference and dangling references reject (D08). Cascade groups
   are atomic: every member lands in the same holdout group.
-- HMAGLOFDB recurrence: `_Z`-suffixed GF_IDs group under the base
-  GF_ID's `cascade_group_id`; the 3 ephemeral-lake series are one
-  atomic group each — 23% of events may not inflate the event count.
+- HMAGLOFDB recurrence: the integer `GF_ID` is the event key and the
+  `Repeat` field is the governing recurrence indicator; recurrent
+  events from the same lake group under one `cascade_group_id`; the
+  3 ephemeral-lake series are one atomic group each — 23% of events
+  may not inflate the event count. The `_Z` suffix convention is
+  paper-reported but UNVERIFIED against the integer `GF_ID` schema —
+  it is PAYLOAD-GATED until byte inspection, and no deduplication or
+  grouping may be based on `_Z` alone.
 - Dam-formation vs breach (LDOF): two labels, one cascade group;
   `event_time_basis` distinguishes formation observation from breach
   timing.

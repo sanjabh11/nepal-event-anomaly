@@ -519,8 +519,8 @@ conservative issue+dissemination latency margin (D2 §1).
   observation_opportunity: "n/a"
   non_event_feasibility: "n/a"
   reviewer: "RunB metadata review"
-  decision: BLOCKED
-  blocker: "registration delayed 48 h; per-provider license review incomplete"
+  decision: CANDIDATE
+  blocker: "registration delayed 48 h; per-provider license review incomplete — access/licence gate, not an intrinsic disqualification"
   confidence: "medium"
 
 - source_id: ncar_rda_ds084001_gfs
@@ -540,7 +540,7 @@ conservative issue+dissemination latency margin (D2 §1).
   confidence: "medium-high"
 
 - source_id: ncei_nomads_archive
-  exact_version: "GEFS 2008–2020; GFS 1° 2005→"
+  exact_version: "GEFS official archive 2008-01-01 → 2020-09-23 (post-2020 GEFS is NODD-only — not officially archived, CURRENT_FEED class); GFS 1° 2005→"
   doi_or_url: "NCEI NOMADS archive"
   license_evidence: "free"
   redistribution_terms: "open"
@@ -673,8 +673,8 @@ conservative issue+dissemination latency margin (D2 §1).
 | Decision | Sources |
 |---|---|
 | `QUALIFIES` (role-scoped) | `usgs_gorkha_2015_landslides` (coseismic labels/controls), `usgs_ofr_91_239_landslide_dams` (historical context) |
-| `CANDIDATE` | HiAVAL, Kneib S1, SAFE-HMA, DesInventar (both), HMAGLOFDB (+recurrence), essd-2026-481, Zhong RIA, Science China, Burrows, Jones, ICIMOD RDS LS, NASA COOLR, Gnyawali–Adhikari, Jiang LDOF, Borealis, ds084001 GFS, NCEI NOMADS, GEFSv12, S2S, C3S, dynamical.org/Open-Meteo |
-| `BLOCKED` | Nepal DRR Portal, EM-DAT, AvalCD, Kääb 2021, ICOLD, GDW v1.0 (`grand_v1_3_gdw`, as event source), TIGGE, ECMWF MARS, ERA5/ERA5-Land/IMDAA (forecast-evidence role), CURRENT_FEED sources |
+| `CANDIDATE` | HiAVAL, Kneib S1, SAFE-HMA, DesInventar (both), HMAGLOFDB (+recurrence), essd-2026-481, Zhong RIA, Science China, Burrows, Jones, ICIMOD RDS LS, NASA COOLR, Gnyawali–Adhikari, Jiang LDOF, Borealis, ds084001 GFS, NCEI NOMADS, GEFSv12, TIGGE, S2S, C3S, dynamical.org/Open-Meteo |
+| `BLOCKED` | Nepal DRR Portal, EM-DAT, AvalCD, Kääb 2021, ICOLD, GDW v1.0 (`grand_v1_3_gdw`, as event source), ECMWF MARS, ERA5/ERA5-Land/IMDAA (forecast-evidence role), CURRENT_FEED sources |
 | `DEFERRED` | `dam_breach_engineered` — `DEFERRED_NO_OPEN_TIMED_SOURCE` stands |
 
 No source is pre-nominated for a pilot. The pilot-selection outcome
