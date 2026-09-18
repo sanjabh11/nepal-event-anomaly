@@ -1,6 +1,6 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "75a25a5491674845821182d61a17bfcf4ecd4f37",
+  "content_head": "106b3d259938db29e5639db318c71466c4316374",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
@@ -214,8 +214,8 @@
     },
     {
       "relpath": "nepal/research_v0/cli.py",
-      "sha256": "987050d222f0ea69991069b91f2d51bf462b81cdce02590db65577ae1ab945ec",
-      "size_bytes": 20619
+      "sha256": "14764fec47603eb66a84d3b9192014fe2c84b2581acd3eb7493230212261c019",
+      "size_bytes": 21041
     },
     {
       "relpath": "nepal/research_v0/gates.py",
@@ -369,8 +369,8 @@
     },
     {
       "relpath": "tests/test_r11_5_release_closure.py",
-      "sha256": "1150b6f0ddc1f5d9ce11dc3c5524cebd53cdd605beceafdf72df41102723790f",
-      "size_bytes": 3581
+      "sha256": "8fe973e703e0a23929a6bc40e7c4a02b18882ac86909dd358e32a7d0fc90d3d2",
+      "size_bytes": 4774
     },
     {
       "relpath": "tests/test_r6_association.py",
@@ -480,7 +480,7 @@
   ],
   "generated": "2026-09-18",
   "interpreter": ".venv/bin/python",
-  "manifest_commit": "75a25a5491674845821182d61a17bfcf4ecd4f37",
+  "manifest_commit": "106b3d259938db29e5639db318c71466c4316374",
   "manifest_version": "ARTIFACT_MANIFEST_V0.3",
   "repository_relative_root": ".",
   "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -491,7 +491,7 @@
     "full_suite_venv": "3058 passed, 6 skipped (5 rasterio + 1 documented lane skip), 0 failed, 57 warnings",
     "promotion_matrix": "699 passed (r9 179 + r10 520)",
     "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
-    "collection_guard": "repo-wide collection == tests/ (3064 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
+    "collection_guard": "repo-wide collection == tests/ (3065 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
     "claim_scan": "clean on all governed files",
     "research_v0": "119 passed",
     "p5_io_contract": "34 passed",
