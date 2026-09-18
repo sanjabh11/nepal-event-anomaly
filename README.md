@@ -105,12 +105,19 @@ Test-suite honesty: the full suite under the pinned `.venv` recorded
 `P0_BASELINE_LEDGER.md` (historical snapshot). Later dated snapshots:
 1306 at the round-2 reconciliation head, 1641 after the first swarm
 integration, 1828 at the post-audit residual-repair head. Last
-fully-verified baseline (round-10 hardening content commit; the
+fully-verified baseline (round-11 thin-PoC content commit; the
 manifest's `content_head` names the commit whose tree the manifest
 hashes — the manifest commit itself follows the content commit):
+**2871 passed / 5 skipped / 0 failed / 57 warnings** across
+**88** manifest-governed files — bound to the round-11 thin-PoC
+head. Round-11 adds the audit-pinned GLOF intake and
+descriptive-runner surface (`nepal/research_v0/source_intake.py`,
+`nepal/science_v0/glof_poc.py`,
+`docs/science/run_b/GLOF_POC_CONTRACT_V0.md`, and the 99-test
+`tests/test_glof_poc_contract.py`) on top of the frozen round-10
+floor — the prior verified baseline (round-10 hardening):
 **2757 passed / 5 skipped / 0 failed / 57 warnings** across
-**84** manifest-governed files — bound to the round-10
-hardened head. The round-10 surface closes the sixteen findings a
+84 files. The round-10 surface closes the sixteen findings a
 Round-10 independent audit raised against the round-9 floor:
 bounded numeric parsing and an exception-safe floor (no malformed value crashes a boundary — verified by focused regressions),
 complete serialized-config semantics, exact field schemas across

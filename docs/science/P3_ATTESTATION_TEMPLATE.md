@@ -80,3 +80,38 @@ design-review scope by the same record — the frozen bytes are unchanged.
    cycle completeness, license, retrieval evidence.
 5. Engineered dam-breach — owner-deferred:
    `DEFERRED_NO_OPEN_TIMED_SOURCE`.
+
+## P5 acquisition-authorization section (required before any byte retrieval)
+
+*Added 2026-09-18 (round-11 audit findings #6/#9).* No payload bytes
+may be acquired for any candidate source until the designated owner
+executes this section per source. Blank fields are deliberate: no
+authorization exists until every field is filled and signed. A
+completed P5 section authorizes bounded retrieval only — it is not a
+pilot selection, not a qualification, and not an operational approval.
+
+| Field | Required content (blank until owner fills) |
+|---|---|
+| Source + exact version + DOI | `source_id`, pinned version, canonical DOI/record ID — e.g. `icimod_hmaglofdb_v1_3_0`, v1.3.0, RDS DOI `10.26066/RDS.1973283` (Zenodo record `10.5281/zenodo.18257243`) |
+| Licence scope | terms governing the bytes and attribution obligations — for HMAGLOFDB the metadata-tag question is RESOLVED: CC BY 4.0 governs (RDS declaration; Zenodo CC0 tag superseded, conservatively read as CC BY 4.0) |
+| Evidence root | directory path where acquired bytes and byte-bound sidecars land |
+| Storage reserve | minimum free-disk floor that aborts acquisition |
+| Retrieval limits | maximum bytes, maximum requests, rate limits, and the authorized retrieval time window |
+| Stop rules | conditions that halt retrieval (hash mismatch, licence change on record, scope drift, storage floor reached, endpoint divergence) |
+| Owner signature | authenticated owner name, date, and signature line: ______________________ |
+
+### Opportunity-frame policy question (owner decision required)
+
+> May an independently byte-bound lake-inventory source supply the
+> opportunity frame (with linkage + uncertainty recorded), or must
+> opportunities be source-native?
+
+- [ ] Option A — an independently byte-bound lake-inventory source may
+      supply the opportunity frame, provided linkage keys and
+      uncertainty are recorded.
+- [ ] Option B — opportunities must be source-native.
+
+Owner decision: _blank_ — no decision is recorded in this template.
+Until one is executed, the GLOF opportunity frame stays
+`PENDING-OWNER-POLICY` (no native non-event frame; external
+lake-inventory linkage needs owner decision).

@@ -41,7 +41,26 @@ The empty Git shell is never the implementation root.
   (bound head is the manifest's own field — see
   `ARTIFACT_MANIFEST_V0.json` for the current value).
 
-## Last fully-verified baseline (round-10 hardening)
+## Current head (round-11 thin-PoC acceleration)
+
+- The Round-11 audit froze the R10 contract and directed a thin
+  byte-bound descriptive slice — no further validator hardening
+  unless a live intake or PoC failure exposes a defect.
+- New surface (audit-pinned interfaces only):
+  `nepal/research_v0/source_intake.py` (`build_source_manifest`,
+  `load_hmaglofdb_rows`), `nepal/science_v0/glof_poc.py`
+  (`build_hmaglofdb_event_package`, `run_glof_descriptive_poc`
+  emitting the non-promotable `GLOF_POC_RECEIPT_V0`),
+  `docs/science/run_b/GLOF_POC_CONTRACT_V0.md`, and
+  `tests/test_glof_poc_contract.py`.
+- Documentation reconciled to one status vocabulary (CC BY 4.0
+  governs HMAGLOFDB metadata; payload/Nepal-v1.3-count/
+  opportunity-frame remain PENDING); P5 authorization section
+  added to `P3_ATTESTATION_TEMPLATE.md`.
+- Suite counts bound via the manifest at the final head; see
+  `ARTIFACT_MANIFEST_V0.json` for the verified totals.
+
+## Prior verified baseline (round-10 hardening)
 
 - HEAD: Round-10 hardening content commit (bound via `content_head`
   in `ARTIFACT_MANIFEST_V0.json`; the manifest rebind lands as its

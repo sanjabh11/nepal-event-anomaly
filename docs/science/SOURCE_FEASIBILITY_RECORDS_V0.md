@@ -16,15 +16,21 @@ bounded-acquisition authorization, documented in
 `run_a/RUN_A_EVIDENCE_SUMMARY_V0.md` and
 `run_a/HYBRID_ROUTE_RECONCILIATION_V0.md`.
 
-**Supersession note (2026-09-16):** the License cells below are the
-dated 2026-09-13 metadata-lane record and are deliberately **not
-rewritten**. Since this snapshot, `run_b/SOURCE_EVIDENCE_ADDENDUM_V0.md`
+**Supersession note (2026-09-16; amended 2026-09-18):** the License
+cells below are the dated 2026-09-13 metadata-lane record and are
+deliberately **not rewritten**, except the ICIMOD HMAGLOFDB cell,
+which was reconciled 2026-09-18 to the single current-status
+vocabulary below (its prior `UNRESOLVED` wording is preserved in-cell
+as dated history). Since this snapshot,
+`run_b/SOURCE_EVIDENCE_ADDENDUM_V0.md`
 (public metadata APIs, retrieval 2026-09-15) and
 `OPEN_DISTRIBUTION_NOTE_V0.md` resolved the metadata-license **tags**
 for the rows still marked **UNRESOLVED** / "Verify on record" here —
 concretely: HiAVAL v1.3.0 (record tag CC0; conservative governing
 term CC BY 4.0), Kneib et al. Sentinel-1 deposits (CC BY 4.0),
-ICIMOD HMAGLOFDB v1.3.0 (canonical RDS CC BY 4.0; Zenodo mirror CC0),
+ICIMOD HMAGLOFDB v1.3.0 (RESOLVED — CC BY 4.0 governs: RDS
+declaration; Zenodo CC0 tag superseded, conservatively read as
+CC BY 4.0),
 and Zhong et al. RIA (CC BY 4.0 tag but `access_right=restricted` —
 file access is request-gated). Resolved tags change no posture:
 payload/redistribution qualification, Nepal subset counts, extent
@@ -52,7 +58,7 @@ intake.**  The dated rows below are preserved verbatim.
 
 **GLOF**
 
-- ICIMOD HMAGLOFDB v1.3.0 — tag resolved (canonical RDS CC BY 4.0; Zenodo mirror CC0) / payload unverified / `CANDIDATE_ONLY` (strongest candidate).
+- ICIMOD HMAGLOFDB v1.3.0 — license: RESOLVED — CC BY 4.0 governs (RDS declaration; Zenodo CC0 tag superseded, conservatively read as CC BY 4.0) / payload_verification: PENDING (no bytes acquired) / nepal_v1_3_count: PENDING (v1.0 said ~53/7.6%; v1.3 count unverified until bytes) / opportunity_frame: PENDING-OWNER-POLICY (no native non-event frame; external lake-inventory linkage needs owner decision) / `CANDIDATE_ONLY` (strongest candidate).
 
 **Ice/rock avalanche / glacier failure**
 
@@ -110,7 +116,7 @@ qualified for forecast use:
 
 | Source | Version/DOI | License | Coverage | Time precision | Spatial semantics | Non-event frame | Posture |
 |---|---|---|---|---|---|---|---|
-| ICIMOD HMAGLOFDB | v1.3.0 (RDS DOI 10.26066/RDS.1973283; zenodo.18257243; paper essd-15-3941) | **UNRESOLVED** — RDS CC BY 4.0 vs Zenodo CC0 (superseded — see 2026-09-16 note: RDS CC BY 4.0 governs) | HMA 766 events 1533–2025; Nepal ~7.6% (~53) in v1.0 | Day ~27% (±3d), month ~45%, year uncertain ~27%; `Sat_evidence` brackets | `Lat/Lon_lake` (within-lake, not breach) + `Lat/Lon_impact` (Observation/Deposit tag) | GOOD — GF_ID joins lake inventories (ICIMOD 2015 Koshi/Gandaki/Karnali; NSIDC HMA_GLI; Wang 2020 ESSD; zenodo.17948783) | CANDIDATE_ONLY (strongest candidate) |
+| ICIMOD HMAGLOFDB | v1.3.0 (RDS DOI 10.26066/RDS.1973283; zenodo.18257243; paper essd-15-3941) | RESOLVED — CC BY 4.0 governs (RDS declaration; Zenodo CC0 tag superseded, conservatively read as CC BY 4.0). Prior status 2026-09-16: UNRESOLVED — RDS CC BY 4.0 vs Zenodo CC0 | HMA 766 events 1533–2025; Nepal ~7.6% (~53) in v1.0 | Day ~27% (±3d), month ~45%, year uncertain ~27%; `Sat_evidence` brackets | `Lat/Lon_lake` (within-lake, not breach) + `Lat/Lon_impact` (Observation/Deposit tag) | GOOD — GF_ID joins lake inventories (ICIMOD 2015 Koshi/Gandaki/Karnali; NSIDC HMA_GLI; Wang 2020 ESSD; zenodo.17948783) | CANDIDATE_ONLY (strongest candidate) |
 | Recurrence note | — | — | `_Z` suffix on GF_ID; 23% of events from 3 ephemeral ice-dammed lakes | — | — | Must group by base GF_ID | — |
 
 ## Ice/rock avalanche / glacier failure
@@ -164,7 +170,13 @@ qualified for forecast use:
 
 1. Zenodo `10895011` license tag; Everest-domain Nepal/China extent split.
 2. HiAVAL Nepal event count (filter `Country=Nepal`) and machine-readable license file.
-3. HMAGLOFDB v1.3.0 Nepal count; lake-ID join coverage; CC-BY vs CC0 resolution.
+3. HMAGLOFDB — `payload_verification` PENDING (no bytes acquired);
+   `nepal_v1_3_count` PENDING (v1.0 said ~53/7.6%; v1.3 count
+   unverified until bytes); lake-ID join coverage;
+   `opportunity_frame` PENDING-OWNER-POLICY (external lake-inventory
+   linkage vs source-native frame — owner decision). License question
+   RESOLVED — CC BY 4.0 governs (RDS declaration; Zenodo CC0 tag
+   superseded, conservatively read as CC BY 4.0).
 4. essd-2026-481 peer-review status; canonical Zenodo DOI (.907 vs .908); license.
 5. zenodo.7970874 and NGDC 166966 license fields.
 6. ESSD-2026-107 LDOF Nepal subset + license; Borealis Nepal engineered count.

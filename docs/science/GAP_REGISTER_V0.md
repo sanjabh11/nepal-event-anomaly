@@ -826,3 +826,31 @@ The Round-10-PoC lane is the next workstream — source card for
 HMAGLOFDB v1.3.0 prepared (CANDIDATE_WITH_GAPS: no native
 opportunity frame, heterogeneous timing); P5 authorization is the
 next human gate.
+
+## Round-11 thin-PoC acceleration (2026-09-18)
+
+The Round-11 audit froze the contract and directed a thin
+byte-bound descriptive slice rather than further hardening.  New
+surface (all audit-pinned interfaces):
+
+- `nepal/research_v0/source_intake.py` —
+  `build_source_manifest` (existing non-fixture manifest shape;
+  `source_version=…;` bound in lineage) and
+  `load_hmaglofdb_rows` (explicit column map; byte-bound;
+  fail-closed on missing columns, dup keys, invalid intervals,
+  unknown basin/mechanism/precision).
+- `nepal/science_v0/glof_poc.py` —
+  `build_hmaglofdb_event_package` (typed labels/opportunities/
+  controls/holdout + canonical digests; rejected holdout demotes,
+  never weakens) and `run_glof_descriptive_poc` (non-promotable
+  `GLOF_POC_RECEIPT_V0`: RUN_ERROR → CANDIDATE_ONLY →
+  UNDERPOWERED_DESCRIPTIVE_ONLY → DESCRIPTIVE_REGIME_ONLY).
+- `docs/science/run_b/GLOF_POC_CONTRACT_V0.md` — the frozen
+  contract incl. the P5 authorization + opportunity-frame policy
+  owner gates.
+- `tests/test_glof_poc_contract.py` — contract regressions.
+
+Synthetic path verified end-to-end (temporary-byte fixture →
+manifest → loader → package → receipt; 16s to a frozen artifact).
+Postures unchanged — no source bytes, no P5, no association, no
+forecast, no operational path.

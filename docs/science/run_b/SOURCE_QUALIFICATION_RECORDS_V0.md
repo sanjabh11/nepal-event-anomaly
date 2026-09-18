@@ -170,17 +170,22 @@ declared role.
 - source_id: icimod_hmaglofdb_v1_3_0
   exact_version: "v1.3.0; paper essd-15-3941-2023"
   doi_or_url: "10.26066/RDS.1973283; zenodo.18257243"
-  license_evidence: "UNRESOLVED — RDS states CC BY 4.0, Zenodo record shows CC0"
-  redistribution_terms: "unverified pending license resolution"
+  license_evidence: "RESOLVED — CC BY 4.0 governs (RDS declaration; Zenodo CC0 tag superseded, conservatively read as CC BY 4.0). Prior status 2026-09-16: UNRESOLVED — RDS states CC BY 4.0, Zenodo record shows CC0 (metadata-tag evidence in SOURCE_EVIDENCE_ADDENDUM_V0.md)"
+  redistribution_terms: "CC BY 4.0 attribution governs bytes if obtained — metadata-tag resolution only; not byte-verified and not by itself a grant of access"
   nepal_coverage: "HMA 766 events 1533–2025; ~7.6% (~53) Nepal in v1.0 — v1.3.0 Nepal count unverified"
   event_count_if_known: "766 events (HMA); ~53 Nepal (v1.0 count)"
   timing_class: "EXACT_DAY ~27% (±3d caveat); month ~45%; year-uncertain ~27%; Sat_evidence brackets"
   spatial_semantics: "lake_point (within-lake, not breach point) + impact_point (Observation/Deposit tag)"
-  observation_opportunity: "GOOD — GF_ID joins ICIMOD/RGI lake inventories; event-free lake periods feasible"
-  non_event_feasibility: "feasible via lake-level opportunity frame (ICIMOD 2015 Koshi/Gandaki/Karnali; NSIDC HMA_GLI; Wang 2020 ESSD; zenodo.17948783)"
+  observation_opportunity: "GOOD — GF_ID joins ICIMOD/RGI lake inventories; event-free lake periods feasible (external linkage — see opportunity_frame below)"
+  non_event_feasibility: "feasible via lake-level opportunity frame (ICIMOD 2015 Koshi/Gandaki/Karnali; NSIDC HMA_GLI; Wang 2020 ESSD; zenodo.17948783) — admissibility of the external frame is an owner-policy question, not settled here"
+  current_status:
+    license: "RESOLVED — CC BY 4.0 governs (RDS declaration; Zenodo CC0 tag superseded, conservatively read as CC BY 4.0)"
+    payload_verification: "PENDING (no bytes acquired)"
+    nepal_v1_3_count: "PENDING (v1.0 said ~53/7.6%; v1.3 count unverified until bytes)"
+    opportunity_frame: "PENDING-OWNER-POLICY (no native non-event frame; external lake-inventory linkage needs owner decision)"
   reviewer: "RunB metadata review; second review pending at intake"
   decision: CANDIDATE
-  blocker: "CC-BY/CC0 resolution; Nepal count in v1.3.0; lake-ID join coverage; ~27% day precision limits horizon admissibility"
+  blocker: "Nepal count in v1.3.0 (payload-gated); lake-ID join coverage; opportunity-frame owner policy (external lake-inventory linkage vs source-native frame); ~27% day precision limits horizon admissibility"
   confidence: "medium-high — nearest candidate vertical-wide"
 
 - source_id: hmaglofdb_recurrence_note
