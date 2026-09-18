@@ -280,3 +280,16 @@ and event–regime association remain gated under Run B and have not run
 on real data. No claims about operational use, warnings, production,
 prediction, or scientific validation. Existing green tests are
 contract-layer evidence, not real-data science.
+
+## Round-11.2 (2026-09-18) — provenance micro-round
+
+Content head: `586c08e` (plus the README/ledger head-update commit).
+Basis: 2944 collected, **2939 passed / 5 skipped / 0 failed /
+57 warnings**; focused lanes 204 + 803 green; manifest verified
+(89 files — `tests/test_r11_2_provenance.py` added).  The R11.2
+audit live-probed the R11.1 boundary and found nine residual
+acceptance paths; all seven codeable findings are closed
+(findings 8-22 remain owner-gated or stage-gated exactly as the
+audit deferred them).  Provenance convention maintained: content
+commit(s), then one manifest-only rebind; `content_head` and
+`manifest_commit` name the final content commit.
