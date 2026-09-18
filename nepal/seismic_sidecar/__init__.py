@@ -36,6 +36,15 @@ from .observability import (
     great_circle_km, reassess_observability,
     source_manifest_digest)
 from .runner import run_seismic_descriptive_poc
+from .io import (
+    WaveformBundleV0, derive_station_observability,
+    read_verified_waveform_bundle)
+from .provenance import (
+    FeatureFrameArtifactV0, build_seismic_feature_artifact,
+    run_seismic_real_path, verify_feature_generation)
+from .events import (
+    OpportunityWindowV0, SeismicEventPackageV0, SeismicEventV0,
+    build_event_package)
 
 __all__ = [
     "CATALOG_CONTEXT_COLUMNS", "OBSERVABILITY_STATUSES",
@@ -51,6 +60,14 @@ __all__ = [
     "cross_station_coherence", "derive_orientation_status",
     "great_circle_km", "reassess_observability",
     "run_seismic_descriptive_poc",
+    "run_seismic_real_path",
+    "FeatureFrameArtifactV0", "OpportunityWindowV0",
+    "SeismicEventPackageV0", "SeismicEventV0",
+    "WaveformBundleV0", "build_event_package",
+    "build_seismic_feature_artifact",
+    "derive_station_observability",
+    "read_verified_waveform_bundle",
+    "verify_feature_generation",
     "season_of_date", "semantic_feature_digest",
     "seismic_receipt_skeleton", "source_manifest_digest",
     "station_observability_from_dict", "validate_waveform_input",

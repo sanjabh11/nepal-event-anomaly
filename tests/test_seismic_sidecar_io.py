@@ -81,18 +81,23 @@ def _record(*, seq=1, network="XX", station="STA1", location="00",
 
 def _miniseed_file(*, station="STA1", channels=("BHE", "BHN", "BHZ"),
                    rate=50, seconds=300, start=E0, nrec=2,
-                   encoding=3, seed=0):
+                   encoding=3, seed=0, spans=None):
     """A multi-channel miniSEED payload: each channel gets ``nrec``
-    contiguous records of ``seconds/nrec`` each."""
+    contiguous records of ``seconds/nrec`` each — or, when ``spans``
+    is declared, one record per (start, seconds) segment."""
     rng = np.random.default_rng(seed)
-    per = seconds // nrec
     blob = b""
     seq = 1
     for ch in channels:
-        for i in range(nrec):
-            st = start + timedelta(seconds=i * per)
+        if spans is not None:
+            segments = spans
+        else:
+            per = seconds // nrec
+            segments = [(start + timedelta(seconds=i * per), per)
+                        for i in range(nrec)]
+        for st, secs in segments:
             samples = rng.normal(0, 100,
-                                 int(per * rate)).astype(np.int32)
+                                 int(secs * rate)).astype(np.int32)
             blob += _record(seq=seq, station=station, channel=ch,
                             start=st, samples=samples, rate=rate,
                             encoding=encoding)
@@ -148,7 +153,7 @@ def _multi_stationxml(stations, *, network="XX", location="00",
         + net_xml + '</FDSNStationXML>').encode()
 
 
-def _evidence(tmp, files: dict) -> tuple:
+def _evidence(tmp, files: dict, feature_allowlist=None) -> tuple:
     root = Path(tmp)
     entries = []
     for rel, blob in files.items():
@@ -157,13 +162,15 @@ def _evidence(tmp, files: dict) -> tuple:
         p.write_bytes(blob)
         entries.append({"relpath": rel,
                         "sha256": hashlib.sha256(blob).hexdigest()})
+    allowlist = feature_allowlist or (
+        list(ss.SEISMIC_NONBAND_FEATURES) +
+        list(ss.band_feature_names(ss.SEISMIC_DEFAULT_BANDS)))
     manifest = {
         "source_id": "fdsn-synthetic",
         "source_digests": sorted(
             hashlib.sha256(b).hexdigest() for b in files.values()),
         "units": "counts",
-        "feature_allowlist": list(ss.SEISMIC_NONBAND_FEATURES) +
-        list(ss.band_feature_names(ss.SEISMIC_DEFAULT_BANDS)),
+        "feature_allowlist": allowlist,
         "lineage": "synthetic-test",
         "evidence_root": str(root),
         "source_files": entries}
@@ -385,6 +392,19 @@ class TestBundle:
             station_selectors=("STA9",),
             config=self._cfg())
         assert any("station_selectors" in p for p in b.problems)
+
+    def test_selector_for_absent_station_rejects(self, tmp_path):
+        """A declared selector with zero matching traces must not
+        silently pass — a typo would lose a station undetected."""
+        root, manifest, *_ = self._fixture(tmp_path)
+        b = io_mod.read_verified_waveform_bundle(
+            evidence_root=root, source_manifest=manifest,
+            waveform_relpaths=("wave/STA1.mseed",),
+            response_relpaths=("resp/STA1.xml",),
+            station_selectors=("STA1", "GHOST"),
+            config=self._cfg())
+        assert any("matched no parsed trace" in p
+                   for p in b.problems)
 
     def test_inconsistent_channel_rates_reject(self, tmp_path):
         blob = (_record(seq=1, channel="BHE", rate=50,

@@ -166,3 +166,20 @@ preregistration.md  # Frozen pre-registration
 - ERA5-Land preliminary product has ~5-day latency
 - Single event cannot support prediction claims
 - GMM is descriptive only, not a detector
+
+R11.8 seismic contract and provenance completion (2026-09-19)
+
+The R11.8 changes close the remaining seismic contract-validation seams and
+bind the separate byte/event/provenance path without changing the hardened
+GLOF path. Strict configuration booleans and role/column uniqueness, bounded
+malformed-input handling, UTC calendar/date binding, and declared
+window-duration checks are enforced before digests or fitting. The added
+waveform I/O, event/opportunity package, and feature-generation provenance
+modules remain retrospective, research-only, and non-associable.
+
+The merged tree collects **3273** tests. The fresh canonical suite is
+**3267 passed / 6 skipped / 0 failed / 57 warnings**. The seismic/addendum
+lane is **208 passed**, and the shared GLOF/regime regression lane is
+**904 passed / 1 warning**. Five rasterio quarantines and one documented
+lane skip remain disclosed. No seismic or HMAGLOFDB payload bytes were
+acquired, and P5, warning, production, and promotion authority remain false.

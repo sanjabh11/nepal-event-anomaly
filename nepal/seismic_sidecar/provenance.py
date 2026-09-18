@@ -303,14 +303,22 @@ def _trace_epoch_iso(epoch: float) -> str:
     return f"{base}.{frac:06d}Z" if frac else f"{base}Z"
 
 
+#: Declared safety bound on the merged station grid — a sparse
+#: record spanning days at high rate must not inflate into an
+#: unbounded array; oversized grids drop into the ledger with an
+#: explicit reason rather than exhausting memory.
+_MAX_GRID_SAMPLES = 25_000_000
+
+
 def _merge_station_components(
         traces: Sequence) -> tuple | None:
     """Align one station's channel traces on a shared sample grid.
 
     Returns (grid, present_mask, epoch0, sample_rate_hz) or None when
-    the traces cannot form a grid (rate mismatch, zero overlap).
-    ``present[i]`` is True only where EVERY channel covers sample i —
-    uncovered positions hold zeros and are masked downstream.
+    the traces cannot form a grid (rate mismatch, zero overlap,
+    oversized span).  ``present[i]`` is True only where EVERY channel
+    covers sample i — uncovered positions hold zeros and are masked
+    downstream.
     """
     if not traces:
         return None
@@ -322,6 +330,9 @@ def _merge_station_components(
     end = max(t.end_epoch for t in traces)
     n = int(round((end - start) * fs))
     if n <= 0:
+        return None
+    channels_n = len({t.channel for t in traces})
+    if n * max(channels_n, 1) > _MAX_GRID_SAMPLES:
         return None
     channels = sorted({t.channel for t in traces})
     grid = np.zeros((n, len(channels)))
@@ -501,6 +512,20 @@ def run_seismic_real_path(
             source_manifest=source_manifest, config=cfg))
 
     frame = pd.DataFrame(list(artifact.frame_rows))
+    if train_mask is None:
+        # Derive the mask exactly the way the runner will verify it:
+        # daily aggregate -> station|early|late cells -> trained
+        # stations' early cells are the declared fit surface.
+        from .runner import _station_holdout_cells
+        daily = aggregate_daily(
+            list(artifact.frame_rows), artifact.feature_cols)
+        cells, _ = _station_holdout_cells(daily)
+        trained = sorted(set(s for s in stations
+                             if s not in set(cfg.heldout_stations)))
+        train_cells = {f"{s}|early" for s in trained}
+        train_mask = np.array(
+            [cells[i] in train_cells for i in range(len(daily))],
+            dtype=bool)
     receipt = run_seismic_descriptive_poc(
         frame, list(artifact.feature_cols), train_mask,
         cfg, obs, source_manifest)
@@ -510,7 +535,42 @@ def run_seismic_real_path(
     return receipt, artifact
 
 
+def audit_frame_provenance(
+        *,
+        source_manifest: Mapping[str, Any],
+        artifact: FeatureFrameArtifactV0 | None) -> list[str]:
+    """Advisory gate for callers of the lower-level runner: a
+    byte-bound (non-fixture) manifest paired with a caller-prepared
+    frame that carries no bound generation artifact is the S06
+    leak — the frame could be forged against real bytes.  Returns
+    problems; empty means the pairing is honest.
+
+    ``run_seismic_real_path`` closes this structurally (no frame
+    parameter exists); this function lets external callers and CI
+    enforce the same rule on any path that feeds
+    ``run_seismic_descriptive_poc`` a real manifest.
+    """
+    problems: list[str] = []
+    if not isinstance(source_manifest, Mapping):
+        return ["source_manifest must be a mapping"]
+    is_fixture = bool(source_manifest.get("fixture"))
+    has_bytes = bool(source_manifest.get("source_files")) and \
+        not is_fixture
+    if has_bytes and artifact is None:
+        problems.append(
+            "a byte-bound source manifest may not be paired with a "
+            "caller-prepared feature frame lacking a generation "
+            "artifact — derive the frame through "
+            "build_seismic_feature_artifact on the verified bundle")
+    if artifact is not None and \
+            not artifact.feature_generation_digest:
+        problems.append(
+            "the supplied artifact carries no "
+            "feature_generation_digest — provenance is unbound")
+    return problems
+
+
 __all__ = [
     "FEATURE_FRAME_ARTIFACT_TYPE", "FeatureFrameArtifactV0",
-    "build_seismic_feature_artifact", "verify_feature_generation",
-    "run_seismic_real_path"]
+    "audit_frame_provenance", "build_seismic_feature_artifact",
+    "verify_feature_generation", "run_seismic_real_path"]

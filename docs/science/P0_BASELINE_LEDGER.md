@@ -392,3 +392,22 @@ code, and defines station observability, P5 and byte-binding gates for any
 future waveform sidecar. No payload bytes were retrieved; no source,
 pilot, warning or production posture changed. The focused documentation
 regression is `tests/test_research_v0_seismic_addendum.py`.
+
+## Round-11.8 seismic contract and provenance completion (2026-09-19)
+
+The R11.8 content change closed the direct-probe validation seams: strict
+boolean flags, exception-safe unhashable-value handling, unique and
+disjoint waveform/response roles, unique holdout/catalog sequences, strict
+feature-column declarations, bounded non-DataFrame errors, real calendar
+dates bound to UTC `window_start`, and exact `window_seconds` duration
+binding.
+
+The parallel seismic content lane is preserved alongside it: verified
+waveform/StationXML I/O, derived observability, typed
+event/opportunity/control packaging, and feature-generation provenance.
+tests pass **208/208**; the R11.8 validation/shared lanes pass **161** and
+**904/1 warning**, respectively.
+
+The merged tree collects **3273** tests. The fresh canonical suite records
+**3267 passed / 6 skipped / 0 failed / 57 warnings**. No bytes, P5
+authorization, protected paths, or authority flags changed.

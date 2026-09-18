@@ -22,14 +22,18 @@ import nepal.seismic_sidecar.provenance as prov
 from nepal.seismic_sidecar.contracts import SeismicSidecarConfig
 
 from tests.test_seismic_sidecar_io import (
-    _evidence, _miniseed_file, _stationxml)
+    E0, _evidence, _miniseed_file, _stationxml)
+
+
+_BANDS = ((1.0, 4.0), (4.0, 10.0))
 
 
 def _cfg(**kw):
     base = dict(
         window_seconds=10, sta_seconds=2.0, lta_seconds=5.0,
         min_coverage_fraction=0.5, min_snr_db=-200.0,
-        bands=((1.0, 4.0), (4.0, 10.0)),
+        bands=_BANDS,
+        heldout_stations=("STA4",),
         waveform_relpaths=("wave/STA1.mseed", "wave/STA2.mseed",
                            "wave/STA3.mseed", "wave/STA4.mseed"),
         response_relpaths=("resp/all.xml",))
@@ -38,16 +42,25 @@ def _cfg(**kw):
 
 
 def _fixture(tmp_path, stations=("STA1", "STA2", "STA3", "STA4"),
-             seconds=600):
+             seconds=1200):
     files = {}
+    from datetime import timedelta
     for i, s in enumerate(stations):
+        # One segment per channel crossing midnight — a fully
+        # covered record that still spans two calendar dates, so
+        # the median split yields an early cell plus a held-out
+        # late tail per station.
         files[f"wave/{s}.mseed"] = _miniseed_file(
-            station=s, rate=50, seconds=seconds, nrec=3, seed=i)
+            station=s, rate=50, seed=i,
+            spans=[(E0 + timedelta(hours=23, minutes=55), seconds)])
     # one StationXML covering every station
     import tests.test_seismic_sidecar_io as tio
     files["resp/all.xml"] = tio._multi_stationxml(
         stations, rate=50)
-    return _evidence(tmp_path, files)
+    allowlist = list(ss.SEISMIC_NONBAND_FEATURES) + \
+        list(ss.band_feature_names(_BANDS))
+    return _evidence(tmp_path, files,
+                     feature_allowlist=allowlist)
 
 
 def _bundle(tmp_path, cfg=None):
@@ -153,7 +166,14 @@ class TestRealPath:
                 for s in ("STA1", "STA2", "STA3", "STA4")})
         assert receipt["record_type"] == \
             "SEISMIC_DETECTION_RECEIPT_V0"
-        assert receipt["status"] in ss.RECEIPT_STATUSES
+        # An honest terminal state — synthetic single-day evidence
+        # cannot reach descriptive power, but the run must not die
+        # on a contract violation either.
+        assert receipt["status"] in (
+            "CANDIDATE_ONLY", "UNDERPOWERED_DESCRIPTIVE_ONLY",
+            "UNOBSERVABLE")
+        assert receipt["status"] != "RUN_ERROR" or \
+            not receipt["problems"]
         # The real path produced its own frame — provenance bound.
         assert art.frame_rows
         assert art.feature_generation_digest
@@ -161,6 +181,26 @@ class TestRealPath:
         for flag in ("promotion_eligible", "production_authorized",
                      "warning_path_authorized"):
             assert receipt[flag] is False
+
+    def test_audit_gate_flags_forged_frame_pairing(self, tmp_path):
+        """S06 advisory gate: a byte-bound manifest + caller frame
+        with no generation artifact must be flagged — the frame
+        could be forged against real bytes."""
+        b, manifest, root, cfg = _bundle(tmp_path)
+        problems = prov.audit_frame_provenance(
+            source_manifest=manifest, artifact=None)
+        assert any("generation" in p for p in problems)
+        # With a bound artifact the same manifest is honest.
+        floors = _floors(b, manifest, cfg)
+        art = prov.build_seismic_feature_artifact(
+            b, cfg, noise_floor_by_station=floors)
+        assert prov.audit_frame_provenance(
+            source_manifest=manifest, artifact=art) == []
+        # An unbound artifact is also flagged.
+        unbound = dataclasses.replace(
+            art, feature_generation_digest="")
+        assert prov.audit_frame_provenance(
+            source_manifest=manifest, artifact=unbound)
 
     def test_no_caller_frame_on_real_path(self):
         """Structural closure of S06: the real path's signature has

@@ -25,11 +25,13 @@ INT16/INT32/FLOAT32/FLOAT64 (big-endian, per the SEED data-record
 contract) decode natively; STEIM1/STEIM2 and all other encodings
 require the optional ``obspy`` decoder — absent it, the record fails
 closed as unobservable rather than guessing.  Rotation policy for v0
-is orthogonal-only (E/N/Z); rotated horizontals (HH1/HH2) reject until
-a declared rotation implementation exists.
+admits both orthogonal (E/N/Z) and rotated (1/2/Z) three-component
+records — component-averaged energy features are orientation-
+agnostic; rotated channels are never silently relabelled E/N.
 """
 from __future__ import annotations
 
+import hashlib
 import math
 import struct
 import xml.etree.ElementTree as ET
@@ -64,10 +66,12 @@ _STEIM_ENCODINGS = frozenset({10, 11})
 #: is separately qualified (see contracts.SEISMIC_FEATURE_UNITS).
 RESPONSE_MODES = frozenset({"RAW_COUNTS", "VELOCITY_M_S"})
 
-#: v0 rotation policy — orthogonal E/N/Z only.  ROTATED_3C records
-#: (e.g. XQ HH1/HH2/HHZ) carry usable energy but are never silently
-#: relabelled; a declared rotation implementation is future work.
-ROTATION_POLICIES = frozenset({"orthogonal_required", "rotate_declared"})
+#: v0 rotation policy — component-averaged energy features are
+#: orientation-agnostic, so orthogonal (E/N/Z) and rotated (1/2/Z)
+#: three-component records are BOTH admitted; rotated channels are
+#: never silently relabelled E/N.  ``rotate_declared`` is reserved
+#: for a future declared rotation implementation.
+ROTATION_POLICIES = frozenset({"rotated_3c_admitted", "rotate_declared"})
 
 _MAX_RECORDS_PER_FILE = 1_000_000
 _MIN_RECORD_BYTES = 48
@@ -183,7 +187,7 @@ class WaveformBundleV0:
     parser_id: str = PARSER_ID
     parser_version: str = PARSER_VERSION
     response_mode: str = "RAW_COUNTS"
-    rotation_policy: str = "orthogonal_required"
+    rotation_policy: str = "rotated_3c_admitted"
     resampling_policy: str = "resample_forbidden"
     sample_rate_policy: str = "consistent_rate_required"
     problems: tuple = ()
@@ -617,7 +621,7 @@ def read_verified_waveform_bundle(
         return WaveformBundleV0(problems=tuple(problems))
 
     root = Path(str(evidence_root)).resolve()
-    wave_bytes = b""
+    wave_hash = hashlib.sha256()
     wave_parts: list[bytes] = []
     for rel in sorted(wave):
         try:
@@ -631,9 +635,9 @@ def read_verified_waveform_bundle(
                 f"waveform payload {rel!r}: bytes do not match "
                 "the manifest's declared sha256")
             return WaveformBundleV0(problems=tuple(problems))
+        wave_hash.update(b)
         wave_parts.append(b)
-        wave_bytes += b
-    resp_bytes = b""
+    resp_hash = hashlib.sha256()
     resp_parts: list[bytes] = []
     for rel in sorted(resp):
         try:
@@ -647,8 +651,10 @@ def read_verified_waveform_bundle(
                 f"StationXML payload {rel!r}: bytes do not match "
                 "the manifest's declared sha256")
             return WaveformBundleV0(problems=tuple(problems))
+        resp_hash.update(b)
         resp_parts.append(b)
-        resp_bytes += b
+    wave_bytes_digest = wave_hash.hexdigest()
+    resp_bytes_digest = resp_hash.hexdigest()
 
     # ---- parse -----------------------------------------------------
     all_metas: list[tuple[str, str, list]] = []
@@ -663,8 +669,8 @@ def read_verified_waveform_bundle(
         sx_records.extend(replace(r, relpath=rel) for r in recs)
     if problems:
         return WaveformBundleV0(
-            waveform_bytes_digest=sha256_bytes(wave_bytes),
-            stationxml_bytes_digest=sha256_bytes(resp_bytes),
+            waveform_bytes_digest=wave_bytes_digest,
+            stationxml_bytes_digest=resp_bytes_digest,
             problems=tuple(problems))
 
     traces: list[ParsedTraceV0] = []
@@ -677,15 +683,15 @@ def read_verified_waveform_bundle(
         traces.extend(trs)
     if problems:
         return WaveformBundleV0(
-            waveform_bytes_digest=sha256_bytes(wave_bytes),
-            stationxml_bytes_digest=sha256_bytes(resp_bytes),
+            waveform_bytes_digest=wave_bytes_digest,
+            stationxml_bytes_digest=resp_bytes_digest,
             problems=tuple(problems))
     if not traces:
         problems.append("no decodable waveform traces — metadata "
                         "presence is not waveform evidence")
         return WaveformBundleV0(
-            waveform_bytes_digest=sha256_bytes(wave_bytes),
-            stationxml_bytes_digest=sha256_bytes(resp_bytes),
+            waveform_bytes_digest=wave_bytes_digest,
+            stationxml_bytes_digest=resp_bytes_digest,
             problems=tuple(problems))
 
     # ---- selector + identity + response-content validation ---------
@@ -702,6 +708,17 @@ def read_verified_waveform_bundle(
                 f"parsed traces {unknown} are outside the declared "
                 "station_selectors — undeclared stations cannot "
                 "enter the bundle")
+        matched = {
+            s for s in selectors
+            if any(t.station == s or
+                   f"{t.network}.{t.station}" == s or
+                   t.trace_id == s for t in traces)}
+        silent = sorted(selectors - matched)
+        if silent:
+            problems.append(
+                f"station_selectors {silent} matched no parsed "
+                "trace — a declared station with no waveform "
+                "evidence cannot silently pass")
         traces = [t for t in traces
                   if t.station in selectors or
                   f"{t.network}.{t.station}" in selectors or
@@ -734,24 +751,24 @@ def read_verified_waveform_bundle(
                 f"station {sta}: channels carry inconsistent "
                 f"sample rates {sorted(rates)} — resampling is "
                 "forbidden by the declared policy")
-        if len(stations) > 1:
-            st_rates = {t.sample_rate_hz for t in traces}
-            if len(st_rates) > 1:
-                problems.append(
-                    "cross-station sample-rate mismatch "
-                    f"{sorted(st_rates)} — resampling is forbidden "
-                    "by the declared policy")
+    if len(stations) > 1:
+        st_rates = {t.sample_rate_hz for t in traces}
+        if len(st_rates) > 1:
+            problems.append(
+                "cross-station sample-rate mismatch "
+                f"{sorted(st_rates)} — resampling is forbidden "
+                "by the declared policy")
     if problems:
         return WaveformBundleV0(
             traces=tuple(traces), stationxml=tuple(sx_records),
-            waveform_bytes_digest=sha256_bytes(wave_bytes),
-            stationxml_bytes_digest=sha256_bytes(resp_bytes),
+            waveform_bytes_digest=wave_bytes_digest,
+            stationxml_bytes_digest=resp_bytes_digest,
             problems=tuple(problems))
 
     return WaveformBundleV0(
         traces=tuple(traces), stationxml=tuple(sx_records),
-        waveform_bytes_digest=sha256_bytes(wave_bytes),
-        stationxml_bytes_digest=sha256_bytes(resp_bytes),
+        waveform_bytes_digest=wave_bytes_digest,
+        stationxml_bytes_digest=resp_bytes_digest,
         problems=())
 
 

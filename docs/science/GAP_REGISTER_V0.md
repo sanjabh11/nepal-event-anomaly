@@ -1112,3 +1112,21 @@ records the boundary:
 
 No source status, pilot outcome, preregistration, frozen feature contract,
 warning authority or production status changes in this addendum.
+
+## Round-11.8 seismic contract and provenance completion (2026-09-19)
+
+The R11.8 repair leaves the hardened GLOF path unchanged while completing
+the seismic contract surface. Config flags
+and role sequences are strict and unique, malformed values return bounded
+problems, feature columns cannot be coerced or duplicated, and window dates
+and durations are bound to canonical UTC identities before semantic digests.
+The added waveform/StationXML reader, event/opportunity/control package,
+and feature-generation provenance chain are covered by **208** focused
+tests and remain retrospective-only and non-associable.
+
+The merged repository collects **3273** tests. The fresh canonical suite is
+**3267 passed / 6 skipped / 0 failed / 57 warnings**. HMAGLOFDB bytes,
+seismic real bytes, P5 authorization, independent intake review, FMX, and
+real regime fitting remain owner/data-gated. Posture remains
+`DESIGN_DRAFT_COMPLETE`,
+`NO_QUALIFYING_PILOT_SOURCE`, and `WARNING_PATH_AUTHORIZED: NO`.
