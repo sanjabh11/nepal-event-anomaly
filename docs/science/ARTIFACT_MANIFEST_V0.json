@@ -498,7 +498,7 @@
   "scope": "governed science artifacts: docs/science, nepal/research_v0, research tests, CI workflow, README \u2014 non-science sources excluded by design",
   "self_excluded": true,
   "test_results": {
-    "full_suite_venv": "3059 passed, 6 skipped (5 rasterio + 1 documented lane skip), 0 failed, 57 warnings",
+    "full_suite_venv": "3063 passed, 6 skipped (5 rasterio + 1 documented lane skip), 0 failed, 57 warnings",
     "promotion_matrix": "699 passed (r9 179 + r10 520)",
     "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
     "collection_guard": "repo-wide collection == tests/ (3069 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
