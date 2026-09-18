@@ -1,6 +1,6 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "743e8ca7ed550c355a37a85e3c779130139f86fa",
+  "content_head": "28888866140fcd57b25588b053d6560f70ea2b88",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
@@ -14,8 +14,8 @@
     },
     {
       "relpath": "README.md",
-      "sha256": "0bcc883b1aeb5aa36421f5cc0f8cce4fcb1ac257b6e5754af22cb6642f3a34c6",
-      "size_bytes": 7259
+      "sha256": "bf39f2ec6a000f39405124c32292705f01171e99490121a75b41ffeca191e7e4",
+      "size_bytes": 7323
     },
     {
       "relpath": "conftest.py",
@@ -24,8 +24,8 @@
     },
     {
       "relpath": "docs/science/GAP_REGISTER_V0.md",
-      "sha256": "1095baaea22566b938374bd24587346d7f207b5798e572e620dae78db75b0236",
-      "size_bytes": 84862
+      "sha256": "1c11a3c6eb2f1052dbea6f0a7230555d8be794b7055f99a441ea5b704c7756ba",
+      "size_bytes": 89130
     },
     {
       "relpath": "docs/science/GOVERNANCE_EXERCISE_RECORD_V0.md",
@@ -54,7 +54,7 @@
     },
     {
       "relpath": "docs/science/P0_BASELINE_LEDGER.md",
-      "sha256": "c547668cbb4b821b87785ce50f5606ce3532a8b1cc44c7f2d55895d1bccf6a70",
+      "sha256": "b1108ab1e898e9548609e02fe5d2e3ec2c8e88c952e13dce8480cf9605436b75",
       "size_bytes": 14690
     },
     {
@@ -224,8 +224,8 @@
     },
     {
       "relpath": "nepal/research_v0/producer_validation.py",
-      "sha256": "2523f534b9a3fc64827b31eadb7469025ad70aa5c4553b7bd1f063dba4e770b2",
-      "size_bytes": 147085
+      "sha256": "f704807f4fc362492136ad9a3ff50717367c4c41bac5100fb28d91741e71776d",
+      "size_bytes": 149830
     },
     {
       "relpath": "nepal/research_v0/records.py",
@@ -324,8 +324,8 @@
     },
     {
       "relpath": "tests/test_r10_promotion.py",
-      "sha256": "0e863da0739d77c5ec2f45f3fd69bfc15e047413c9ec4e6d2e8ba960583e7e37",
-      "size_bytes": 58697
+      "sha256": "24735c0ad95328ceb6cd3b05211fda574c1645f755363a784c1045ccadf94848",
+      "size_bytes": 61829
     },
     {
       "relpath": "tests/test_r6_association.py",
@@ -344,8 +344,8 @@
     },
     {
       "relpath": "tests/test_r6_regimes.py",
-      "sha256": "34c56f4c0b62a7e36062a33a84c89a7f8c2ff939af8ec8bd5bffdbcaaf09cfa0",
-      "size_bytes": 30548
+      "sha256": "f83d36c871c957546c3ead65faf5b4936f63b7e6b289fe7660b2e9c2da53c704",
+      "size_bytes": 30679
     },
     {
       "relpath": "tests/test_r7_hardening.py",
@@ -425,7 +425,7 @@
   ],
   "generated": "2026-09-18",
   "interpreter": ".venv/bin/python",
-  "manifest_commit": "743e8ca7ed550c355a37a85e3c779130139f86fa",
+  "manifest_commit": "28888866140fcd57b25588b053d6560f70ea2b88",
   "manifest_version": "ARTIFACT_MANIFEST_V0.3",
   "repository_relative_root": ".",
   "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -433,8 +433,8 @@
   "scope": "governed science artifacts: docs/science, nepal/research_v0, research tests, CI workflow, README \u2014 non-science sources excluded by design",
   "self_excluded": true,
   "test_results": {
-    "full_suite_venv": "2757 passed, 5 skipped (rasterio), 0 failed, 57 warnings",
-    "promotion_matrix": "684 passed (r9 179 + r10 505: 89-mutation x 5-boundary matrix with forged-artifact association evidence, direct-construction, vintage-acceptance, run-level, accounting classes)",
+    "full_suite_venv": "2772 passed, 5 skipped (rasterio), 0 failed, 57 warnings",
+    "promotion_matrix": "699 passed (r9 179 + r10 520)",
     "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
     "collection_guard": "repo-wide collection == tests/ (2762 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
     "claim_scan": "clean on all governed files",
@@ -442,6 +442,6 @@
     "p5_io_contract": "34 passed",
     "run_a_reconciliation": "24 passed",
     "r9_promotion": "179 passed",
-    "r10_promotion": "505 passed"
+    "r10_promotion": "520 passed (505 R10 matrix + 15 R10.1 residual regressions)"
   }
 }
