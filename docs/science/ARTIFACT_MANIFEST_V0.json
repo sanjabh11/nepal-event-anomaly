@@ -1,11 +1,11 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "bf57ddfea525122662d442a9fa0836b20d1cfd60",
+  "content_head": "53a1406419261b872ac8adca1e37d9677e6c337f",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
-      "sha256": "a705ca802b8120a04273545afe27eb1ddffa44c5ba280d4f9ee1aac4c4f54d6d",
-      "size_bytes": 11604
+      "sha256": "d6294a738b95081de4afe50ef9862f42b00eb62a468a508e28906dca9bc498b2",
+      "size_bytes": 12047
     },
     {
       "relpath": ".gitignore",
@@ -24,8 +24,8 @@
     },
     {
       "relpath": "docs/science/GAP_REGISTER_V0.md",
-      "sha256": "f63358e152090517a8a9d50bb98dfb422700092c852cc1492f46cc6f045940c4",
-      "size_bytes": 90488
+      "sha256": "ef1c75c71108353ab1f5958232354ac92aa7bc430ef84c282031af7cc79f8a48",
+      "size_bytes": 92181
     },
     {
       "relpath": "docs/science/GOVERNANCE_EXERCISE_RECORD_V0.md",
@@ -104,8 +104,8 @@
     },
     {
       "relpath": "docs/science/run_b/GLOF_POC_CONTRACT_V0.md",
-      "sha256": "ac8aa48598f96ed66ded960e2e312121a564bc7d17eeb057b96f42ffaa7bebf6",
-      "size_bytes": 6433
+      "sha256": "7ad5b7d2b4b6bbf0aad0af1596f95bd8b1c74325834a46ce3c7e2d2e7d431a54",
+      "size_bytes": 7246
     },
     {
       "relpath": "docs/science/run_b/REGIME_PROTOCOL_V0.md",
@@ -209,8 +209,8 @@
     },
     {
       "relpath": "nepal/research_v0/_hashing.py",
-      "sha256": "369492ddb5f46fd77a2f98441647fa71f603c9b4186da1343035c7c937029da1",
-      "size_bytes": 19470
+      "sha256": "1c1f4af58c9ffcdd63aa2e1eb75da67bc6e4e2c3538f053df632545412d7694c",
+      "size_bytes": 21261
     },
     {
       "relpath": "nepal/research_v0/cli.py",
@@ -239,8 +239,8 @@
     },
     {
       "relpath": "nepal/research_v0/source_intake.py",
-      "sha256": "63d3904000966da2d40cf94e7f4eb99b019eb00e410a472e9ad0f434983b809f",
-      "size_bytes": 14375
+      "sha256": "0f439fca082c663bed6e7f0b9801f8582671f226173ed7dcdad92d432e4dfd4f",
+      "size_bytes": 17018
     },
     {
       "relpath": "nepal/run_ledger_repair.py",
@@ -264,8 +264,8 @@
     },
     {
       "relpath": "nepal/science_v0/glof_poc.py",
-      "sha256": "9cbf485df756ce26647d7b78b2f9db2afe1858fd4e6522c09d336c5443dc1e24",
-      "size_bytes": 16009
+      "sha256": "05a21a0defab7b97a18fffdb0eafd6d175adf6093a25ec1f6ebe33f4c167e582",
+      "size_bytes": 22535
     },
     {
       "relpath": "nepal/science_v0/regimes.py",
@@ -334,8 +334,8 @@
     },
     {
       "relpath": "tests/test_glof_poc_contract.py",
-      "sha256": "323413c164312ba273c209736045c4c24f794840abcad1b642a77446dfe2a465",
-      "size_bytes": 33076
+      "sha256": "bcb82acd10c53f1b433076925dfeab0de21dc8ab6f493322a24de17dd5782ad2",
+      "size_bytes": 44130
     },
     {
       "relpath": "tests/test_p5_io_contract.py",
@@ -445,7 +445,7 @@
   ],
   "generated": "2026-09-18",
   "interpreter": ".venv/bin/python",
-  "manifest_commit": "28888866140fcd57b25588b053d6560f70ea2b88",
+  "manifest_commit": "53a1406419261b872ac8adca1e37d9677e6c337f",
   "manifest_version": "ARTIFACT_MANIFEST_V0.3",
   "repository_relative_root": ".",
   "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -453,16 +453,16 @@
   "scope": "governed science artifacts: docs/science, nepal/research_v0, research tests, CI workflow, README \u2014 non-science sources excluded by design",
   "self_excluded": true,
   "test_results": {
-    "full_suite_venv": "2871 passed, 5 skipped (rasterio), 0 failed, 57 warnings",
+    "full_suite_venv": "2904 passed, 5 skipped (rasterio), 0 failed, 57 warnings",
     "promotion_matrix": "699 passed (r9 179 + r10 520)",
     "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
-    "collection_guard": "repo-wide collection == tests/ (2876 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
+    "collection_guard": "repo-wide collection == tests/ (2909 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
     "claim_scan": "clean on all governed files",
     "research_v0": "119 passed",
     "p5_io_contract": "34 passed",
     "run_a_reconciliation": "24 passed",
     "r9_promotion": "179 passed",
     "r10_promotion": "520 passed (505 R10 matrix + 15 R10.1 residual regressions)",
-    "r11_glof_poc_contract": "99 passed"
+    "r11_glof_poc_contract": "132 passed"
   }
 }
