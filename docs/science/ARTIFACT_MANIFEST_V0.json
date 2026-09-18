@@ -1,6 +1,6 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "285e933fff75cfaef5c63470ffee0bb82187248b",
+  "content_head": "75a25a5491674845821182d61a17bfcf4ecd4f37",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
@@ -14,8 +14,8 @@
     },
     {
       "relpath": "README.md",
-      "sha256": "05ce99fc3b37fe7ac1d88ee0cf657f880fdccdf98cb8cd019fa59858f200e00d",
-      "size_bytes": 7979
+      "sha256": "7c6b06f0e43795b30162d604cb38ff2fd2b67dc1340cd0d7092f4af2db9de6fb",
+      "size_bytes": 7973
     },
     {
       "relpath": "conftest.py",
@@ -24,8 +24,8 @@
     },
     {
       "relpath": "docs/science/GAP_REGISTER_V0.md",
-      "sha256": "66600c77acd82606fda22a740ec590d6057341cc6dda34b3a10c1dd2b45a18e0",
-      "size_bytes": 100851
+      "sha256": "fa8450b6dbb413a954919e0a3dafa7941fe15f5ea7c0d7a95180f2eed025cefa",
+      "size_bytes": 102136
     },
     {
       "relpath": "docs/science/GOVERNANCE_EXERCISE_RECORD_V0.md",
@@ -54,8 +54,8 @@
     },
     {
       "relpath": "docs/science/P0_BASELINE_LEDGER.md",
-      "sha256": "76c157608122ec8d324030b57e3cddbca64c5817e0e4ace01d9711b70c3c792c",
-      "size_bytes": 18888
+      "sha256": "c02e0da712e78dff4efc1bdc234c458dbb4a39731ca9155c92490b766d8a064e",
+      "size_bytes": 19867
     },
     {
       "relpath": "docs/science/P3_ATTESTATION_RECORD_V0.md",
@@ -480,7 +480,7 @@
   ],
   "generated": "2026-09-18",
   "interpreter": ".venv/bin/python",
-  "manifest_commit": "285e933fff75cfaef5c63470ffee0bb82187248b",
+  "manifest_commit": "75a25a5491674845821182d61a17bfcf4ecd4f37",
   "manifest_version": "ARTIFACT_MANIFEST_V0.3",
   "repository_relative_root": ".",
   "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
