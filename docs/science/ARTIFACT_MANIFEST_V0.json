@@ -1,11 +1,11 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "d79bf7a704cf869239b949a77c0a448cc8cd32f0",
+  "content_head": "4f784a6634e83dc91efe7b5e7283face8510823e",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
-      "sha256": "f41ff49c3eb4a494fb10982092b138781bba8fad6172e549109bd597f8ba8370",
-      "size_bytes": 12170
+      "sha256": "cb1fa4e743cda8ec2797797d40e6488f5debf63024bb188c36b5a2c12c8e52de",
+      "size_bytes": 12293
     },
     {
       "relpath": ".gitignore",
@@ -14,8 +14,8 @@
     },
     {
       "relpath": "README.md",
-      "sha256": "bdfa5fec4ca53a8d1567a478387e6807dcea5e03c1588addf829ffe34317ff6d",
-      "size_bytes": 8043
+      "sha256": "0fc6c0028f561aaa8931a10bc33ed6f9ee7b1dbfc494af116255bee70cc86442",
+      "size_bytes": 7978
     },
     {
       "relpath": "conftest.py",
@@ -24,8 +24,8 @@
     },
     {
       "relpath": "docs/science/GAP_REGISTER_V0.md",
-      "sha256": "ba5c63c65525022642b4d3993fde4c82d68f5fa0fccfba050fd49ed0b6d55635",
-      "size_bytes": 93944
+      "sha256": "b47f02136e24d54171872718af6a4c5c51304a9f4f8a9448f7e82f6cc36c4510",
+      "size_bytes": 95538
     },
     {
       "relpath": "docs/science/GOVERNANCE_EXERCISE_RECORD_V0.md",
@@ -34,8 +34,8 @@
     },
     {
       "relpath": "docs/science/HAZARD_EVENT_INVENTORY_DECISION_MATRIX_V0.md",
-      "sha256": "14d82cce9b1a159a85287354f2d77d2721389e02e56d80603b2d14525909868d",
-      "size_bytes": 11265
+      "sha256": "ea00041c9cf33e52a1584ee0d1afc8dab37263b2daf43aca61e2788b6ac6055c",
+      "size_bytes": 11460
     },
     {
       "relpath": "docs/science/INFORMATION_CUTOFF_TARGET_POLICY_V0.md",
@@ -54,8 +54,8 @@
     },
     {
       "relpath": "docs/science/P0_BASELINE_LEDGER.md",
-      "sha256": "33366a176d54c3a7a41f6d1d8ea3e04afd7a6e9a36781522492e2644225d7738",
-      "size_bytes": 16308
+      "sha256": "768d833b63dbb08baeebd07105bf048981c8961805b0044f7115467a4143abe9",
+      "size_bytes": 16961
     },
     {
       "relpath": "docs/science/P3_ATTESTATION_RECORD_V0.md",
@@ -69,8 +69,8 @@
     },
     {
       "relpath": "docs/science/SOURCE_FEASIBILITY_RECORDS_V0.md",
-      "sha256": "6da274e3319bfe8c004f9828cbb00aebb240fa4b7b46085ee0c90ec128319f04",
-      "size_bytes": 16675
+      "sha256": "e2ac729eac855c4f6fb62980d1ec2cf20b6bf316cefa9ff69e9aad36462c60ee",
+      "size_bytes": 16905
     },
     {
       "relpath": "docs/science/STATUS_SCOPE_RECONCILIATION_NOTE_20260915.md",
@@ -119,8 +119,8 @@
     },
     {
       "relpath": "docs/science/run_b/SOURCE_QUALIFICATION_RECORDS_V0.md",
-      "sha256": "050d177a9fd34813c65d0f6fd4e8f83a974d0cb870e59560dd0bea1512eb96d3",
-      "size_bytes": 32151
+      "sha256": "a3e4852b03784f25a18ed1af2ac6f3767951763ca7a6cbdb448f9ab53b05b36e",
+      "size_bytes": 32570
     },
     {
       "relpath": "docs/science/run_c/ASSOCIATION_PROTOCOL_V0.md",
@@ -219,8 +219,8 @@
     },
     {
       "relpath": "nepal/research_v0/gates.py",
-      "sha256": "7ef09673d79185f97cacc6c831f0697261ba12cd1eb82be46c0e4930e048b833",
-      "size_bytes": 51619
+      "sha256": "0b290cd378be8565a5eaa52e20fdc5d9c2c0d53c3ad5d58d7bf1f4bf11a18b2b",
+      "size_bytes": 52671
     },
     {
       "relpath": "nepal/research_v0/policy.py",
@@ -264,8 +264,8 @@
     },
     {
       "relpath": "nepal/science_v0/glof_poc.py",
-      "sha256": "14c6533cf41a91bc41b0cb45797abc1d2d93ef27e2266abf1b51f2b4d0f93d96",
-      "size_bytes": 27952
+      "sha256": "a8f0177d8604f4a845308380f8864e5edc0c0a1397fd0632c9b1a9acc1bb4ca2",
+      "size_bytes": 30233
     },
     {
       "relpath": "nepal/science_v0/regimes.py",
@@ -334,8 +334,8 @@
     },
     {
       "relpath": "tests/test_glof_poc_contract.py",
-      "sha256": "4184c06d082a7240ad8fce2ad6bb4726611fb5bb02cfdd66c725a5affb2acc98",
-      "size_bytes": 46356
+      "sha256": "a5278d436906e1324d66a6728e044b77aed399571662c7a4dd5ea60f6aa216ce",
+      "size_bytes": 46365
     },
     {
       "relpath": "tests/test_p5_io_contract.py",
@@ -351,6 +351,11 @@
       "relpath": "tests/test_r11_2_provenance.py",
       "sha256": "42aa740c58117b2d1b4531bfaf215270a439270a992acbd0ef525dd0cec4c891",
       "size_bytes": 15340
+    },
+    {
+      "relpath": "tests/test_r11_3_provenance.py",
+      "sha256": "ed03fac73b4c1eb2a6b238838bf1752f58bc0141c3da5b24eaa7b0ef5f74de0c",
+      "size_bytes": 8151
     },
     {
       "relpath": "tests/test_r6_association.py",
@@ -450,7 +455,7 @@
   ],
   "generated": "2026-09-18",
   "interpreter": ".venv/bin/python",
-  "manifest_commit": "d79bf7a704cf869239b949a77c0a448cc8cd32f0",
+  "manifest_commit": "4f784a6634e83dc91efe7b5e7283face8510823e",
   "manifest_version": "ARTIFACT_MANIFEST_V0.3",
   "repository_relative_root": ".",
   "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -458,10 +463,10 @@
   "scope": "governed science artifacts: docs/science, nepal/research_v0, research tests, CI workflow, README \u2014 non-science sources excluded by design",
   "self_excluded": true,
   "test_results": {
-    "full_suite_venv": "2939 passed, 5 skipped (rasterio), 0 failed, 57 warnings",
+    "full_suite_venv": "2962 passed, 5 skipped (rasterio), 0 failed, 57 warnings",
     "promotion_matrix": "699 passed (r9 179 + r10 520)",
     "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
-    "collection_guard": "repo-wide collection == tests/ (2944 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
+    "collection_guard": "repo-wide collection == tests/ (2967 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
     "claim_scan": "clean on all governed files",
     "research_v0": "119 passed",
     "p5_io_contract": "34 passed",
@@ -469,6 +474,7 @@
     "r9_promotion": "179 passed",
     "r10_promotion": "520 passed (505 R10 matrix + 15 R10.1 residual regressions)",
     "r11_glof_poc_contract": "132 passed",
-    "r11_2_provenance": "35 passed"
+    "r11_2_provenance": "35 passed",
+    "r11_3_provenance": "23 passed"
   }
 }
