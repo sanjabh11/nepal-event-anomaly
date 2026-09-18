@@ -1,6 +1,6 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "106b3d259938db29e5639db318c71466c4316374",
+  "content_head": "e961b7154d95041265c58818c8d0e634faffe25f",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
@@ -14,8 +14,8 @@
     },
     {
       "relpath": "README.md",
-      "sha256": "7c6b06f0e43795b30162d604cb38ff2fd2b67dc1340cd0d7092f4af2db9de6fb",
-      "size_bytes": 7973
+      "sha256": "bc3832f328675bfa8df34d01ecf9e1529e109451e1f3cc0a2b0e58be27bfa7d8",
+      "size_bytes": 7953
     },
     {
       "relpath": "conftest.py",
@@ -54,8 +54,8 @@
     },
     {
       "relpath": "docs/science/P0_BASELINE_LEDGER.md",
-      "sha256": "c02e0da712e78dff4efc1bdc234c458dbb4a39731ca9155c92490b766d8a064e",
-      "size_bytes": 19867
+      "sha256": "f021b1de210d564136885f7cf122d4064ef3bed590d41d407447f498d7f3de56",
+      "size_bytes": 20047
     },
     {
       "relpath": "docs/science/P3_ATTESTATION_RECORD_V0.md",
@@ -480,7 +480,7 @@
   ],
   "generated": "2026-09-18",
   "interpreter": ".venv/bin/python",
-  "manifest_commit": "106b3d259938db29e5639db318c71466c4316374",
+  "manifest_commit": "e961b7154d95041265c58818c8d0e634faffe25f",
   "manifest_version": "ARTIFACT_MANIFEST_V0.3",
   "repository_relative_root": ".",
   "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -488,7 +488,7 @@
   "scope": "governed science artifacts: docs/science, nepal/research_v0, research tests, CI workflow, README \u2014 non-science sources excluded by design",
   "self_excluded": true,
   "test_results": {
-    "full_suite_venv": "3058 passed, 6 skipped (5 rasterio + 1 documented lane skip), 0 failed, 57 warnings",
+    "full_suite_venv": "3059 passed, 6 skipped (5 rasterio + 1 documented lane skip), 0 failed, 57 warnings",
     "promotion_matrix": "699 passed (r9 179 + r10 520)",
     "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
     "collection_guard": "repo-wide collection == tests/ (3065 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
