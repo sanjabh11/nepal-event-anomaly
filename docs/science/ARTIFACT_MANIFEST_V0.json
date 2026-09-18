@@ -1,6 +1,6 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "e961b7154d95041265c58818c8d0e634faffe25f",
+  "content_head": "542097b4ecd8ca7d9760872e4fedab16fd89f4ac",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
@@ -24,8 +24,8 @@
     },
     {
       "relpath": "docs/science/GAP_REGISTER_V0.md",
-      "sha256": "fa8450b6dbb413a954919e0a3dafa7941fe15f5ea7c0d7a95180f2eed025cefa",
-      "size_bytes": 102136
+      "sha256": "b639c287bb897746a3b0ddad05ce0a3c07942417c41501ef6ca6ec6150bf7393",
+      "size_bytes": 103145
     },
     {
       "relpath": "docs/science/GOVERNANCE_EXERCISE_RECORD_V0.md",
@@ -54,8 +54,8 @@
     },
     {
       "relpath": "docs/science/P0_BASELINE_LEDGER.md",
-      "sha256": "f021b1de210d564136885f7cf122d4064ef3bed590d41d407447f498d7f3de56",
-      "size_bytes": 20047
+      "sha256": "4de2eafff7d79f59705cc8f3f06875d4dc71844207167ec5508768027e14f358",
+      "size_bytes": 20710
     },
     {
       "relpath": "docs/science/P3_ATTESTATION_RECORD_V0.md",
@@ -69,8 +69,8 @@
     },
     {
       "relpath": "docs/science/SOURCE_FEASIBILITY_RECORDS_V0.md",
-      "sha256": "e4d5824ed7b2cd9f13543342311edf79055ddc8f4051fe0889195d74a43bb80e",
-      "size_bytes": 17174
+      "sha256": "afaf545f257bd76a01ad7c9afbbfca82ac5f7f44f42351927545daaf46195548",
+      "size_bytes": 17561
     },
     {
       "relpath": "docs/science/STATUS_SCOPE_RECONCILIATION_NOTE_20260915.md",
@@ -113,14 +113,19 @@
       "size_bytes": 7568
     },
     {
+      "relpath": "docs/science/run_b/SEISMIC_EVENT_DETECTION_ADDENDUM_V0.md",
+      "sha256": "2458db9363b522925e2d475be1bbac80cd9d6673cc0ba35be37a775140a5c948",
+      "size_bytes": 9806
+    },
+    {
       "relpath": "docs/science/run_b/SOURCE_EVIDENCE_ADDENDUM_V0.md",
       "sha256": "8f76fab0293c3ea018e3afb0b1c19631756176123aa45fb15558269d208d79f2",
       "size_bytes": 22596
     },
     {
       "relpath": "docs/science/run_b/SOURCE_QUALIFICATION_RECORDS_V0.md",
-      "sha256": "51cbe55b0b1a73bb373453957895197cf71cf5cc4d6d97606ac2cc0318c353ac",
-      "size_bytes": 33434
+      "sha256": "6abebd1583bea969ab32735a400e1e49a55b7ac0d1c34cf1ac2ca84dab627e8c",
+      "size_bytes": 33549
     },
     {
       "relpath": "docs/science/run_c/ASSOCIATION_PROTOCOL_V0.md",
@@ -448,6 +453,11 @@
       "size_bytes": 9933
     },
     {
+      "relpath": "tests/test_research_v0_seismic_addendum.py",
+      "sha256": "35e62f18d40c0760e438e75cc8959f5029bada709050f06d3740c9ab86cb4ff6",
+      "size_bytes": 2283
+    },
+    {
       "relpath": "tests/test_round5_hardening.py",
       "sha256": "777f7f13ea6aa3f1db28bd2956e1f1d0f1eebdbd296d8c91084492e8402b712d",
       "size_bytes": 17494
@@ -480,7 +490,7 @@
   ],
   "generated": "2026-09-18",
   "interpreter": ".venv/bin/python",
-  "manifest_commit": "e961b7154d95041265c58818c8d0e634faffe25f",
+  "manifest_commit": "542097b4ecd8ca7d9760872e4fedab16fd89f4ac",
   "manifest_version": "ARTIFACT_MANIFEST_V0.3",
   "repository_relative_root": ".",
   "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -491,9 +501,9 @@
     "full_suite_venv": "3059 passed, 6 skipped (5 rasterio + 1 documented lane skip), 0 failed, 57 warnings",
     "promotion_matrix": "699 passed (r9 179 + r10 520)",
     "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
-    "collection_guard": "repo-wide collection == tests/ (3065 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
+    "collection_guard": "repo-wide collection == tests/ (3069 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
     "claim_scan": "clean on all governed files",
-    "research_v0": "119 passed",
+    "research_v0": "123 passed",
     "p5_io_contract": "34 passed",
     "run_a_reconciliation": "24 passed",
     "r9_promotion": "179 passed",
@@ -502,6 +512,7 @@
     "r11_2_provenance": "35 passed",
     "r11_3_provenance": "23 passed",
     "r11_5_real_path": "93 passed, 1 skipped (p5_glof_intake + real_fmx_audit + glof_poc_real_path + regime_real_path)",
-    "r11_5_release_closure": "3 passed (manifest_commit identity, lane governance, collection census)"
+    "r11_5_release_closure": "3 passed (manifest_commit identity, lane governance, collection census)",
+    "seismic_addendum": "4 passed"
   }
 }
