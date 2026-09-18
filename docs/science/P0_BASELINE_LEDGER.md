@@ -330,3 +330,18 @@ GLM3 lane), TIGGE normalized to `CANDIDATE`/`CANDIDATE_ONLY`,
 official end `2020-09-23`.  Verified by stale-claim greps,
 `git diff --check`, protected-path diff, and manifest rebind.
 No code or posture changes.
+
+## Round-11.5 (2026-09-18) — real-path test lanes
+
+Content head: `a0bc8ff` (SWE2 test lanes) + this verification
+record commit (GLM3 verifier/rebinder).  Basis: **3061 collected,
+3055 passed / 6 skipped / 0 failed / 57 warnings** — fresh
+canonical `tests/` run at this head (1518 s).  Focused lanes:
+`test_p5_glof_intake` + `test_real_fmx_audit` +
+`test_glof_poc_real_path` + `test_regime_real_path` =
+**93 passed / 1 skipped** (documented skip: cached-artifact
+`CANDIDATE_ONLY` gate-consistency rejection is exercised under a
+descriptive artifact).  Skips: 5 disclosed rasterio quarantine +
+1 lane skip.  Four new test files added to the manifest and to
+CI triggers + contract step; no production code changed.
+Owner-gated items unchanged.

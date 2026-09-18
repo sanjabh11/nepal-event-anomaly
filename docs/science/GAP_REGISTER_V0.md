@@ -1027,3 +1027,39 @@ manifest verified post-rebind.
 
 Owner-gated (unchanged): P5 authorization, opportunity-frame
 Option A/B, real bytes, independent intake review, governance.
+
+## Round-11.5 real-path test lanes (2026-09-18)
+
+SWE2 content commit `a0bc8ff` added four focused lanes exercising
+the real (non-mocked) boundaries with synthetic bytes, all
+P5-blocked by construction:
+
+- `tests/test_p5_glof_intake.py` — byte-bound source intake contract.
+- `tests/test_real_fmx_audit.py` — real `audit_matrix` leak/leakage
+  checks (exposure column named to the governed vocabulary so
+  NAME-EXPOSURE and CLASS-EXPOSURE both fire).
+- `tests/test_glof_poc_real_path.py` — end-to-end runner on real
+  bytes; fixture-manifest runner path asserts `RUN_ERROR` plus zero
+  engine calls (R11.3-P01 fail-closed semantics).
+- `tests/test_regime_real_path.py` — real `run_regimes`/freeze/
+  producer audit against the FROZEN artifact.
+
+CI path triggers and the contract step include all four files.
+No production code changed; no bytes acquired; no posture change.
+
+GLM3 verifier/rebinder results at this head:
+
+- Collection: **3061** (was 2967; +94 = the four lanes).
+- Focused lanes: **93 passed / 1 skipped** — the skip is
+  documented (`cached artifact is 'CANDIDATE_ONLY'`; the
+  gate/status consistency rejection is exercised under a
+  descriptive artifact).
+- Full canonical suite (`tests/`, `.venv`, `-B`):
+  **3055 passed / 6 skipped / 0 failed / 57 warnings** in 1518 s —
+  5 disclosed rasterio quarantine skips + 1 lane skip.
+- Manifest rebound: four test files added (90 → 94 files);
+  `content_head` bound to the verification-record commit;
+  claim-scan clean; protected-path diff empty.
+
+Owner-gated (unchanged): P5 authorization, opportunity-frame
+Option A/B, real bytes, independent intake review, governance.
