@@ -361,6 +361,9 @@ The release-provenance defect (`manifest_commit` stale at
 the final content commit, enforced by a CI identity-guard step
 and the regression file.  Manifest rebound to 95 files
 (`8c788a8`).  No production code changed; no posture change.
-Residual: `verify-manifest` itself does not check the
-invariant — enforcement is pytest + CI (queued hardening).
-Owner-gated items unchanged.
+Residual `verify-manifest` gap closed at R11.5.1 (`106b3d2`):
+the CLI now independently rejects a stale or manifest-only
+`manifest_commit`, verified by an accept/reject regression pair.
+Fresh canonical suite at `73fd1a8`: **3059 passed / 6 skipped /
+0 failed / 57 warnings** (3,065 collected).  Owner-gated items
+unchanged.
