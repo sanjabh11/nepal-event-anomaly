@@ -1,11 +1,11 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "5d34210feb5088df0ab62d54a5ed7a4202343380",
+  "content_head": "285e933fff75cfaef5c63470ffee0bb82187248b",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
-      "sha256": "5b32d767ef7d5a91a22259f326847f2f1110c173a3a9e702e32f7714accddb93",
-      "size_bytes": 12779
+      "sha256": "600da2c9ffa9ae364562627fbcf0beb97d53985c5328866f4687273388492b80",
+      "size_bytes": 13743
     },
     {
       "relpath": ".gitignore",
@@ -368,6 +368,11 @@
       "size_bytes": 8151
     },
     {
+      "relpath": "tests/test_r11_5_release_closure.py",
+      "sha256": "1150b6f0ddc1f5d9ce11dc3c5524cebd53cdd605beceafdf72df41102723790f",
+      "size_bytes": 3581
+    },
+    {
       "relpath": "tests/test_r6_association.py",
       "sha256": "c82ddb749029ce0140ac81ec5c7a265c95805aeb98d811ac5ddd0ec01d5f5e42",
       "size_bytes": 11787
@@ -475,7 +480,7 @@
   ],
   "generated": "2026-09-18",
   "interpreter": ".venv/bin/python",
-  "manifest_commit": "5d34210feb5088df0ab62d54a5ed7a4202343380",
+  "manifest_commit": "285e933fff75cfaef5c63470ffee0bb82187248b",
   "manifest_version": "ARTIFACT_MANIFEST_V0.3",
   "repository_relative_root": ".",
   "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -483,10 +488,10 @@
   "scope": "governed science artifacts: docs/science, nepal/research_v0, research tests, CI workflow, README \u2014 non-science sources excluded by design",
   "self_excluded": true,
   "test_results": {
-    "full_suite_venv": "3055 passed, 6 skipped (5 rasterio + 1 documented lane skip), 0 failed, 57 warnings",
+    "full_suite_venv": "3058 passed, 6 skipped (5 rasterio + 1 documented lane skip), 0 failed, 57 warnings",
     "promotion_matrix": "699 passed (r9 179 + r10 520)",
     "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
-    "collection_guard": "repo-wide collection == tests/ (3061 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
+    "collection_guard": "repo-wide collection == tests/ (3064 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
     "claim_scan": "clean on all governed files",
     "research_v0": "119 passed",
     "p5_io_contract": "34 passed",
@@ -496,6 +501,7 @@
     "r11_glof_poc_contract": "132 passed",
     "r11_2_provenance": "35 passed",
     "r11_3_provenance": "23 passed",
-    "r11_5_real_path": "93 passed, 1 skipped (p5_glof_intake + real_fmx_audit + glof_poc_real_path + regime_real_path)"
+    "r11_5_real_path": "93 passed, 1 skipped (p5_glof_intake + real_fmx_audit + glof_poc_real_path + regime_real_path)",
+    "r11_5_release_closure": "3 passed (manifest_commit identity, lane governance, collection census)"
   }
 }
