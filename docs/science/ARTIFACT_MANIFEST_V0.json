@@ -1,6 +1,6 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "53a1406419261b872ac8adca1e37d9677e6c337f",
+  "content_head": "f5967239cc5be2fceef6e1dcba6c487162fd07d6",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
@@ -14,8 +14,8 @@
     },
     {
       "relpath": "README.md",
-      "sha256": "0224ec48f14eda64f2d4d385c58f871d0b0bc29cf67190d050b32d2f5def5ae7",
-      "size_bytes": 7724
+      "sha256": "c4e3bd15ee1e34e6219f0b7b1fe2ad7c224a54e5a22e64a47b3e64994914bf56",
+      "size_bytes": 7910
     },
     {
       "relpath": "conftest.py",
@@ -445,7 +445,7 @@
   ],
   "generated": "2026-09-18",
   "interpreter": ".venv/bin/python",
-  "manifest_commit": "53a1406419261b872ac8adca1e37d9677e6c337f",
+  "manifest_commit": "f5967239cc5be2fceef6e1dcba6c487162fd07d6",
   "manifest_version": "ARTIFACT_MANIFEST_V0.3",
   "repository_relative_root": ".",
   "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
