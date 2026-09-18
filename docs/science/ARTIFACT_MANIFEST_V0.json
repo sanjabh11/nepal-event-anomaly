@@ -1,6 +1,6 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "5924c686687cc6439353703b8f7574b35d17ad65",
+  "content_head": "8585e5fcbb9d6f8131701e7ca6909fe15f7bf254",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
@@ -299,8 +299,8 @@
     },
     {
       "relpath": "nepal/seismic_sidecar/runner.py",
-      "sha256": "d7ca50a5c63ac51d116c62164c23e2d3d700ed2830bbc6f0797c01a21f12f12a",
-      "size_bytes": 28739
+      "sha256": "4192a465d109fefbbc4ed0f4a04a63cc6364e70ca54e293f5c5bdcd5956cf5df",
+      "size_bytes": 28786
     },
     {
       "relpath": "tests/fixtures/__init__.py",
@@ -534,13 +534,13 @@
     },
     {
       "relpath": "tests/test_seismic_sidecar_runner.py",
-      "sha256": "2189774ebdd48e08d2e63a81c084d5dd2e3680464def73f86f3ab6c5a6872626",
-      "size_bytes": 22430
+      "sha256": "8c12044519f2562c93c5390427096ce3be60ff6400f4841911e730fcafe85177",
+      "size_bytes": 25405
     }
   ],
   "generated": "2026-09-18",
   "interpreter": ".venv/bin/python",
-  "manifest_commit": "5924c686687cc6439353703b8f7574b35d17ad65",
+  "manifest_commit": "8585e5fcbb9d6f8131701e7ca6909fe15f7bf254",
   "manifest_version": "ARTIFACT_MANIFEST_V0.3",
   "repository_relative_root": ".",
   "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -551,7 +551,7 @@
     "full_suite_venv": "3063 passed, 6 skipped (5 rasterio + 1 documented lane skip), 0 failed, 57 warnings",
     "promotion_matrix": "699 passed (r9 179 + r10 520)",
     "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
-    "collection_guard": "repo-wide collection == tests/ (3205 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
+    "collection_guard": "repo-wide collection == tests/ (3209 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
     "claim_scan": "clean on all governed files",
     "research_v0": "123 passed",
     "p5_io_contract": "34 passed",
@@ -564,6 +564,7 @@
     "r11_5_real_path": "93 passed, 1 skipped (p5_glof_intake + real_fmx_audit + glof_poc_real_path + regime_real_path)",
     "r11_5_release_closure": "4 passed (manifest_commit identity, lane governance, collection census, CLI stale-commit rejection)",
     "seismic_addendum": "4 passed",
-    "seismic_sidecar": "140 passed (contract + features + observability + runner + shared_regression + addendum)"
+    "seismic_sidecar": "122 passed (contract 42 + features 36 + observability 20 + runner 24, incl. one real engine artifact under SEISMIC_WAVEFORM_RETROSPECTIVE)",
+    "seismic_shared_regression": "shared-boundary regressions green (vocabulary isolation, record lane, engine lane, producer floor, adapter rejection)"
   }
 }
