@@ -105,15 +105,17 @@ Test-suite honesty: the full suite under the pinned `.venv` recorded
 `P0_BASELINE_LEDGER.md` (historical snapshot). Later dated snapshots:
 1306 at the round-2 reconciliation head, 1641 after the first swarm
 integration, 1828 at the post-audit residual-repair head. Last
-fully-verified baseline (round-11.5.1 release-closure content
+fully-verified baseline (round-11.7 seismic-sidecar content
 commit; the manifest's `content_head` names the commit whose
 tree the manifest hashes — the manifest commit itself follows
-the content commit): **3059 passed / 6 skipped / 0 failed /
-57 warnings** across **95** manifest-governed files (3,065
-collected) — bound to the round-11.5.1 head, which moved the
-`manifest_commit == content_head` invariant into the
-`verify-manifest` CLI itself; the equality guard is now enforced
-by the CLI, a CI identity step, and a focused regression file.
+the content commit): **3203 passed / 6 skipped / 0 failed /
+57 warnings** across **107** manifest-governed files (3,209
+collected) — bound to the round-11.7 head, which landed the
+hardened seismic sidecar (derived observability gates,
+byte-pinned waveform reads, canonical window identities,
+explicit station holdout, the SEISMIC_WAVEFORM_RETROSPECTIVE
+class bound to the retrospective lane only) on top of the
+round-11.5.1 `manifest_commit == content_head` CLI invariant.
 Round-11 added the audit-pinned GLOF intake and descriptive-runner
 surface (`nepal/research_v0/source_intake.py`,
 `nepal/science_v0/glof_poc.py`,

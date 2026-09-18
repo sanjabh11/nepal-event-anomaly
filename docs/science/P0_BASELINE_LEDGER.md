@@ -368,6 +368,19 @@ Fresh canonical suite at `73fd1a8`: **3059 passed / 6 skipped /
 0 failed / 57 warnings** (3,065 collected).  Owner-gated items
 unchanged.
 
+R11.7 seismic sidecar (`8e17cfd` + reb `a43a078`): the
+research-only seismic vertical landed — derived observability
+gates (forged OBSERVABLE rejects), byte-pinned waveform reads,
+15-key exact receipt with config_digest, canonical window
+identities, explicit station holdout, and
+SEISMIC_WAVEFORM_RETROSPECTIVE bound to the retrospective lane
+only (non-associable, rejected on forecast/adapter/association).
+Fresh canonical suite: **3203 passed / 6 skipped / 0 failed /
+57 warnings** (3,209 collected, 107 governed files).  Seismic
+posture unchanged: design-only, no station/waveform bytes, no
+EVIDENCE_VERIFIED source, UNOBSERVABLE terminal.  Owner-gated
+items unchanged.
+
 ## Seismic event-detection sidecar addendum (2026-09-18)
 
 The customer seismic recommendation is captured in
