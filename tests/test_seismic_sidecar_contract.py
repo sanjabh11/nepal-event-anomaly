@@ -221,6 +221,20 @@ class TestConfigValidation:
         {"missingness_policy": "impute_anything"},
         {"catalog_ablation": True},
         {"catalog_cols": ("not_a_catalog_col",)},
+        {"seeds": ([1], 2, 3)},
+        {"catalog_cols": ([1],)},
+        {"require_response": "false"},
+        {"require_station_holdout": 1},
+        {"catalog_ablation": "false"},
+        {"waveform_relpaths": ("wave/a.bin", "wave/a.bin")},
+        {"response_relpaths": ("resp/a.xml", "resp/a.xml")},
+        {"waveform_relpaths": ("same.bin",),
+         "response_relpaths": ("same.bin",)},
+        {"waveform_relpaths": ("wave/a.bin",),
+         "response_relpaths": ()},
+        {"heldout_stations": ("STA1", "STA1")},
+        {"catalog_cols": ("catalog_event_count",
+                           "catalog_event_count")},
     ])
     def test_malformed_configs_rejected(self, kw):
         assert ss.SeismicSidecarConfig(**kw).validate()

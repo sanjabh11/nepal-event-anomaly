@@ -165,7 +165,7 @@ def _config(**kw) -> ss.SeismicSidecarConfig:
 
 
 def _run(manifest=None, observability=None, df=None, mask=None,
-         config=None):
+         config=None, fcols=None):
     manifest = manifest if manifest is not None else _manifest()
     observability = observability if observability is not None \
         else _observability(manifest)
@@ -173,7 +173,8 @@ def _run(manifest=None, observability=None, df=None, mask=None,
     mask = mask if mask is not None else _mask(df)
     config = config if config is not None else _config()
     return ss.run_seismic_descriptive_poc(
-        df, _FCOLS, mask, config, observability, manifest)
+        df, _FCOLS if fcols is None else fcols, mask, config,
+        observability, manifest)
 
 
 def _receipt() -> dict:
@@ -528,6 +529,42 @@ class TestRunErrors:
         r = _run(df=dup, mask=mask)
         assert r["status"] == "RUN_ERROR"
         assert any("duplicate" in p for p in r["problems"])
+
+    def test_window_date_must_match_utc_start_date(self):
+        df = _frame()
+        df.loc[0, "date"] = "2020-07-01"
+        r = _run(df=df, mask=_mask(df))
+        assert r["status"] == "RUN_ERROR"
+        assert any("UTC date" in p for p in r["problems"])
+
+    def test_invalid_calendar_date_rejected(self):
+        df = _frame()
+        df.loc[0, "date"] = "2020-99-99"
+        r = _run(df=df, mask=_mask(df))
+        assert r["status"] == "RUN_ERROR"
+        assert any("calendar date" in p for p in r["problems"])
+
+    def test_window_duration_must_match_config(self):
+        df = _frame()
+        df.loc[0, "window_end"] = "2020-06-01T00:02:00Z"
+        r = _run(df=df, mask=_mask(df))
+        assert r["status"] == "RUN_ERROR"
+        assert any("window_seconds" in p for p in r["problems"])
+
+    def test_duplicate_feature_columns_rejected(self):
+        r = _run(fcols=_FCOLS + ["seis_rsam"])
+        assert r["status"] == "RUN_ERROR"
+        assert any("feature_cols" in p for p in r["problems"])
+
+    def test_non_string_feature_columns_rejected(self):
+        r = _run(fcols=_FCOLS + [None])
+        assert r["status"] == "RUN_ERROR"
+        assert any("feature_cols" in p for p in r["problems"])
+
+    def test_invalid_feature_frame_type_is_bounded(self):
+        r = _run(df=[], mask=np.array([], dtype=bool))
+        assert r["status"] == "RUN_ERROR"
+        assert any("DataFrame" in p for p in r["problems"])
 
 
 class TestSeismicArtifactBoundary:

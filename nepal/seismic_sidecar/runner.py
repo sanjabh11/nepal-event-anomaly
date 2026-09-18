@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import asdict
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -99,7 +100,8 @@ def _station_holdout_cells(
 
 def _validate_window_identities(
         rows: Sequence[Mapping[str, Any]],
-        feature_cols: Sequence[str]) -> list[str]:
+        feature_cols: Sequence[str],
+        expected_window_seconds: int | None = None) -> list[str]:
     """Canonical window-identity floor — enforced BEFORE the
     semantic digest so malformed identities can never be bound.
 
@@ -135,6 +137,26 @@ def _validate_window_identities(
                 not all(p.isdigit() for p in parts):
             problems.append(f"row {i}: date {d!r} is not a "
                             "canonical ISO date")
+        else:
+            try:
+                parsed_date = datetime.strptime(d, "%Y-%m-%d").date()
+            except ValueError:
+                parsed_date = None
+                problems.append(f"row {i}: date {d!r} is not a "
+                                "valid calendar date")
+            if parsed_date is not None:
+                start_date = datetime.fromtimestamp(
+                    ws, timezone.utc).date()
+                if parsed_date != start_date:
+                    problems.append(
+                        f"row {i}: date {d!r} does not match "
+                        "window_start UTC date")
+        if expected_window_seconds is not None and \
+                we - ws != float(expected_window_seconds):
+            problems.append(
+                f"row {i}: window duration {we - ws:g}s does not "
+                f"match declared window_seconds "
+                f"{expected_window_seconds}")
         ident = (station, str(row["window_start"]),
                  str(row["window_end"]))
         if ident in seen:
@@ -196,6 +218,22 @@ def run_seismic_descriptive_poc(
                         for p in cfg_problems)
         return _report(receipt)
     cfg = seismic_config
+    if not isinstance(feature_frame, pd.DataFrame):
+        problems.append("feature_frame must be a pandas DataFrame")
+        return _report(receipt)
+    if not isinstance(feature_cols, (list, tuple)) or \
+            any(not isinstance(c, str) or not c.strip()
+                for c in feature_cols):
+        problems.append("feature_cols must be a sequence of non-empty "
+                        "strings")
+        return _report(receipt)
+    fcols = list(feature_cols)
+    if len(set(fcols)) != len(fcols):
+        problems.append("feature_cols must contain unique names")
+        return _report(receipt)
+    if not fcols:
+        problems.append("feature_cols must be non-empty")
+        return _report(receipt)
     # SEISMIC-02: the entire declared configuration — role paths,
     # thresholds, bands, seeds, holdout and catalog settings — is
     # bound into the receipt; any mutation moves the digest.
@@ -364,10 +402,6 @@ def run_seismic_descriptive_poc(
     receipt["raw_waveform_digest"] = sha256_bytes(raw_payload)
 
     # ---- feature-frame floor ------------------------------------------
-    fcols = [str(c) for c in feature_cols]
-    if not fcols:
-        problems.append("feature_cols must be non-empty")
-        return _report(receipt)
     # The band columns are generated from the DECLARED config bands —
     # the vocabulary is the naming rule, not a single band set.
     catalog_in = sorted(set(fcols) & set(CATALOG_CONTEXT_COLUMNS))
@@ -442,7 +476,8 @@ def run_seismic_descriptive_poc(
     # Window-level semantic digest — binds the waveform-derived
     # feature surface; catalog context and labels never enter it.
     win_rows = feature_frame.to_dict("records")
-    ident_problems = _validate_window_identities(win_rows, fcols)
+    ident_problems = _validate_window_identities(
+        win_rows, fcols, expected_window_seconds=cfg.window_seconds)
     if ident_problems:
         problems.extend(f"feature_frame: {p}"
                         for p in ident_problems[:20])

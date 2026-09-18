@@ -364,6 +364,10 @@ class SeismicSidecarConfig:
 
     def validate(self) -> list[str]:
         problems: list[str] = []
+        for name in ("require_response", "require_station_holdout",
+                     "catalog_ablation"):
+            if not isinstance(getattr(self, name), bool):
+                problems.append(f"{name} must be a strict bool")
         if isinstance(self.window_seconds, bool) or \
                 not isinstance(self.window_seconds, int) or \
                 self.window_seconds <= 0:
@@ -417,18 +421,33 @@ class SeismicSidecarConfig:
                  self.max_latency_seconds < 0):
             problems.append("max_latency_seconds must be a "
                             "non-negative finite number when declared")
+        sequence_valid: dict[str, bool] = {}
         for name in ("waveform_relpaths", "response_relpaths",
                      "heldout_stations", "catalog_cols"):
             v = getattr(self, name)
-            if not isinstance(v, (list, tuple)) or \
-                    any(not isinstance(x, str) or not x.strip()
-                        for x in v):
+            valid = isinstance(v, (list, tuple)) and \
+                all(isinstance(x, str) and x.strip() for x in v)
+            sequence_valid[name] = valid
+            if not valid:
                 problems.append(f"{name} must be a tuple of non-empty "
                                 "strings")
-        if not isinstance(self.seeds, (list, tuple)) or \
-                len(set(self.seeds)) < 3 or \
-                any(isinstance(s, bool) or not isinstance(s, int)
-                    or s < 0 for s in self.seeds):
+            elif len(set(v)) != len(v):
+                problems.append(f"{name} must contain unique values")
+        if sequence_valid.get("waveform_relpaths") and \
+                sequence_valid.get("response_relpaths") and \
+                set(self.waveform_relpaths) & set(self.response_relpaths):
+            problems.append("waveform_relpaths and response_relpaths must "
+                            "be disjoint role paths")
+        if self.require_response is True and \
+                sequence_valid.get("response_relpaths") and \
+                self.waveform_relpaths and not self.response_relpaths:
+            problems.append("require_response requires at least one "
+                            "response_relpath")
+        seeds_valid = isinstance(self.seeds, (list, tuple)) and \
+            all(isinstance(s, int) and not isinstance(s, bool) and s >= 0
+                for s in self.seeds)
+        if not seeds_valid or len(self.seeds) < 3 or \
+                (seeds_valid and len(set(self.seeds)) < 3):
             problems.append("seeds must be >= 3 distinct non-negative "
                             "ints")
         if not isinstance(self.k_candidates, (list, tuple)) or \
@@ -462,15 +481,16 @@ class SeismicSidecarConfig:
             v = getattr(self, name)
             if not isinstance(v, str) or not v.strip():
                 problems.append(f"{name} must be a non-empty string")
-        if self.catalog_ablation and not self.catalog_cols:
+        if self.catalog_ablation is True and not self.catalog_cols:
             problems.append("catalog_ablation requires declared "
                             "catalog_cols")
-        unknown_catalog = sorted(
-            set(self.catalog_cols) - set(CATALOG_CONTEXT_COLUMNS))
-        if unknown_catalog:
-            problems.append(
-                f"catalog_cols {unknown_catalog} are outside the "
-                "declared catalog-context vocabulary")
+        if sequence_valid.get("catalog_cols"):
+            unknown_catalog = sorted(
+                set(self.catalog_cols) - set(CATALOG_CONTEXT_COLUMNS))
+            if unknown_catalog:
+                problems.append(
+                    f"catalog_cols {unknown_catalog} are outside the "
+                    "declared catalog-context vocabulary")
         return problems
 
 
