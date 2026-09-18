@@ -28,7 +28,7 @@ from nepal.research_v0._hashing import (
     sha256_canonical, verify_source_evidence)
 from nepal.research_v0.gates import source_evidence_problems
 from nepal.research_v0.records import (
-    ObservationOpportunityV0, deserialize_record)
+    ObservationOpportunityV0, SourceRecordV0, deserialize_record)
 from nepal.experiment_v0.adapters import holdout_plan_from_assignment
 
 from . import events as _ev
@@ -119,10 +119,11 @@ def build_hmaglofdb_event_package(
     # --- source record (typed either way) ---
     if isinstance(source_record, Mapping):
         source_record = deserialize_record(source_record)
-    if not hasattr(source_record, "problems"):
+    if not isinstance(source_record, SourceRecordV0):
         raise ValueError(
             "source_record must be a SourceRecordV0 or its "
-            "serialized mapping")
+            "serialized mapping — duck-typed records are not "
+            "admissible (R11.3-P03)")
     sr_problems = source_record.problems()
     if sr_problems:
         problems.extend(f"source_record: {p}" for p in sr_problems)
@@ -197,11 +198,12 @@ def build_hmaglofdb_event_package(
     for opp in opportunity_frame:
         if isinstance(opp, Mapping):
             opp = deserialize_record(opp)
-        if not hasattr(opp, "problems"):
+        if not isinstance(opp, ObservationOpportunityV0):
             raise ValueError(
                 "opportunity_frame members must be "
                 "ObservationOpportunityV0 records or serialized "
-                "mappings")
+                "mappings — duck-typed records are not admissible "
+                "(R11.3-P03)")
         opp_problems = opp.problems()
         if opp_problems:
             problems.extend(
@@ -426,8 +428,8 @@ def run_glof_descriptive_poc(
 
     # --- package integrity: carried digests are recomputed and
     # every section is re-deserialized before any fitting —
-    # a stale digest or tampered section can never reach
-    # run_regimes (R11.1-4) ---
+    # a stale digest, tampered section, or unhashable nested value
+    # can never reach run_regimes (R11.1-4, R11.3-P02) ---
     _SECTION_FIELDS = {
         "event_labels": "event_digest",
         "opportunities": "opportunity_digest",
@@ -445,7 +447,15 @@ def run_glof_descriptive_poc(
             problems.append(f"{section} must be a sequence")
             digest_bad = True
             continue
-        if _digest(section_val) != event_package[dkey]:
+        try:
+            recomputed = _digest(section_val)
+        except (TypeError, ValueError) as exc:
+            problems.append(
+                f"{section} cannot be canonically digested — a "
+                f"malformed nested value is a run error: {exc}")
+            digest_bad = True
+            continue
+        if recomputed != event_package[dkey]:
             problems.append(
                 f"{dkey} does not match the recomputed "
                 f"{section} digest — carried digests are never "
@@ -484,20 +494,58 @@ def run_glof_descriptive_poc(
     if not isinstance(cfg_manifest, Mapping):
         problems.append(
             "regime_config.source_manifest is required — the fit "
-            "must declare the same byte-bound source the package "
-            "was built under")
+            "must declare the same byte-bound source the fit "
+            "declares")
         receipt["status"] = "RUN_ERROR"
         receipt["report_digest"] = _digest(
             {k: v for k, v in receipt.items()
              if k not in ("report_digest", "problems")})
         return receipt
-    if _digest(dict(cfg_manifest)) != \
-            event_package["source_manifest_digest"]:
+    # R11.3-P01 — the runner independently re-verifies the config
+    # manifest's shape and bytes: digest equality alone is not
+    # enough because a forged package can carry a self-consistent
+    # forged digest.  Exact seven keys, no fixture marker, real
+    # verified evidence — or the package never reaches the engine.
+    required_keys = {"source_id", "source_digests", "units",
+                     "feature_allowlist", "lineage",
+                     "evidence_root", "source_files"}
+    if set(cfg_manifest) != required_keys:
+        problems.append(
+            "regime_config.source_manifest must carry exactly the "
+            "seven declared non-fixture keys — fixture markers and "
+            "side fields are not admissible")
+        receipt["status"] = "RUN_ERROR"
+        receipt["report_digest"] = _digest(
+            {k: v for k, v in receipt.items()
+             if k not in ("report_digest", "problems")})
+        return receipt
+    try:
+        cfg_digest = _digest(dict(cfg_manifest))
+    except (TypeError, ValueError) as exc:
+        problems.append(
+            f"regime_config.source_manifest cannot be canonically "
+            f"digested: {exc}")
+        receipt["status"] = "RUN_ERROR"
+        receipt["report_digest"] = _digest(
+            {k: v for k, v in receipt.items()
+             if k not in ("report_digest", "problems")})
+        return receipt
+    if cfg_digest != event_package["source_manifest_digest"]:
         problems.append(
             "event_package.source_manifest_digest does not "
             "equal the digest of "
             "regime_config.source_manifest — the package must "
             "bind the same byte-bound source the fit declares")
+        receipt["status"] = "RUN_ERROR"
+        receipt["report_digest"] = _digest(
+            {k: v for k, v in receipt.items()
+             if k not in ("report_digest", "problems")})
+        return receipt
+    cfg_evidence = verify_source_evidence(cfg_manifest)
+    if cfg_evidence:
+        problems.extend(
+            f"config source manifest evidence: {p}"
+            for p in cfg_evidence)
         receipt["status"] = "RUN_ERROR"
         receipt["report_digest"] = _digest(
             {k: v for k, v in receipt.items()

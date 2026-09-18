@@ -176,7 +176,7 @@ declared role.
   event_count_if_known: "766 events (HMA); ~53 Nepal (v1.0 count)"
   timing_class: "EXACT_DAY ~27% (±3d caveat); month ~45%; year-uncertain ~27%; Sat_evidence brackets"
   spatial_semantics: "lake_point (within-lake, not breach point) + impact_point (Observation/Deposit tag)"
-  observation_opportunity: "GOOD — GF_ID joins ICIMOD/RGI lake inventories; event-free lake periods feasible (external linkage — see opportunity_frame below)"
+  observation_opportunity: "PAYLOAD-GATED — GLM3 independent review: the lake-inventory join keys are GL_ID / LakeDB_ID / G_ID (payload columns, coverage unverified until bytes), NOT the GF_ID event key; event-free lake periods feasible only IF the join coverage and owner-approved external linkage exist (see opportunity_frame below)"
   non_event_feasibility: "feasible via lake-level opportunity frame (ICIMOD 2015 Koshi/Gandaki/Karnali; NSIDC HMA_GLI; Wang 2020 ESSD; zenodo.17948783) — admissibility of the external frame is an owner-policy question, not settled here"
   current_status:
     license: "RESOLVED — CC BY 4.0 governs (RDS declaration; Zenodo CC0 tag superseded, conservatively read as CC BY 4.0)"
@@ -185,7 +185,7 @@ declared role.
     opportunity_frame: "PENDING-OWNER-POLICY (no native non-event frame; external lake-inventory linkage needs owner decision)"
   reviewer: "RunB metadata review; second review pending at intake"
   decision: CANDIDATE
-  blocker: "Nepal count in v1.3.0 (payload-gated); lake-ID join coverage; opportunity-frame owner policy (external lake-inventory linkage vs source-native frame); ~27% day precision limits horizon admissibility"
+  blocker: "Nepal count in v1.3.0 (payload-gated); GL_ID/LakeDB_ID/G_ID join coverage (payload-gated); opportunity-frame owner policy (external lake-inventory linkage vs source-native frame); day-precision share limits horizon admissibility — the ~27% figure is a paper/v1.0-era claim, v1.3 distribution PAYLOAD-GATED"
   confidence: "medium-high — nearest candidate vertical-wide"
 
 - source_id: hmaglofdb_recurrence_note
@@ -193,11 +193,11 @@ declared role.
   doi_or_url: "same record as icimod_hmaglofdb_v1_3_0"
   license_evidence: "inherits parent record"
   redistribution_terms: "inherits parent record"
-  nepal_coverage: "_Z suffix on GF_ID; 23% of events from 3 ephemeral ice-dammed lakes"
+  nepal_coverage: "paper-reported: _Z recurrence suffix on GF_ID; 23% of events from 3 ephemeral ice-dammed lakes — suffix convention UNVERIFIED for v1.3 payload"
   event_count_if_known: "23% recurrence share"
   timing_class: "inherits parent"
   spatial_semantics: "inherits parent"
-  observation_opportunity: "recurrence must be grouped by base GF_ID before dedup"
+  observation_opportunity: "paper-reported: recurrence grouped by base GF_ID before dedup — exact suffix/grouping semantics PAYLOAD-GATED"
   non_event_feasibility: "inherits parent"
   reviewer: "RunB metadata review"
   decision: CANDIDATE

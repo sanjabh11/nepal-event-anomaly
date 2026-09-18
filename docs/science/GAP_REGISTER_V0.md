@@ -923,3 +923,34 @@ Owner-gated (unchanged): P5 authorization, opportunity-frame
 Option A/B, independent review, operational approvals.  Deferred
 per the audit's directive: R10.1-C/D/E/F/I/J stage gates, rasterio
 quarantine, `data/**` collection quarantine.
+
+## Round-11.3 provenance micro-round (2026-09-18)
+
+The live R11.3 audit's serial repair — findings P01-P04 + D01 +
+SRC-01 codeable/docable; the rest owner-gated.  Closed:
+
+- **R11.3-P01 (P0)** the runner now independently re-verifies the
+  config manifest — exact seven-key non-fixture shape AND
+  `verify_source_evidence` — so a forged package carrying a
+  self-consistent forged digest can never reach the engine
+  (spy-tested: zero `run_regimes` calls).
+- **R11.3-P02 (P1)** section digest recomputation is inside a
+  bounded boundary — sets, generators, NaN, bytes, and malformed
+  nested values are `RUN_ERROR`, never uncaught `TypeError`.
+- **R11.3-P03 (P1)** package construction requires exact typed
+  records (`SourceRecordV0`, `ObservationOpportunityV0` or their
+  serialized mappings deserializing to those classes) — duck-typed
+  stand-ins reject.
+- **R11.3-P04 (P1)** sidecar `reviewer_ids` must be a unique
+  non-empty string sequence naming >=2 independent reviewers —
+  single-lane review cannot carry `EVIDENCE_VERIFIED`.
+- **R11.3-D01** verification commands standardized on `tests/` +
+  `.venv`; no `backend/tests` reference exists in governed files.
+- **SRC-01** source-card claims reconciled with the independent
+  GLM3 review: lake joins are `GL_ID`/`LakeDB_ID`/`G_ID` payload
+  columns (not `GF_ID`); timing percentages are paper/v1.0-era —
+  v1.3 distribution marked `PAYLOAD-GATED`; `_Z` suffix semantics
+  marked UNVERIFIED for v1.3.
+
+Owner-gated (unchanged): P5 authorization, opportunity-frame
+Option A/B, independent reviews, real bytes, governance.

@@ -30,6 +30,7 @@ on:
       - "tests/test_r10_*.py"
       - "tests/test_glof_poc_contract.py"
       - "tests/test_r11_2_provenance.py"
+      - "tests/test_r11_3_provenance.py"
       - "tests/test_framework_v1_*.py"
       - "conftest.py"
       - "requirements.txt"
@@ -61,6 +62,7 @@ on:
       - "tests/test_r10_*.py"
       - "tests/test_glof_poc_contract.py"
       - "tests/test_r11_2_provenance.py"
+      - "tests/test_r11_3_provenance.py"
       - "tests/test_framework_v1_*.py"
       - "conftest.py"
       - "requirements.txt"
@@ -208,7 +210,8 @@ jobs:
         run: >
           PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=.
           python -B -m pytest tests/test_glof_poc_contract.py
-          tests/test_r11_2_provenance.py -q -rs
+          tests/test_r11_2_provenance.py
+          tests/test_r11_3_provenance.py -q -rs
 
       - name: Frozen framework_v1 contract tests
         # tests/test_framework_v1_*.py exercise the frozen

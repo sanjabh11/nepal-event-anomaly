@@ -116,8 +116,8 @@ qualified for forecast use:
 
 | Source | Version/DOI | License | Coverage | Time precision | Spatial semantics | Non-event frame | Posture |
 |---|---|---|---|---|---|---|---|
-| ICIMOD HMAGLOFDB | v1.3.0 (RDS DOI 10.26066/RDS.1973283; zenodo.18257243; paper essd-15-3941) | RESOLVED — CC BY 4.0 governs (RDS declaration; Zenodo CC0 tag superseded, conservatively read as CC BY 4.0). Prior status 2026-09-16: UNRESOLVED — RDS CC BY 4.0 vs Zenodo CC0 | HMA 766 events 1533–2025; Nepal ~7.6% (~53) in v1.0 | Day ~27% (±3d), month ~45%, year uncertain ~27%; `Sat_evidence` brackets | `Lat/Lon_lake` (within-lake, not breach) + `Lat/Lon_impact` (Observation/Deposit tag) | GOOD — GF_ID joins lake inventories (ICIMOD 2015 Koshi/Gandaki/Karnali; NSIDC HMA_GLI; Wang 2020 ESSD; zenodo.17948783) | CANDIDATE_ONLY (strongest candidate) |
-| Recurrence note | — | — | `_Z` suffix on GF_ID; 23% of events from 3 ephemeral ice-dammed lakes | — | — | Must group by base GF_ID | — |
+| ICIMOD HMAGLOFDB | v1.3.0 (RDS DOI 10.26066/RDS.1973283; zenodo.18257243; paper essd-15-3941) | RESOLVED — CC BY 4.0 governs (RDS declaration; Zenodo CC0 tag superseded, conservatively read as CC BY 4.0). Prior status 2026-09-16: UNRESOLVED — RDS CC BY 4.0 vs Zenodo CC0 | HMA 766 events 1533–2025; Nepal ~7.6% (~53) in v1.0 | paper/v1.0-era: day ~27% (±3d), month ~45%, year uncertain ~27% — v1.3 distribution PAYLOAD-GATED; `Sat_evidence` brackets | `Lat/Lon_lake` (within-lake, not breach) + `Lat/Lon_impact` (Observation/Deposit tag) | PAYLOAD-GATED — lake joins via `GL_ID`/`LakeDB_ID`/`G_ID` columns (GLM3-corrected — not `GF_ID`; coverage unverified until bytes; ICIMOD 2015 Koshi/Gandaki/Karnali; NSIDC HMA_GLI; Wang 2020 ESSD; zenodo.17948783) | CANDIDATE_ONLY (strongest candidate) |
+| Recurrence note | — | — | `_Z` suffix on GF_ID (paper-reported; v1.3 semantics PAYLOAD-GATED); 23% of events from 3 ephemeral ice-dammed lakes | — | — | Group by base GF_ID per paper; exact semantics PAYLOAD-GATED | — |
 
 ## Ice/rock avalanche / glacier failure
 

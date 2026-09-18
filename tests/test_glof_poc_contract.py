@@ -191,7 +191,7 @@ def _write_sidecar(root, *, source_id=_SOURCE_ID,
         "source_id": source_id, "source_version": version,
         "license_id": license_id, "coverage": "Nepal basins",
         "timing_review": "coarse timing preserved",
-        "reviewer_ids": ["rev-1"], "review_date": "2026-09-01",
+        "reviewer_ids": ["rev-1", "rev-2"], "review_date": "2026-09-01",
         "decision": decision}
     path = Path(root) / "sidecar.json"
     path.write_text(_json.dumps(payload), encoding="utf-8")

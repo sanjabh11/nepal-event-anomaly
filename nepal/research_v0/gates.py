@@ -825,6 +825,27 @@ def source_evidence_problems(record: Any, *,
                 "review_date", "decision"):
         if key not in sidecar or sidecar[key] in (None, "", []):
             problems.append(f"sidecar missing required field {key!r}")
+    # R11.3-P04 — independent review is bound, not decorative:
+    # reviewer_ids must be a sequence of at least two uniquely
+    # named reviewers for EVIDENCE_VERIFIED posture.
+    reviewers = sidecar.get("reviewer_ids")
+    if reviewers is not None:
+        if not isinstance(reviewers, (list, tuple)) or \
+                any(not isinstance(r, str) or not r.strip()
+                    for r in reviewers):
+            problems.append(
+                "sidecar reviewer_ids must be a sequence of "
+                "non-empty reviewer name strings")
+        else:
+            if len(set(reviewers)) != len(reviewers):
+                problems.append(
+                    "sidecar reviewer_ids contains duplicates — "
+                    "independent reviewers must be uniquely named")
+            if len(set(reviewers)) < 2:
+                problems.append(
+                    "sidecar reviewer_ids names fewer than two "
+                    "independent reviewers — single-lane review "
+                    "cannot carry EVIDENCE_VERIFIED")
     if sidecar.get("source_id") and \
             sidecar["source_id"] != getattr(record, "source_id", None):
         problems.append("sidecar source_id does not match the record")
