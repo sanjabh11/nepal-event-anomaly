@@ -1,6 +1,6 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "8e17cfd2bc845586a33ee4cca38cd629363ad729",
+  "content_head": "c751f8c3a7d851bebc56a18ec5c1d3d6a984c5af",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
@@ -14,8 +14,8 @@
     },
     {
       "relpath": "README.md",
-      "sha256": "bc3832f328675bfa8df34d01ecf9e1529e109451e1f3cc0a2b0e58be27bfa7d8",
-      "size_bytes": 7953
+      "sha256": "7c8e8b0179688f35211c062e89395d709d660877bdffa58de1e6f3d87a392cd1",
+      "size_bytes": 8063
     },
     {
       "relpath": "conftest.py",
@@ -54,8 +54,8 @@
     },
     {
       "relpath": "docs/science/P0_BASELINE_LEDGER.md",
-      "sha256": "4de2eafff7d79f59705cc8f3f06875d4dc71844207167ec5508768027e14f358",
-      "size_bytes": 20710
+      "sha256": "6169daa78fb346911ca070cc12981c42a6172ade28bd86b4b402619cd541f240",
+      "size_bytes": 21386
     },
     {
       "relpath": "docs/science/P3_ATTESTATION_RECORD_V0.md",
@@ -540,7 +540,7 @@
   ],
   "generated": "2026-09-18",
   "interpreter": ".venv/bin/python",
-  "manifest_commit": "8e17cfd2bc845586a33ee4cca38cd629363ad729",
+  "manifest_commit": "c751f8c3a7d851bebc56a18ec5c1d3d6a984c5af",
   "manifest_version": "ARTIFACT_MANIFEST_V0.3",
   "repository_relative_root": ".",
   "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
