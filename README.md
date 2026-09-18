@@ -112,14 +112,14 @@ hashes — the manifest commit itself follows the content commit):
 **84** manifest-governed files — bound to the round-10
 hardened head. The round-10 surface closes the sixteen findings a
 Round-10 independent audit raised against the round-9 floor:
-bounded numeric parsing (no malformed value crashes a boundary),
+bounded numeric parsing and an exception-safe floor (no malformed value crashes a boundary — verified by focused regressions),
 complete serialized-config semantics, exact field schemas across
 the whole envelope, the status×terminal×associable state machine,
 complete null-family validation, non-coercing artifact
 construction with exact unit→basin coverage, component-walk
 symlink policy, and typed byte-bound `forecast_vintages` for
 associable forecast artifacts; `tests/test_r10_promotion.py`
-carries the 503-test mutation matrix (forged-artifact association
+carries the 520-test mutation matrix (forged-artifact association
 evidence at every boundary), and the root `conftest.py` pins
 canonical collection to `tests/` so the ignored external data
 symlink can never be collected. The prior verified baseline

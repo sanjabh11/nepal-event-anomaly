@@ -42,8 +42,8 @@ import re
 from datetime import date as _date
 from typing import Any, Mapping, Sequence
 
-from ._hashing import (canonical_json, sha256_canonical,
-                       verify_source_evidence,
+from ._hashing import (_reject_nonjson, canonical_json,
+                       sha256_canonical, verify_source_evidence,
                        verify_vintage_evidence)
 from .gates import REQUIRED_REGIME_GATE_NAMES
 from .policy import RegimeMode
@@ -341,8 +341,20 @@ def fixture_flag(manifest) -> tuple[bool, list[str]]:
             "SCHEMA_MALFORMED: source_manifest.fixture must be a "
             f"boolean — got {manifest['fixture']!r}; a truthy "
             "non-bool marker is not a synthetic bypass"]
-    return (manifest["fixture"] is True
-            if "fixture" in manifest else False), []
+    # R10.1-B: a fixture manifest is exactly ``{"fixture": true}`` —
+    # any extra field is evidence-shaped data smuggled past byte
+    # verification (a declared source_files/evidence_root that is
+    # never checked).
+    if manifest.get("fixture") is True:
+        extra = sorted(set(manifest) - {"fixture"})
+        if extra:
+            return True, [
+                f"SCHEMA_MALFORMED: fixture source_manifest carries "
+                f"undeclared fields {extra} — the synthetic bypass "
+                "admits exactly {'fixture': true}; evidence-bearing "
+                "fields require a non-fixture manifest"]
+        return True, []
+    return False, []
 
 
 def canonical_unit_basin_pairs(ubm) -> list[list[str]]:
@@ -472,7 +484,8 @@ def _scalar_floor_problems(
             problems.append(
                 f"SCHEMA_MALFORMED: {flag} must be a boolean")
     if "status" in payload and \
-            payload["status"] not in _PRODUCER_STATUSES:
+            (not isinstance(payload["status"], str) or
+             payload["status"] not in _PRODUCER_STATUSES):
         problems.append(
             f"SCHEMA_MALFORMED: status {payload['status']!r} is "
             "not a declared producer status")
@@ -2140,14 +2153,16 @@ def _config_semantic_problems(
             "SCHEMA_MALFORMED: config.gap_policy must be "
             "'calendar'")
     if "missingness_policy" in cfg and \
-            cfg["missingness_policy"] not in \
-            _CONFIG_MISSINGNESS_POLICIES:
+            (not isinstance(cfg["missingness_policy"], str) or
+             cfg["missingness_policy"] not in
+             _CONFIG_MISSINGNESS_POLICIES):
         problems.append(
             f"SCHEMA_MALFORMED: config.missingness_policy must "
             f"be one of {sorted(_CONFIG_MISSINGNESS_POLICIES)}")
     if "fold_seed_policy" in cfg and \
-            cfg["fold_seed_policy"] not in \
-            _CONFIG_FOLD_SEED_POLICIES:
+            (not isinstance(cfg["fold_seed_policy"], str) or
+             cfg["fold_seed_policy"] not in
+             _CONFIG_FOLD_SEED_POLICIES):
         problems.append(
             f"SCHEMA_MALFORMED: config.fold_seed_policy must be "
             f"one of {sorted(_CONFIG_FOLD_SEED_POLICIES)}")
@@ -2238,8 +2253,9 @@ def _config_semantic_problems(
                 f"SCHEMA_MALFORMED: config train_groups and "
                 f"heldout_groups overlap {overlap} — a group "
                 "cannot be fitted and held out")
-    if "mode" in cfg and cfg["mode"] not in \
-            {m.value for m in RegimeMode}:
+    if "mode" in cfg and \
+            (not isinstance(cfg["mode"], str) or
+             cfg["mode"] not in {m.value for m in RegimeMode}):
         problems.append(
             f"SCHEMA_MALFORMED: config.mode {cfg['mode']!r} is "
             "not a declared RegimeMode value")
@@ -2393,7 +2409,8 @@ def _seed_stability_problems(
                 "non-empty seed -> state map")
         else:
             bad_states = {str(k): v for k, v in coverage.items()
-                          if v not in _SEED_COVERAGE_STATES}
+                          if not isinstance(v, str) or
+                          v not in _SEED_COVERAGE_STATES}
             if bad_states:
                 problems.append(
                     "SCHEMA_MALFORMED: seed_coverage states "
@@ -2726,7 +2743,8 @@ def _null_problems(payload: Mapping[str, Any]) -> list[str]:
                 f"SCHEMA_MALFORMED: nulls.{fam}.selection must "
                 f"be {_NULL_SELECTION!r} — the declared "
                 "selection vocabulary")
-        if rec.get("status") not in _NULL_FAMILY_STATUSES:
+        if not isinstance(rec.get("status"), str) or \
+                rec.get("status") not in _NULL_FAMILY_STATUSES:
             problems.append(
                 f"SCHEMA_MALFORMED: nulls.{fam}.status "
                 f"{rec.get('status')!r} is not in "
@@ -2937,7 +2955,7 @@ def _null_problems(payload: Mapping[str, Any]) -> list[str]:
     return problems
 
 
-def validate_producer_payload(
+def _validate_producer_payload_impl(
         payload: Any, *,
         verify_source_bytes: bool = True) -> list[str]:
     """The shared producer-payload provenance floor (R8-C01,
@@ -2980,6 +2998,17 @@ def validate_producer_payload(
     if not isinstance(payload, Mapping):
         return ["PAYLOAD_MALFORMED: producer payload is not a "
                 "mapping"]
+    # R10.1-A: JSON-shape preflight — the payload is a serialized
+    # artifact, so every value must be JSON-native before any
+    # membership/state-machine lookup runs.  Unhashable scalars
+    # (list/dict where a string is expected), non-finite floats,
+    # sets, iterators, and non-string dict keys are a structured
+    # schema rejection here, never a TypeError escaping the floor.
+    try:
+        _reject_nonjson(payload)
+    except (TypeError, ValueError) as exc:
+        return [f"SCHEMA_MALFORMED: producer payload carries a "
+                f"non-JSON-native value — {exc}"]
     problems: list[str] = []
     # R10-P11: the top-level surface is exact — every field a
     # producer + freeze artifact may carry is declared in
@@ -3135,3 +3164,30 @@ def validate_producer_payload(
                     "not recompute over the payload — the artifact "
                     "was mutated after production")
     return problems
+
+
+def validate_producer_payload(
+        payload: Any, *,
+        verify_source_bytes: bool = True) -> list[str]:
+    """The shared producer-payload provenance floor — public,
+    exception-safe wrapper.
+
+    The implementation must return problem strings for every
+    malformed input; this wrapper is the last-resort contract
+    (R10.1-A): an unexpected ``TypeError``/``ValueError``/
+    ``OverflowError`` from an unenumerated coercion site is
+    reported as one structured SCHEMA problem, never propagated
+    as a crash through freeze/adapter/audit/association.  Sites
+    that ARE enumerated produce their specific problem text; this
+    message names the catch-all explicitly so residual gaps stay
+    visible.
+    """
+    try:
+        return _validate_producer_payload_impl(
+            payload, verify_source_bytes=verify_source_bytes)
+    except (TypeError, ValueError, OverflowError) as exc:
+        return ["SCHEMA_MALFORMED: producer payload rejected by "
+                "the validator's exception boundary — the input "
+                f"tripped an unenumerated type check "
+                f"({type(exc).__name__}: {exc}); structured "
+                "rejection is the contract"]

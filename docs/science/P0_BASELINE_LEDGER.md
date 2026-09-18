@@ -70,7 +70,7 @@ The empty Git shell is never the implementation root.
   mutation matrix, the canonical-collection guard
   (repo-wide == `tests/`, the ignored external symlink never
   collected), and this addendum.  `tests/test_r10_promotion.py`
-  carries 503 tests — 89 mutations × floor/freeze/adapter/audit/
+  carries 520 tests — 89 mutations × floor/freeze/adapter/audit/
   association — plus the coordinator's ~60 executable adversarial
   probes (one residual found and fixed in-round: `cutoff_iso`
   rebound to the recomputed max train date).

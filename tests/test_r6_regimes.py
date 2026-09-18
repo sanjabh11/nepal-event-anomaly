@@ -164,7 +164,9 @@ class TestProv01StrictBoolGates:
             "n_rows": 2,
             "train_row_keys_digest": sorted_row_key_digest(
                 train_keys),
-            "cutoff_iso": "2020-01-01",
+            # R10: cutoff_iso must recompute as the max train-row
+            # date — the bound train universe ends 2020-01-02.
+            "cutoff_iso": "2020-01-02",
             "feature_matrix_digest": fm_digest,
             "feature_cols": ["f1", "f2"]}
         run_manifest = {

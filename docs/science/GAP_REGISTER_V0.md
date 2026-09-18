@@ -742,7 +742,7 @@ gaps were live. All sixteen findings are **closed in this round**;
 the affected Round-9 rows are re-annotated below as
 `RESOLVED by Round-9 → PARTIAL at Round-10 audit → RESOLVED by
 Round-10`. Regression coverage lives in
-`tests/test_r10_promotion.py` (503 tests: 89 payload mutations ×
+`tests/test_r10_promotion.py` (520 tests: 89 payload mutations ×
 floor/freeze/adapter/audit/association with forged-artifact
 association evidence — no canonical-artifact fallback — plus
 direct-construction, vintage-acceptance, run-level, and accounting
@@ -792,3 +792,37 @@ association, **F01–F03** forecast, **G01/G02** human approvals,
 **O01** operations.  Postures unchanged:
 `DESIGN_DRAFT_COMPLETE`; P3 design-only; `NO_QUALIFYING_PILOT_SOURCE`;
 `WARNING_PATH_AUTHORIZED: NO`.
+
+## Round-10.1 release repair + residual backlog (2026-09-18)
+
+A post-R10 independent verification reproduced one release regression
+(stale `cutoff_iso` fixture) and twelve residual malformed-value
+findings.  Per the contract-freeze directive, the repair is minimal:
+the stale fixture, the documented test count, and the two cheap
+critical/high residuals (A crash-class, B fixture-smuggling) are
+closed; the rest are registered as a deferred maintenance backlog
+with explicit stage gates — NOT silently dropped.
+
+| Item | Disposition |
+|---|---|
+| R10-P0 stale cutoff fixture | RESOLVED — `test_r6_regimes` fixture `cutoff_iso` set to the recomputed max train date `2020-01-02`; the recomputation binding stays strict. |
+| R10-D0 doc count + overclaim | RESOLVED — 503→505→520 count corrected in register/ledger/README; "no malformed value crashes" restated to the exact residual threat model (JSON-shape preflight + str-guarded vocab lookups + exception boundary). |
+| **R10.1-A** unhashable values crash (Critical) | RESOLVED — `_reject_nonjson` preflight at the floor head covers non-JSON-native values (sets/generators/nan); str-type guards added before every frozenset vocab lookup (`status`, `config.mode`, `missingness_policy`, `fold_seed_policy`, `seed_coverage` values, null `status`); `validate_producer_payload` is now an exception-safe wrapper — an unenumerated TypeError/ValueError/OverflowError becomes one named SCHEMA problem. `[]`/`{}`/dict-valued scalars reject at all five boundaries (15 focused regressions in `TestR10Point1Residuals`). |
+| **R10.1-B** fixture-manifest extras (High) | RESOLVED — a fixture manifest is exactly `{"fixture": true}`; any extra field (evil/source_files/evidence_root/source_id/lineage) is a SCHEMA problem even after honest rehash. |
+| **R10.1-C** era duplicate/reversed/mixed | DEFERRED — gate: era-drift ablation at real-fit stage. Producer preflight already rejects some forms; floor accepts duplicate/reversed era strings today. Action: extract one era-boundary helper shared by run + floor. |
+| **R10.1-D** `RunManifestV0.status="PLANNED"` / future `created_at` | DEFERRED — gate: terminal promotion on real artifacts. Action: bind manifest status to the artifact's terminal state + order `created_at` vs input dates. |
+| **R10.1-E** run-preflight unguarded float/set/int ops | DEFERRED — gate: multi-group real fit. Action: one bounded preflight wrapper; `RUN_ERROR` instead of raw exceptions. |
+| **R10.1-F** `feature_allowlist`/`units` not bound to emitted surface | DEFERRED — gate: real-source intake. Action: allowlist ⊆ feature_cols, units ⊆ assignment universe at the floor. |
+| **R10.1-G** extra configured train group | VERIFIED-CLOSED — the `fit_groups == config.train_groups` cross-binding already rejects an extra configured group; `fit_partition.train_groups` tampering rejects via row-digest. Codex's subset-only observation was on the run-level preflight (deferred to R10.1-E's stage). |
+| **R10.1-H** non-string dtype values | VERIFIED-CLOSED — rejects at the floor via the dtypes-keys check. |
+| **R10.1-I** association `n_boot`/`seed` coercion + duplicate family declarations | DEFERRED — gate: association PoC (blocked until real labels). Action: bounded-int validation + reject duplicates before canonicalization. |
+| **R10.1-J** component-walk residual race | DEFERRED — documented threat model; fd-level `O_NOFOLLOW` unavailable under the isolation policy. Gate: decide before real byte intake whether an approved lower-level helper is required. |
+| **R10.1-K** `conftest.py` broad `data/**` ignore | DEFERRED — informational geospatial job remains `continue-on-error`; replace with an explicit canonical-collection allowlist or accept the quarantine status. |
+| **R10.1-L** matrix coverage of malformed families | RESOLVED for the reproduced families (15 regressions); further families live in the deferred items above. |
+
+Postures unchanged: `DESIGN_DRAFT_COMPLETE`; P3 design-only;
+`NO_QUALIFYING_PILOT_SOURCE`; `WARNING_PATH_AUTHORIZED: NO`.
+The Round-10-PoC lane is the next workstream — source card for
+HMAGLOFDB v1.3.0 prepared (CANDIDATE_WITH_GAPS: no native
+opportunity frame, heterogeneous timing); P5 authorization is the
+next human gate.

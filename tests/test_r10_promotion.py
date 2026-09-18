@@ -1325,3 +1325,69 @@ class TestRunLevelColumnMembership:
                 config, **{field: "bogus_column"})
             rep = run_regimes(df, feature_cols, train_mask, cfg)
             assert rep.get("status") == "RUN_ERROR", field
+
+
+class TestR10Point1Residuals:
+    """Round-10.1 residual regressions — the concrete malformed-value
+    families the post-R10 audit reproduced, now closed by the
+    JSON-shape preflight + str-guarded vocab lookups + the
+    exception-safe wrapper (R10.1-A) and the exact fixture surface
+    (R10.1-B).  Deferred items R10.1-C..L are registered in
+    GAP_REGISTER_V0.md with their stage gates — not hidden here."""
+
+    @pytest.mark.parametrize("mut", [
+        lambda p: p.__setitem__("status", []),
+        lambda p: p.__setitem__("status", {}),
+        lambda p: p.__setitem__("status", {"x": 1}),
+        lambda p: p["config"].__setitem__("mode", []),
+        lambda p: p["config"].__setitem__("mode", {}),
+        lambda p: p["config"].__setitem__(
+            "missingness_policy", []),
+        lambda p: p["config"].__setitem__("fold_seed_policy", {}),
+        lambda p: p["seed_coverage"].__setitem__("11", []),
+        lambda p: p["nulls"]["shuffled"].__setitem__("status", []),
+        lambda p: p["nulls"]["shuffled"].__setitem__(
+            "statistic", {"k": 1}),
+    ], ids=["status-list", "status-dict", "status-dictv",
+            "cfg-mode-list", "cfg-mode-dict", "cfg-misspol-list",
+            "cfg-foldpol-dict", "coverage-val-list",
+            "null-status-list", "null-statistic-dict"])
+    def test_unhashable_values_reject_not_crash(self, mut):
+        # Valid JSON types that are unhashable at Python set
+        # membership — previously raw TypeError at the floor.
+        payload = _canonical_payload()
+        mut(payload)
+        _rehash(payload)
+        problems = validate_producer_payload(payload)
+        assert problems, "unhashable payload accepted"
+        # the exception boundary or a site guard — either is a
+        # structured SCHEMA finding
+        assert any("SCHEMA_MALFORMED" in pr for pr in problems)
+
+    @pytest.mark.parametrize("extra", [
+        {"evil": 1},
+        {"source_files": [{"relpath": "x", "sha256": "a" * 64}]},
+        {"evidence_root": "/tmp"},
+        {"source_id": "real-src", "lineage": "x"},
+    ], ids=["evil", "source_files", "evidence_root",
+            "source_id+lineage"])
+    def test_fixture_manifest_extra_fields_reject(self, extra):
+        # R10.1-B: the synthetic bypass is exactly
+        # {"fixture": true} — evidence-shaped fields smuggled past
+        # byte verification must reject even after honest rehash.
+        payload = _canonical_payload()
+        payload["source_manifest"] = {"fixture": True, **extra}
+        payload["config"]["source_manifest"] = dict(
+            payload["source_manifest"])
+        _rehash(payload)
+        problems = validate_producer_payload(payload)
+        assert any("fixture" in pr.lower() or
+                   "source_manifest" in pr.lower()
+                   for pr in problems), problems
+
+    def test_fixture_manifest_exact_surface_clean(self):
+        payload = _canonical_payload()
+        payload["source_manifest"] = {"fixture": True}
+        payload["config"]["source_manifest"] = {"fixture": True}
+        _rehash(payload)
+        assert validate_producer_payload(payload) == []
