@@ -1,6 +1,6 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "bb22ca27d7d1ff4461a41e5b39ac8b29a59d952a",
+  "content_head": "5af15941cdebc7c2352d8f372c632b016ffa46b3",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
@@ -14,8 +14,8 @@
     },
     {
       "relpath": "README.md",
-      "sha256": "7c7a71fd3f966dc570c5dec488f8de26babbcc2556ddaf85219930a0e158662f",
-      "size_bytes": 7990
+      "sha256": "05ce99fc3b37fe7ac1d88ee0cf657f880fdccdf98cb8cd019fa59858f200e00d",
+      "size_bytes": 7979
     },
     {
       "relpath": "conftest.py",
@@ -24,8 +24,8 @@
     },
     {
       "relpath": "docs/science/GAP_REGISTER_V0.md",
-      "sha256": "6bf261189766c882fe3712caa9b0193bb281ab64b1ccf35ed6fd9653d4b3bd4e",
-      "size_bytes": 97313
+      "sha256": "40f552cd1322fa33bc7c48c89c7a2ff318d3fc8feb104b6f4007075ca534a20d",
+      "size_bytes": 99202
     },
     {
       "relpath": "docs/science/GOVERNANCE_EXERCISE_RECORD_V0.md",
@@ -54,8 +54,8 @@
     },
     {
       "relpath": "docs/science/P0_BASELINE_LEDGER.md",
-      "sha256": "848ab3a6ecdac7fd1ed54dfc5cca3f0e3d43ea06f504aadfd8c2a00b70f2216f",
-      "size_bytes": 17435
+      "sha256": "15aeface829b9c5145428de76f08f3c8a900795c8ae1422ca5f9070f251342b3",
+      "size_bytes": 18142
     },
     {
       "relpath": "docs/science/P3_ATTESTATION_RECORD_V0.md",
@@ -69,8 +69,8 @@
     },
     {
       "relpath": "docs/science/SOURCE_FEASIBILITY_RECORDS_V0.md",
-      "sha256": "a0eb2cfcf5a19f3d99a85a34653b07368401cddd787a9baca6e53441597a7aa7",
-      "size_bytes": 17085
+      "sha256": "e4d5824ed7b2cd9f13543342311edf79055ddc8f4051fe0889195d74a43bb80e",
+      "size_bytes": 17174
     },
     {
       "relpath": "docs/science/STATUS_SCOPE_RECONCILIATION_NOTE_20260915.md",
@@ -94,8 +94,8 @@
     },
     {
       "relpath": "docs/science/run_b/EVENT_PACKAGE_SPEC_V0.md",
-      "sha256": "3f5ca5d1ca31b5985e3d53730ae7b1d1b659fc94b29ccf119dd898387e928457",
-      "size_bytes": 9888
+      "sha256": "74b98dca6fa07c9baa28406b007191cb28d747d272f9db8f3b3c9d8ff429621c",
+      "size_bytes": 10223
     },
     {
       "relpath": "docs/science/run_b/FMX_AUDIT_RUBRIC_V0.md",
@@ -114,13 +114,13 @@
     },
     {
       "relpath": "docs/science/run_b/SOURCE_EVIDENCE_ADDENDUM_V0.md",
-      "sha256": "10b93696a7ff4e52a66dc473bd60fc10709e11154c7e6edde7a51a86dda664f7",
-      "size_bytes": 22515
+      "sha256": "8f76fab0293c3ea018e3afb0b1c19631756176123aa45fb15558269d208d79f2",
+      "size_bytes": 22596
     },
     {
       "relpath": "docs/science/run_b/SOURCE_QUALIFICATION_RECORDS_V0.md",
-      "sha256": "8a03c05f7524d274631d80dce88cd905af0020b101dde4121d449a4bc1f23604",
-      "size_bytes": 33264
+      "sha256": "51cbe55b0b1a73bb373453957895197cf71cf5cc4d6d97606ac2cc0318c353ac",
+      "size_bytes": 33434
     },
     {
       "relpath": "docs/science/run_c/ASSOCIATION_PROTOCOL_V0.md",
@@ -129,8 +129,8 @@
     },
     {
       "relpath": "docs/science/run_c/FORECAST_ARCHIVE_MATRIX_V0.md",
-      "sha256": "47b3cce8b28ab294984314bf8c115bde7fd5b119ba2a8d36484256139257e65b",
-      "size_bytes": 18378
+      "sha256": "12293b9f03d14d9e11fc2b4bed3634e7d376dd3149c888550f9bd31026cab16a",
+      "size_bytes": 18538
     },
     {
       "relpath": "docs/science/run_c/FORECAST_EVAL_SCAFFOLD_V0.md",
