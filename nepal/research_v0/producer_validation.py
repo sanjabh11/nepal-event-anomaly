@@ -181,7 +181,7 @@ _STATUS_MACHINE = {
     "CANDIDATE_ONLY": (False, False)}
 
 #: R10-P02/P11: the exact serialized ``RegimeRunConfig`` field set —
-#: the producer emits ``dataclasses.asdict(config)`` (32 fields;
+#: the producer emits ``dataclasses.asdict(config)`` (33 fields;
 #: ``forecast_vintages`` is popped — artifact-level evidence, never
 #: bound configuration).  Unknown keys reject; a key that is present
 #: is validated against the run-preflight semantics; keys a fixture
@@ -195,7 +195,8 @@ _CONFIG_FIELDS = frozenset({
     "forecast_feature_set", "forecast_vintage_digests", "gap_policy",
     "group_col", "heldout_groups", "k_candidates", "label_blinding",
     "max_missingness", "missingness_policy", "mode", "n_bootstrap",
-    "n_null_replicates", "null_alpha", "season_col", "seeds",
+    "n_null_replicates", "null_alpha", "retrospective_data_class",
+    "season_col", "seeds",
     "source_manifest", "train_groups", "unit_col"})
 
 #: Producer-side floors mirrored from ``science_v0.regimes`` — the
@@ -212,6 +213,15 @@ _CONFIG_FOLD_SEED_POLICIES = frozenset({"all", "first"})
 _CONFIG_EFFORT_SPLITS = frozenset({"median", "tercile", "first10"})
 _CONFIG_DATA_CLASSES = frozenset(
     {"REANALYSIS", "ARCHIVED_OPERATIONAL"})
+#: SEISMIC-01: the declared retrospective data-class vocabulary the
+#: serialized config's ``retrospective_data_class`` may carry —
+#: mirrors records.RETROSPECTIVE_REGIME_DATA_CLASSES (bound here so
+#: the floor cannot drift from the record layer).
+_CONFIG_RETROSPECTIVE_DATA_CLASSES = frozenset(
+    {"REANALYSIS", "SEISMIC_WAVEFORM_RETROSPECTIVE"})
+#: The seismic waveform class — bound literally so the research_v0
+#: floor cannot drift from policy.SEISMIC_WAVEFORM_RETROSPECTIVE_CLASS.
+_SEISMIC_DATA_CLASS = "SEISMIC_WAVEFORM_RETROSPECTIVE"
 
 #: R10-P02: cadence is a declared fixed-length offset vocabulary —
 #: the run parses it with ``pd.tseries.frequencies.to_offset`` and
@@ -497,6 +507,12 @@ def _scalar_floor_problems(
     # statuses are already SCHEMA problems above (never freezable).
     status = payload.get("status")
     expected = _STATUS_MACHINE.get(status)
+    # SEISMIC-01: on a SEISMIC_WAVEFORM_RETROSPECTIVE artifact
+    # DESCRIPTIVE_REGIME_ONLY is terminal but never associable —
+    # the status machine is data-class aware, never a free flag.
+    if status == "DESCRIPTIVE_REGIME_ONLY" and \
+            payload.get("data_class") == _SEISMIC_DATA_CLASS:
+        expected = (True, False)
     if expected is not None and \
             isinstance(payload.get("terminal"), bool) and \
             isinstance(payload.get("associable"), bool) and \
@@ -611,14 +627,19 @@ def _scalar_floor_problems(
     # R9-P12/V6: the mode↔data-class binding is producer
     # semantics, not an audit nicety — a retrospective artifact
     # cannot declare operational-archive provenance and a
-    # forecast artifact cannot declare reanalysis.
+    # forecast artifact cannot declare reanalysis.  SEISMIC-01
+    # extends the retrospective vocabulary with the declared
+    # seismic waveform class only.
     mode = payload.get("mode")
     dc = payload.get("data_class")
     if mode == RegimeMode.RETROSPECTIVE_REGIME.value and \
-            "data_class" in payload and dc != "REANALYSIS":
+            "data_class" in payload and \
+            dc not in _CONFIG_RETROSPECTIVE_DATA_CLASSES:
         problems.append(
-            "SCHEMA_MALFORMED: RETROSPECTIVE_REGIME requires "
-            f"data_class 'REANALYSIS', got {dc!r}")
+            "SCHEMA_MALFORMED: RETROSPECTIVE_REGIME requires a "
+            "declared retrospective data_class in "
+            f"{sorted(_CONFIG_RETROSPECTIVE_DATA_CLASSES)}, "
+            f"got {dc!r}")
     if mode == RegimeMode.FORECAST_REGIME.value and \
             "data_class" in payload and \
             dc != "ARCHIVED_OPERATIONAL":
@@ -936,6 +957,15 @@ def _source_manifest_problems(
     problems: list[str] = []
     is_fixture, fixture_problems = fixture_flag(sm)
     problems.extend(fixture_problems)
+    # SEISMIC-01: a fixture manifest can never carry seismic waveform
+    # provenance — the class binds byte-verified evidence only.
+    if is_fixture and \
+            payload.get("data_class") == _SEISMIC_DATA_CLASS:
+        problems.append(
+            "SCHEMA_MALFORMED: a fixture source_manifest cannot "
+            "carry data_class SEISMIC_WAVEFORM_RETROSPECTIVE — the "
+            "seismic class requires non-fixture, byte-bound "
+            "evidence")
     if not is_fixture:
         # R10-P07/P11: the non-fixture manifest is an exact record —
         # only the declared evidence contract keys may ride along.
@@ -2038,6 +2068,49 @@ def _config_cross_binding_problems(
         problems.append(
             "SCHEMA_MALFORMED: config.data_class does not equal "
             "the artifact's data_class")
+    # SEISMIC-01: on a RETROSPECTIVE run the serialized
+    # retrospective_data_class IS the emitted data_class — a
+    # divergent pair means the config under digest is not the
+    # provenance the artifact declares.
+    rdc = cfg.get("retrospective_data_class")
+    cfg_mode = cfg.get("mode")
+    if rdc is not None:
+        if rdc not in _CONFIG_RETROSPECTIVE_DATA_CLASSES:
+            problems.append(
+                "SCHEMA_MALFORMED: config.retrospective_data_class "
+                f"{rdc!r} is not a declared retrospective class in "
+                f"{sorted(_CONFIG_RETROSPECTIVE_DATA_CLASSES)}")
+        elif cfg_mode == RegimeMode.FORECAST_REGIME.value and \
+                rdc != "REANALYSIS":
+            problems.append(
+                "SCHEMA_MALFORMED: a FORECAST_REGIME config must "
+                "carry the REANALYSIS retrospective_data_class "
+                "default")
+        elif cfg_mode == RegimeMode.RETROSPECTIVE_REGIME.value and \
+                "data_class" in payload and rdc != \
+                payload["data_class"]:
+            problems.append(
+                "SCHEMA_MALFORMED: "
+                "config.retrospective_data_class does not equal "
+                "the artifact's data_class — the declared "
+                "retrospective class diverges from the emitted "
+                "provenance")
+        if rdc == _SEISMIC_DATA_CLASS and \
+                isinstance(cfg.get("source_manifest"), Mapping):
+            _cfg_fx, _cfg_fxp = fixture_flag(
+                cfg["source_manifest"])
+            if _cfg_fxp:
+                problems.append(
+                    "SCHEMA_MALFORMED: config.source_manifest "
+                    f"fixture marker invalid: {_cfg_fxp}")
+            elif _cfg_fx:
+                problems.append(
+                    "SCHEMA_MALFORMED: a fixture "
+                    "config.source_manifest cannot carry "
+                    "retrospective_data_class "
+                    "SEISMIC_WAVEFORM_RETROSPECTIVE — the seismic "
+                    "class requires non-fixture, byte-bound "
+                    "evidence")
     return problems
 
 

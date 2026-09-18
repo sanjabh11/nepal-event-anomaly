@@ -9,6 +9,7 @@ on:
       - "nepal/research_v0/**"
       - "nepal/science_v0/**"
       - "nepal/experiment_v0/**"
+      - "nepal/seismic_sidecar/**"
       - "nepal/era5_download.py"
       - "nepal/era5_hybrid_fetch.py"
       - "nepal/run_ledger_repair.py"
@@ -36,6 +37,7 @@ on:
       - "tests/test_glof_poc_real_path.py"
       - "tests/test_regime_real_path.py"
       - "tests/test_r11_5_release_closure.py"
+      - "tests/test_seismic_*.py"
       - "tests/test_framework_v1_*.py"
       - "conftest.py"
       - "requirements.txt"
@@ -46,6 +48,7 @@ on:
       - "nepal/research_v0/**"
       - "nepal/science_v0/**"
       - "nepal/experiment_v0/**"
+      - "nepal/seismic_sidecar/**"
       - "nepal/era5_download.py"
       - "nepal/era5_hybrid_fetch.py"
       - "nepal/run_ledger_repair.py"
@@ -73,6 +76,7 @@ on:
       - "tests/test_glof_poc_real_path.py"
       - "tests/test_regime_real_path.py"
       - "tests/test_r11_5_release_closure.py"
+      - "tests/test_seismic_*.py"
       - "tests/test_framework_v1_*.py"
       - "conftest.py"
       - "requirements.txt"
@@ -227,6 +231,19 @@ jobs:
           tests/test_glof_poc_real_path.py
           tests/test_regime_real_path.py
           tests/test_r11_5_release_closure.py -q -rs
+      # R11.7 seismic sidecar: contract, feature, observability,
+      # runner, and shared-boundary regressions — the seismic
+      # class must never leak into forecast/association lanes.
+      - name: Seismic sidecar lanes
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
+            python -B -m pytest \
+            tests/test_seismic_sidecar_contract.py \
+            tests/test_seismic_sidecar_features.py \
+            tests/test_seismic_sidecar_observability.py \
+            tests/test_seismic_sidecar_runner.py \
+            tests/test_seismic_shared_regression.py \
+            tests/test_research_v0_seismic_addendum.py -q -rs
 
       - name: Frozen framework_v1 contract tests
         # tests/test_framework_v1_*.py exercise the frozen

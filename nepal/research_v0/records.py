@@ -25,7 +25,8 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Mapping, Optional
 
 from .policy import (HORIZON_SECONDS, OPPORTUNITY_STATES, EventTimeClass,
-                     ForecastDataClass, RegimeMode, TargetState,
+                     ForecastDataClass, RegimeMode,
+                     SEISMIC_WAVEFORM_RETROSPECTIVE_CLASS, TargetState,
                      classify_event_time, parse_strict_utc,
                      require_finite_seconds)
 
@@ -54,6 +55,17 @@ EVIDENCE_REVIEW_STATES = ("UNREVIEWED", "REVIEWED", "INDEPENDENTLY_VERIFIED")
 FORECAST_REGIME_DATA_CLASSES = frozenset({
     ForecastDataClass.REFORECAST.value,
     ForecastDataClass.ARCHIVED_OPERATIONAL.value})
+
+#: Retrospective-regime data classes (SEISMIC-01): ``REANALYSIS`` is
+#: the default for the weather/GLOF lane; the seismic waveform class
+#: is admitted for the seismic sidecar's retrospective artifacts only.
+#: Both classes are retrospective — neither may ever appear on a
+#: FORECAST_REGIME artifact or a forecast vintage.
+SEISMIC_WAVEFORM_RETROSPECTIVE_DATA_CLASS = (
+    SEISMIC_WAVEFORM_RETROSPECTIVE_CLASS)
+RETROSPECTIVE_REGIME_DATA_CLASSES = frozenset({
+    ForecastDataClass.REANALYSIS.value,
+    SEISMIC_WAVEFORM_RETROSPECTIVE_DATA_CLASS})
 
 # Controlled vertical ontology (G03): a spec may only claim a declared
 # vertical and one of its compatible mechanisms — arbitrary pairs reject.
@@ -912,10 +924,12 @@ class RegimeArtifactV0:
         if self.mode not in {m.value for m in RegimeMode}:
             problems.append(f"mode {self.mode!r} invalid")
         elif self.mode == RegimeMode.RETROSPECTIVE_REGIME.value:
-            if self.data_class != ForecastDataClass.REANALYSIS.value:
-                problems.append("retrospective regime discovery runs "
-                                "on reanalysis data only — never "
-                                "forecast archives or feeds")
+            if self.data_class not in RETROSPECTIVE_REGIME_DATA_CLASSES:
+                problems.append(
+                    "retrospective regime discovery runs on a "
+                    "declared retrospective data class "
+                    f"{sorted(RETROSPECTIVE_REGIME_DATA_CLASSES)} — "
+                    "never forecast archives or feeds")
             if self.forecast_vintage_digests or \
                     self.forecast_feature_set:
                 problems.append(

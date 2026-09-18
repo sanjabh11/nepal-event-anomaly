@@ -105,7 +105,7 @@ Round-10 hardening implemented here:
   as the artifact-level ``forecast_vintages`` section inside the
   ``regime_artifact_digest`` envelope (an associable forecast
   artifact carries its vintage records, not only their digests);
-  the serialized config keeps exactly the declared 32-field
+  the serialized config keeps exactly the declared 33-field
   contract — the records are evidence, never configuration.
 * R10-P07 parity — the non-fixture ``source_manifest`` preflight
   mirrors the shared floor's exact typed contract (declared keys
@@ -147,7 +147,9 @@ from nepal.research_v0.producer_validation import (
     semantic_feature_matrix_digest, sorted_row_key_digest,
     validate_producer_payload)
 from nepal.research_v0.records import (
-    RunManifestV0, deserialize_record)
+    RETROSPECTIVE_REGIME_DATA_CLASSES,
+    SEISMIC_WAVEFORM_RETROSPECTIVE_DATA_CLASS, RunManifestV0,
+    deserialize_record)
 
 STATUSES = frozenset({
     "DESCRIPTIVE_REGIME_ONLY",
@@ -631,6 +633,15 @@ class RegimeRunConfig:
     # associable forecast artifact.  Artifact-level evidence, never
     # serialized into the bound config.
     forecast_vintages: tuple = ()
+    # SEISMIC-01: the declared retrospective data class bound into the
+    # emitted artifact's ``data_class`` when mode is
+    # RETROSPECTIVE_REGIME.  ``REANALYSIS`` remains the default — the
+    # weather/GLOF contract is unchanged.  ``SEISMIC_WAVEFORM_
+    # RETROSPECTIVE`` is admitted for the seismic sidecar's
+    # retrospective artifacts only: it requires a non-fixture,
+    # byte-bound source_manifest, can never appear on a FORECAST_REGIME
+    # config, and marks the emitted artifact non-associable.
+    retrospective_data_class: str = "REANALYSIS"
 
 
 def _modal_k(ks: list[int]) -> int:
@@ -1023,6 +1034,35 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
             return {"status": "RUN_ERROR",
                     "reason": "source_manifest evidence verification "
                               f"failed: {ev_problems}"}
+
+    # SEISMIC-01: retrospective_data_class is a declared
+    # RETROSPECTIVE-only class.  REANALYSIS is the default; the
+    # seismic waveform class admits only a non-fixture, byte-bound
+    # source manifest and can never be carried by a FORECAST_REGIME
+    # config (where it would smuggle retrospective provenance into
+    # the forecast lane).
+    if config.retrospective_data_class not in \
+            RETROSPECTIVE_REGIME_DATA_CLASSES:
+        return {"status": "RUN_ERROR",
+                "reason": f"retrospective_data_class "
+                          f"{config.retrospective_data_class!r} is "
+                          "not a declared retrospective class "
+                          f"{sorted(RETROSPECTIVE_REGIME_DATA_CLASSES)}"}
+    if config.mode == RegimeMode.FORECAST_REGIME.value and \
+            config.retrospective_data_class != \
+            ForecastDataClass.REANALYSIS.value:
+        return {"status": "RUN_ERROR",
+                "reason": "FORECAST_REGIME must carry the "
+                          "REANALYSIS retrospective_data_class "
+                          "default — a retrospective data class "
+                          "cannot bind forecast provenance"}
+    if config.retrospective_data_class == \
+            SEISMIC_WAVEFORM_RETROSPECTIVE_DATA_CLASS and _is_fixture:
+        return {"status": "RUN_ERROR",
+                "reason": "SEISMIC_WAVEFORM_RETROSPECTIVE requires "
+                          "a non-fixture, byte-bound source_manifest "
+                          "— synthetic frames may not claim seismic "
+                          "waveform provenance"}
 
     # REG-C06: era boundaries are either uniformly ISO dates (a
     # date-defined partition) or uniformly era labels matching the
@@ -2129,7 +2169,7 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
     # R10: forecast_vintages is artifact-level evidence (the records
     # behind forecast_vintage_digests), never part of the bound
     # configuration — the serialized config keeps exactly the
-    # declared 32-field contract.
+    # declared 33-field contract.
     _config_dict.pop("forecast_vintages", None)
     _config_dict["forecast_vintage_digests"] = sorted(
         str(d) for d in config.forecast_vintage_digests)
@@ -2186,16 +2226,24 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
         df[[config.unit_col, config.group_col]].drop_duplicates()
         .itertuples(index=False))
 
+    # SEISMIC-01: the emitted data_class is the declared retrospective
+    # class on a RETROSPECTIVE run (REANALYSIS default, or the
+    # seismic waveform class for the sidecar); a FORECAST run always
+    # binds ARCHIVED_OPERATIONAL — REANALYSIS and the seismic class
+    # are retrospective-only and can never be emitted as forecast
+    # evidence.
+    _emitted_data_class = (
+        config.retrospective_data_class
+        if config.mode == RegimeMode.RETROSPECTIVE_REGIME.value
+        else ForecastDataClass.ARCHIVED_OPERATIONAL.value)
+
     artifact = {
         "mode": config.mode,
         # FCST-01: FORECAST_REGIME binds issue-time archive vintages
         # — ARCHIVED_OPERATIONAL is the ForecastDataClass archive
         # class; REANALYSIS is retrospective-only and can never be
         # emitted as forecast evidence.
-        "data_class": (
-            "REANALYSIS"
-            if config.mode == RegimeMode.RETROSPECTIVE_REGIME.value
-            else ForecastDataClass.ARCHIVED_OPERATIONAL.value),
+        "data_class": _emitted_data_class,
         "forecast_vintage_digests": sorted(
             str(d) for d in config.forecast_vintage_digests),
         "forecast_feature_set": sorted(
@@ -2299,7 +2347,13 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
         # result — only DESCRIPTIVE_REGIME_ONLY may associate.
         "terminal": status in ("DESCRIPTIVE_REGIME_ONLY",
                                "UNSUPERVISED_STRUCTURE_NOT_STABLE"),
-        "associable": status == "DESCRIPTIVE_REGIME_ONLY",
+        # SEISMIC-01: a seismic-waveform retrospective artifact is
+        # terminal-descriptive when stable but NEVER associable —
+        # the association and forecast adapters admit REANALYSIS /
+        # forecast classes only, and the flag is not free.
+        "associable": status == "DESCRIPTIVE_REGIME_ONLY" and
+                      _emitted_data_class !=
+                      SEISMIC_WAVEFORM_RETROSPECTIVE_DATA_CLASS,
         "disclaimer": "descriptive regime structure only; not an "
                       "event precursor, association, or skill claim",
     }
@@ -2408,6 +2462,20 @@ def _validate_config_semantics(cfg: dict) -> list[str]:
     mode = cfg.get("mode") or RegimeMode.RETROSPECTIVE_REGIME.value
     if mode not in RegimeMode._value2member_map_:
         problems.append(f"mode {mode!r} not a RegimeMode value")
+    # SEISMIC-01: the serialized retrospective_data_class must be a
+    # declared retrospective class; on a FORECAST config only the
+    # REANALYSIS default is admissible.
+    rdc = cfg.get("retrospective_data_class",
+                  ForecastDataClass.REANALYSIS.value)
+    if rdc not in RETROSPECTIVE_REGIME_DATA_CLASSES:
+        problems.append(
+            f"retrospective_data_class {rdc!r} not in "
+            f"{sorted(RETROSPECTIVE_REGIME_DATA_CLASSES)}")
+    elif mode == RegimeMode.FORECAST_REGIME.value and \
+            rdc != ForecastDataClass.REANALYSIS.value:
+        problems.append(
+            "FORECAST_REGIME config must carry the REANALYSIS "
+            "retrospective_data_class default")
     return problems
 
 
@@ -2641,13 +2709,35 @@ def freeze_regime_artifact(artifact: dict) -> dict:
                              "forecast_vintage_digests and "
                              "forecast_feature_set")
     elif mode == RegimeMode.RETROSPECTIVE_REGIME.value:
-        if artifact.get("data_class") != "REANALYSIS":
-            raise ValueError("RETROSPECTIVE_REGIME requires "
-                             "data_class REANALYSIS")
+        if artifact.get("data_class") not in \
+                RETROSPECTIVE_REGIME_DATA_CLASSES:
+            raise ValueError(
+                "RETROSPECTIVE_REGIME requires a declared "
+                f"retrospective data_class in "
+                f"{sorted(RETROSPECTIVE_REGIME_DATA_CLASSES)}")
         if fc_vd or fc_fs:
             raise ValueError("RETROSPECTIVE_REGIME must not carry "
                              "forecast_vintage_digests or "
                              "forecast_feature_set")
+        # SEISMIC-01: the seismic waveform class additionally
+        # requires a non-fixture, byte-bound source manifest and a
+        # hard non-associable flag — a freeze can never certify a
+        # seismic artifact for association.
+        if artifact.get("data_class") == \
+                SEISMIC_WAVEFORM_RETROSPECTIVE_DATA_CLASS:
+            if artifact.get("associable") is not False:
+                raise ValueError(
+                    "a SEISMIC_WAVEFORM_RETROSPECTIVE artifact is "
+                    "non-associable — the flag is not free")
+            _fx, _fxp = fixture_flag(artifact.get("source_manifest"))
+            if _fxp:
+                raise ValueError(
+                    f"source_manifest fixture marker invalid: "
+                    f"{_fxp}")
+            if _fx:
+                raise ValueError(
+                    "SEISMIC_WAVEFORM_RETROSPECTIVE requires a "
+                    "non-fixture, byte-bound source_manifest")
     else:
         raise ValueError(f"mode {mode!r} is not a declared "
                          "RegimeMode value")

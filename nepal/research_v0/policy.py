@@ -67,6 +67,17 @@ class RegimeMode(str, Enum):
     FORECAST_REGIME = "FORECAST_REGIME"
 
 
+#: Retrospective-only data class for seismic waveform evidence
+#: (SEISMIC-01, seismic sidecar contract).  It is deliberately NOT a
+#: ``ForecastDataClass`` member: the forecast-vintage admission check
+#: and the FORECAST_REGIME data-class allowlist iterate that enum, so
+#: an enum member could silently leak into forecast paths.  The class
+#: is admissible only on RETROSPECTIVE_REGIME artifacts that bind a
+#: non-fixture, byte-bound source manifest — and artifacts carrying it
+#: are non-associable by construction.
+SEISMIC_WAVEFORM_RETROSPECTIVE_CLASS = "SEISMIC_WAVEFORM_RETROSPECTIVE"
+
+
 # ---------------------------------------------------------------------
 # Strict timestamp / numeric handling
 # ---------------------------------------------------------------------
