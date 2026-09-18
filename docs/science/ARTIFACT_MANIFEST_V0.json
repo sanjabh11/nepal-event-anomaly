@@ -512,7 +512,7 @@
     "r11_2_provenance": "35 passed",
     "r11_3_provenance": "23 passed",
     "r11_5_real_path": "93 passed, 1 skipped (p5_glof_intake + real_fmx_audit + glof_poc_real_path + regime_real_path)",
-    "r11_5_release_closure": "3 passed (manifest_commit identity, lane governance, collection census)",
+    "r11_5_release_closure": "4 passed (manifest_commit identity, lane governance, collection census, CLI stale-commit rejection)",
     "seismic_addendum": "4 passed"
   }
 }
