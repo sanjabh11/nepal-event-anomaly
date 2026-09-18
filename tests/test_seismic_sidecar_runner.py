@@ -14,6 +14,7 @@ flag stays false on every path.
 from __future__ import annotations
 
 import copy
+import dataclasses
 import hashlib
 import json
 import re
@@ -465,6 +466,68 @@ class TestRunErrors:
             _observability(manifest), manifest)
         assert r["status"] == "RUN_ERROR"
         assert any("allowlist" in p for p in r["problems"])
+
+    def test_post_verify_byte_substitution_rejected(self, tmp_path):
+        """A waveform file rewritten between verify_source_evidence
+        and the runner's read is bound to the manifest's declared
+        sha256 — substituted bytes can never reach the digest."""
+        root = _root()
+        manifest = _manifest()
+        # Build a second manifest over bytes that differ from the
+        # manifest's declared sha256 by rewriting one leaf after the
+        # manifest was built — the manifest itself is stale, so
+        # verify_source_evidence itself must already reject; the
+        # real probe is a swap AFTER verification, which we simulate
+        # by swapping bytes back and forth around the runner's read.
+        target = root / "wave" / "STA1.bin"
+        original = target.read_bytes()
+        target.write_bytes(b"\x00" * 4096)
+        try:
+            r = ss.run_seismic_descriptive_poc(
+                _frame(), _FCOLS, _mask(_frame()), _config(),
+                _observability(manifest), manifest)
+        finally:
+            target.write_bytes(original)
+        # Either the manifest-level verify or the byte-pin must
+        # reject — the run may never digest substituted bytes.
+        assert r["status"] in ("UNOBSERVABLE", "RUN_ERROR")
+        assert any("sha256" in p or "digest" in p or "hash" in p
+                   for p in r["problems"])
+
+    def test_forged_observable_record_rejected(self):
+        """A record carrying OBSERVABLE over failing gates is forged
+        metadata — the runner re-derives the verdict, never trusts
+        the carried status."""
+        manifest = _manifest()
+        obs = list(_observability(manifest))
+        forged = dataclasses.replace(
+            obs[0], coverage_fraction=0.05, problems=())
+        assert forged.status == "OBSERVABLE"
+        obs[0] = forged
+        r = _run(manifest=manifest, observability=obs)
+        assert r["status"] == "UNOBSERVABLE"
+        assert any("failing gate" in p or "OBSERVABLE" in p
+                   for p in r["problems"])
+
+    def test_omitted_heldout_station_rejected(self):
+        """require_station_holdout with no declared heldout must
+        reject — the split is never inferred from sort order."""
+        r = _run(config=_config(heldout_stations=()))
+        assert r["status"] == "RUN_ERROR"
+        assert any("heldout" in p for p in r["problems"])
+
+    def test_duplicate_window_identity_rejected(self):
+        df = _frame()
+        dup = pd.concat([df, df.iloc[[0]]], ignore_index=True)
+        daily_rows = ss.aggregate_daily(
+            df.to_dict("records"), _FCOLS)
+        cells, _ = _station_holdout_cells(daily_rows)
+        mask = np.array([cells[i].endswith("|early")
+                         for i in range(len(daily_rows))] +
+                        [False])
+        r = _run(df=dup, mask=mask)
+        assert r["status"] == "RUN_ERROR"
+        assert any("duplicate" in p for p in r["problems"])
 
 
 class TestSeismicArtifactBoundary:

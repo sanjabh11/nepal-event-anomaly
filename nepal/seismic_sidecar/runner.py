@@ -238,6 +238,7 @@ def run_seismic_descriptive_poc(
                 f"station_observability[{i}] {rec.station_id}: "
                 f"carries OBSERVABLE over a failing gate — {p}"
                 for p in gate_problems)
+            receipt["status"] = "UNOBSERVABLE"
             return _report(receipt)
         records.append(rec)
     station_ids = [r.station_id for r in records]
