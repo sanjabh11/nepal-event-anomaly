@@ -1,6 +1,6 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "4f784a6634e83dc91efe7b5e7283face8510823e",
+  "content_head": "9bd856ba2bcc731156d2c289ed6591634727f8fd",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
@@ -24,8 +24,8 @@
     },
     {
       "relpath": "docs/science/GAP_REGISTER_V0.md",
-      "sha256": "b47f02136e24d54171872718af6a4c5c51304a9f4f8a9448f7e82f6cc36c4510",
-      "size_bytes": 95538
+      "sha256": "6bf261189766c882fe3712caa9b0193bb281ab64b1ccf35ed6fd9653d4b3bd4e",
+      "size_bytes": 97313
     },
     {
       "relpath": "docs/science/GOVERNANCE_EXERCISE_RECORD_V0.md",
@@ -34,8 +34,8 @@
     },
     {
       "relpath": "docs/science/HAZARD_EVENT_INVENTORY_DECISION_MATRIX_V0.md",
-      "sha256": "ea00041c9cf33e52a1584ee0d1afc8dab37263b2daf43aca61e2788b6ac6055c",
-      "size_bytes": 11460
+      "sha256": "38e72ebef8bf37b0af4d2fe25bfd7fe7433c1aca44fde57b1cbc2b4389ec3f17",
+      "size_bytes": 11724
     },
     {
       "relpath": "docs/science/INFORMATION_CUTOFF_TARGET_POLICY_V0.md",
@@ -69,8 +69,8 @@
     },
     {
       "relpath": "docs/science/SOURCE_FEASIBILITY_RECORDS_V0.md",
-      "sha256": "e2ac729eac855c4f6fb62980d1ec2cf20b6bf316cefa9ff69e9aad36462c60ee",
-      "size_bytes": 16905
+      "sha256": "a0eb2cfcf5a19f3d99a85a34653b07368401cddd787a9baca6e53441597a7aa7",
+      "size_bytes": 17085
     },
     {
       "relpath": "docs/science/STATUS_SCOPE_RECONCILIATION_NOTE_20260915.md",
@@ -94,8 +94,8 @@
     },
     {
       "relpath": "docs/science/run_b/EVENT_PACKAGE_SPEC_V0.md",
-      "sha256": "686d79b09f05bbc731cc1463e6a27565ccaf59d05fcdf62e60f5188bd32958af",
-      "size_bytes": 9779
+      "sha256": "3f5ca5d1ca31b5985e3d53730ae7b1d1b659fc94b29ccf119dd898387e928457",
+      "size_bytes": 9888
     },
     {
       "relpath": "docs/science/run_b/FMX_AUDIT_RUBRIC_V0.md",
@@ -114,13 +114,13 @@
     },
     {
       "relpath": "docs/science/run_b/SOURCE_EVIDENCE_ADDENDUM_V0.md",
-      "sha256": "577464314a4cd848fdced6b48967b67523b55cea3ee31d0fb242099c43d619c6",
-      "size_bytes": 21918
+      "sha256": "10b93696a7ff4e52a66dc473bd60fc10709e11154c7e6edde7a51a86dda664f7",
+      "size_bytes": 22515
     },
     {
       "relpath": "docs/science/run_b/SOURCE_QUALIFICATION_RECORDS_V0.md",
-      "sha256": "a3e4852b03784f25a18ed1af2ac6f3767951763ca7a6cbdb448f9ab53b05b36e",
-      "size_bytes": 32570
+      "sha256": "8a03c05f7524d274631d80dce88cd905af0020b101dde4121d449a4bc1f23604",
+      "size_bytes": 33264
     },
     {
       "relpath": "docs/science/run_c/ASSOCIATION_PROTOCOL_V0.md",
@@ -129,8 +129,8 @@
     },
     {
       "relpath": "docs/science/run_c/FORECAST_ARCHIVE_MATRIX_V0.md",
-      "sha256": "65f5b6584a5e806e7c8930db8caa8377b7401de2dd6b5d590fdff5b2f4655684",
-      "size_bytes": 17812
+      "sha256": "47b3cce8b28ab294984314bf8c115bde7fd5b119ba2a8d36484256139257e65b",
+      "size_bytes": 18378
     },
     {
       "relpath": "docs/science/run_c/FORECAST_EVAL_SCAFFOLD_V0.md",
@@ -455,7 +455,7 @@
   ],
   "generated": "2026-09-18",
   "interpreter": ".venv/bin/python",
-  "manifest_commit": "4f784a6634e83dc91efe7b5e7283face8510823e",
+  "manifest_commit": "9bd856ba2bcc731156d2c289ed6591634727f8fd",
   "manifest_version": "ARTIFACT_MANIFEST_V0.3",
   "repository_relative_root": ".",
   "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
