@@ -31,6 +31,7 @@ import csv
 import dataclasses
 import hashlib
 import types
+from pathlib import Path
 import re
 
 import pytest
@@ -154,22 +155,57 @@ def _manifest(root, *paths, feature_allowlist=("f1", "f2")):
         lineage="contract-test acquired bytes")
 
 
+_PKG_ROOT = None
+
+
 def _pkg_manifest():
-    """The manifest the event package binds — synthetic bytes, real
-    shape; units cover every basin the rows declare."""
-    return {
-        "source_id": _SOURCE_ID,
-        "source_digests": ["a" * 64],
-        "units": list(_GROUP_OF_BASIN),
-        "feature_allowlist": ["f1", "f2"],
-        "lineage": f"source_version={_SOURCE_VERSION}; "
-                   "contract-test acquired bytes",
-        "evidence_root": "/tmp/contract-test-evidence",
-        "source_files": [{"relpath": "events.csv",
-                          "sha256": "a" * 64}]}
+    """The manifest the event package binds — REAL bytes under a
+    module-scoped evidence root, because the builder now calls
+    ``verify_source_evidence``: a rehashed fake manifest can never
+    enter the package (R11.2-1)."""
+    global _PKG_ROOT
+    if _PKG_ROOT is None:
+        import tempfile
+        _PKG_ROOT = Path(tempfile.mkdtemp(prefix="glof-poc-ev-"))
+        (_PKG_ROOT / "events.csv").write_text(
+            "GF_ID,x\n1,y\n", encoding="utf-8")
+    root = _PKG_ROOT
+    digest = hashlib.sha256(
+        (root / "events.csv").read_bytes()).hexdigest()
+    return build_source_manifest(
+        root, source_id=_SOURCE_ID, source_version=_SOURCE_VERSION,
+        source_files=[{"relpath": "events.csv",
+                       "sha256": digest}],
+        units=list(_GROUP_OF_BASIN),
+        feature_allowlist=["f1", "f2"],
+        lineage="contract-test acquired bytes")
 
 
-def _source_record(posture="EVIDENCE_VERIFIED") -> SourceRecordV0:
+def _write_sidecar(root, *, source_id=_SOURCE_ID,
+                   version=_SOURCE_VERSION, license_id="test-license",
+                   decision="VERIFIED"):
+    """A real evidence sidecar under the evidence root — required
+    for the runner's R11.2-2 sidecar gate."""
+    import json as _json
+    payload = {
+        "source_id": source_id, "source_version": version,
+        "license_id": license_id, "coverage": "Nepal basins",
+        "timing_review": "coarse timing preserved",
+        "reviewer_ids": ["rev-1"], "review_date": "2026-09-01",
+        "decision": decision}
+    path = Path(root) / "sidecar.json"
+    path.write_text(_json.dumps(payload), encoding="utf-8")
+    return {"relpath": "sidecar.json",
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+
+
+def _source_record(posture="EVIDENCE_VERIFIED",
+                   sidecar=None) -> SourceRecordV0:
+    """``sidecar`` is the ``{"relpath","sha256"}`` pair from
+    ``_write_sidecar`` — absent, the record keeps its fake sidecar
+    binding (which the runner's sidecar gate correctly rejects)."""
+    sidecar_rel = sidecar["relpath"] if sidecar else "sidecar.bin"
+    sidecar_sha = sidecar["sha256"] if sidecar else _HEX64
     """A SourceRecordV0 with no problems() at the requested posture."""
     if posture == "CANDIDATE_ONLY":
         return SourceRecordV0(source_id=_SOURCE_ID, provider="test",
@@ -186,14 +222,15 @@ def _source_record(posture="EVIDENCE_VERIFIED") -> SourceRecordV0:
         non_event_frame="lake inventory",
         update_cadence="annual", access_status="open",
         posture=posture, license_notes="contract test",
-        evidence_sidecar_path="sidecar.bin",
-        evidence_sidecar_sha256=_HEX64,
+        evidence_sidecar_path=sidecar_rel,
+        evidence_sidecar_sha256=sidecar_sha,
         evidence_as_of="2026-09-01",
         evidence_review_state="INDEPENDENTLY_VERIFIED")
 
 
 def _opp(oid, unit, w0, w1, state="OBSERVED_FULL", cov=1.0,
-         frames=("fr-a",)):
+         frames=None):
+    frames = (f"fr-{oid}",) if frames is None else frames
     return ObservationOpportunityV0(
         opportunity_id=oid, unit_id=unit,
         platform="synthetic-platform",
@@ -645,9 +682,11 @@ class TestRunner:
         df, feature_cols, train_mask, cfg = _mini_regime_frame()
         cfg = dataclasses.replace(
             cfg, source_manifest=intake["manifest"])
+        sidecar = _write_sidecar(intake["root"])
         receipt = run_glof_descriptive_poc(
             df, feature_cols, train_mask, cfg,
-            _package(source_manifest=intake["manifest"]))
+            _package(source_manifest=intake["manifest"],
+                     source_record=_source_record(sidecar=sidecar)))
         assert receipt["record_type"] == "GLOF_POC_RECEIPT_V0"
         assert receipt["status"] in _RECEIPT_STATUSES
         assert receipt["claim_scope"] == \
@@ -670,17 +709,23 @@ class TestRunner:
         """Any posture other than EVIDENCE_VERIFIED — metadata-only
         or rejected — can never carry a descriptive result."""
         pkg = _package(source_record=_source_record(posture))
+        cfg = types.SimpleNamespace(
+            source_manifest=_pkg_manifest())
         receipt = run_glof_descriptive_poc(
-            None, [], None, None, pkg)
+            None, [], None, cfg, pkg)
         assert receipt["status"] == "CANDIDATE_ONLY"
         assert any("posture" in p for p in receipt["problems"])
 
     def test_rejected_holdout_underpowered(self, descriptive_regime):
-        pkg = _package(group_of_basin=_ONE_TEST_GOB,
+        man = _pkg_manifest()
+        sidecar = _write_sidecar(man["evidence_root"])
+        pkg = _package(source_record=_source_record(sidecar=sidecar),
+                       group_of_basin=_ONE_TEST_GOB,
                        split_of_group=_ONE_TEST_SOG)
         assert pkg["holdout_plan"].get("rejected") is True
+        cfg = types.SimpleNamespace(source_manifest=man)
         receipt = run_glof_descriptive_poc(
-            None, [], None, None, pkg)
+            None, [], None, cfg, pkg)
         assert receipt["status"] == "UNDERPOWERED_DESCRIPTIVE_ONLY"
         assert any("holdout" in p for p in receipt["problems"])
 
@@ -703,11 +748,18 @@ class TestRunner:
             None, [], None, None, "not-a-mapping")
         assert receipt["status"] == "RUN_ERROR"
 
-    def test_bad_regime_column_run_error_never_raises(self, package):
+    def test_bad_regime_column_run_error_never_raises(self):
         df, feature_cols, train_mask, cfg = _mini_regime_frame()
-        cfg = dataclasses.replace(cfg, group_col="no_such_column")
+        man = _pkg_manifest()
+        sidecar = _write_sidecar(man["evidence_root"])
+        pkg = _package(
+            source_manifest=man,
+            source_record=_source_record(sidecar=sidecar))
+        cfg = dataclasses.replace(
+            cfg, group_col="no_such_column",
+            source_manifest=man)
         receipt = run_glof_descriptive_poc(
-            df, feature_cols, train_mask, cfg, package)
+            df, feature_cols, train_mask, cfg, pkg)
         assert receipt["status"] == "RUN_ERROR"
 
     def test_receipt_has_no_authority_surface(self, package,

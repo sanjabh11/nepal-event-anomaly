@@ -175,13 +175,64 @@ def load_hmaglofdb_rows(
     # --- byte binding: verify BEFORE any byte is read (R11.1-1) ---
     if not isinstance(source_manifest, Mapping):
         raise ValueError("source_manifest must be a mapping")
-    root_s = source_manifest.get("evidence_root")
+    # The real GLOF path admits exactly the seven-key non-fixture
+    # manifest — a fixture marker or any extra field is a contract
+    # violation (R11.2-1), never a silent alias.
+    required_keys = {"source_id", "source_digests", "units",
+                     "feature_allowlist", "lineage",
+                     "evidence_root", "source_files"}
+    if set(source_manifest) != required_keys:
+        extra = sorted(set(source_manifest) - required_keys)
+        missing = sorted(required_keys - set(source_manifest))
+        detail = []
+        if extra:
+            detail.append(f"undeclared keys {extra} — fixture "
+                          "markers and side fields are not "
+                          "admissible on the real GLOF path")
+        if missing:
+            detail.append(f"missing required keys {missing}")
+        raise ValueError("source_manifest must carry exactly the "
+                         "seven declared keys: " + "; ".join(detail))
+    root_s = source_manifest["evidence_root"]
     if not isinstance(root_s, str) or not root_s:
         raise ValueError("source_manifest lacks evidence_root")
-    declared = {f.get("relpath"): f.get("sha256")
-                for f in source_manifest.get("source_files", [])
-                if isinstance(f, Mapping)}
+    sf = source_manifest["source_files"]
+    if not isinstance(sf, (list, tuple)) or \
+            any(not isinstance(f, Mapping) for f in sf):
+        raise ValueError(
+            "source_manifest.source_files must be a sequence of "
+            "{relpath, sha256} mappings")
+    declared = {f.get("relpath"): f.get("sha256") for f in sf}
     root = Path(root_s)
+    # The caller's path must lie LEXICALLY inside the declared
+    # evidence root — an outside-root path that only resolves
+    # inside has passed through a symlink alias (R11.2-4), and
+    # '..' detours are equally inadmissible.
+    p_abs = Path(path).absolute()
+    r_abs = Path(root_s).absolute()
+    if p_abs.parts[:len(r_abs.parts)] != r_abs.parts or \
+            ".." in p_abs.parts[len(r_abs.parts):]:
+        raise ValueError(
+            f"intake path {path} does not lie inside the declared "
+            f"evidence_root {root_s!r} — a path that only resolves "
+            "inside via a symlink or '..' alias may not load "
+            "evidence bytes")
+    # Walk the lexical components under the root: no symlink is
+    # admissible anywhere in the intake path (R11.1-1).
+    acc = r_abs
+    for part in p_abs.parts[len(r_abs.parts):]:
+        acc = acc / part
+        try:
+            st = acc.lstat()
+        except OSError as exc:
+            raise ValueError(
+                f"intake path component {acc} cannot be "
+                f"stat'd: {exc}")
+        if stat.S_ISLNK(st.st_mode):
+            raise ValueError(
+                f"intake path component {acc} is a symlink — "
+                "load the declared evidence file directly, "
+                "never through an alias")
     try:
         rel = str(path.resolve().relative_to(root.resolve()))
     except (ValueError, OSError):
@@ -193,27 +244,6 @@ def load_hmaglofdb_rows(
         raise ValueError(
             f"intake path {rel!r} is not a declared source_files "
             "member — the manifest must name every loaded file")
-    # The caller's own path may alias the declared file through a
-    # symlink — resolve() would hide it.  Walk the LEXICAL path
-    # components: no symlink is admissible anywhere in the intake
-    # path (R11.1-1), not only beneath the declared evidence root.
-    p_abs = Path(path).absolute()
-    r_abs = Path(root_s).absolute()
-    if p_abs.parts[:len(r_abs.parts)] == r_abs.parts:
-        acc = r_abs
-        for part in p_abs.parts[len(r_abs.parts):]:
-            acc = acc / part
-            try:
-                st = acc.lstat()
-            except OSError as exc:
-                raise ValueError(
-                    f"intake path component {acc} cannot be "
-                    f"stat'd: {exc}")
-            if stat.S_ISLNK(st.st_mode):
-                raise ValueError(
-                    f"intake path component {acc} is a symlink — "
-                    "load the declared evidence file directly, "
-                    "never through an alias")
     # whole-manifest byte policy FIRST — containment, symlink policy,
     # and declared digests are verified before the intake file's
     # bytes are ever opened for parsing.

@@ -24,12 +24,14 @@ A self-hash proves integrity, never external approval.
 """
 from __future__ import annotations
 
+import hashlib
 import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
 
-from ._hashing import hash_artifact, sha256_canonical, sha256_file
+from ._hashing import (hash_artifact, read_evidence_file,
+                       sha256_canonical, sha256_file)
 from .policy import (ForecastDataClass, parse_strict_utc,
                      require_finite_seconds)
 from .records import (BLOCKER_TOLERANT_STATUSES, EXECUTION_STATUSES,
@@ -772,14 +774,34 @@ def source_evidence_problems(record: Any, *,
     if not _contained(path, root):
         problems.append(f"evidence sidecar {path} resolves outside "
                         "evidence_root")
-    if not path.is_file():
-        problems.append(f"evidence sidecar {path} is not a regular "
-                        "file")
+    # R11.2-2 — read the sidecar through the shared pinned reader:
+    # the component walk rejects leaf AND intermediate symlinks
+    # beneath the root, and the (inode,size,mtime) signature pins the
+    # bytes so the digest and the parsed JSON are the same bytes.
+    # The relpath handed to the walker must be LEXICAL — resolving
+    # first would collapse a symlink alias before it can be seen.
+    rel = None
+    try:
+        rel = str(path.relative_to(root))
+    except ValueError:
+        try:
+            rel = str(path.absolute().relative_to(
+                root.absolute()))
+        except ValueError:
+            pass
+    if rel is None or ".." in Path(rel).parts:
+        problems.append(
+            f"evidence sidecar {path} does not lie lexically "
+            "inside evidence_root — a path that only resolves "
+            "inside via a symlink alias is inadmissible")
         return problems
-    if path.is_symlink():
-        problems.append(f"evidence sidecar {path} is a symlink")
+    try:
+        data = read_evidence_file(root.resolve(), rel,
+                                  label="evidence sidecar")
+    except ValueError as exc:
+        problems.append(str(exc))
         return problems
-    actual = sha256_file(path)
+    actual = hashlib.sha256(data).hexdigest()
     declared = getattr(record, "evidence_sidecar_sha256", "")
     if actual != declared:
         problems.append(
@@ -791,8 +813,8 @@ def source_evidence_problems(record: Any, *,
     # coverage, timing, reviewer, and decision fields.
     import json as _json
     try:
-        sidecar = _json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, _json.JSONDecodeError) as exc:
+        sidecar = _json.loads(data.decode("utf-8"))
+    except (OSError, _json.JSONDecodeError, UnicodeDecodeError) as exc:
         problems.append(f"evidence sidecar is not parseable JSON: {exc}")
         return problems
     if not isinstance(sidecar, dict):

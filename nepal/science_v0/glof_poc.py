@@ -24,7 +24,9 @@ from __future__ import annotations
 import dataclasses
 from typing import Any, Mapping, Sequence
 
-from nepal.research_v0._hashing import sha256_canonical
+from nepal.research_v0._hashing import (
+    sha256_canonical, verify_source_evidence)
+from nepal.research_v0.gates import source_evidence_problems
 from nepal.research_v0.records import (
     ObservationOpportunityV0, deserialize_record)
 from nepal.experiment_v0.adapters import holdout_plan_from_assignment
@@ -83,6 +85,28 @@ def build_hmaglofdb_event_package(
                 f"{type(r).__name__}")
     if not isinstance(source_manifest, Mapping):
         raise ValueError("source_manifest must be a mapping")
+    # The real GLOF path admits exactly the seven-key non-fixture
+    # manifest — a fixture marker or extra field is a contract
+    # violation, never a bypass (R11.2-1).
+    required_keys = {"source_id", "source_digests", "units",
+                     "feature_allowlist", "lineage",
+                     "evidence_root", "source_files"}
+    if set(source_manifest) != required_keys:
+        raise ValueError(
+            "source_manifest must carry exactly the seven "
+            "declared keys — fixture markers and side fields are "
+            "not admissible on the real GLOF path "
+            f"(got {sorted(source_manifest)})")
+    if not isinstance(source_manifest["source_files"], (list, tuple)) \
+            or not source_manifest["source_files"]:
+        raise ValueError("source_manifest.source_files must be a "
+                         "non-empty sequence")
+    # Byte-verify the manifest BEFORE the package digests it — a
+    # rehashed fake manifest can never enter the package (R11.2-1).
+    evidence_problems = verify_source_evidence(source_manifest)
+    if evidence_problems:
+        raise ValueError("source_manifest evidence problems: " +
+                         "; ".join(evidence_problems))
     for name, value in (("group_of_basin", group_of_basin),
                         ("split_of_group", split_of_group)):
         if not isinstance(value, Mapping):
@@ -163,10 +187,13 @@ def build_hmaglofdb_event_package(
                 for p in rec_problems)
         event_labels.append(label)
 
-    # --- opportunities (typed; basin-level units) ---
+    # --- opportunities (typed; basin-level units, source-bound) ---
     if not isinstance(opportunity_frame, (list, tuple)):
         raise ValueError("opportunity_frame must be a sequence")
     opportunities = []
+    seen_opp_ids: set = set()
+    seen_opp_windows: set = set()
+    claimed_frames: set = set()
     for opp in opportunity_frame:
         if isinstance(opp, Mapping):
             opp = deserialize_record(opp)
@@ -180,11 +207,43 @@ def build_hmaglofdb_event_package(
             problems.extend(
                 f"opportunity {opp.opportunity_id}: {p}"
                 for p in opp_problems)
+        # R11.2-5 — the frame binds to the same source, declared
+        # units, and unique identities; a foreign or duplicate
+        # opportunity never enters the package.
+        if opp.source_id != source_record.source_id:
+            problems.append(
+                f"opportunity {opp.opportunity_id}: source_id "
+                f"{opp.source_id!r} != source_record "
+                f"{source_record.source_id!r}")
+        if opp.opportunity_id in seen_opp_ids:
+            problems.append(
+                f"opportunity id {opp.opportunity_id!r} is "
+                "duplicated")
+        seen_opp_ids.add(opp.opportunity_id)
+        window_key = (opp.unit_id, opp.window_start, opp.window_end)
+        if window_key in seen_opp_windows:
+            problems.append(
+                f"opportunity {opp.opportunity_id}: duplicate "
+                f"frame/window identity on {opp.unit_id!r} "
+                f"{opp.window_start}..{opp.window_end}")
+        seen_opp_windows.add(window_key)
+        shared = claimed_frames & set(opp.frame_ids)
+        if shared:
+            problems.append(
+                f"opportunity {opp.opportunity_id}: frame_ids "
+                f"{sorted(shared)} already claimed by another "
+                "opportunity")
+        claimed_frames.update(opp.frame_ids)
         if opp.unit_id not in BASIN_UNIVERSE:
             problems.append(
                 f"opportunity {opp.opportunity_id}: unit_id "
                 f"{opp.unit_id!r} is not a declared basin-level "
                 "unit in this PoC")
+        elif unit_set and opp.unit_id not in unit_set:
+            problems.append(
+                f"opportunity {opp.opportunity_id}: unit_id "
+                f"{opp.unit_id!r} is not declared in the "
+                "manifest's units")
         opportunities.append(opp)
 
     # --- controls: derived, never caller-asserted ---
@@ -278,14 +337,16 @@ def build_hmaglofdb_event_package(
                             "problems": plan_problems}
         else:
             holdout_plan = plan.to_dict()
-    except ValueError as exc:
+    except (TypeError, ValueError) as exc:
         holdout_plan = {"rejected": True, "problems": [str(exc)]}
 
     # Canonical ordering — the package digests must be stable under
-    # input-row permutation (the inventory's byte order is not
-    # semantic).  Events sort by event_id; controls/opportunities are
-    # already built in deterministic unit order.
+    # input permutation (the inventory's byte order is not
+    # semantic).  Events sort by event_id; opportunities by
+    # opportunity_id; controls are built in deterministic unit
+    # order.
     event_labels.sort(key=lambda d: d["event_id"])
+    opportunities.sort(key=lambda o: o.opportunity_id)
     sr_dict = source_record.to_dict() \
         if hasattr(source_record, "to_dict") else dict(source_record)
     opp_dicts = [o.to_dict() if hasattr(o, "to_dict") else dict(o)
@@ -414,23 +475,38 @@ def run_glof_descriptive_poc(
              if k not in ("report_digest", "problems")})
         return receipt
 
-    # --- config/package manifest binding (R11.1-5) ---
+    # --- config/package manifest binding (R11.1-5, R11.2-1) ---
+    # The config MUST carry the byte-bound source manifest the fit
+    # declares — an absent manifest is not "unbound", it is
+    # malformed: a package whose provenance the config cannot name
+    # can never reach the engine.
     cfg_manifest = getattr(regime_config, "source_manifest", None)
-    if isinstance(cfg_manifest, Mapping):
-        if _digest(dict(cfg_manifest)) != \
-                event_package["source_manifest_digest"]:
-            problems.append(
-                "event_package.source_manifest_digest does not "
-                "equal the digest of "
-                "regime_config.source_manifest — the package must "
-                "bind the same byte-bound source the fit declares")
-            receipt["status"] = "RUN_ERROR"
-            receipt["report_digest"] = _digest(
-                {k: v for k, v in receipt.items()
-                 if k not in ("report_digest", "problems")})
-            return receipt
+    if not isinstance(cfg_manifest, Mapping):
+        problems.append(
+            "regime_config.source_manifest is required — the fit "
+            "must declare the same byte-bound source the package "
+            "was built under")
+        receipt["status"] = "RUN_ERROR"
+        receipt["report_digest"] = _digest(
+            {k: v for k, v in receipt.items()
+             if k not in ("report_digest", "problems")})
+        return receipt
+    if _digest(dict(cfg_manifest)) != \
+            event_package["source_manifest_digest"]:
+        problems.append(
+            "event_package.source_manifest_digest does not "
+            "equal the digest of "
+            "regime_config.source_manifest — the package must "
+            "bind the same byte-bound source the fit declares")
+        receipt["status"] = "RUN_ERROR"
+        receipt["report_digest"] = _digest(
+            {k: v for k, v in receipt.items()
+             if k not in ("report_digest", "problems")})
+        return receipt
 
-    # --- source-record posture gate ---
+    # --- source-record posture + sidecar gate (BEFORE any fit —
+    # R11.2-2/3): a source that is not fully verified returns
+    # CANDIDATE_ONLY without ever invoking the engine ---
     source_verified = False
     try:
         sr = deserialize_record(event_package["source_record"])
@@ -446,19 +522,34 @@ def run_glof_descriptive_poc(
                 "EVIDENCE_VERIFIED — a metadata-only or unreviewed "
                 "source cannot carry a descriptive result")
         else:
-            source_verified = True
+            sidecar_problems = source_evidence_problems(
+                sr, evidence_root=cfg_manifest.get("evidence_root"))
+            if sidecar_problems:
+                problems.extend(
+                    f"source sidecar: {p}"
+                    for p in sidecar_problems)
+            else:
+                source_verified = True
     except (TypeError, ValueError) as exc:
         problems.append(f"source_record does not deserialize: {exc}")
+    if not source_verified:
+        receipt["status"] = "CANDIDATE_ONLY"
+        receipt["report_digest"] = _digest(
+            {k: v for k, v in receipt.items()
+             if k not in ("report_digest", "problems")})
+        return receipt
 
     # --- holdout gate ---
     holdout_plan = event_package["holdout_plan"]
     holdout_ok = False
     if isinstance(holdout_plan, Mapping) and \
             holdout_plan.get("rejected") is True:
+        hp_problems = holdout_plan.get("problems")
+        if not isinstance(hp_problems, (list, tuple)):
+            hp_problems = [hp_problems]
         problems.append(
             "holdout plan rejected — "
-            + "; ".join(str(p) for p in
-                        holdout_plan.get("problems", [])))
+            + "; ".join(str(p) for p in hp_problems))
     elif isinstance(holdout_plan, Mapping):
         try:
             hp = deserialize_record(holdout_plan)
@@ -483,8 +574,20 @@ def run_glof_descriptive_poc(
         problems.append(f"run_regimes raised "
                         f"{type(exc).__name__}: {exc}")
         artifact = {"status": "RUN_ERROR", "reason": str(exc)}
-    if isinstance(artifact, Mapping) and \
-            artifact.get("status") == "RUN_ERROR":
+    # R11.2-6 — the engine's output is untrusted: a non-mapping,
+    # unhashable, or malformed artifact is RUN_ERROR, never an
+    # uncaught exception at the freeze boundary.
+    if not isinstance(artifact, Mapping):
+        problems.append(
+            f"regime engine returned a non-mapping artifact "
+            f"({type(artifact).__name__}) — malformed engine "
+            "output is a run error")
+        receipt["status"] = "RUN_ERROR"
+        receipt["report_digest"] = _digest(
+            {k: v for k, v in receipt.items()
+             if k not in ("report_digest", "problems")})
+        return receipt
+    if artifact.get("status") == "RUN_ERROR":
         problems.append(
             f"regime run returned RUN_ERROR: "
             f"{artifact.get('reason', 'no reason recorded')}")
@@ -493,21 +596,30 @@ def run_glof_descriptive_poc(
             {k: v for k, v in receipt.items()
              if k not in ("report_digest", "problems")})
         return receipt
-    artifact_status = artifact.get("status") \
-        if isinstance(artifact, Mapping) else None
+    artifact_status = artifact.get("status")
 
     # --- freeze (raises, never returns RUN_ERROR) ---
     try:
         frozen = freeze_regime_artifact(dict(artifact))
-        receipt["regime_artifact_digest"] = \
-            frozen.get("regime_artifact_digest", "")
-    except ValueError as exc:
+    except (TypeError, ValueError, AttributeError) as exc:
         problems.append(f"freeze rejected the artifact: {exc}")
         receipt["status"] = "RUN_ERROR"
         receipt["report_digest"] = _digest(
             {k: v for k, v in receipt.items()
              if k not in ("report_digest", "problems")})
         return receipt
+    if not isinstance(frozen, Mapping):
+        problems.append(
+            f"freeze returned a non-mapping result "
+            f"({type(frozen).__name__}) — malformed engine output "
+            "is a run error")
+        receipt["status"] = "RUN_ERROR"
+        receipt["report_digest"] = _digest(
+            {k: v for k, v in receipt.items()
+             if k not in ("report_digest", "problems")})
+        return receipt
+    receipt["regime_artifact_digest"] = \
+        frozen.get("regime_artifact_digest", "")
 
     # --- status mapping (most conservative wins) ---
     if artifact_status not in ("DESCRIPTIVE_REGIME_ONLY",

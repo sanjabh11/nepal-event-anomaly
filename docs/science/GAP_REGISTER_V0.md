@@ -888,3 +888,38 @@ Owner-gated (unchanged): P5 authorization, opportunity-frame
 Option A/B, independent review, operational approvals — posture
 stays `NO_QUALIFYING_PILOT_SOURCE`.  Deferred per the audit's own
 directive: R10.1-C/D/E/I/J/K/L stage gates.
+
+## Round-11.2 provenance micro-round (2026-09-18)
+
+The live R11.2 audit's serial repair — findings 1-7 codeable, the
+rest owner-gated or deferred.  Closed:
+
+- **R11.2-1 (P0)** the event package now requires the exact
+  seven-key non-fixture manifest, byte-verifies it via
+  `verify_source_evidence`, and the runner requires a present,
+  digest-equal `regime_config.source_manifest` — a rehashed or
+  nonexistent manifest can never reach the engine.
+- **R11.2-2 (P0)** `EVIDENCE_VERIFIED` posture now verifies real
+  sidecar bytes through the shared pinned reader —
+  `gates.source_evidence_problems` walks lexical components, so
+  leaf AND intermediate sidecar symlinks reject, and the digest
+  and parsed JSON are the same bytes.
+- **R11.2-3 (P0)** source posture+sidecar gating moved before
+  `run_regimes` — unverified sources return `CANDIDATE_ONLY`
+  without ever invoking the engine (spy-tested).
+- **R11.2-4 (P1)** malformed `source_files` shapes are bounded
+  `ValueError`s; the intake path must lie LEXICALLY inside the
+  evidence root — an outside-root symlink alias resolving inside
+  is rejected outright.
+- **R11.2-5 (P1)** opportunities cross-bind `source_id`, declared
+  units, unique `opportunity_id`, unique (unit,window) identity,
+  and non-shared `frame_ids`.
+- **R11.2-6 (P1)** malformed engine/freeze outputs are
+  `RUN_ERROR`; holdout rejection `problems` is shape-bounded.
+- **R11.2-7 (P2)** opportunities canonically sort by
+  `opportunity_id` — digests are frame-permutation invariant.
+
+Owner-gated (unchanged): P5 authorization, opportunity-frame
+Option A/B, independent review, operational approvals.  Deferred
+per the audit's directive: R10.1-C/D/E/F/I/J stage gates, rasterio
+quarantine, `data/**` collection quarantine.

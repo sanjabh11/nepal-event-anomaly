@@ -59,21 +59,35 @@ Admissible receipt statuses: `RUN_ERROR`, `CANDIDATE_ONLY`,
   `source_manifest` keyword), never the record; rows cross-bind to
   record ID/version, manifest ID/version, and declared `units`.
 
-**R11.1 provenance boundary (verified):** the loader runs
+**R11.1/R11.2 provenance boundary (verified):** the loader runs
 `verify_source_evidence` BEFORE any byte is opened, then parses
 only identity-pinned bytes from the shared `read_evidence_file`
 helper (component walk + inode/mtime pin — no second unverified
-read, and the caller's own path may not alias through a symlink).
-`column_map` values must be non-empty distinct strings; duplicate
-CSV headers reject. The runner recomputes every carried section
-digest and re-deserializes every record before fitting — a stale
-digest, tampered section, or manifest/config mismatch is
-`RUN_ERROR`, never trusted.
+read, and the caller's own path must lie LEXICALLY inside the
+declared evidence root — an outside-root alias resolving inside
+rejects outright). The manifest must carry exactly the seven
+declared keys; `column_map` values must be non-empty distinct
+strings; duplicate CSV headers reject; loaded basins must be
+declared in `units`.
+
+The builder byte-verifies the manifest before digesting it and
+cross-binds rows ↔ record ↔ manifest (ID/version/units) plus
+opportunities (source, units, unique IDs, unique windows,
+non-shared frames, canonical `opportunity_id` ordering). The
+runner requires a present, digest-equal `regime_config.
+source_manifest`, recomputes every carried section digest,
+re-deserializes every record, verifies the source-record evidence
+sidecar under the same root (leaf AND intermediate symlinks
+reject), and only then fits — a non-verified source returns
+`CANDIDATE_ONLY` without ever invoking `run_regimes`, and
+malformed engine/freeze output is `RUN_ERROR`, never an uncaught
+exception.
 - `run_glof_descriptive_poc(feature_frame, feature_cols, train_mask,
   regime_config, event_package) -> dict` — emits the
   `GLOF_POC_RECEIPT_V0`. Gate order: `RUN_ERROR` (package malformed /
-  regime error / freeze rejection) → `CANDIDATE_ONLY` (source posture
-  not EVIDENCE_VERIFIED, or artifact non-descriptive) →
+  missing config manifest / regime error / freeze rejection) →
+  `CANDIDATE_ONLY` (source posture not EVIDENCE_VERIFIED, sidecar
+  evidence invalid, or artifact non-descriptive) →
   `UNDERPOWERED_DESCRIPTIVE_ONLY` (valid descriptive artifact, but
   holdout/event package cannot support association) →
   `DESCRIPTIVE_REGIME_ONLY`.
