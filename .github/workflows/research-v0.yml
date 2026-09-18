@@ -28,6 +28,7 @@ on:
       - "tests/test_r8_*.py"
       - "tests/test_r9_*.py"
       - "tests/test_r10_*.py"
+      - "tests/test_glof_poc_contract.py"
       - "tests/test_framework_v1_*.py"
       - "conftest.py"
       - "requirements.txt"
@@ -57,6 +58,7 @@ on:
       - "tests/test_r8_*.py"
       - "tests/test_r9_*.py"
       - "tests/test_r10_*.py"
+      - "tests/test_glof_poc_contract.py"
       - "tests/test_framework_v1_*.py"
       - "conftest.py"
       - "requirements.txt"
@@ -196,6 +198,14 @@ jobs:
           else
             echo "no tests/test_r[6789]_*.py/test_r10_*.py files present yet"
           fi
+
+      - name: Round-11 GLOF PoC contract tests
+        # R11.1-CI: the byte-bound intake + descriptive-runner
+        # contract lane — carried by the manifest, so it must run
+        # here like every other governed lane.
+        run: >
+          PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=.
+          python -B -m pytest tests/test_glof_poc_contract.py -q -rs
 
       - name: Frozen framework_v1 contract tests
         # tests/test_framework_v1_*.py exercise the frozen

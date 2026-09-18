@@ -44,10 +44,10 @@ Admissible receipt statuses: `RUN_ERROR`, `CANDIDATE_ONLY`,
 `nepal/science_v0/glof_poc.py`:
 
 - `build_hmaglofdb_event_package(rows, *, source_record,
-  opportunity_frame, group_of_basin, split_of_group,
-  evaluation_regions, embargo_seconds) -> dict` — returns exactly:
-  `source_record, event_labels, opportunities, controls,
-  holdout_plan, source_manifest_digest, event_digest,
+  source_manifest, opportunity_frame, group_of_basin,
+  split_of_group, evaluation_regions, embargo_seconds) -> dict` —
+  returns exactly: `source_record, event_labels, opportunities,
+  controls, holdout_plan, source_manifest_digest, event_digest,
   opportunity_digest, control_digest, holdout_digest`. Events pass
   `normalize_event → deduplicate → validate_cascade_graph →
   to_event_label → deserialize_record → problems()==[]`. Controls
@@ -55,6 +55,20 @@ Admissible receipt statuses: `RUN_ERROR`, `CANDIDATE_ONLY`,
   OBSERVED_FULL, non-overlapping opportunity). A holdout that fails
   its gates yields `holdout_plan = {"rejected": True, "problems":
   [...]}` — the runner demotes; the validator is never weakened.
+  `source_manifest_digest` binds the **manifest** (the required
+  `source_manifest` keyword), never the record; rows cross-bind to
+  record ID/version, manifest ID/version, and declared `units`.
+
+**R11.1 provenance boundary (verified):** the loader runs
+`verify_source_evidence` BEFORE any byte is opened, then parses
+only identity-pinned bytes from the shared `read_evidence_file`
+helper (component walk + inode/mtime pin — no second unverified
+read, and the caller's own path may not alias through a symlink).
+`column_map` values must be non-empty distinct strings; duplicate
+CSV headers reject. The runner recomputes every carried section
+digest and re-deserializes every record before fitting — a stale
+digest, tampered section, or manifest/config mismatch is
+`RUN_ERROR`, never trusted.
 - `run_glof_descriptive_poc(feature_frame, feature_cols, train_mask,
   regime_config, event_package) -> dict` — emits the
   `GLOF_POC_RECEIPT_V0`. Gate order: `RUN_ERROR` (package malformed /

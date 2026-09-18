@@ -854,3 +854,37 @@ Synthetic path verified end-to-end (temporary-byte fixture →
 manifest → loader → package → receipt; 16s to a frozen artifact).
 Postures unchanged — no source bytes, no P5, no association, no
 forecast, no operational path.
+
+## Round-11.1 provenance repair (2026-09-18)
+
+The live R11.1 audit's serial repair — one content commit then one
+manifest-only rebind.  Codeable findings closed:
+
+- **R11.1-1 (P0)** loader read bytes before the shared verifier —
+  now `verify_source_evidence` runs first, then the parser consumes
+  identity-pinned bytes from the new shared
+  `_hashing.read_evidence_file` helper (component walk + inode/mtime
+  pin); the caller's own path may not alias through a symlink
+  (lexical component walk on the intake path).
+- **R11.1-2 (P1)** malformed `column_map` values and duplicate
+  mapped/CSV headers are bounded `ValueError`s, never `TypeError`
+  or silent `DictReader` collapse.
+- **R11.1-3 (P0)** `source_manifest_digest` now digests the
+  `source_manifest` (required builder keyword), not the record.
+- **R11.1-4 (P0)** the runner recomputes all carried section
+  digests and re-deserializes every record before fitting —
+  stale/tampered sections are `RUN_ERROR`.
+- **R11.1-5 (P1)** row↔record↔manifest ID/version/units
+  cross-binding plus config↔package manifest binding.
+- **R11.1-6 (P1)** malformed package inputs are bounded
+  `ValueError`s (no `AttributeError`).
+- **R11.1-8 (P1)** `tests/test_glof_poc_contract.py` added to CI
+  push/PR triggers plus a dedicated step.
+- **R11.1-9/10** content-head/`manifest_commit` repaired via the
+  one-content-commit + one-manifest-rebind convention; full suite
+  rerun bound at this head.
+
+Owner-gated (unchanged): P5 authorization, opportunity-frame
+Option A/B, independent review, operational approvals — posture
+stays `NO_QUALIFYING_PILOT_SOURCE`.  Deferred per the audit's own
+directive: R10.1-C/D/E/I/J/K/L stage gates.

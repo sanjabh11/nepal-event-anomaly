@@ -252,6 +252,48 @@ def hash_artifact(path: str | Path,
             "sha256": digest.hexdigest()}
 
 
+def read_evidence_file(root_resolved: Path, rel: str,
+                       *, label: str = "evidence") -> bytes:
+    """Read one declared evidence leaf's exact bytes, fail-closed.
+
+    The single safe byte-read path for evidence consumers (R11.1):
+    the relpath resolves through ``_resolve_evidence_leaf`` — every
+    intermediate component is lstat-checked as a real directory, the
+    leaf must be a real regular file inside ``root_resolved``, and
+    the (inode, size, mtime_ns) signature is pinned across the read
+    so a swapped or rewritten file is rejected rather than bound.
+    Callers MUST pass the bytes this returns to their parser — no
+    second ``open``/``read_bytes`` on the path.  Raises ``ValueError``.
+    """
+    leaf, problem = _resolve_evidence_leaf(root_resolved, rel,
+                                         label=label)
+    if problem is not None:
+        raise ValueError(problem)
+    try:
+        st0 = leaf.lstat()
+    except OSError as exc:
+        raise ValueError(f"{label} path {rel!r}: leaf cannot be "
+                         f"stat'd: {exc}")
+    if not stat.S_ISREG(st0.st_mode):
+        raise ValueError(f"{label} path {rel!r} is not a regular "
+                         "file")
+    try:
+        data = leaf.read_bytes()
+    except OSError as exc:
+        raise ValueError(f"{label} path {rel!r} cannot be read: "
+                         f"{exc}")
+    try:
+        st1 = leaf.lstat()
+    except OSError as exc:
+        raise ValueError(f"{label} path {rel!r} disappeared during "
+                         f"reading: {exc}")
+    if _stat_signature(st1) != _stat_signature(st0):
+        raise ValueError(
+            f"{label} path {rel!r} changed during reading — a "
+            "moving target is never a bound artifact")
+    return data
+
+
 def verify_source_evidence(manifest: Any) -> list[str]:
     """Byte-verify a non-fixture source manifest's evidence binding.
 

@@ -30,6 +30,7 @@ from __future__ import annotations
 import csv
 import dataclasses
 import hashlib
+import types
 import re
 
 import pytest
@@ -148,10 +149,24 @@ def _manifest(root, *paths, feature_allowlist=("f1", "f2")):
     return build_source_manifest(
         root, source_id=_SOURCE_ID, source_version=_SOURCE_VERSION,
         source_files=files,
-        units=["u-east-a", "u-east-b", "u-central", "u-north",
-               "u-west", "u-farwest"],
+        units=list(_GROUP_OF_BASIN),
         feature_allowlist=list(feature_allowlist),
         lineage="contract-test acquired bytes")
+
+
+def _pkg_manifest():
+    """The manifest the event package binds — synthetic bytes, real
+    shape; units cover every basin the rows declare."""
+    return {
+        "source_id": _SOURCE_ID,
+        "source_digests": ["a" * 64],
+        "units": list(_GROUP_OF_BASIN),
+        "feature_allowlist": ["f1", "f2"],
+        "lineage": f"source_version={_SOURCE_VERSION}; "
+                   "contract-test acquired bytes",
+        "evidence_root": "/tmp/contract-test-evidence",
+        "source_files": [{"relpath": "events.csv",
+                          "sha256": "a" * 64}]}
 
 
 def _source_record(posture="EVIDENCE_VERIFIED") -> SourceRecordV0:
@@ -219,12 +234,15 @@ def _source_rows():
         for k, b, t0, t1, p, m, cg, parent, obs in _BASE_ROWS)
 
 
-def _package(rows=None, *, source_record=None, opps=None,
-             group_of_basin=None, split_of_group=None,
+def _package(rows=None, *, source_record=None, source_manifest=None,
+             opps=None, group_of_basin=None, split_of_group=None,
              evaluation_regions=_EVAL_REGIONS):
     return build_hmaglofdb_event_package(
         _source_rows() if rows is None else rows,
         source_record=source_record or _source_record(),
+        source_manifest=(source_manifest
+                         if source_manifest is not None
+                         else _pkg_manifest()),
         opportunity_frame=(_opportunity_frame()
                            if opps is None else opps),
         group_of_basin=(_GROUP_OF_BASIN
@@ -628,7 +646,8 @@ class TestRunner:
         cfg = dataclasses.replace(
             cfg, source_manifest=intake["manifest"])
         receipt = run_glof_descriptive_poc(
-            df, feature_cols, train_mask, cfg, _package())
+            df, feature_cols, train_mask, cfg,
+            _package(source_manifest=intake["manifest"]))
         assert receipt["record_type"] == "GLOF_POC_RECEIPT_V0"
         assert receipt["status"] in _RECEIPT_STATUSES
         assert receipt["claim_scope"] == \
@@ -745,3 +764,247 @@ class TestDeterminism:
         pkg_a = _package()
         pkg_b = _package()
         assert pkg_a == pkg_b
+
+
+# ------------------------------------------------------------------
+# R11.1 provenance repairs — read-order, map hygiene, digest binding,
+# cross-object provenance, malformed-input boundary
+# ------------------------------------------------------------------
+
+class TestR111LoaderBoundary:
+    """The intake boundary verifies before it reads, maps columns
+    strictly, and rejects duplicate CSV headers (findings 1-2)."""
+
+    def test_column_map_list_value_is_valueerror(self, intake):
+        with pytest.raises(ValueError):
+            load_hmaglofdb_rows(
+                intake["path"],
+                source_manifest=intake["manifest"],
+                column_map={"source_row_key": "key", "basin": "basin",
+                            "interval_start": "start",
+                            "interval_end": "end",
+                            "declared_precision": "prec",
+                            "mechanism": ["not", "a", "str"]})
+
+    def test_column_map_nonstring_values_rejected(self, intake):
+        for bad in (42, None, ("t",), {"h": 1}):
+            with pytest.raises(ValueError):
+                load_hmaglofdb_rows(
+                    intake["path"],
+                    source_manifest=intake["manifest"],
+                    column_map={"source_row_key": "key",
+                                "basin": bad,
+                                "interval_start": "start",
+                                "interval_end": "end",
+                                "declared_precision": "prec",
+                                "mechanism": "mech"})
+
+    def test_duplicate_mapped_headers_rejected(self, intake):
+        with pytest.raises(ValueError):
+            load_hmaglofdb_rows(
+                intake["path"],
+                source_manifest=intake["manifest"],
+                column_map={"source_row_key": "key",
+                            "basin": "key",
+                            "interval_start": "start",
+                            "interval_end": "end",
+                            "declared_precision": "prec",
+                            "mechanism": "mech"})
+
+    def test_duplicate_csv_headers_rejected(self, intake):
+        path = intake["path"]
+        text = path.read_text()
+        text = text.replace("key,basin", "key,key", 1)
+        path.write_text(text)
+        man = _manifest(
+            intake["root"], path)
+        with pytest.raises(ValueError, match="duplicate column"):
+            load_hmaglofdb_rows(path, source_manifest=man,
+                                column_map=dict(_COLUMN_MAP))
+
+    def test_symlinked_leaf_rejected_via_verifier(self, intake):
+        link = intake["root"] / "linked.csv"
+        link.symlink_to(intake["path"].name)
+        man = _manifest(intake["root"], intake["path"])
+        with pytest.raises(ValueError):
+            load_hmaglofdb_rows(link, source_manifest=man,
+                                column_map=dict(_COLUMN_MAP))
+
+    def test_symlinked_intermediate_dir_rejected(self, intake):
+        real = intake["root"] / "real"
+        real.mkdir()
+        inner = _write_csv(real, _BASE_ROWS)
+        link_dir = intake["root"] / "linkdir"
+        link_dir.symlink_to("real")
+        man = _manifest(intake["root"], inner)
+        with pytest.raises(ValueError):
+            load_hmaglofdb_rows(link_dir / inner.name,
+                                source_manifest=man,
+                                column_map=dict(_COLUMN_MAP))
+
+
+class TestR111PackageBinding:
+    """source_manifest_digest binds the manifest; rows/record/
+    manifest cross-bind; malformed inputs are bounded (3-6)."""
+
+    def test_source_manifest_digest_is_manifest_not_record(self):
+        from nepal.research_v0._hashing import sha256_canonical
+        man = _pkg_manifest()
+        pkg = _package(source_manifest=man)
+        assert pkg["source_manifest_digest"] == \
+            sha256_canonical(dict(man))
+        assert pkg["source_manifest_digest"] != \
+            sha256_canonical(pkg["source_record"])
+
+    def test_manifest_mutation_changes_digest(self):
+        man = _pkg_manifest()
+        mutated = dict(man, lineage=man["lineage"] + " tampered")
+        pkg_a = _package(source_manifest=man)
+        pkg_b = _package(source_manifest=mutated)
+        assert pkg_a["source_manifest_digest"] != \
+            pkg_b["source_manifest_digest"]
+
+    def test_row_source_id_mismatch_rejected(self):
+        rows = [dataclasses.replace(r, source_id="forged")
+                for r in _source_rows()]
+        with pytest.raises(ValueError, match="source_id"):
+            _package(rows=rows)
+
+    def test_row_version_mismatch_rejected(self):
+        rows = [dataclasses.replace(r, source_version="9.9.9")
+                for r in _source_rows()]
+        with pytest.raises(ValueError, match="source_version"):
+            _package(rows=rows)
+
+    def test_row_basin_outside_manifest_units_rejected(self):
+        man = dict(_pkg_manifest(), units=["koshi"])
+        with pytest.raises(ValueError, match="units"):
+            _package(source_manifest=man)
+
+    def test_manifest_source_id_mismatch_rejected(self):
+        man = dict(_pkg_manifest(), source_id="other-source")
+        with pytest.raises(ValueError, match="source_id"):
+            _package(source_manifest=man)
+
+    def test_package_requires_source_manifest_kwarg(self):
+        with pytest.raises(TypeError):
+            build_hmaglofdb_event_package(
+                _source_rows(), source_record=_source_record(),
+                opportunity_frame=_opportunity_frame(),
+                group_of_basin=_GROUP_OF_BASIN,
+                split_of_group=_SPLIT_OF_GROUP,
+                evaluation_regions=_EVAL_REGIONS,
+                embargo_seconds=_EMBARGO)
+
+
+class TestR111MalformedInputs:
+    """Every malformed package input is a bounded ValueError — never
+    an uncaught TypeError/AttributeError (finding 6)."""
+
+    @pytest.mark.parametrize("rows", [
+        [{"not": "a SourceRow"}], ["x"], [42], [None]])
+    def test_non_sourcerow_elements(self, rows):
+        with pytest.raises(ValueError):
+            _package(rows=rows)
+
+    @pytest.mark.parametrize("bad", [42, "x", ["x"]])
+    def test_bad_source_record(self, bad):
+        with pytest.raises((ValueError, TypeError)):
+            _package(source_record=bad)
+
+    def test_none_source_record(self):
+        with pytest.raises((ValueError, TypeError)):
+            build_hmaglofdb_event_package(
+                _source_rows(), source_record=None,
+                source_manifest=_pkg_manifest(),
+                opportunity_frame=_opportunity_frame(),
+                group_of_basin=_GROUP_OF_BASIN,
+                split_of_group=_SPLIT_OF_GROUP,
+                evaluation_regions=_EVAL_REGIONS,
+                embargo_seconds=_EMBARGO)
+
+    @pytest.mark.parametrize("bad", [42, "x", {"opp": 1}])
+    def test_bad_opportunity_frame(self, bad):
+        with pytest.raises((ValueError, TypeError)):
+            _package(opps=bad)
+
+    def test_bad_group_of_basin(self):
+        with pytest.raises((ValueError, TypeError)):
+            _package(group_of_basin=["koshi"])
+
+    def test_bad_split_of_group(self):
+        with pytest.raises((ValueError, TypeError)):
+            _package(split_of_group="test")
+
+    def test_bad_evaluation_regions(self):
+        with pytest.raises((ValueError, TypeError)):
+            _package(evaluation_regions="karnali")
+
+    def test_bad_embargo(self):
+        with pytest.raises((ValueError, TypeError)):
+            build_hmaglofdb_event_package(
+                _source_rows(), source_record=_source_record(),
+                source_manifest=_pkg_manifest(),
+                opportunity_frame=_opportunity_frame(),
+                group_of_basin=_GROUP_OF_BASIN,
+                split_of_group=_SPLIT_OF_GROUP,
+                evaluation_regions=_EVAL_REGIONS,
+                embargo_seconds="30d")
+
+
+class TestR111RunnerRevalidation:
+    """The runner recomputes every carried digest and revalidates
+    every section before fitting (finding 4-5)."""
+
+    def test_stale_event_digest_run_error(self, descriptive_regime):
+        pkg = _package()
+        mutated = dict(pkg)
+        mutated["event_labels"] = [dict(l) for l in
+                                   pkg["event_labels"]]
+        mutated["event_labels"][0] = dict(
+            mutated["event_labels"][0],
+            adjudication_notes="tampered")
+        receipt = run_glof_descriptive_poc(
+            None, ["f1"], None, object(), mutated)
+        assert receipt["status"] == "RUN_ERROR"
+        assert any("digest" in p for p in receipt["problems"])
+
+    def test_forged_carried_digest_run_error(self, descriptive_regime):
+        pkg = _package()
+        mutated = dict(pkg, event_digest="f" * 64)
+        receipt = run_glof_descriptive_poc(
+            None, ["f1"], None, object(), mutated)
+        assert receipt["status"] == "RUN_ERROR"
+
+    def test_invalid_record_in_section_run_error(
+            self, descriptive_regime):
+        pkg = _package()
+        bad = dict(pkg["event_labels"][0], record_type="CutoffRecordV0")
+        mutated = dict(pkg)
+        mutated["event_labels"] = [bad] + list(
+            pkg["event_labels"][1:])
+        from nepal.research_v0._hashing import sha256_canonical
+        mutated["event_digest"] = sha256_canonical(
+            mutated["event_labels"])
+        receipt = run_glof_descriptive_poc(
+            None, ["f1"], None, object(), mutated)
+        assert receipt["status"] == "RUN_ERROR"
+
+    def test_config_manifest_mismatch_run_error(
+            self, descriptive_regime):
+        pkg = _package()
+        other = dict(_pkg_manifest(),
+                     lineage=_pkg_manifest()["lineage"] + " other")
+        cfg = types.SimpleNamespace(source_manifest=other)
+        receipt = run_glof_descriptive_poc(
+            None, ["f1"], None, cfg, pkg)
+        assert receipt["status"] == "RUN_ERROR"
+        assert any("manifest" in p for p in receipt["problems"])
+
+    def test_matching_config_manifest_passes_gate(
+            self, descriptive_regime):
+        cfg = types.SimpleNamespace(source_manifest=_pkg_manifest())
+        receipt = run_glof_descriptive_poc(
+            None, ["f1"], None, cfg, _package())
+        assert receipt["status"] != "RUN_ERROR" or not any(
+            "manifest" in p for p in receipt["problems"])

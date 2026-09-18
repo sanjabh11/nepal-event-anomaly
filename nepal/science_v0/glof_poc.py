@@ -55,6 +55,7 @@ def build_hmaglofdb_event_package(
         rows: Sequence[SourceRow],
         *,
         source_record,
+        source_manifest: Mapping[str, Any],
         opportunity_frame: Sequence[ObservationOpportunityV0],
         group_of_basin: Mapping[str, str],
         split_of_group: Mapping[str, str],
@@ -63,7 +64,9 @@ def build_hmaglofdb_event_package(
     """Build the typed event package from real SourceRows.
 
     ``source_record`` is a ``SourceRecordV0`` (or its serialized
-    dict).  ``opportunity_frame`` are validated
+    dict); ``source_manifest`` is the non-fixture manifest the rows
+    were loaded under — ``source_manifest_digest`` binds IT (never
+    the record).  ``opportunity_frame`` are validated
     ``ObservationOpportunityV0`` records; ``unit_id`` values are
     basin-level units in this PoC.  The returned mapping carries
     exactly the contract keys; a holdout that cannot satisfy its
@@ -71,14 +74,75 @@ def build_hmaglofdb_event_package(
     [...]}`` — the runner demotes, never weakens.
     """
     problems: list[str] = []
-    if not rows:
+    if not isinstance(rows, (list, tuple)) or not rows:
         raise ValueError("event package requires >=1 SourceRow")
+    for r in rows:
+        if not isinstance(r, SourceRow):
+            raise ValueError(
+                f"event package requires SourceRow records; got "
+                f"{type(r).__name__}")
+    if not isinstance(source_manifest, Mapping):
+        raise ValueError("source_manifest must be a mapping")
+    for name, value in (("group_of_basin", group_of_basin),
+                        ("split_of_group", split_of_group)):
+        if not isinstance(value, Mapping):
+            raise ValueError(f"{name} must be a mapping")
+    if not isinstance(evaluation_regions, (list, tuple)):
+        raise ValueError("evaluation_regions must be a sequence")
+    if isinstance(embargo_seconds, bool) or \
+            not isinstance(embargo_seconds, (int, float)):
+        raise ValueError("embargo_seconds must be a finite number")
     # --- source record (typed either way) ---
     if isinstance(source_record, Mapping):
         source_record = deserialize_record(source_record)
+    if not hasattr(source_record, "problems"):
+        raise ValueError(
+            "source_record must be a SourceRecordV0 or its "
+            "serialized mapping")
     sr_problems = source_record.problems()
     if sr_problems:
         problems.extend(f"source_record: {p}" for p in sr_problems)
+    # --- cross-binding: rows <-> record <-> manifest (R11.1-5) ---
+    manifest_sid = source_manifest.get("source_id")
+    if manifest_sid and source_record.source_id != manifest_sid:
+        problems.append(
+            f"source_record.source_id {source_record.source_id!r} "
+            f"!= source_manifest.source_id {manifest_sid!r}")
+    manifest_version = None
+    lineage = source_manifest.get("lineage")
+    if isinstance(lineage, str) and "source_version=" in lineage:
+        manifest_version = lineage.split(
+            "source_version=", 1)[1].split(";", 1)[0]
+    manifest_units = source_manifest.get("units")
+    unit_set = set(manifest_units) \
+        if isinstance(manifest_units, (list, tuple)) else set()
+    for r in rows:
+        if r.source_id != source_record.source_id:
+            problems.append(
+                f"row {r.source_row_key!r}: source_id "
+                f"{r.source_id!r} != source_record "
+                f"{source_record.source_id!r}")
+        if source_record.version and \
+                r.source_version != source_record.version:
+            problems.append(
+                f"row {r.source_row_key!r}: source_version "
+                f"{r.source_version!r} != source_record.version "
+                f"{source_record.version!r}")
+        if manifest_sid and r.source_id != manifest_sid:
+            problems.append(
+                f"row {r.source_row_key!r}: source_id "
+                f"{r.source_id!r} != manifest source_id "
+                f"{manifest_sid!r}")
+        if manifest_version and \
+                r.source_version != manifest_version:
+            problems.append(
+                f"row {r.source_row_key!r}: source_version "
+                f"{r.source_version!r} != manifest "
+                f"source_version= {manifest_version!r}")
+        if unit_set and r.basin not in unit_set:
+            problems.append(
+                f"row {r.source_row_key!r}: basin {r.basin!r} is "
+                "not declared in the manifest's units")
 
     # --- events ---
     identities = [normalize_event(r) for r in rows]
@@ -100,10 +164,17 @@ def build_hmaglofdb_event_package(
         event_labels.append(label)
 
     # --- opportunities (typed; basin-level units) ---
+    if not isinstance(opportunity_frame, (list, tuple)):
+        raise ValueError("opportunity_frame must be a sequence")
     opportunities = []
     for opp in opportunity_frame:
         if isinstance(opp, Mapping):
             opp = deserialize_record(opp)
+        if not hasattr(opp, "problems"):
+            raise ValueError(
+                "opportunity_frame members must be "
+                "ObservationOpportunityV0 records or serialized "
+                "mappings")
         opp_problems = opp.problems()
         if opp_problems:
             problems.extend(
@@ -228,7 +299,7 @@ def build_hmaglofdb_event_package(
         "opportunities": opp_dicts,
         "controls": controls,
         "holdout_plan": holdout_plan,
-        "source_manifest_digest": _digest(sr_dict),
+        "source_manifest_digest": _digest(dict(source_manifest)),
         "event_digest": _digest(event_labels),
         "opportunity_digest": _digest(opp_dicts),
         "control_digest": _digest(controls),
@@ -291,6 +362,73 @@ def run_glof_descriptive_poc(
               "opportunity_digest", "control_digest",
               "holdout_digest"):
         receipt[k] = event_package[k]
+
+    # --- package integrity: carried digests are recomputed and
+    # every section is re-deserialized before any fitting —
+    # a stale digest or tampered section can never reach
+    # run_regimes (R11.1-4) ---
+    _SECTION_FIELDS = {
+        "event_labels": "event_digest",
+        "opportunities": "opportunity_digest",
+        "controls": "control_digest",
+        "holdout_plan": "holdout_digest"}
+    digest_bad = False
+    for section, dkey in _SECTION_FIELDS.items():
+        section_val = event_package[section]
+        if section == "holdout_plan" and isinstance(
+                section_val, Mapping) and \
+                section_val.get("rejected") is True:
+            pass  # rejection mapping is a legal section
+        elif section != "holdout_plan" and not isinstance(
+                section_val, (list, tuple)):
+            problems.append(f"{section} must be a sequence")
+            digest_bad = True
+            continue
+        if _digest(section_val) != event_package[dkey]:
+            problems.append(
+                f"{dkey} does not match the recomputed "
+                f"{section} digest — carried digests are never "
+                "trusted")
+            digest_bad = True
+    for section in ("event_labels", "opportunities", "controls"):
+        section_val = event_package[section]
+        if not isinstance(section_val, (list, tuple)):
+            continue
+        for i, rec in enumerate(section_val):
+            try:
+                typed = deserialize_record(rec)
+                rec_problems = typed.problems()
+                if rec_problems:
+                    problems.append(
+                        f"{section}[{i}]: " +
+                        "; ".join(rec_problems))
+                    digest_bad = True
+            except (TypeError, ValueError) as exc:
+                problems.append(
+                    f"{section}[{i}] does not deserialize: {exc}")
+                digest_bad = True
+    if digest_bad:
+        receipt["status"] = "RUN_ERROR"
+        receipt["report_digest"] = _digest(
+            {k: v for k, v in receipt.items()
+             if k not in ("report_digest", "problems")})
+        return receipt
+
+    # --- config/package manifest binding (R11.1-5) ---
+    cfg_manifest = getattr(regime_config, "source_manifest", None)
+    if isinstance(cfg_manifest, Mapping):
+        if _digest(dict(cfg_manifest)) != \
+                event_package["source_manifest_digest"]:
+            problems.append(
+                "event_package.source_manifest_digest does not "
+                "equal the digest of "
+                "regime_config.source_manifest — the package must "
+                "bind the same byte-bound source the fit declares")
+            receipt["status"] = "RUN_ERROR"
+            receipt["report_digest"] = _digest(
+                {k: v for k, v in receipt.items()
+                 if k not in ("report_digest", "problems")})
+            return receipt
 
     # --- source-record posture gate ---
     source_verified = False

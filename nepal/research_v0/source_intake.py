@@ -19,10 +19,11 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import stat
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from ._hashing import verify_source_evidence
+from ._hashing import verify_source_evidence, read_evidence_file
 from ..science_v0.events import SourceRow, BASIN_UNIVERSE
 from .records import MECHANISM_IDS
 
@@ -171,7 +172,7 @@ def load_hmaglofdb_rows(
     every semantic name must be mapped explicitly.
     """
     problems: list[str] = []
-    # --- byte binding: the loaded file must be a manifest member ---
+    # --- byte binding: verify BEFORE any byte is read (R11.1-1) ---
     if not isinstance(source_manifest, Mapping):
         raise ValueError("source_manifest must be a mapping")
     root_s = source_manifest.get("evidence_root")
@@ -192,16 +193,43 @@ def load_hmaglofdb_rows(
         raise ValueError(
             f"intake path {rel!r} is not a declared source_files "
             "member — the manifest must name every loaded file")
-    got = hashlib.sha256(path.read_bytes()).hexdigest()
-    if got != declared[rel]:
-        raise ValueError(
-            f"intake bytes for {rel!r} do not match the declared "
-            "sha256 — the manifest binds exact bytes")
-    # whole-manifest byte policy, not a second one
+    # The caller's own path may alias the declared file through a
+    # symlink — resolve() would hide it.  Walk the LEXICAL path
+    # components: no symlink is admissible anywhere in the intake
+    # path (R11.1-1), not only beneath the declared evidence root.
+    p_abs = Path(path).absolute()
+    r_abs = Path(root_s).absolute()
+    if p_abs.parts[:len(r_abs.parts)] == r_abs.parts:
+        acc = r_abs
+        for part in p_abs.parts[len(r_abs.parts):]:
+            acc = acc / part
+            try:
+                st = acc.lstat()
+            except OSError as exc:
+                raise ValueError(
+                    f"intake path component {acc} cannot be "
+                    f"stat'd: {exc}")
+            if stat.S_ISLNK(st.st_mode):
+                raise ValueError(
+                    f"intake path component {acc} is a symlink — "
+                    "load the declared evidence file directly, "
+                    "never through an alias")
+    # whole-manifest byte policy FIRST — containment, symlink policy,
+    # and declared digests are verified before the intake file's
+    # bytes are ever opened for parsing.
     evidence_problems = verify_source_evidence(source_manifest)
     if evidence_problems:
         raise ValueError("source_manifest evidence problems: " +
                          "; ".join(evidence_problems))
+    # The parser consumes ONLY these identity-pinned bytes — the
+    # same walk/pin the verifier applies; no second unverified read.
+    data = read_evidence_file(root.resolve(), rel,
+                              label="intake file")
+    got = hashlib.sha256(data).hexdigest()
+    if got != declared[rel]:
+        raise ValueError(
+            f"intake bytes for {rel!r} do not match the declared "
+            "sha256 — the manifest binds exact bytes")
     sid = source_manifest.get("source_id", "")
     version = _manifest_version(
         source_manifest.get("lineage", "")
@@ -211,6 +239,12 @@ def load_hmaglofdb_rows(
             "source_manifest lacks a bound source_id or "
             "source_version=…; lineage token — build manifests with "
             "build_source_manifest")
+    declared_units = source_manifest.get("units")
+    if not isinstance(declared_units, (list, tuple)) or \
+            any(not isinstance(u, str) for u in declared_units):
+        raise ValueError("source_manifest lacks a declared units "
+                         "list")
+    unit_set = set(declared_units)
 
     # --- column map ---
     if not isinstance(column_map, Mapping):
@@ -225,97 +259,123 @@ def load_hmaglofdb_rows(
     if unknown:
         raise ValueError(f"column_map carries unknown semantic "
                          f"keys: {sorted(unknown)}")
+    # Every mapped target must be a non-empty string and distinct —
+    # two semantic keys may never share one CSV column (R11.1-2).
+    mapped = []
+    for key, value in column_map.items():
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(
+                f"column_map[{key!r}] must be a non-empty string "
+                f"header name; got {value!r}")
+        mapped.append(value.strip())
+    if len(set(mapped)) != len(mapped):
+        raise ValueError("column_map maps two semantic keys to the "
+                         "same CSV header — each must be distinct")
+    column_map = {k: v.strip() for k, v in column_map.items()}
 
-    # --- parse ---
+    # --- parse the verified bytes (never re-open the path) ---
     try:
-        with open(path, newline="", encoding="utf-8-sig") as fh:
-            reader = csv.DictReader(fh)
-            if reader.fieldnames is None:
-                raise ValueError("empty CSV — no header row")
-            header = set(reader.fieldnames)
-            missing_cols = sorted(
-                {c for c in column_map.values()
-                 if isinstance(c, str)} - header)
-            if missing_cols:
-                raise ValueError(
-                    f"CSV lacks mapped columns: {missing_cols} — "
-                    "the column_map must name real header fields")
-            rows = []
-            seen_keys: set[str] = set()
-            for lineno, raw in enumerate(reader, start=2):
-                row_problems = []
-                key = (raw.get(column_map["source_row_key"]) or "").strip()
-                if not key:
-                    row_problems.append("empty source_row_key")
-                elif key in seen_keys:
+        text = data.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"intake file {rel!r} is not UTF-8: {exc}")
+    try:
+        import io
+        reader = csv.DictReader(io.StringIO(text, newline=""))
+        if reader.fieldnames is None:
+            raise ValueError("empty CSV — no header row")
+        if len(set(reader.fieldnames)) != len(reader.fieldnames):
+            raise ValueError(
+                "CSV header contains duplicate column names — "
+                "DictReader would silently collapse them")
+        header = set(reader.fieldnames)
+        missing_cols = sorted(
+            {c for c in column_map.values()
+             if isinstance(c, str)} - header)
+        if missing_cols:
+            raise ValueError(
+                f"CSV lacks mapped columns: {missing_cols} — "
+                "the column_map must name real header fields")
+        rows = []
+        seen_keys: set[str] = set()
+        for lineno, raw in enumerate(reader, start=2):
+            row_problems = []
+            key = (raw.get(column_map["source_row_key"]) or "").strip()
+            if not key:
+                row_problems.append("empty source_row_key")
+            elif key in seen_keys:
+                row_problems.append(
+                    f"duplicate source_row_key {key!r}")
+            seen_keys.add(key)
+            basin = (raw.get(column_map["basin"]) or "").strip()
+            if basin not in BASIN_UNIVERSE:
+                row_problems.append(
+                    f"basin {basin!r} not in the declared "
+                    "basin universe")
+            elif basin not in unit_set:
+                row_problems.append(
+                    f"basin {basin!r} is not declared in the "
+                    "source manifest's units — the manifest "
+                    "binds the loaded unit universe")
+            mech = (raw.get(column_map["mechanism"]) or "").strip()
+            if mech not in MECHANISM_IDS:
+                row_problems.append(
+                    f"mechanism {mech!r} not in the declared "
+                    "mechanism vocabulary")
+            prec = (raw.get(column_map["declared_precision"])
+                    or "").strip()
+            if prec not in _DECLARED_PRECISIONS:
+                row_problems.append(
+                    f"declared_precision {prec!r} not in "
+                    f"{sorted(_DECLARED_PRECISIONS)}")
+            start = (raw.get(column_map["interval_start"])
+                     or "").strip()
+            end = (raw.get(column_map["interval_end"])
+                   or "").strip()
+            from datetime import datetime
+            try:
+                t0 = datetime.fromisoformat(
+                    start.replace("Z", "+00:00"))
+                t1 = datetime.fromisoformat(
+                    end.replace("Z", "+00:00"))
+                if t0.tzinfo is None or t1.tzinfo is None:
                     row_problems.append(
-                        f"duplicate source_row_key {key!r}")
-                seen_keys.add(key)
-                basin = (raw.get(column_map["basin"]) or "").strip()
-                if basin not in BASIN_UNIVERSE:
+                        f"naive interval {start!r}..{end!r} — "
+                        "explicit-UTC ISO required")
+                elif t1 <= t0:
                     row_problems.append(
-                        f"basin {basin!r} not in the declared "
-                        "basin universe")
-                mech = (raw.get(column_map["mechanism"]) or "").strip()
-                if mech not in MECHANISM_IDS:
-                    row_problems.append(
-                        f"mechanism {mech!r} not in the declared "
-                        "mechanism vocabulary")
-                prec = (raw.get(column_map["declared_precision"])
-                        or "").strip()
-                if prec not in _DECLARED_PRECISIONS:
-                    row_problems.append(
-                        f"declared_precision {prec!r} not in "
-                        f"{sorted(_DECLARED_PRECISIONS)}")
-                start = (raw.get(column_map["interval_start"])
-                         or "").strip()
-                end = (raw.get(column_map["interval_end"])
-                       or "").strip()
-                from datetime import datetime
-                try:
-                    t0 = datetime.fromisoformat(
-                        start.replace("Z", "+00:00"))
-                    t1 = datetime.fromisoformat(
-                        end.replace("Z", "+00:00"))
-                    if t0.tzinfo is None or t1.tzinfo is None:
-                        row_problems.append(
-                            f"naive interval {start!r}..{end!r} — "
-                            "explicit-UTC ISO required")
-                    elif t1 <= t0:
-                        row_problems.append(
-                            "interval_end must be after "
-                            "interval_start")
-                except (TypeError, ValueError):
-                    row_problems.append(
-                        f"unparseable interval "
-                        f"{start!r}..{end!r} — explicit-UTC ISO "
-                        "required")
-                if row_problems:
-                    problems.append(
-                        f"line {lineno}: " +
-                        "; ".join(row_problems))
-                    continue
-                rows.append(SourceRow(
-                    source_id=sid,
-                    source_version=version,
-                    source_row_key=key,
-                    mechanism=mech,
-                    interval_start=start,
-                    interval_end=end,
-                    declared_precision=prec,
-                    basin=basin,
-                    cascade_group_id=(
-                        (raw.get(column_map["cascade_group_id"])
-                         or "").strip() or None)
-                    if "cascade_group_id" in column_map else None,
-                    parent_source_row_key=(
-                        (raw.get(column_map["parent_source_row_key"])
-                         or "").strip() or None)
-                    if "parent_source_row_key" in column_map else None,
-                    observed_on=(
-                        (raw.get(column_map["observed_on"])
-                         or "").strip() or None)
-                    if "observed_on" in column_map else None))
+                        "interval_end must be after "
+                        "interval_start")
+            except (TypeError, ValueError):
+                row_problems.append(
+                    f"unparseable interval "
+                    f"{start!r}..{end!r} — explicit-UTC ISO "
+                    "required")
+            if row_problems:
+                problems.append(
+                    f"line {lineno}: " +
+                    "; ".join(row_problems))
+                continue
+            rows.append(SourceRow(
+                source_id=sid,
+                source_version=version,
+                source_row_key=key,
+                mechanism=mech,
+                interval_start=start,
+                interval_end=end,
+                declared_precision=prec,
+                basin=basin,
+                cascade_group_id=(
+                    (raw.get(column_map["cascade_group_id"])
+                     or "").strip() or None)
+                if "cascade_group_id" in column_map else None,
+                parent_source_row_key=(
+                    (raw.get(column_map["parent_source_row_key"])
+                     or "").strip() or None)
+                if "parent_source_row_key" in column_map else None,
+                observed_on=(
+                    (raw.get(column_map["observed_on"])
+                     or "").strip() or None)
+                if "observed_on" in column_map else None))
     except OSError as exc:
         raise ValueError(f"cannot read intake file {path}: {exc}")
     if problems:
