@@ -1063,3 +1063,30 @@ GLM3 verifier/rebinder results at this head:
 
 Owner-gated (unchanged): P5 authorization, opportunity-frame
 Option A/B, real bytes, independent intake review, governance.
+
+## Round-11.5 release closure (2026-09-18)
+
+The R11.5 audit found the manifest's `manifest_commit` stale at
+`bb22ca2` while `content_head` was `5d34210` — the convention
+requires both fields to name the final content commit. Closed
+serially (SWE2 content commit `285e933`; GLM3 manifest-only
+rebind `8c788a8`):
+
+- **#1 manifest identity** — `manifest_commit == content_head`
+  now names the final content commit; enforced by a CI
+  identity-guard step and `tests/test_r11_5_release_closure.py`
+  (3 tests: identity, lane governance, collection census).
+- **#2 canonical test root** — `tests/` everywhere; zero
+  `backend/tests/` references in governed files.
+- **Residual (queued)** — `verify-manifest` (stdlib verifier)
+  does not itself check the invariant; enforcement is pytest +
+  CI. Queued hardening, not a blocker.
+- **Rebind results** — manifest 95 files; collection 3064;
+  fresh suite **3058 passed / 6 skipped / 0 failed /
+  57 warnings** (5 rasterio + 1 documented lane skip);
+  claim-scan clean; protected-path diff empty.
+- **Head-claims commit** — README, this register, and the P0
+  ledger now report the same counts and posture.
+
+Owner-gated (unchanged): P5 authorization, opportunity-frame
+Option A/B, real bytes, independent intake review, governance.

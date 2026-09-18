@@ -345,3 +345,22 @@ descriptive artifact).  Skips: 5 disclosed rasterio quarantine +
 1 lane skip.  Four new test files added to the manifest and to
 CI triggers + contract step; no production code changed.
 Owner-gated items unchanged.
+
+## Round-11.5 release closure (2026-09-18) — provenance invariant
+
+Content head: `285e933` (SWE2 release-closure) + this
+head-claims commit (GLM-5.3 lane).  Basis: **3064 collected,
+3058 passed / 6 skipped / 0 failed / 57 warnings** — fresh
+canonical `tests/` run at the rebound state (1077 s); the +3
+collection delta is the closure regression file
+`tests/test_r11_5_release_closure.py` (manifest-commit identity,
+lane governance, collection census — 3 passed).  Skips: 5
+disclosed rasterio quarantine + 1 documented lane skip.
+The release-provenance defect (`manifest_commit` stale at
+`bb22ca2`) is closed: `manifest_commit == content_head` names
+the final content commit, enforced by a CI identity-guard step
+and the regression file.  Manifest rebound to 95 files
+(`8c788a8`).  No production code changed; no posture change.
+Residual: `verify-manifest` itself does not check the
+invariant — enforcement is pytest + CI (queued hardening).
+Owner-gated items unchanged.

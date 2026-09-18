@@ -105,15 +105,16 @@ Test-suite honesty: the full suite under the pinned `.venv` recorded
 `P0_BASELINE_LEDGER.md` (historical snapshot). Later dated snapshots:
 1306 at the round-2 reconciliation head, 1641 after the first swarm
 integration, 1828 at the post-audit residual-repair head. Last
-fully-verified baseline (round-11.4.1 residual documentation
-repair content commit; the manifest's `content_head` names the
-commit whose tree the manifest hashes — the manifest commit
-itself follows the content commit): **2962 passed / 5 skipped /
-0 failed / 57 warnings** across **90** manifest-governed files —
-bound to the round-11.4.1 head, a documentation-only pass that
-closes the GLM3 residual findings: GitHub licence provenance,
-TIGGE `CANDIDATE`/`CANDIDATE_ONLY` normalization, `EVENT_PACKAGE_SPEC`
-`_Z`/join-key correction, and the NCEI GEFS official end date.
+fully-verified baseline (round-11.5 release-closure content
+commit; the manifest's `content_head` names the commit whose
+tree the manifest hashes — the manifest commit itself follows
+the content commit): **3058 passed / 6 skipped / 0 failed /
+57 warnings** across **95** manifest-governed files (3,064
+collected) — bound to the round-11.5 closure head, which added
+four real-path test lanes and closed the release-provenance
+defect: `manifest_commit == content_head` now names the final
+content commit, enforced by a CI identity guard and a focused
+regression file.
 Round-11 added the audit-pinned GLOF intake and descriptive-runner
 surface (`nepal/research_v0/source_intake.py`,
 `nepal/science_v0/glof_poc.py`,
