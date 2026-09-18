@@ -105,17 +105,16 @@ Test-suite honesty: the full suite under the pinned `.venv` recorded
 `P0_BASELINE_LEDGER.md` (historical snapshot). Later dated snapshots:
 1306 at the round-2 reconciliation head, 1641 after the first swarm
 integration, 1828 at the post-audit residual-repair head. Last
-fully-verified baseline (round-11.2 provenance micro-round
+fully-verified baseline (round-11.3 provenance micro-round
 content commit; the manifest's `content_head` names the commit
 whose tree the manifest hashes — the manifest commit itself
-follows the content commit): **2939 passed / 5 skipped / 0 failed
-/ 57 warnings** across **89** manifest-governed files — bound to
-the round-11.2 head, which closes the audit's residual boundary
-findings: exact-shape byte-verified manifests in the package,
-real sidecar evidence at the runner gate, pre-fit source gating,
-lexical-alias rejection, opportunity cross-binding, bounded
-engine outputs, and canonical opportunity ordering per the
-R11.2 audit.
+follows the content commit): **2962 passed / 5 skipped / 0 failed
+/ 57 warnings** across **90** manifest-governed files — bound to
+the round-11.3 head, which closes the audit's residual boundary
+findings: runner-side manifest byte re-verification, bounded
+digest recomputation, exact typed records at package
+construction, and >=2 independent-reviewer sidecar binding per
+the R11.3 audit.
 Round-11 added the audit-pinned GLOF intake and descriptive-runner
 surface (`nepal/research_v0/source_intake.py`,
 `nepal/science_v0/glof_poc.py`,

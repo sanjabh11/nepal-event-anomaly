@@ -293,3 +293,16 @@ acceptance paths; all seven codeable findings are closed
 audit deferred them).  Provenance convention maintained: content
 commit(s), then one manifest-only rebind; `content_head` and
 `manifest_commit` name the final content commit.
+
+## Round-11.3 (2026-09-18) — provenance micro-round
+
+Content head: `9b7169f` (plus the README/ledger head-update commit).
+Basis: 2967 collected, **2962 passed / 5 skipped / 0 failed /
+57 warnings**; focused lanes 227 + 699 green; manifest verified
+(90 files — `tests/test_r11_3_provenance.py` added).  The R11.3
+audit live-probed the R11.2 boundary and found four residual
+acceptance paths plus the source-card discrepancies; all codeable
+findings are closed (runner-side manifest re-verification, bounded
+digests, exact typed records, >=2-reviewer sidecar binding,
+command consistency, SRC-01 reconciliation).  Owner-gated items
+remain unchanged.
