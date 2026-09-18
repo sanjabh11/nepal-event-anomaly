@@ -306,3 +306,13 @@ findings are closed (runner-side manifest re-verification, bounded
 digests, exact typed records, >=2-reviewer sidecar binding,
 command consistency, SRC-01 reconciliation).  Owner-gated items
 remain unchanged.
+
+## Round-11.4 (2026-09-18) — documentation/source-matrix repair
+
+Content head: `9bd856b`.  Basis: 2967 collected, **2962 passed /
+5 skipped / 0 failed / 57 warnings** (fresh canonical rerun at
+this head); focused lane 190 green.  Serial doc-only
+reconciliation of external claims — ds084001 span, NODD
+classification, v1.0 timing statistics, GF_ID/Repeat/_Z/day
+semantics, four licence surfaces, Zenodo payload identity,
+target-date scope.  No code or posture changes.

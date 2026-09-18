@@ -105,7 +105,7 @@ Test-suite honesty: the full suite under the pinned `.venv` recorded
 `P0_BASELINE_LEDGER.md` (historical snapshot). Later dated snapshots:
 1306 at the round-2 reconciliation head, 1641 after the first swarm
 integration, 1828 at the post-audit residual-repair head. Last
-fully-verified baseline (round-11.3 provenance micro-round
+fully-verified baseline (round-11.4 documentation/source-matrix repair
 content commit; the manifest's `content_head` names the commit
 whose tree the manifest hashes — the manifest commit itself
 follows the content commit): **2962 passed / 5 skipped / 0 failed
