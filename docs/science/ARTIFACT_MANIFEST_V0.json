@@ -1,6 +1,6 @@
 {
  "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
- "content_head": "c8f5b66649d13edc1162a108337e0f4ea6643fbf",
+ "content_head": "58123006888c4a9c7553593c79a824a5af53ca5b",
  "files": [
   {
    "relpath": ".github/workflows/research-v0.yml",
@@ -114,8 +114,8 @@
   },
   {
    "relpath": "docs/science/SOURCE_FEASIBILITY_RECORDS_V0.md",
-   "sha256": "188880bdcfd81eefec89f3a22f5bff072a669f1135ca1d0aa737fe2c7bd10a35",
-   "size_bytes": 18574
+   "sha256": "5b7ba987f9bc541f30df94b95f89f7c025d1fa815cd14986086f926d86ceda83",
+   "size_bytes": 18600
   },
   {
    "relpath": "docs/science/STATUS_SCOPE_RECONCILIATION_NOTE_20260915.md",
@@ -149,8 +149,8 @@
   },
   {
    "relpath": "docs/science/run_b/GLOF_POC_CONTRACT_V0.md",
-   "sha256": "e0a23b52b3047df49ca4d529b7f3bcfbbb6ddb35fd0825045cfdb9903d8517a8",
-   "size_bytes": 7976
+   "sha256": "8d04de83d4861cc83a8935802fc5e8fbe929549bc5100298f4b43d5c5af7b457",
+   "size_bytes": 7998
   },
   {
    "relpath": "docs/science/run_b/REGIME_PROTOCOL_V0.md",
@@ -688,9 +688,9 @@
    "size_bytes": 14244
   }
  ],
- "generated": "post-acquisition HMAGLOFDB status reconciliation (content c8f5b66)",
+ "generated": "post-acquisition HMAGLOFDB status reconciliation (content 5812300)",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "c8f5b66649d13edc1162a108337e0f4ea6643fbf",
+ "manifest_commit": "58123006888c4a9c7553593c79a824a5af53ca5b",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
