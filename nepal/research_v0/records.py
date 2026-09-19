@@ -1273,3 +1273,12 @@ def deserialize_record(payload: Mapping[str, Any]) -> Any:
     except TypeError as exc:
         raise ValueError(f"{tag}: deserialization failed: {exc}") \
             from exc
+
+
+# Phase-4 R1 amendment (ratified 2026-09-19): the run-evidence wrapper
+# lives in run_evidence.py — a module that depends only on _hashing —
+# and is re-exported here so the pinned contract surface
+# ``nepal.research_v0.records.RunEvidenceManifestV0`` resolves.
+from .run_evidence import (  # noqa: E402,F401
+    RunEvidenceManifestV0, run_evidence_binding_problems,
+    wrapper_declaration_problems, wrapper_from_mapping)

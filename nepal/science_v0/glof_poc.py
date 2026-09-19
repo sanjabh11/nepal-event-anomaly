@@ -27,6 +27,8 @@ from typing import Any, Mapping, Sequence
 from nepal.research_v0._hashing import (
     sha256_canonical, verify_source_evidence)
 from nepal.research_v0.gates import source_evidence_problems
+from nepal.research_v0.run_evidence import (
+    run_evidence_binding_problems)
 from nepal.research_v0.records import (
     ObservationOpportunityV0, SourceRecordV0, deserialize_record)
 from nepal.experiment_v0.adapters import holdout_plan_from_assignment
@@ -43,6 +45,15 @@ _EVENT_PACKAGE_KEYS = frozenset({
     "source_record", "event_labels", "opportunities", "controls",
     "holdout_plan", "source_manifest_digest", "event_digest",
     "opportunity_digest", "control_digest", "holdout_digest"})
+
+#: Optional keys admitted on top of the required surface.  The
+#: ``run_evidence_manifest`` wrapper (RUN_EVIDENCE_MANIFEST_V0,
+#: ratified amendment 2026-09-19) binds the package's additional
+#: byte-bound roles — feature/opportunity/sidecar — while the event
+#: role is still gated through ``source_manifest_digest`` exactly as
+#: before.  Its presence is never required and never replaces the
+#: single-manifest event gate.
+_OPTIONAL_PACKAGE_KEYS = frozenset({"run_evidence_manifest"})
 
 _RECEIPT_STATUSES = frozenset({
     "RUN_ERROR", "CANDIDATE_ONLY", "UNDERPOWERED_DESCRIPTIVE_ONLY",
@@ -408,7 +419,8 @@ def run_glof_descriptive_poc(
             {k: v for k, v in receipt.items()
              if k not in ("report_digest", "problems")})
         return receipt
-    extra = set(event_package) - _EVENT_PACKAGE_KEYS
+    extra = set(event_package) - _EVENT_PACKAGE_KEYS - \
+        _OPTIONAL_PACKAGE_KEYS
     missing = _EVENT_PACKAGE_KEYS - set(event_package)
     if extra or missing:
         if extra:
@@ -551,6 +563,24 @@ def run_glof_descriptive_poc(
             {k: v for k, v in receipt.items()
              if k not in ("report_digest", "problems")})
         return receipt
+
+    # --- optional multi-source wrapper (ratified amendment): when a
+    # package carries run_evidence_manifest, every declared role is
+    # byte-verified, source identities stay distinct, and the event
+    # role must equal the fit's declared source manifest — the single
+    # digest gate above is unchanged, never bypassed ---
+    wrapper = event_package.get("run_evidence_manifest")
+    if wrapper is not None:
+        wrapper_problems = run_evidence_binding_problems(
+            wrapper, cfg_manifest)
+        if wrapper_problems:
+            problems.extend(f"run_evidence_manifest: {p}"
+                            for p in wrapper_problems)
+            receipt["status"] = "RUN_ERROR"
+            receipt["report_digest"] = _digest(
+                {k: v for k, v in receipt.items()
+                 if k not in ("report_digest", "problems")})
+            return receipt
 
     # --- source-record posture + sidecar gate (BEFORE any fit —
     # R11.2-2/3): a source that is not fully verified returns

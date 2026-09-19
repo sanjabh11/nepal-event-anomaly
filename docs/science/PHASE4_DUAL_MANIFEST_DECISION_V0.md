@@ -1,9 +1,15 @@
 # Phase 4 — Dual-manifest contract decision (v0)
 
-**Status:** `DECISION_PROPOSED` — the defect is proven in code; the
-resolution requires a ratified amendment to an exact-key contract in the
-hardened descriptive runner. **No runner code was changed by this
-lane.**
+**Status:** `RATIFIED` — owner-directed 2026-09-19 (the owner directive
+dispatching Phase-4 implementation "per the decided contract" is
+recorded as the ratification). The amendment is now implemented:
+`RunEvidenceManifestV0` is the canonical type (implemented in
+`nepal/research_v0/run_evidence.py`, re-exported from
+`nepal/research_v0/records.py`); `run_glof_descriptive_poc` admits the
+optional `run_evidence_manifest` package key and validates it via
+`run_evidence_binding_problems` — the single-manifest event gate is
+unchanged and never bypassed; the `xfail(strict=True)` pins are
+removed and all six contract tests pass green.
 **Lane:** implementation lane (CLINE-IMPL), 2026-09-19.
 **Scope:** contract analysis + `RunEvidenceManifestV0` shape. Protected
 paths (`nepal/framework_v1/**`, `pinned/**`, `data/**`,
