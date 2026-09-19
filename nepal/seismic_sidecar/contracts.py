@@ -329,6 +329,10 @@ class SeismicSidecarConfig:
     lta_seconds: float = 30.0
     min_component_count: int = 3
     require_response: bool = True
+    # STEIM admission gate — compressed encodings (10/11) are admitted
+    # only when this flag is explicitly set AND the optional decoder has
+    # been qualified in the governed environment; False fails closed.
+    allow_steim_decoding: bool = False
     min_coverage_fraction: float = 0.9
     max_gap_fraction: float = 0.1
     min_snr_db: float = 0.0
@@ -365,7 +369,7 @@ class SeismicSidecarConfig:
     def validate(self) -> list[str]:
         problems: list[str] = []
         for name in ("require_response", "require_station_holdout",
-                     "catalog_ablation"):
+                     "catalog_ablation", "allow_steim_decoding"):
             if not isinstance(getattr(self, name), bool):
                 problems.append(f"{name} must be a strict bool")
         if isinstance(self.window_seconds, bool) or \
