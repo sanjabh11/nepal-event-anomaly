@@ -1,6 +1,6 @@
 {
  "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
- "content_head": "c3fe9a2e4a31c9690aa831cc3f1a0f4a98ea4cd7",
+ "content_head": "c8f5b66649d13edc1162a108337e0f4ea6643fbf",
  "files": [
   {
    "relpath": ".github/workflows/research-v0.yml",
@@ -29,8 +29,8 @@
   },
   {
    "relpath": "docs/science/GAP_REGISTER_V0.md",
-   "sha256": "508e4e91caf03c59da21c0ba557c7d8e753b032fcf779f4f309f4bcaeea221b6",
-   "size_bytes": 117520
+   "sha256": "57dffdf9de6a661fd58d7a54fd89846f79430baba82a3f5cc662d61991b30bc8",
+   "size_bytes": 117926
   },
   {
    "relpath": "docs/science/GOVERNANCE_EXERCISE_RECORD_V0.md",
@@ -39,8 +39,8 @@
   },
   {
    "relpath": "docs/science/HAZARD_EVENT_INVENTORY_DECISION_MATRIX_V0.md",
-   "sha256": "38e72ebef8bf37b0af4d2fe25bfd7fe7433c1aca44fde57b1cbc2b4389ec3f17",
-   "size_bytes": 11724
+   "sha256": "32acf8a7f6a7edb73c5ad12885622403d3fc1446e632e193c6be1b50976640dc",
+   "size_bytes": 11418
   },
   {
    "relpath": "docs/science/INFORMATION_CUTOFF_TARGET_POLICY_V0.md",
@@ -114,8 +114,8 @@
   },
   {
    "relpath": "docs/science/SOURCE_FEASIBILITY_RECORDS_V0.md",
-   "sha256": "afaf545f257bd76a01ad7c9afbbfca82ac5f7f44f42351927545daaf46195548",
-   "size_bytes": 17561
+   "sha256": "188880bdcfd81eefec89f3a22f5bff072a669f1135ca1d0aa737fe2c7bd10a35",
+   "size_bytes": 18574
   },
   {
    "relpath": "docs/science/STATUS_SCOPE_RECONCILIATION_NOTE_20260915.md",
@@ -139,8 +139,8 @@
   },
   {
    "relpath": "docs/science/run_b/EVENT_PACKAGE_SPEC_V0.md",
-   "sha256": "74b98dca6fa07c9baa28406b007191cb28d747d272f9db8f3b3c9d8ff429621c",
-   "size_bytes": 10223
+   "sha256": "908d5db988c642a5926115be837a05ad454effd693ff49588e3f78cc3b74a31e",
+   "size_bytes": 10518
   },
   {
    "relpath": "docs/science/run_b/FMX_AUDIT_RUBRIC_V0.md",
@@ -169,8 +169,8 @@
   },
   {
    "relpath": "docs/science/run_b/SOURCE_QUALIFICATION_RECORDS_V0.md",
-   "sha256": "6abebd1583bea969ab32735a400e1e49a55b7ac0d1c34cf1ac2ca84dab627e8c",
-   "size_bytes": 33549
+   "sha256": "e107268299de48bc78b5271f5be9d575c325a4d6786e3545eca763f7833d87a6",
+   "size_bytes": 34712
   },
   {
    "relpath": "docs/science/run_c/ASSOCIATION_PROTOCOL_V0.md",
@@ -688,9 +688,9 @@
    "size_bytes": 14244
   }
  ],
- "generated": "P5-A2 final result report and stale-scope reconciliation rebind (content c3fe9a2)",
+ "generated": "post-acquisition HMAGLOFDB status reconciliation (content c8f5b66)",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "c3fe9a2e4a31c9690aa831cc3f1a0f4a98ea4cd7",
+ "manifest_commit": "c8f5b66649d13edc1162a108337e0f4ea6643fbf",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
