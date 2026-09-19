@@ -1,6 +1,6 @@
 {
  "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
- "content_head": "58123006888c4a9c7553593c79a824a5af53ca5b",
+ "content_head": "0d10e09a15df20dee26baaacedd893d1fabcde60",
  "files": [
   {
    "relpath": ".github/workflows/research-v0.yml",
@@ -39,8 +39,8 @@
   },
   {
    "relpath": "docs/science/HAZARD_EVENT_INVENTORY_DECISION_MATRIX_V0.md",
-   "sha256": "32acf8a7f6a7edb73c5ad12885622403d3fc1446e632e193c6be1b50976640dc",
-   "size_bytes": 11418
+   "sha256": "557fd307be079f699897ffae707cee2f86f43eb27549ab106573b6c8242ebdd3",
+   "size_bytes": 11403
   },
   {
    "relpath": "docs/science/INFORMATION_CUTOFF_TARGET_POLICY_V0.md",
@@ -688,9 +688,9 @@
    "size_bytes": 14244
   }
  ],
- "generated": "post-acquisition HMAGLOFDB status reconciliation (content 5812300)",
+ "generated": "post-acquisition HMAGLOFDB status reconciliation (content 0d10e09)",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "58123006888c4a9c7553593c79a824a5af53ca5b",
+ "manifest_commit": "0d10e09a15df20dee26baaacedd893d1fabcde60",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
