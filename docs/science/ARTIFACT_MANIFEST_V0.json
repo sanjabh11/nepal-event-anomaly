@@ -1,6 +1,6 @@
 {
  "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
- "content_head": "1f98a89cce2cc164571f153e43c3f178024cf271",
+ "content_head": "296293df07b414e484873d413da15fb7d472c20e",
  "files": [
   {
    "relpath": ".github/workflows/research-v0.yml",
@@ -14,8 +14,8 @@
   },
   {
    "relpath": "README.md",
-   "sha256": "b8ed8879090a26a70f4a43372961faeb03395bf212a703a8e17d8d463c36f9bd",
-   "size_bytes": 10945
+   "sha256": "84278855791b1da32a09eefd52f7667484cb5ee32cce02051e89e19cf2b89699",
+   "size_bytes": 12172
   },
   {
    "relpath": "conftest.py",
@@ -29,8 +29,8 @@
   },
   {
    "relpath": "docs/science/GAP_REGISTER_V0.md",
-   "sha256": "b9d6a369b829eeea05a209cff2f3e63bd5d2facf99b2f37b43bc4f15ea8568a0",
-   "size_bytes": 116268
+   "sha256": "e92abfcb9eb736c90654a4bfce8b47d144b6f49a00c433e34e4d6cb69e7dcce0",
+   "size_bytes": 116548
   },
   {
    "relpath": "docs/science/GOVERNANCE_EXERCISE_RECORD_V0.md",
@@ -59,8 +59,8 @@
   },
   {
    "relpath": "docs/science/P0_BASELINE_LEDGER.md",
-   "sha256": "20536a7dd86e0053440a4cb9a1ba078dab266650ae4bd4b4f83f305df9153cea",
-   "size_bytes": 24479
+   "sha256": "fcd4967555d92c3c1d9b15e32e41e4a6ea24033a88359fc4624b1232900f0506",
+   "size_bytes": 25786
   },
   {
    "relpath": "docs/science/P3_ATTESTATION_RECORD_V0.md",
@@ -74,13 +74,13 @@
   },
   {
    "relpath": "docs/science/P3_BASIN_ASSIGNMENT_RULE_V0.md",
-   "sha256": "70016aff7cebbe532a2413a8cef08d9ed0d7940dd92d9b2c4386aa1efa5715c7",
-   "size_bytes": 3813
+   "sha256": "f92058354aa9ac5247c074fff3f9e190ece15b14ab661c82cff00bf6e5bc2c80",
+   "size_bytes": 4247
   },
   {
    "relpath": "docs/science/P3_HMAGLOFDB_INTAKE_REPORT_V0.md",
-   "sha256": "3152b8344ad2b21c74149a243f78002f4b8df8c493c6d809a3ffb448d3309179",
-   "size_bytes": 3731
+   "sha256": "8ff4b09d4d854ad66ce864a76cbc76567d9698f7a4ecc2320651fa069481b03e",
+   "size_bytes": 4133
   },
   {
    "relpath": "docs/science/P5_ACQUISITION_AUTHORIZATION_RECORD_V0.md",
@@ -94,8 +94,8 @@
   },
   {
    "relpath": "docs/science/P5_SCOPE_RECONCILIATION_V0.md",
-   "sha256": "830373112737e7f176ef6662df5280a28d803bbf949846586584483498444332",
-   "size_bytes": 6510
+   "sha256": "9fee83d2e6600c431e4ea82c874cdb8926b5a77785014a5517a7f66e5a1a5ce7",
+   "size_bytes": 6840
   },
   {
    "relpath": "docs/science/PHASE4_DUAL_MANIFEST_DECISION_V0.md",
@@ -676,11 +676,16 @@
    "relpath": "tests/test_seismic_sidecar_runner.py",
    "sha256": "b77339b02b6dd097a2e1cbb6c476559c5b3ee14a036c6ea0b04ead3ea04b742c",
    "size_bytes": 26884
+  },
+  {
+   "relpath": "tests/test_temporal_holdout.py",
+   "sha256": "06c9f25b27b8434e46d8f21e96f823c1e0769f9d97085a017791d3956f4578cc",
+   "size_bytes": 14244
   }
  ],
- "generated": "2026-09-19 R11.9 semantic-binding closure rebind (content 0113677 + uncommitted SWE2 delta; heads rebind on final content commit)",
+ "generated": "P5-A2 documentation and temporal-holdout reconciliation rebind (content 296293d)",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "1f98a89cce2cc164571f153e43c3f178024cf271",
+ "manifest_commit": "296293df07b414e484873d413da15fb7d472c20e",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -690,9 +695,9 @@
  "test_results": {
   "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
   "claim_scan": "clean on all governed files",
-  "collection_guard": "repo-wide collection == tests/ (3391 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
+  "collection_guard": "repo-wide collection == tests/ (3393 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
   "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
-  "full_suite_venv": "3349 passed, 6 skipped, 0 failed, 57 warnings \u2014 post-R11.9 canonical suite (3355 collected)",
+  "full_suite_venv": "3387 passed, 6 skipped, 0 failed, 57 warnings \u2014 post-P5-A2 temporal amendment canonical suite (3393 collected)",
   "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
   "p5_io_contract": "34 passed",
   "promotion_matrix": "699 passed (r9 179 + r10 520)",
@@ -712,6 +717,7 @@
   "seismic_focused_lane": "210 passed combined (143 component + 47 intake + 14 shared regression + 4 addendum)",
   "seismic_shared_regression": "14 passed (vocabulary isolation, record lane, engine lane, producer floor, adapter rejection)",
   "seismic_sidecar": "143 passed component (contract 53 + features 31 + observability 25 + runner 34, incl. one real engine artifact under SEISMIC_WAVEFORM_RETROSPECTIVE)",
-  "seismic_sidecar_intake": "49 passed (io 26 incl. STEIM flag-gate probes + provenance 10 + events 13 \u2014 byte-parsed intake, generation provenance, event package)"
+  "seismic_sidecar_intake": "49 passed (io 26 incl. STEIM flag-gate probes + provenance 10 + events 13 \u2014 byte-parsed intake, generation provenance, event package)",
+  "p5_a2_temporal_holdout": "110 passed, 1 skipped \u2014 temporal mapping, waiver, and documentation regression lane"
  }
 }
