@@ -137,8 +137,8 @@ qualified for forecast use:
 
 | Source | Version/DOI | License | Coverage | Time precision | Spatial semantics | Non-event frame | Posture |
 |---|---|---|---|---|---|---|---|
-| ICIMOD HMAGLOFDB | v1.3.0 (RDS DOI 10.26066/RDS.1973283; zenodo.18257243; paper essd-15-3941) | RESOLVED — CC BY 4.0 governs (RDS declaration; Zenodo CC0 tag superseded, conservatively read as CC BY 4.0). Prior status 2026-09-16: UNRESOLVED — RDS CC BY 4.0 vs Zenodo CC0 | HMA 766 events 1533–2025; Nepal ~7.6% (~53) in v1.0 | published v1.0: day 39% / month 47% / year-uncertain 26% (±3d) — v1.3 distribution PAYLOAD-GATED; `Sat_evidence` brackets | `Lat/Lon_lake` (within-lake, not breach) + `Lat/Lon_impact` (Observation/Deposit tag) | PAYLOAD-GATED — lake joins via `GL_ID`/`LakeDB_ID`/`G_ID` columns (GLM3-corrected — not `GF_ID`; coverage unverified until bytes; ICIMOD 2015 Koshi/Gandaki/Karnali; NSIDC HMA_GLI; Wang 2020 ESSD; zenodo.17948783) | CANDIDATE_ONLY (strongest candidate) |
-| Recurrence note | — | — | `_Z` suffix on GF_ID (paper-reported; v1.3 semantics PAYLOAD-GATED); 23% of events from 3 ephemeral ice-dammed lakes | — | — | Group by base GF_ID per paper; exact semantics PAYLOAD-GATED | — |
+| ICIMOD HMAGLOFDB | v1.3.0 (RDS DOI 10.26066/RDS.1973283; zenodo.18257243; paper essd-15-3941) | RESOLVED — conservative governing term CC BY 4.0; source-level P5-A2 evidence `EVIDENCE_VERIFIED`/`INDEPENDENTLY_VERIFIED` | Bound payload: 768 rows; Nepal 58; loadable Nepal 30; published v1.0 timing remains 39% day / 47% month / 26% year-uncertain; v1.3 census day 326 / month 64 / year 230 / unresolved 148 | Integer `GF_ID`; `_Z` absent; `Repeat` governs recurrence; `GL_ID`/`LakeDB_ID`/`G_ID` joins resolved | `Lat/Lon_lake` (within-lake, not breach) + `Lat/Lon_impact` (Observation/Deposit tag) | P5-A2 PDGL-linked frame: 47 lakes / 1,175 `UNKNOWN` opportunities; all controls `CENSORED_OR_AMBIGUOUS` | `P5_DESCRIPTIVE_CANDIDATE_ONLY` — temporal regime is `UNSUPERVISED_STRUCTURE_NOT_STABLE`; labels remain `UNADJUDICATED` |
+| Recurrence note | — | — | Bound v1.3 payload has integer GF_ID and no `_Z`; 23% paper recurrence context retained | — | — | Group by integer GF_ID + Repeat + identical reported lake coordinates; never `_Z` | — |
 
 ## Ice/rock avalanche / glacier failure
 
@@ -196,10 +196,10 @@ qualified for forecast use:
    Nepal 30; integer GF_ID; `_Z` absent; GL_ID/LakeDB_ID/G_ID coverage
    resolved). Remaining gates are label adjudication, non-censored
    opportunity controls, and the negative temporal-regime result.
-   `opportunity_frame` PENDING-OWNER-POLICY (external lake-inventory
-   linkage vs source-native frame — owner decision). License question
-   RESOLVED — CC BY 4.0 governs (RDS declaration; Zenodo CC0 tag
-   superseded, conservatively read as CC BY 4.0).
+   the P5-A2 external PDGL-linked frame is bound, but its opportunities
+   remain UNKNOWN and controls remain CENSORED_OR_AMBIGUOUS. License
+   question RESOLVED — CC BY 4.0 governs (RDS declaration; Zenodo CC0
+   tag superseded, conservatively read as CC BY 4.0).
 4. essd-2026-481 peer-review status; canonical Zenodo DOI (.907 vs .908); license.
 5. zenodo.7970874 and NGDC 166966 license fields.
 6. ESSD-2026-107 LDOF Nepal subset + license; Borealis Nepal engineered count.

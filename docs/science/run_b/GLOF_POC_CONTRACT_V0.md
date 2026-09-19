@@ -6,7 +6,7 @@ real-data gates blocked on P5 authorization.
 `NO_QUALIFYING_PILOT_SOURCE`; `WARNING_PATH_AUTHORIZED: NO`.
 
 This document freezes the thin, byte-bound descriptive path for one
-GLOF event source (HMAGLOFDB v1.3.0, pending P5). It implements the
+GLOF event source (HMAGLOFDB v1.3.0, authenticated P5-A2 intake bound). It implements the
 Round-11 audit's frozen interface contract — **no new validators,
 no new schema, no association, no forecast, no warnings.**
 
