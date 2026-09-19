@@ -1165,3 +1165,53 @@ design.
 Posture after this round: `DESIGN_DRAFT_COMPLETE`,
 `NO_QUALIFYING_PILOT_SOURCE` (intake exists; review does not),
 `WARNING_PATH_AUTHORIZED: NO`.
+
+
+## R11.9 semantic-binding closure — 2026-09-19 (SWE2)
+
+Post-acquisition audit (20 findings) closed the remaining structural
+proof gaps; the posture gate's `CANDIDATE_ONLY` hold is intact and
+owner-side gates remain open by design.
+
+| Finding | Disposition | Evidence |
+|---|---|---|
+| R11.9-01 verifier/rebind | CLOSED | GLM3 lane landed `0113677` + `49d46e8`; suite 3324/6/1 then module-move fix verified by focused reruns |
+| R11.9-02/13 two-reviewer intake | CLOSED — reviews adjudicated | `reviewer_1`=sanjayb (owner, agent evidence adopted), `reviewer_2`=RAVI (independent, in-thread signature), `adjudicator`=sanjayb (owner, dual role disclosed); `evidence_sidecar_v0.json` binds source/version/license/coverage/timing/reviewers/decision; source promoted `EVIDENCE_VERIFIED` + `INDEPENDENTLY_VERIFIED` |
+| R11.9-03/10 real regime + holdout | BLOCKED — structural | reviews closed + source `EVIDENCE_VERIFIED`; engine invoked; honest `RUN_ERROR`: >=3 fit groups vs 2 after LORO holdout — governed run needs >=4 frame groups (4th-basin acquisition or owner amendment); gate must NOT be weakened |
+| R11.9-04 FMX role binding | CLOSED | `run_real_fmx` now requires the verified feature-role manifest; frame bytes re-checked before parse; report binds `feature_role_digest`, `frame_sha256`, `row_universe_digest`, `semantic_matrix_digest` |
+| R11.9-05 asserted preprocessing | CLOSED | `PREPROCESSING_PROVENANCE_V0` record persisted (`features/preprocessing_provenance_v0.json`); `fitted_row_count`=4600 train rows + `train_row_digest` recomputed from live bytes — mismatches emit `FMX_BLOCKED_PROVENANCE` |
+| R11.9-06 hard-coded cutoff | CLOSED | `CUTOFF_RECORD_V0` persisted (`features/cutoff_record_v0.json`) bound to `retrieval_record_era5_multibasin.json` sha + `pull_utc_end`; availability margin proven; failures emit `FMX_BLOCKED_CUTOFF` |
+| R11.9-07 real-evidence FMX test | CLOSED | `tests/test_r11_9_bindings.py` — 22 tests: 13 synthetic tamper probes + 9 real-evidence gates (skipif when root absent) |
+| R11.9-08 semantic role binding | CLOSED | `semantic_binding_problems` in `run_evidence.py` — package/event-role digest, frame membership + allowlist, FMX role/frame digests, sidecar control-doc coverage all enforced |
+| R11.9-09 integrity-only replay | CLOSED | `replay_p5.py` now rebuilds the FMX report, ledger fields, package digests, semantic bindings, and receipt `report_digest`; `REPLAY_OK` requires digest equality, `replay_scope: full_recomputation` |
+| R11.9-11 censored controls | BY DESIGN | unchanged — no manufacturable negatives; association stage-gated |
+| R11.9-12 scope scan | CLOSED | remaining five-basin strings are historical authorization/template records superseded by `P5_SCOPE_RECONCILIATION_V0.md`; operative code/manifests carry only the three-basin universe |
+| R11.9-14/16/17 seismic bytes/storage/execution | OPEN — owner/physics | storage ~11 GiB < 10 GiB cap + 8 GiB reserve; acquisition still gated |
+| R11.9-15 STEIM admission | PARTIAL→GATED | `allow_steim_decoding` flag now WIRED in `io.py` (False fails closed with real decoder reason; True adopts qualified obspy traces) — governed-env qualification still required before flag use |
+| R11.9-18 release metadata | CLOSED | this block + manifest rebind + README/ledger updates |
+| R11.9-19 unbound control docs | CLOSED | sidecar role now binds review packet, holdout gate report, anchor record, coverage ledger, era5_multibasin retrieval record, FMX report, cutoff + preprocessing records (16→23 files); run products stay self-sidecarred to avoid a self-referential manifest |
+| R11.9-20 deferred surfaces | DEFERRED | association/forecast/warning/operations unchanged |
+
+Probes fixed during implementation: annotation-field ledger compare,
+eager-fixture evaluation, circular-import ordering in replay.
+Posture: `DESIGN_DRAFT_COMPLETE`; source `EVIDENCE_VERIFIED` (reviews adjudicated 2026-09-19); regime `RUN_ERROR` — structural (>=4 frame groups required); `WARNING_PATH_AUTHORIZED: NO`.
+
+## R11.9 closure round — 2026-09-19 (second Codex audit)
+
+| Finding | Disposition |
+|---|---|
+| R11.9-21 | **RESOLVED** — cutoff record rebound to canonical `retrieval_record_era5_hma_operative.json`; `cutoff_record_problems` now requires `canonical:true`, operative anchor-set equality, and rejects non-HMA file lists |
+| R11.9-22 | **RESOLVED** — canonical record carries evidence-derived `pull_utc_start/end` (CDS start → EE completion 07:48:22Z; never mtime) + per-channel completions; validator rejects missing/stale/pre-completion times |
+| R11.9-23 | **RESOLVED** — full chain regenerated: retrieval→cutoff→preprocessing→FMX→manifests→package→receipt→replay, all digests recomputed |
+| R11.9-24/25 | **ESCALATED** — regime honest `RUN_ERROR` (2 fit groups < MIN_GEO_GROUPS=3); `scope_amendment_fourth_group_v0.json` prepared (koshi L2 sub-basin split, ~26 requests) — owner signature required; no invented coords, gate untouched |
+| R11.9-26 | **RESOLVED** — holdout report split: `axis_preflight=PASS` / `engine_admissibility=BLOCKED` |
+| R11.9-27 | **RESOLVED** — carrier group domains derived from frame bytes at audit time, not hardcoded |
+| R11.9-28 | **RESOLVED** — sidecar + scope doc distinguish source-level verification from label adjudication (labels stay UNADJUDICATED) |
+| R11.9-29 | **RESOLVED (disclosed)** — dual role recorded in adjudication + sidecar; conservative posture retained; stricter reading needs a third non-owner review |
+| R11.9-30 | **RESOLVED** — replay report carries `regime_replay_state=regime_execution_blocked` |
+| R11.9-31/32 | **RESOLVED** — this addendum; one content commit + manifest rebind |
+| R11.9-33/34 | **PARTIAL** — obspy qualified; acquisition storage-gated (separate track) |
+| R11.9-35/36 | **BY DESIGN** — censored controls, deferred surfaces |
+
+EE pull-geometry deviation (grid-snapped boxes vs declared ±0.1°
+anchor boxes) is now disclosed in the canonical retrieval record.

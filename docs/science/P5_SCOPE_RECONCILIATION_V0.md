@@ -53,3 +53,42 @@ the regime fit cannot and does not claim bagmati coverage.
 All manifests, the runner package, holdout digests, and this record
 use the same three-basin operative set. Any proposal to widen scope
 is a formal amendment, never a silent drift.
+
+## 5. Addendum 2026-09-19 (post-review) — review semantics + fourth-group gate
+
+**Source review vs label adjudication (R11.9-28).** Two independent
+byte-bound intake reviews (owner + RAVI) plus owner adjudication are
+bound in `retrieval/source_evidence_sidecar_v0.json` →
+`evidence_review_state=INDEPENDENTLY_VERIFIED`,
+`posture=EVIDENCE_VERIFIED`. This is **source-level** verification
+only. Every `EventLabelV0` remains `adjudication_state=UNADJUDICATED`
+— label-level adjudication is a separate gate; association stays
+blocked while labels are pending.
+
+**Reviewer independence disclosure (R11.9-29).** Reviewer_1 is the
+owner and also the adjudicator — dual role disclosed in
+`adjudication_record_v0.json`. Independence is interpreted as
+independent *assessment* (two distinct reviewers, separate bound
+reports), not independence from the project owner. If a stricter
+reading is required, a third non-owner review must be obtained before
+claiming independent qualification.
+
+**Fourth-group gate (R11.9-24/25).** `MIN_GEO_GROUPS=3` requires ≥3
+fit groups; the frozen 3-basin universe yields only 2 under any
+honest heldout assignment → the regime returns `RUN_ERROR`. The gate
+is NOT weakened. A prepared scope amendment
+(`retrieval/scope_amendment_fourth_group_v0.json`) proposes an L2
+sub-basin split within koshi (Tamor/Arun vs Dudh Koshi) using the
+same approved inventory + boundary sources (~26 requests, inside the
+P5 cap). **Owner signature required before any new bytes.**
+
+**Holdout gate report semantics (R11.9-26).** The gate report now
+distinguishes `axis_preflight=PASS` (disjoint nonempty groups on the
+feature universe) from `engine_admissibility=BLOCKED` (2 fit groups <
+MIN_GEO_GROUPS=3). A PASS on axis checks was never an engine run.
+
+**EE pull geometry disclosure.** The snow leg's EE request boxes are
+grid-snapped to the ERA5_LAND/HOURLY 0.1° pixel grid and are not
+exactly the declared ±0.1° anchor boxes (centre offsets ≤0.043°) —
+recorded in the canonical retrieval record's
+`pull_geometry_disclosure`. Documented deviation, not hidden.

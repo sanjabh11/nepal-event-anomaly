@@ -181,5 +181,38 @@ The merged tree collects **3273** tests. The fresh canonical suite is
 **3267 passed / 6 skipped / 0 failed / 57 warnings**. The seismic/addendum
 lane is **208 passed**, and the shared GLOF/regime regression lane is
 **904 passed / 1 warning**. Five rasterio quarantines and one documented
-lane skip remain disclosed. No seismic or HMAGLOFDB payload bytes were
-acquired, and P5, warning, production, and promotion authority remain false.
+lane skip remain disclosed. No seismic payload bytes were acquired, and
+warning, production, and promotion authority remain false.
+
+### Post-acquisition status (2026-09-19, R11.9)
+
+P5 owner-authorized acquisition landed: HMAGLOFDB v1.3.0 events, ICIMOD
+PDGL 2015 opportunity frame, RDS7952 basin boundaries, and dual-channel
+ERA5-Land (CDS + GEE) over the three operative basins — all byte-bound
+under `retrieval/role_manifests_v0.json` (event / opportunity / feature /
+sidecar, distinct source IDs). The real descriptive path executes through
+the frozen runner: honest `CANDIDATE_ONLY` demotion — the source is
+`UNREVIEWED` pending two independent reviewer records + adjudication, so
+the regime engine is never invoked.
+
+The FMX audit now runs only through the verified feature-role manifest
+(`nepal/real_fmx.py`): frame bytes are re-checked before parsing, the
+report binds the role digest, frame digest, row-universe digest, and
+semantic-matrix digest; cutoff is a persisted `CUTOFF_RECORD_V0` bound
+to the retrieval record's completion time; preprocessing provenance is a
+persisted `PREPROCESSING_PROVENANCE_V0` record recomputed from live bytes
+(4,600 train rows proven, not asserted). Replay is full recomputation —
+`scripts/replay_p5.py` rebuilds the FMX report, package digests, ledger
+fields, semantic role bindings, and receipt digest; `REPLAY_OK` requires
+reproduction, not just sidecar integrity. The seismic STEIM admission
+gate (`allow_steim_decoding`) is a wired strict-bool flag — closed by
+default pending governed-env decoder qualification.
+
+Remaining gates are owner-side or physical, not code: two-reviewer intake
++ adjudication, post-review regime execution, seismic storage
+(~11 GiB free vs 10 GiB cap + 8 GiB reserve) and waveform acquisition.
+`DESIGN_DRAFT_COMPLETE`; seismic remains retrospective-only and
+non-associable; seismic is **not** a Nepal predictor.
+
+The merged tree now collects **3355** tests; the fresh canonical suite
+is **3349 passed / 6 skipped / 0 failed / 57 warnings**.

@@ -411,3 +411,42 @@ tests pass **208/208**; the R11.8 validation/shared lanes pass **161** and
 The merged tree collects **3273** tests. The fresh canonical suite records
 **3267 passed / 6 skipped / 0 failed / 57 warnings**. No bytes, P5
 authorization, protected paths, or authority flags changed.
+
+
+## R11.9 semantic-binding closure (2026-09-19)
+
+P5 owner-authorized acquisition landed earlier this round (HMAGLOFDB
+v1.3.0, PDGL 2015, RDS7952, dual-channel ERA5-Land; 131 ledger payloads).
+This content change closes the semantic-binding findings: the real FMX
+audit now enters only through the byte-verified feature-role manifest
+(`nepal/real_fmx.py`), the report binds role/frame/row-universe/semantic
+digests, the cutoff is a persisted `CUTOFF_RECORD_V0` bound to retrieval
+completion, and preprocessing provenance is a persisted
+`PREPROCESSING_PROVENANCE_V0` record whose 4,600-row train partition is
+recomputed from live bytes rather than asserted.  `semantic_binding_problems`
+(R11.9-08) binds package/frame/report to the declared roles, and
+`scripts/replay_p5.py` is now full recomputation — REPLAY_OK requires
+rebuilt digests to match.  The sidecar role binds all consumed control
+documents (16→23 files); run products stay self-sidecarred to avoid a
+self-referential manifest.
+
+Evidence chain regenerated in order: provenance/cutoff records -> bound
+FMX report (FMX_PASS, 6,900x19, 0 rejects) -> role manifests -> runner
+package + wrapper -> descriptive receipt (`CANDIDATE_ONLY` — posture
+gate intact) -> replay report (REPLAY_OK, `full_recomputation`).
+
+The merged tree collects **3355** tests; the fresh canonical suite
+records **3349 passed / 6 skipped / 0 failed / 57 warnings**.
+
+Owner decisions 2026-09-19: seismic waveform acquisition **deferred**
+(11 GiB free vs 10 GB cap + 8 GiB reserve; external-volume and
+reduced-slice paths both remain open for a later amendment); governed-env
+obspy admission **deferred** until bytes exist (isolated 1.5.1
+qualification retained; `allow_steim_decoding` stays False).
+
+Seismic: the `allow_steim_decoding` flag is now wired (G3-F1) — closed
+by default with the honest decoder reason; governed-env qualification
+still required before admission.  Owner-side gates unchanged:
+two-reviewer review, adjudication, post-review regime execution,
+seismic storage/bytes.  Protected paths untouched; all authority flags
+false; seismic stays non-associable and is not a Nepal predictor.

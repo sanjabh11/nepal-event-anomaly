@@ -246,6 +246,31 @@ class TestMiniseedParser:
         assert any("STEIM" in p and "obspy" in p
                    for p in problems)
 
+    def test_steim_flag_true_still_fails_closed_without_obspy(self):
+        """G3-F1: allow_steim_decoding=True exercises the live seam —
+        with no qualified decoder in the governed env the trace is
+        rejected for the REAL reason (decoder unavailable), never
+        admitted, never silently swallowed."""
+        blob = _miniseed_file(encoding=11, rate=50, seconds=60,
+                              nrec=1)
+        metas, problems = io_mod.parse_miniseed_records(blob)
+        assert problems == []
+        traces, problems = io_mod.decode_records(
+            blob, metas, relpath="w.bin", source_sha256="x" * 64,
+            allow_steim_decoding=True)
+        assert traces == []
+        assert any("STEIM" in p for p in problems)
+        assert not any("inadmissible" in p for p in problems)
+
+    def test_steim_config_flag_is_strict_bool(self):
+        """The admission gate is a strict-bool config surface — a
+        truthy non-bool can never unlock STEIM."""
+        from nepal.seismic_sidecar.contracts import (
+            SeismicSidecarConfig)
+        cfg = SeismicSidecarConfig(allow_steim_decoding=1)
+        assert any("allow_steim_decoding" in p
+                   for p in cfg.validate())
+
 
 class TestStationXML:
     def test_valid_xml_parses(self):

@@ -211,9 +211,14 @@ def build_event_manifest(evidence_root: Path) -> dict:
         source_version="1.3.0",
         source_files=files,
         units=["koshi", "gandaki", "karnali", "bagmati"],
+        # the event manifest is the run-level authorization surface:
+        # regime_config.source_manifest must equal it (package digest
+        # binding), so its allowlist declares BOTH the event schema
+        # fields AND the predictor columns the run is authorized to
+        # fit — a predictor absent here can never enter a governed run
         feature_allowlist=["GF_ID", "basin", "interval_start",
                            "interval_end", "declared_precision",
-                           "mechanism"],
+                           "mechanism"] + list(_PREDICTORS),
         lineage="event role: HMAGLOFDB v1.3.0 acquired zip + verified "
                 "extracted member + P3 intake package; "
                 "P3_EVENT_PACKAGE_V0")
@@ -298,14 +303,30 @@ _PREDICTORS = (
 
 
 def build_sidecar_manifest(evidence_root: Path) -> dict:
-    """Sidecar role: licence snapshots, retrieval records, ledgers."""
+    """Sidecar role: licence snapshots, retrieval records, ledgers,
+    and every control document the run consumes (R11.9-19).
+
+    Bound control documents include the review packet, holdout gate
+    report, anchor derivation record, FMX report, cutoff record,
+    preprocessing provenance, and any review report present under
+    ``retrieval/`` — a control document absent from this role is
+    unbound and may not be consumed.  The runner package,
+    descriptive receipt, and replay report are deliberately NOT bound
+    here: they are downstream products of the wrapper (binding them
+    would be self-referential — the package embeds this manifest).
+    They carry their own sha256 sidecars and are cross-checked by the
+    replay gate instead.
+    """
     def dg(rel):
         return hashlib.sha256((evidence_root / rel).read_bytes()) \
             .hexdigest()
     files = []
     for rel in sorted(
             str(p.relative_to(evidence_root))
-            for p in evidence_root.glob("licence/*.json")) + [
+            for p in list(evidence_root.glob("licence/*.json"))
+            + list(evidence_root.glob("retrieval/*review*.json"))
+            + list(evidence_root.glob(
+                "retrieval/*adjudication*.json"))) + [
             "licence/HMAGLOFDB_LICENSE.txt",
             "licence/PDGL_metadata.xml",
             "licence/PDGL_DataDownloadAgreement.pdf",
@@ -315,10 +336,18 @@ def build_sidecar_manifest(evidence_root: Path) -> dict:
             "retrieval/retrieval_record_hma_inventory.json",
             "retrieval/retrieval_record_hkh_basins.json",
             "retrieval/retrieval_record_era5_snow_ee.json",
+            "retrieval/retrieval_record_era5_multibasin.json",
             "retrieval/route_probe_era5_timeseries.json",
-            "retrieval/p5_coverage_ledger_20260919.json"]:
+            "retrieval/p5_coverage_ledger_20260919.json",
+            "retrieval/p3_review_packet_v0.json",
+            "retrieval/holdout_feature_gate_report.json",
+            "retrieval/anchor_derivation_record.json",
+            "era5-multibasin/features/fmx_audit_report_v0.json",
+            "era5-multibasin/features/cutoff_record_v0.json",
+            "era5-multibasin/features/preprocessing_provenance_v0.json"
+            ]:
         p = evidence_root / rel
-        if p.exists():
+        if p.exists() and rel not in {f["relpath"] for f in files}:
             files.append({"relpath": rel, "sha256": dg(rel)})
     return build_source_manifest(
         evidence_root,
@@ -327,10 +356,14 @@ def build_sidecar_manifest(evidence_root: Path) -> dict:
         source_files=files,
         units=["koshi", "gandaki", "karnali"],
         feature_allowlist=["retrieval_records", "licence_snapshots",
-                           "coverage_ledger"],
+                           "coverage_ledger", "control_documents"],
         lineage="sidecar role: licence snapshots (4 role sources), "
-                "retrieval records, coverage ledger — licence metadata "
-                "is not scientific qualification")
+                "retrieval records, coverage ledger, review packet, "
+                "holdout gate report, anchor derivation, FMX/cutoff/"
+                "preprocessing control records — licence metadata is "
+                "not scientific qualification; run products (package, "
+                "receipt, replay report) are self-sidecarred, not "
+                "bound here, to avoid a self-referential manifest")
 
 
 def build_all_role_manifests(evidence_root: Path) -> dict:
@@ -342,8 +375,36 @@ def build_all_role_manifests(evidence_root: Path) -> dict:
         "sidecar": build_sidecar_manifest(evidence_root)}
 
 
-def build_p3_source_record() -> SourceRecordV0:
-    """Honest source record: CANDIDATE_ONLY until owner review lands."""
+def build_p3_source_record(
+        evidence_root: Path | None = None) -> SourceRecordV0:
+    """Source record — posture is EVIDENCE_VERIFIED only when the
+    adjudication sidecar exists and digests bind (R11.9-28/29).
+
+    Two reviews + an adjudication record live under
+    ``retrieval/``; when they are absent the record honestly
+    degrades to CANDIDATE_ONLY/UNREVIEWED — posture is derived from
+    evidence, never asserted.
+    """
+    verified = False
+    sidecar_rel = ""
+    sidecar_sha = ""
+    if evidence_root is not None:
+        side = Path(evidence_root) / "retrieval" / \
+            "source_evidence_sidecar_v0.json"
+        adj = Path(evidence_root) / "retrieval" / \
+            "adjudication_record_v0.json"
+        if side.exists() and adj.exists():
+            body = json.loads(side.read_bytes())
+            adj_body = json.loads(adj.read_bytes())
+            if body.get("decision") == "VERIFIED" and \
+                    adj_body.get("result", "").startswith(
+                        "evidence_review_state="
+                        "INDEPENDENTLY_VERIFIED"):
+                verified = True
+                sidecar_rel = \
+                    "retrieval/source_evidence_sidecar_v0.json"
+                sidecar_sha = hashlib.sha256(
+                    side.read_bytes()).hexdigest()
     return SourceRecordV0(
         source_id="icimod_hmaglofdb_v1_3_0",
         provider="ICIMOD RDS",
@@ -360,9 +421,10 @@ def build_p3_source_record() -> SourceRecordV0:
         non_event_frame="ICIMOD PDGL 2015 lake inventory (Option A)",
         update_cadence="irregular",
         access_status="acquired_byte_bound",
-        posture="CANDIDATE_ONLY",
+        posture="EVIDENCE_VERIFIED" if verified else "CANDIDATE_ONLY",
         license_notes="CC BY 4.0; licence snapshot bound in sidecar role",
-        evidence_sidecar_path="",
-        evidence_sidecar_sha256="",
-        evidence_as_of="",
-        evidence_review_state="UNREVIEWED")
+        evidence_sidecar_path=sidecar_rel,
+        evidence_sidecar_sha256=sidecar_sha,
+        evidence_as_of="2026-09-19" if verified else "",
+        evidence_review_state=("INDEPENDENTLY_VERIFIED" if verified
+                               else "UNREVIEWED"))

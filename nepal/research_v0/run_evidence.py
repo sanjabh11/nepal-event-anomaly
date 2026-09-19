@@ -22,7 +22,7 @@ operational claim.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping, Optional, Sequence
 
 from ._hashing import sha256_canonical, verify_source_evidence
 from .records import SHA256_RE
@@ -299,4 +299,110 @@ def run_evidence_binding_problems(
         problems.append(
             "run_evidence_manifest event/feature source_ids must stay "
             "distinct — merging source identities is forbidden")
+    return problems
+
+
+def semantic_binding_problems(
+        wrapper: Any,
+        package: Mapping[str, Any],
+        *,
+        frame_relpath: Optional[str] = None,
+        frame_columns: Optional[Sequence[str]] = None,
+        carrier_columns: Sequence[str] = (),
+        fmx_report: Optional[Mapping[str, Any]] = None,
+        control_doc_relpaths: Sequence[str] = ()) -> list[str]:
+    """Prove the wrapper's roles actually produced what was consumed.
+
+    ``run_evidence_binding_problems`` verifies role *structure and
+    bytes*; this gate binds role CONTENT to the derived artifacts the
+    run consumed — a role that verifies byte-wise but is unrelated to
+    the package/frame/report under audit fails here (R11.9-08):
+
+    - ``package.source_manifest_digest`` must equal the canonical
+      digest of the event role (the event DUTY is bound, not copied);
+    - ``frame_relpath`` must be a declared ``source_files`` member of
+      the feature role;
+    - every non-carrier frame column must be inside the feature
+      role's ``feature_allowlist`` — an undeclared column can never
+      ride a verified role;
+    - ``fmx_report.feature_role_digest`` must equal the feature role
+      digest and ``fmx_report.frame_sha256`` must equal the digest of
+      the declared frame member;
+    - every declared control document must be a ``source_files``
+      member of the sidecar role — an unbound control document can
+      never be consumed silently.
+    """
+    problems: list[str] = []
+    try:
+        w = wrapper_from_mapping(wrapper)
+    except (TypeError, ValueError) as exc:
+        return [f"semantic binding inadmissible: {exc}"]
+    if not isinstance(package, Mapping):
+        return ["package must be a mapping for semantic binding"]
+
+    event_role = w.event_manifest
+    feature_role = w.feature_manifest
+    sidecar_role = w.sidecar_manifest
+
+    if isinstance(event_role, Mapping):
+        declared = package.get("source_manifest_digest")
+        actual = sha256_canonical(dict(event_role))
+        if declared != actual:
+            problems.append(
+                "package.source_manifest_digest does not equal the "
+                "event role digest — the package may not bind an "
+                "event source other than the declared role")
+    else:
+        problems.append("semantic binding requires the event role")
+
+    if isinstance(feature_role, Mapping):
+        members = {f.get("relpath"): f.get("sha256")
+                   for f in feature_role.get("source_files", [])
+                   if isinstance(f, Mapping)}
+        if frame_relpath is not None and \
+                frame_relpath not in members:
+            problems.append(
+                f"feature frame {frame_relpath!r} is not a declared "
+                "feature-role member")
+        if frame_columns is not None:
+            allowlist = set(feature_role.get("feature_allowlist") or
+                            ()) | set(carrier_columns)
+            undeclared = sorted(set(frame_columns) - allowlist)
+            if undeclared:
+                problems.append(
+                    f"frame columns {undeclared} are outside the "
+                    "feature role's declared allowlist/carriers")
+        if isinstance(fmx_report, Mapping):
+            role_digest = sha256_canonical(dict(feature_role))
+            if fmx_report.get("feature_role_digest") != role_digest:
+                problems.append(
+                    "fmx_report.feature_role_digest does not equal "
+                    "the feature role digest — the report may not "
+                    "audit a different source")
+            if frame_relpath is not None and \
+                    frame_relpath in members and \
+                    fmx_report.get("frame_sha256") != \
+                    members[frame_relpath]:
+                problems.append(
+                    "fmx_report.frame_sha256 does not equal the "
+                    "declared frame member digest")
+    elif frame_relpath is not None or fmx_report is not None:
+        problems.append(
+            "semantic binding of a frame/FMX report requires the "
+            "feature role")
+
+    if control_doc_relpaths:
+        if isinstance(sidecar_role, Mapping):
+            bound = {f.get("relpath")
+                     for f in sidecar_role.get("source_files", [])
+                     if isinstance(f, Mapping)}
+            unbound = sorted(set(control_doc_relpaths) - bound)
+            if unbound:
+                problems.append(
+                    f"control documents {unbound} are not bound in "
+                    "the sidecar role — unbound control evidence may "
+                    "not be consumed")
+        else:
+            problems.append(
+                "control-document binding requires the sidecar role")
     return problems

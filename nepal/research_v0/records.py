@@ -1281,4 +1281,5 @@ def deserialize_record(payload: Mapping[str, Any]) -> Any:
 # ``nepal.research_v0.records.RunEvidenceManifestV0`` resolves.
 from .run_evidence import (  # noqa: E402,F401
     RunEvidenceManifestV0, run_evidence_binding_problems,
-    wrapper_declaration_problems, wrapper_from_mapping)
+    semantic_binding_problems, wrapper_declaration_problems,
+    wrapper_from_mapping)

@@ -14,8 +14,8 @@
     },
     {
       "relpath": "README.md",
-      "sha256": "68e84d736735f4e7428afbc9774d8b1c97e3950be3a98665bbaf84c1a06fde8a",
-      "size_bytes": 9071
+      "sha256": "b8ed8879090a26a70f4a43372961faeb03395bf212a703a8e17d8d463c36f9bd",
+      "size_bytes": 10945
     },
     {
       "relpath": "conftest.py",
@@ -29,8 +29,8 @@
     },
     {
       "relpath": "docs/science/GAP_REGISTER_V0.md",
-      "sha256": "66a5414d02baa53cf68a3c5b43e00610a2eab5e59825110254fd87a1600ebf72",
-      "size_bytes": 108341
+      "sha256": "f5bdd8c4e2fecc0877b596b09906e63d1a85dc06995e472d10e3731600d90000",
+      "size_bytes": 112367
     },
     {
       "relpath": "docs/science/GOVERNANCE_EXERCISE_RECORD_V0.md",
@@ -59,8 +59,8 @@
     },
     {
       "relpath": "docs/science/P0_BASELINE_LEDGER.md",
-      "sha256": "465ab6e226cc27656b6dca560ea2aa46daaf6565a92018f72f5d15f8bee967c1",
-      "size_bytes": 22336
+      "sha256": "20536a7dd86e0053440a4cb9a1ba078dab266650ae4bd4b4f83f305df9153cea",
+      "size_bytes": 24479
     },
     {
       "relpath": "docs/science/P3_ATTESTATION_RECORD_V0.md",
@@ -253,6 +253,11 @@
       "size_bytes": 63342
     },
     {
+      "relpath": "nepal/real_fmx.py",
+      "sha256": "1c53153a1651a0868fef59cd6999c2f0bbfe83b0b2100b631b66bd07a7b3d458",
+      "size_bytes": 20363
+    },
+    {
       "relpath": "nepal/research_v0/__init__.py",
       "sha256": "da71365c725c1f5eb87a578f9720cb703866f43611b7baeb6f49842099661fe4",
       "size_bytes": 689
@@ -279,8 +284,8 @@
     },
     {
       "relpath": "nepal/research_v0/p3_package_adapter.py",
-      "sha256": "422db9350859cfcbc30eccf2d39b1d8b8d855f8f794b18829bfa26168c38d848",
-      "size_bytes": 15720
+      "sha256": "aa457546af1e17e0b37d7ed809f8a81d0db326032d9515e3b9b55a960b091dea",
+      "size_bytes": 17741
     },
     {
       "relpath": "nepal/research_v0/policy.py",
@@ -293,19 +298,14 @@
       "size_bytes": 153568
     },
     {
-      "relpath": "nepal/real_fmx.py",
-      "sha256": "e916d1a07195a6a89ba2276679ca0098802276d85467d264bb809579d0d9ff78",
-      "size_bytes": 7483
-    },
-    {
       "relpath": "nepal/research_v0/records.py",
-      "sha256": "5e423069b8288e0fc51ded7db7f5bb1cabe27e772476cab0e9470863b50a22b5",
-      "size_bytes": 58179
+      "sha256": "883e8b471e1476ee6dc794397d2097fe56333a6d1087f63a1248b801cd3fe2d5",
+      "size_bytes": 58210
     },
     {
       "relpath": "nepal/research_v0/run_evidence.py",
-      "sha256": "89ba655a073640ce4e25012574874a1195b3e97168157eed03e935b622f5b0d1",
-      "size_bytes": 13313
+      "sha256": "8fd44d2e240d87f0639ecc9d6e640dc6364b99b06133691d928a11f6a428aeb5",
+      "size_bytes": 18104
     },
     {
       "relpath": "nepal/research_v0/source_intake.py",
@@ -364,8 +364,8 @@
     },
     {
       "relpath": "nepal/seismic_sidecar/io.py",
-      "sha256": "09db8ffc4162834ff5b9b29cf809db4d6d56e021c0db5e6ac80c5ad750167d6d",
-      "size_bytes": 37997
+      "sha256": "9ce71c754d4d82d189cdf640c0440c6b3ec52b44854b52584473aa49f0a37136",
+      "size_bytes": 38987
     },
     {
       "relpath": "nepal/seismic_sidecar/observability.py",
@@ -389,8 +389,8 @@
     },
     {
       "relpath": "scripts/replay_p5.py",
-      "sha256": "a7b3dce71dae2c4bf35e9559ef4e142d49224e2807c105058e82ac1e1fe7faac",
-      "size_bytes": 5059
+      "sha256": "7949f1bdefaaf6745510b8a4855ed7c292e2e4939dbc13c18c95b995eb95306b",
+      "size_bytes": 13263
     },
     {
       "relpath": "tests/fixtures/__init__.py",
@@ -506,6 +506,11 @@
       "relpath": "tests/test_r11_5_release_closure.py",
       "sha256": "8fe973e703e0a23929a6bc40e7c4a02b18882ac86909dd358e32a7d0fc90d3d2",
       "size_bytes": 4774
+    },
+    {
+      "relpath": "tests/test_r11_9_bindings.py",
+      "sha256": "718705d8813c11f9edb2664e1ce10a627ff9dd351e89cd6cb1b70c5b07dbdf49",
+      "size_bytes": 16137
     },
     {
       "relpath": "tests/test_r11_9_dual_manifest_contract.py",
@@ -654,8 +659,8 @@
     },
     {
       "relpath": "tests/test_seismic_sidecar_io.py",
-      "sha256": "d16968c4fc70b5aa3885577a2163f80d12ae3046092a07e9768117518efaabc2",
-      "size_bytes": 20358
+      "sha256": "4624abc6d521fdadb7d264b98d648ce699276bd2521f14f0b34e08f03dfbbd0e",
+      "size_bytes": 21581
     },
     {
       "relpath": "tests/test_seismic_sidecar_observability.py",
@@ -673,7 +678,7 @@
       "size_bytes": 26884
     }
   ],
-  "generated": "2026-09-19 post-acquisition closure rebind (content 0113677)",
+  "generated": "2026-09-19 R11.9 semantic-binding closure rebind (content 0113677 + uncommitted SWE2 delta; heads rebind on final content commit)",
   "interpreter": ".venv/bin/python",
   "manifest_commit": "0113677481419ff544254e403fc243108cc24ceb",
   "manifest_version": "ARTIFACT_MANIFEST_V0.3",
@@ -683,10 +688,10 @@
   "scope": "governed science artifacts: docs/science, nepal/research_v0, research tests, CI workflow, README \u2014 non-science sources excluded by design",
   "self_excluded": true,
   "test_results": {
-    "full_suite_venv": "3324 passed, 6 skipped, 1 failed at content d44c9ec \u2014 the failure (research_v0 isolation AST: real_fmx write surface) was fixed by moving the module to nepal/real_fmx.py; focused isolation+intake+adapter rerun 22/22 green",
+    "full_suite_venv": "3349 passed, 6 skipped, 0 failed, 57 warnings \u2014 post-R11.9 canonical suite (3355 collected)",
     "promotion_matrix": "699 passed (r9 179 + r10 520)",
     "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
-    "collection_guard": "repo-wide collection == tests/ (3331 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
+    "collection_guard": "repo-wide collection == tests/ (3355 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
     "claim_scan": "clean on all governed files",
     "research_v0": "123 passed",
     "p5_io_contract": "34 passed",
@@ -700,12 +705,13 @@
     "r11_5_release_closure": "4 passed (manifest_commit identity, lane governance, collection census, CLI stale-commit rejection)",
     "seismic_addendum": "4 passed",
     "seismic_sidecar": "143 passed component (contract 53 + features 31 + observability 25 + runner 34, incl. one real engine artifact under SEISMIC_WAVEFORM_RETROSPECTIVE)",
-    "seismic_sidecar_intake": "47 passed (io 24 + provenance 10 + events 13 \u2014 byte-parsed intake, generation provenance, event package)",
-    "seismic_focused_lane": "208 passed combined (143 component + 47 intake + 14 shared regression + 4 addendum)",
+    "seismic_sidecar_intake": "49 passed (io 26 incl. STEIM flag-gate probes + provenance 10 + events 13 \u2014 byte-parsed intake, generation provenance, event package)",
+    "seismic_focused_lane": "210 passed combined (143 component + 47 intake + 14 shared regression + 4 addendum)",
     "seismic_shared_regression": "14 passed (vocabulary isolation, record lane, engine lane, producer floor, adapter rejection)",
     "r11_9_dual_manifest": "6 passed \u2014 RUN_EVIDENCE_MANIFEST_V0 amendment ratified and wired; strict-xfail pins removed",
     "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
     "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
-    "run_evidence_manifest": "11 passed \u2014 role binding, tamper detection, per-role byte verify"
+    "run_evidence_manifest": "11 passed \u2014 role binding, tamper detection, per-role byte verify",
+    "r11_9_semantic_binding": "22 passed \u2014 verified-manifest FMX, cutoff/preprocessing records, semantic role binding, full-recomputation replay (13 synthetic probes + 9 real-evidence gates, skipif when root absent)"
   }
 }

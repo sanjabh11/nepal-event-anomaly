@@ -381,7 +381,9 @@ def decode_records(
         metas: Sequence[MiniseedRecordMeta],
         *,
         relpath: str,
-        source_sha256: str) -> tuple[list[ParsedTraceV0], list[str]]:
+        source_sha256: str,
+        allow_steim_decoding: bool = False
+        ) -> tuple[list[ParsedTraceV0], list[str]]:
     """Decode records into per-trace contiguous segments.
 
     Consecutive records of the same trace_id merge when the next
@@ -408,21 +410,41 @@ def decode_records(
                          for m in recs)
         if need_obspy:
             if any(m.encoding in _STEIM_ENCODINGS for m in recs):
-                # G3-F1: the decoder is exercised to report the REAL
-                # reason, and then its output is discarded — STEIM
-                # admission is closed by contract.  Reporting the
-                # decoder's success as a failure (or formatting a
-                # None problem as "— None") would fabricate evidence.
+                # G3-F1: admission is gated on the declared
+                # ``allow_steim_decoding`` config flag.  False -> fail
+                # closed with the REAL decoder reason (never a
+                # fabricated "— None").  True -> the qualified
+                # optional decoder's output is adopted - the seam is
+                # live, not dead.
                 encodings = sorted({m.encoding for m in recs})
-                _, decoder_problem = _decode_obspy(data)
-                if decoder_problem is None:
-                    decoder_problem = (
-                        "the optional obspy decoder parsed the payload, "
-                        "but STEIM admission is closed by contract "
-                        "pending a ratified G3-F1 decision")
-                problems.append(
-                    f"{trace_id}: STEIM encoding {encodings} is "
-                    f"inadmissible — {decoder_problem}")
+                obspy_traces, decoder_problem = _decode_obspy(data)
+                if not allow_steim_decoding:
+                    if decoder_problem is None:
+                        decoder_problem = (
+                            "the optional obspy decoder parsed the "
+                            "payload, but STEIM admission is closed by "
+                            "contract pending a ratified G3-F1 "
+                            "decision")
+                    problems.append(
+                        f"{trace_id}: STEIM encoding {encodings} is "
+                        f"inadmissible — {decoder_problem}")
+                    continue
+                if decoder_problem is not None:
+                    problems.append(
+                        f"{trace_id}: STEIM encoding {encodings} — "
+                        f"{decoder_problem}")
+                    continue
+                adopted = [t for t in obspy_traces
+                           if t.trace_id == trace_id]
+                if not adopted:
+                    problems.append(
+                        f"{trace_id}: optional decoder produced no "
+                        "trace for this identity")
+                    continue
+                for t in adopted:
+                    traces.append(replace(
+                        t, relpath=relpath,
+                        source_sha256=source_sha256))
             else:
                 problems.append(
                     f"{trace_id}: encoding "
@@ -695,8 +717,9 @@ def read_verified_waveform_bundle(
     for rel, sha, metas in all_metas:
         blob = next(b for r, b in zip(sorted(wave), wave_parts)
                     if r == rel)
-        trs, p = decode_records(blob, metas,
-                                relpath=rel, source_sha256=sha)
+        trs, p = decode_records(
+            blob, metas, relpath=rel, source_sha256=sha,
+            allow_steim_decoding=cfg.allow_steim_decoding)
         problems.extend(p)
         traces.extend(trs)
     if problems:
