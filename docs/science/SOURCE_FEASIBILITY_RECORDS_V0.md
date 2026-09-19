@@ -45,6 +45,20 @@ splits, file schemas, and every item under "Outstanding evidence
 items" remain intake-gated; all sources stay `CANDIDATE_ONLY` and
 `NO_QUALIFYING_PILOT_SOURCE` stands.
 
+**Post-acquisition HMAGLOFDB override (2026-09-20):** the
+metadata-only snapshot above remains historical for this source. The
+authenticated P5-A2 intake subsequently bound the v1.3.0 bytes
+(107,879-byte zip; SHA-256
+`7903cd5abf95265705824f7e1f54e7e52bf514b2d300b828718e781fbe2622ca`),
+verified 768 rows / 58 Nepal / 30 loadable Nepal rows, resolved the
+`GL_ID`/`LakeDB_ID`/`G_ID` joins and the absence of `_Z` GF_ID suffixes,
+and completed the source-level two-reviewer/adjudication sidecar. This
+does not make labels adjudicated or controls observed: all 45 labels are
+`UNADJUDICATED`, opportunities are `UNKNOWN`, controls are
+`CENSORED_OR_AMBIGUOUS`, and the temporal regime result is
+`CANDIDATE_ONLY`/`UNSUPERVISED_STRUCTURE_NOT_STABLE`. Association and
+forecast use remain out of scope.
+
 ## Current status index (2026-09-17)
 
 One line per source: metadata-license **tag** status vs payload-access
@@ -65,7 +79,7 @@ intake.**  The dated rows below are preserved verbatim.
 
 **GLOF**
 
-- ICIMOD HMAGLOFDB v1.3.0 — license: RESOLVED — CC BY 4.0 governs (RDS declaration; Zenodo CC0 tag superseded, conservatively read as CC BY 4.0) / payload_verification: PENDING (no bytes acquired) / nepal_v1_3_count: PENDING (v1.0 said ~53/7.6%; v1.3 count unverified until bytes) / opportunity_frame: PENDING-OWNER-POLICY (no native non-event frame; external lake-inventory linkage needs owner decision) / `CANDIDATE_ONLY` (strongest candidate).
+- ICIMOD HMAGLOFDB v1.3.0 — metadata license resolution remains CC BY 4.0 governing / **post-acquisition payload verified** (107,879-byte zip; SHA-256 bound; 768 rows, Nepal 58, loadable Nepal 30) / `GL_ID`/`LakeDB_ID`/`G_ID` joins and no `_Z` suffix resolved from bytes / source-level `EVIDENCE_VERIFIED` + `INDEPENDENTLY_VERIFIED` / labels `UNADJUDICATED`, opportunities `UNKNOWN`, controls `CENSORED_OR_AMBIGUOUS` / P5-A2 descriptive result `CANDIDATE_ONLY` (`UNSUPERVISED_STRUCTURE_NOT_STABLE`).
 
 **Ice/rock avalanche / glacier failure**
 
@@ -177,9 +191,11 @@ qualified for forecast use:
 
 1. Zenodo `10895011` license tag; Everest-domain Nepal/China extent split.
 2. HiAVAL Nepal event count (filter `Country=Nepal`) and machine-readable license file.
-3. HMAGLOFDB — `payload_verification` PENDING (no bytes acquired);
-   `nepal_v1_3_count` PENDING (v1.0 said ~53/7.6%; v1.3 count
-   unverified until bytes); lake-ID join coverage;
+3. HMAGLOFDB — **payload verification and v1.3 row census are closed**
+   by the P5-A2 intake report and sidecars (768 rows; Nepal 58; loadable
+   Nepal 30; integer GF_ID; `_Z` absent; GL_ID/LakeDB_ID/G_ID coverage
+   resolved). Remaining gates are label adjudication, non-censored
+   opportunity controls, and the negative temporal-regime result.
    `opportunity_frame` PENDING-OWNER-POLICY (external lake-inventory
    linkage vs source-native frame — owner decision). License question
    RESOLVED — CC BY 4.0 governs (RDS declaration; Zenodo CC0 tag

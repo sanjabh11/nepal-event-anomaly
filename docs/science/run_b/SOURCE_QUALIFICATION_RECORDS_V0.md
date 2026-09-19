@@ -50,6 +50,27 @@ license class only — never a grant of access by themselves — and
 `QUALIFIES` still requires every named evidence field cleared for the
 declared role.
 
+## Post-acquisition HMAGLOFDB status — 2026-09-20
+
+The `icimod_hmaglofdb_v1_3_0` block below is retained as the dated
+metadata-lane record. Its pending-byte language is superseded for the
+bounded P5-A2 intake by `P3_HMAGLOFDB_INTAKE_REPORT_V0.md` and the
+evidence-root sidecars. The acquired zip is 107,879 bytes with SHA-256
+`7903cd5abf95265705824f7e1f54e7e52bf514b2d300b828718e781fbe2622ca`.
+The source-level sidecar is `EVIDENCE_VERIFIED` and
+`INDEPENDENTLY_VERIFIED` after two reviewer assessments and
+adjudication. The bound payload contains 768 rows, 58 Nepal rows, and
+30 loadable Nepal rows; its precision census is day 326, month 64,
+year 230, and unresolved 148. `GL_ID`/`LakeDB_ID`/`G_ID` coverage and
+the recurrence audit are payload-resolved: all `GF_ID` values are
+integers, the `_Z` suffix is absent, and `Repeat` remains the governing
+recurrence field. The current P5-A2 result is still research-only:
+event labels are `UNADJUDICATED`, all 1,175 opportunities are
+`UNKNOWN`, all controls are `CENSORED_OR_AMBIGUOUS`, and the descriptive
+regime receipt is `CANDIDATE_ONLY` with
+`UNSUPERVISED_STRUCTURE_NOT_STABLE`. No association, forecast, warning,
+or production qualification follows from source-level verification.
+
 ## Snow avalanche vertical
 
 ```yaml
@@ -173,21 +194,21 @@ declared role.
   exact_version: "v1.3.0; paper essd-15-3941-2023"
   doi_or_url: "10.26066/RDS.1973283; zenodo.18257243"
   license_evidence: "RESOLVED — CC BY 4.0 governs (RDS declaration; Zenodo CC0 tag superseded, conservatively read as CC BY 4.0). Prior status 2026-09-16: UNRESOLVED — RDS states CC BY 4.0, Zenodo record shows CC0 (metadata-tag evidence in SOURCE_EVIDENCE_ADDENDUM_V0.md)"
-  redistribution_terms: "CC BY 4.0 attribution governs bytes if obtained — metadata-tag resolution only; not byte-verified and not by itself a grant of access"
-  nepal_coverage: "HMA 766 events 1533–2025; ~7.6% (~53) Nepal in v1.0 — v1.3.0 Nepal count unverified"
-  event_count_if_known: "766 events (HMA); ~53 Nepal (v1.0 count)"
-  timing_class: "published v1.0 statistics: EXACT_DAY 39% / month 47% / year-uncertain 26% (±3d caveat; Sat_evidence brackets) — v1.3 distribution PAYLOAD-GATED until bytes; canonical day semantics: event day is the last-day-or-peak-flood day for multi-day events"
+  redistribution_terms: "CC BY 4.0 attribution governs the acquired bytes; source-level sidecar and retrieval record bind the retained evidence. This remains research-only and is not a production or association grant."
+  nepal_coverage: "Metadata history: HMA 766 events 1533–2025; ~7.6% (~53) Nepal in v1.0. Bound v1.3 payload: 768 rows, 58 Nepal, 30 loadable Nepal rows."
+  event_count_if_known: "Bound v1.3 payload: 768 rows; Nepal 58; loadable Nepal 30"
+  timing_class: "Published v1.0 statistics remain 39% day / 47% month / 26% year-uncertain (±3d caveat). Bound v1.3 census: day 326 / month 64 / year 230 / unresolved 148; canonical day semantics: event day is the last-day-or-peak-flood day for multi-day events"
   spatial_semantics: "lake_point (within-lake, not breach point) + impact_point (Observation/Deposit tag)"
-  observation_opportunity: "PAYLOAD-GATED — GLM3 independent review: the lake-inventory join keys are GL_ID / LakeDB_ID / G_ID (payload columns, coverage unverified until bytes), NOT the GF_ID event key; event-free lake periods feasible only IF the join coverage and owner-approved external linkage exist (see opportunity_frame below)"
+  observation_opportunity: "External PDGL-linked frame is bound for P5-A2 via GL_ID / LakeDB_ID / G_ID; all 1,175 opportunities remain UNKNOWN and all derived controls are CENSORED_OR_AMBIGUOUS, so association is not qualified. GF_ID is the event key, never the lake join key."
   non_event_feasibility: "feasible via lake-level opportunity frame (ICIMOD 2015 Koshi/Gandaki/Karnali; NSIDC HMA_GLI; Wang 2020 ESSD; zenodo.17948783) — admissibility of the external frame is an owner-policy question, not settled here"
   current_status:
     license: "RESOLVED — CC BY 4.0 governs (RDS declaration; Zenodo CC0 tag superseded, conservatively read as CC BY 4.0)"
-    payload_verification: "PENDING (no bytes acquired); Zenodo record lists a 107,879-byte payload with a published MD5 — recorded as metadata only; acquisition requires independent SHA-256 byte-binding"
-    nepal_v1_3_count: "PENDING (v1.0 said ~53/7.6%; v1.3 count unverified until bytes)"
-    opportunity_frame: "PENDING-OWNER-POLICY (no native non-event frame; external lake-inventory linkage needs owner decision)"
-  reviewer: "RunB metadata review; second review pending at intake"
+    payload_verification: "VERIFIED — 107,879-byte zip; SHA-256 7903cd5abf95265705824f7e1f54e7e52bf514b2d300b828718e781fbe2622ca; source-level sidecar EVIDENCE_VERIFIED/INDEPENDENTLY_VERIFIED"
+    nepal_v1_3_count: "VERIFIED — 768 payload rows; Nepal 58; loadable Nepal 30; all 102 removed-row IDs also occur in the operative main CSV"
+    opportunity_frame: "BOUND FOR P5-A2 — 47 PDGL lakes and 1,175 windows; every opportunity UNKNOWN and every control CENSORED_OR_AMBIGUOUS; association remains blocked"
+  reviewer: "Source-level: owner + RAVI assessments and owner adjudication; event-label adjudication remains pending"
   decision: CANDIDATE
-  blocker: "Nepal count in v1.3.0 (payload-gated); GL_ID/LakeDB_ID/G_ID join coverage (payload-gated); opportunity-frame owner policy (external lake-inventory linkage vs source-native frame); day-precision share limits horizon admissibility — published v1.0 reports 39% day / 47% month / 26% year-uncertain; v1.3 distribution PAYLOAD-GATED"
+  blocker: "Event-label adjudication and non-censored opportunity controls remain open for association; the P5-A2 descriptive regime is CANDIDATE_ONLY because UNSUPERVISED_STRUCTURE_NOT_STABLE"
   confidence: "medium-high — nearest candidate vertical-wide"
 
 - source_id: hmaglofdb_recurrence_note
@@ -195,11 +216,11 @@ declared role.
   doi_or_url: "same record as icimod_hmaglofdb_v1_3_0"
   license_evidence: "inherits parent record"
   redistribution_terms: "inherits parent record"
-  nepal_coverage: "schema: GF_ID is the integer event-identity key; the Repeat field is the recurrence indicator; the _Z suffix convention is paper-reported but UNVERIFIED against the integer GF_ID schema until payload inspection; paper reports 23% of events from 3 ephemeral ice-dammed lakes"
+  nepal_coverage: "Bound v1.3 payload: GF_ID is integer for every row; `_Z` suffix is absent; Repeat is the recurrence indicator; paper reports 23% of events from 3 ephemeral ice-dammed lakes"
   event_count_if_known: "23% recurrence share"
   timing_class: "inherits parent"
   spatial_semantics: "inherits parent"
-  observation_opportunity: "paper-reported: recurrence grouped by base GF_ID (integer event key; Repeat field flags recurrence; _Z suffix convention UNVERIFIED until payload inspection) before dedup"
+  observation_opportunity: "Bound intake groups recurrence by integer GF_ID and Repeat plus identical reported lake coordinates; `_Z` is not used for grouping or deduplication"
   non_event_feasibility: "inherits parent"
   reviewer: "RunB metadata review"
   decision: CANDIDATE

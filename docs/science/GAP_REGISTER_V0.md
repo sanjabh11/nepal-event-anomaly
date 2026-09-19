@@ -1256,3 +1256,10 @@ temporal result is publishable only as a research-only negative finding;
 no association, geographic-transfer, forecast, warning, or production
 claim follows from it. The dormant fourth-group amendment remains outside
 the temporal critical path.
+
+The post-acquisition source-matrix wording is also reconciled: the
+HMAGLOFDB bytes, v1.3 row census, lake-join fields, integer GF_ID /
+`Repeat` semantics, and absence of `_Z` suffixes are now recorded as
+payload-verified facts. The remaining source gates are label
+adjudication and non-censored opportunity controls; neither is inferred
+from source-level review or the negative descriptive regime result.

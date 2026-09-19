@@ -1,7 +1,10 @@
 # Event Package Specification — v0 (Run B)
 
-**Status:** `DESIGN_DRAFT_COMPLETE` — specification only; no intake
-authorized.
+**Status:** `DESIGN_DRAFT_COMPLETE` — frozen semantic specification. The
+authenticated P5-A2 intake is documented separately in
+`P3_HMAGLOFDB_INTAKE_REPORT_V0.md`; this document authorizes nothing and
+does not confer label, association, forecast, warning, or production
+qualification.
 **Lane:** Run B (`run-b/source-qual`, base `33dbad4`).
 **Scope:** typed mapping from each qualified/candidate source to the
 `nepal/research_v0/records.py` contract surface, the event-interval and
@@ -84,10 +87,11 @@ relabeled as release timestamps, and narrowing must be recorded in
   `Repeat` field is the governing recurrence indicator; recurrent
   events from the same lake group under one `cascade_group_id`; the
   3 ephemeral-lake series are one atomic group each — 23% of events
-  may not inflate the event count. The `_Z` suffix convention is
-  paper-reported but UNVERIFIED against the integer `GF_ID` schema —
-  it is PAYLOAD-GATED until byte inspection, and no deduplication or
-  grouping may be based on `_Z` alone.
+  may not inflate the event count. The bound v1.3 payload contains only
+  integer `GF_ID` values and no `_Z` suffix; `Repeat` plus identical
+  reported lake coordinates govern the P5-A2 recurrence grouping. The
+  paper-reported `_Z` convention is retained as historical context only
+  and is never used for deduplication or grouping.
 - Dam-formation vs breach (LDOF): two labels, one cascade group;
   `event_time_basis` distinguishes formation observation from breach
   timing.
