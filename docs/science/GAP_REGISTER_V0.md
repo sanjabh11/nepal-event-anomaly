@@ -1130,3 +1130,38 @@ seismic real bytes, P5 authorization, independent intake review, FMX, and
 real regime fitting remain owner/data-gated. Posture remains
 `DESIGN_DRAFT_COMPLETE`,
 `NO_QUALIFYING_PILOT_SOURCE`, and `WARNING_PATH_AUTHORIZED: NO`.
+
+## Post-acquisition reconciliation — 2026-09-19 (Codex audit findings)
+
+After the P5 acquisition + P3 intake + Phase-4 wiring commits
+(`419356e` content, `480f48e` manifest rebind), the Codex audit
+surfaced 24 findings. Disposition below — code-affecting items are
+closed with committed evidence; owner-side gates remain open by
+design.
+
+| Finding | Disposition | Evidence |
+|---|---|---|
+| PROV-01 | **RESOLVED** | 5 ledger mismatches rebound to live bytes; 4 CDS interim `.nc` blocks marked `superseded` (prior digests preserved in notes), `snow_ledger_koshi.jsonl` reclassified `operational_log`; 0 mismatches remain |
+| PROV-02 | **RESOLVED** | `retrieval/retrieval_record_era5_hma_operative.json` binds 78 operative files at frozen HMA anchors; stale PDGL-anchor record retained as superseded history |
+| INT-01 | **RESOLVED** | `nepal/research_v0/p3_package_adapter.py` — P3 package → typed records → frozen ten-key runner package; digests recomputed from decoded content; `glof-events/p3_runner_package_v0.json` emitted |
+| INT-02 | **RESOLVED** | 4 distinct role manifests (`retrieval/role_manifests_v0.json`); `RunEvidenceManifestV0` instantiated with all roles — `problems()==[]`, `verify_problems()==[]` |
+| OP-01 | **RESOLVED** | `glof-lakes/lake_to_basin_linkage_v0.json` — explicit digest-bound pdgl→basin map (47 lakes, 0 conflicts) from `basin_coverage`; lake-level opportunities preserved verbatim |
+| SCOPE-01/02 | **RESOLVED (record)** | `P5_SCOPE_RECONCILIATION_V0.md` — 3-basin final; hydrological (not national) event scope declared; 5-basin contract text reconciled |
+| HOLD-01 | **RESOLVED** | `retrieval/holdout_feature_gate_report.json` — axes decoupled; regime groups train={koshi,gandaki}/heldout={karnali} verified PASS; event holdout preserved |
+| FMX-01 | **RESOLVED** | Feature-role manifest binds both channels + derived frames + provenance; semantic matrix digest + cutoff `2025-10-01T00:00:00Z` declared |
+| FMX-02 | **RESOLVED** | `verify_inputs_against_manifest` floor in `era5_anchor_intake.py`; tamper/undeclared/stale-sidecar probes fail closed |
+| FMX-03 | **RESOLVED** | Real audit over 6900×19 frame → **FMX_PASS**, 0 rejects; `era5-multibasin/features/fmx_audit_report_v0.json` digested |
+| REG-01 | **EXECUTED → CANDIDATE_ONLY** | Real `run_glof_descriptive_poc` ran; honest demotion — source posture `CANDIDATE_ONLY`/`UNREVIEWED` (reviews pending); authority flags all false; `retrieval/p5_glof_descriptive_receipt_v0.json` |
+| REPLAY-01 | **RESOLVED** | `scripts/replay_p5.py` → **REPLAY_OK**: 131 ledger bytes + 4 role manifests + package digests + sidecars + authority flags all verify (caught + fixed a CWD-dependent `evidence_root` defect) |
+| REL-01 | **RESOLVED** | stale `rebind_manifest_p5.py` quarantined to /tmp; `.write-leases/` gitignored |
+| LIC-01 | **RESOLVED** | licence snapshots for all 4 roles (RDS7952 agreement extracted byte-bound; ERA5-CDS/GEE/HMA reference snapshots) |
+| MULTI-01 | **RESOLVED** | CDS/GEE kept as distinct channel identities in feature-manifest lineage + `retrieval_record_era5_hma_operative.json` |
+| GOV-01 / REV-01 | **OPEN — owner-side** | `retrieval/p3_review_packet_v0.json` binds 13 artifacts + 5 review questions for 2 reviewers + adjudicator; labels stay `UNADJUDICATED`, source `CANDIDATE_ONLY` until real review evidence exists — cannot be delegated to an agent |
+| CTRL-01 | **BY DESIGN** | All controls `CENSORED_OR_AMBIGUOUS` (UNKNOWN opportunities) — no NEGATIVEs manufacturable this cycle; association stays stage-gated |
+| DOC-01 | **RESOLVED** | This reconciliation + `P5_SCOPE_RECONCILIATION_V0.md` |
+| STORAGE-01 / SEIS-01 / SEIS-02 | **PARTIAL** | obspy 1.5.1 cp314 **QUALIFIED** in isolated env (`seismic-4w/obspy_qualification_probe.json`: STEIM1/2 BE+LE decode, malformed-input rejection); waveform acquisition blocked on storage (11 GiB free vs 10 GiB cap + 8 GiB reserve) — separate volume or smaller-scope amendment needed |
+| DEFER-01 | **DEFERRED** | association/forecast/warning/operations out of cycle |
+
+Posture after this round: `DESIGN_DRAFT_COMPLETE`,
+`NO_QUALIFYING_PILOT_SOURCE` (intake exists; review does not),
+`WARNING_PATH_AUTHORIZED: NO`.

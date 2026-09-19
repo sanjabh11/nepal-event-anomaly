@@ -28,3 +28,6 @@ data/framework_inputs_v1_reconciled
 # P5-15: research run roots (raw/, monthly/, merged/, features/, gmm/)
 # are run outputs — never committed.
 research_runs/
+
+# multi-agent write coordination scratch
+.write-leases/

@@ -141,6 +141,47 @@ class TestRegimeFrame:
             ea.build_regime_frame({"koshi": df}, {"koshi": 5000.0})
 
 
+class TestManifestFloor:
+    """FMX-02: unverified bytes never reach the parser."""
+
+    def _manifest(self, tmp_path):
+        from nepal.research_v0.source_intake import (
+            build_source_manifest)
+        import hashlib
+        f = tmp_path / "a.csv"
+        f.write_text("x\n", encoding="utf-8")
+        return build_source_manifest(
+            tmp_path, source_id="s", source_version="1",
+            source_files=[{"relpath": "a.csv",
+                           "sha256": hashlib.sha256(
+                               f.read_bytes()).hexdigest()}],
+            units=["a"], feature_allowlist=["f1"], lineage="t")
+
+    def test_tampered_input_fails(self, tmp_path):
+        m = self._manifest(tmp_path)
+        (tmp_path / "a.csv").write_text("tampered\n")
+        with pytest.raises(ValueError):
+            ea.verify_inputs_against_manifest(
+                tmp_path, m, ["a.csv"])
+
+    def test_undeclared_path_fails(self, tmp_path):
+        m = self._manifest(tmp_path)
+        (tmp_path / "b.csv").write_text("y\n")
+        with pytest.raises(ValueError, match="not a declared"):
+            ea.verify_inputs_against_manifest(
+                tmp_path, m, ["b.csv"])
+
+    def test_stale_sidecar_fails(self, tmp_path):
+        f = tmp_path / "a.csv"
+        f.write_text("x\n", encoding="utf-8")
+        import hashlib
+        (tmp_path / "a.csv.sha256").write_text("0" * 64)
+        m = self._manifest(tmp_path)
+        with pytest.raises(ValueError, match="stale sidecar"):
+            ea.verify_inputs_against_manifest(
+                tmp_path, m, ["a.csv"])
+
+
 @pytest.mark.skipif(
     not (EVIDENCE / "era5land_ts_koshi_hma_2001-2025.zip").exists(),
     reason="P5-C real evidence absent")

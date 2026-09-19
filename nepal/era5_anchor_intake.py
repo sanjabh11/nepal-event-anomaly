@@ -33,7 +33,7 @@ import tempfile
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Mapping, Optional, Sequence
+from typing import Any, Iterable, Mapping, Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -61,6 +61,61 @@ EE_SF = "snowfall_hourly"
 
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def verify_inputs_against_manifest(evidence_root: Path,
+                                   manifest: Mapping,
+                                   relpaths: Iterable[str]) -> None:
+    """FMX-02 floor: verify the canonical source manifest BEFORE parsing.
+
+    The manifest's evidence bytes are re-verified through the governed
+    floor (containment, symlink policy, declared digests) and every
+    consumed relpath must be a declared member — a tampered file, a
+    stale sidecar, or an undeclared path fails closed here, never
+    silently at parse time.
+    """
+    if manifest is None:
+        raise ValueError(
+            "source manifest is required for the real intake path — "
+            "unverified bytes are inadmissible")
+    from nepal.research_v0._hashing import verify_source_evidence
+    problems = verify_source_evidence(manifest)
+    if problems:
+        raise ValueError(
+            f"feature manifest evidence problems: {problems}")
+    # membership + digest are checked against manifest-relative
+    # relpaths resolved under the manifest's own evidence_root — the
+    # intake's local root is not trusted for the binding
+    manifest_root = Path(manifest["evidence_root"])
+    declared = {f["relpath"]: f["sha256"]
+                for f in manifest.get("source_files", ())}
+    for rel in relpaths:
+        if rel not in declared:
+            raise ValueError(
+                f"input {rel!r} is not a declared manifest member")
+        p = manifest_root / rel
+        actual = _sha256(p.read_bytes())
+        if actual != declared[rel]:
+            raise ValueError(
+                f"input {rel!r} digest {actual} != manifest "
+                f"{declared[rel]}")
+        # stale sidecar probe: when a .sha256 sidecar exists it must
+        # agree with the live bytes
+        side = p.with_name(p.name + ".sha256")
+        if side.exists():
+            recorded = side.read_text().strip().split()[0]
+            if recorded != actual:
+                raise ValueError(
+                    f"stale sidecar on {rel!r}: recorded {recorded} "
+                    f"!= live {actual}")
+
+
+def load_feature_manifest(evidence_root: Path) -> Mapping:
+    """The canonical four-role manifest set's feature role."""
+    rec = json.loads(
+        (Path(evidence_root) / "retrieval" / "role_manifests_v0.json")
+        .read_text())
+    return rec["feature"]
 
 
 def _load_timeseries_hourly(zip_path: Path, basin: str) -> pd.DataFrame:
@@ -170,15 +225,28 @@ def _load_snow_hourly(evidence_root: Path, basin: str) -> pd.DataFrame:
     return df
 
 
-def build_basin_hourly(evidence_root: Path, basin: str) -> tuple:
+def build_basin_hourly(evidence_root: Path, basin: str,
+                       manifest: Optional[Mapping] = None) -> tuple:
     """Return (hourly_df, report) for one frozen anchor basin.
 
     The JJA filter is applied to the contiguous timeseries leg here;
     excluded non-JJA rows are counted in the report, never analyzed.
+    When ``manifest`` is supplied (the canonical feature-role
+    manifest), every consumed byte is verified against it BEFORE
+    parsing — the FMX-02 floor; real runs must pass it.
     """
     ts_zip = evidence_root / TIMESERIES_TEMPLATE.format(basin=basin)
     if not ts_zip.exists():
         raise FileNotFoundError(f"missing timeseries payload {ts_zip}")
+    if manifest is not None:
+        consumed = [
+            f"era5-multibasin/{TIMESERIES_TEMPLATE.format(basin=basin)}"
+        ] + [
+            f"era5-multibasin/"
+            f"{SNOW_TEMPLATE.format(basin=basin, year=y)}"
+            for y in range(2001, 2026)]
+        verify_inputs_against_manifest(
+            evidence_root, manifest, consumed)
     ts = _load_timeseries_hourly(ts_zip, basin)
     jja = ts[ts.index.month.isin(JJA_MONTHS)]
     excluded = int(len(ts) - len(jja))
