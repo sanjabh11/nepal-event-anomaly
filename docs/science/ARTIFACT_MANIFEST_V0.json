@@ -1,6 +1,6 @@
 {
  "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
- "content_head": "8b9b3a5ada462b3282ff109d08e563649215821c",
+ "content_head": "1f98a89cce2cc164571f153e43c3f178024cf271",
  "files": [
   {
    "relpath": ".github/workflows/research-v0.yml",
@@ -29,8 +29,8 @@
   },
   {
    "relpath": "docs/science/GAP_REGISTER_V0.md",
-   "sha256": "a35b08e12189cc25ef3a0f4b8ffa3c61cad65e21c63ef8e81158c34a33d1b161",
-   "size_bytes": 114351
+   "sha256": "b9d6a369b829eeea05a209cff2f3e63bd5d2facf99b2f37b43bc4f15ea8568a0",
+   "size_bytes": 116268
   },
   {
    "relpath": "docs/science/GOVERNANCE_EXERCISE_RECORD_V0.md",
@@ -94,8 +94,8 @@
   },
   {
    "relpath": "docs/science/P5_SCOPE_RECONCILIATION_V0.md",
-   "sha256": "d97339f15aa2e14d4d24b61df106560086e61c6865dbaedad1d196d9a744b982",
-   "size_bytes": 4761
+   "sha256": "830373112737e7f176ef6662df5280a28d803bbf949846586584483498444332",
+   "size_bytes": 6510
   },
   {
    "relpath": "docs/science/PHASE4_DUAL_MANIFEST_DECISION_V0.md",
@@ -254,8 +254,8 @@
   },
   {
    "relpath": "nepal/real_fmx.py",
-   "sha256": "e7c8cfa66f1674f275a5082a8e40c9ae186a886353fe533b771d83da0da15fe7",
-   "size_bytes": 22968
+   "sha256": "77f6e3e9f5530450c69f96184981f9f2324c0d82471ee1bff9e001d32f3c8ba1",
+   "size_bytes": 24193
   },
   {
    "relpath": "nepal/research_v0/__init__.py",
@@ -279,13 +279,13 @@
   },
   {
    "relpath": "nepal/research_v0/p3_intake.py",
-   "sha256": "3c472c7f98c9e41b7e65eee0c923d116c4bf462d0d6ec89b53ae0e0d27bcc05b",
-   "size_bytes": 25923
+   "sha256": "0eb415a16ef83633684ce9557ed08f4f933e49fa267279f4b99697934be1a46a",
+   "size_bytes": 27740
   },
   {
    "relpath": "nepal/research_v0/p3_package_adapter.py",
-   "sha256": "047296fc1050a9f7ce8cd32f00bc6ba01e0b05e2600140cd96a0aff81f4218fe",
-   "size_bytes": 19098
+   "sha256": "65b5ce7225a4b9cc09dcca32faea8d815df4257d632fac3e100bbda25b269afc",
+   "size_bytes": 19217
   },
   {
    "relpath": "nepal/research_v0/policy.py",
@@ -294,13 +294,13 @@
   },
   {
    "relpath": "nepal/research_v0/producer_validation.py",
-   "sha256": "31369a0f250f58e7df1ead75ce57dcb220ddc9953106da8d14761d337f5ccd09",
-   "size_bytes": 153568
+   "sha256": "dfd6a9bfeb8c7d5a4ab4d99fa837ed66aa0be8142b5279e49d82e430bf9d6193",
+   "size_bytes": 155913
   },
   {
    "relpath": "nepal/research_v0/records.py",
-   "sha256": "883e8b471e1476ee6dc794397d2097fe56333a6d1087f63a1248b801cd3fe2d5",
-   "size_bytes": 58210
+   "sha256": "8418fc5d7ed4ac8d8d0b0ee663fb34c852ded0b78399c4ac61bb12caeb99e250",
+   "size_bytes": 60394
   },
   {
    "relpath": "nepal/research_v0/run_evidence.py",
@@ -339,8 +339,8 @@
   },
   {
    "relpath": "nepal/science_v0/regimes.py",
-   "sha256": "2fa228c984e737f6430f72e3790ede8aea3e5a7c9480de77d2eaad044100873c",
-   "size_bytes": 132380
+   "sha256": "595ba294b8813ec3247a17e0b6b3436ab3b9d9d00aee7d362cd52de7e2bb962c",
+   "size_bytes": 138791
   },
   {
    "relpath": "nepal/seismic_sidecar/__init__.py",
@@ -389,8 +389,8 @@
   },
   {
    "relpath": "scripts/replay_p5.py",
-   "sha256": "c985c856122e27dc552a3ef090c65cbe333b7e63ce2c3b7ca173de1a0ec32a9c",
-   "size_bytes": 13624
+   "sha256": "7b5242550bb03fa693cc30f1d1a366916642c438dcce0fbb2867fdec7edba57c",
+   "size_bytes": 13727
   },
   {
    "relpath": "tests/fixtures/__init__.py",
@@ -509,8 +509,8 @@
   },
   {
    "relpath": "tests/test_r11_9_bindings.py",
-   "sha256": "7f5d91d59c7a4ee436594b195e1e34be453c5a91044b5e2ea4d2874f275637e4",
-   "size_bytes": 19734
+   "sha256": "2c89ec6bcebf0d98aa4434d20b7fe2024be1a6a869726e0706b4cfebdb9b9bde",
+   "size_bytes": 23092
   },
   {
    "relpath": "tests/test_r11_9_dual_manifest_contract.py",
@@ -680,7 +680,7 @@
  ],
  "generated": "2026-09-19 R11.9 semantic-binding closure rebind (content 0113677 + uncommitted SWE2 delta; heads rebind on final content commit)",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "8b9b3a5ada462b3282ff109d08e563649215821c",
+ "manifest_commit": "1f98a89cce2cc164571f153e43c3f178024cf271",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -690,7 +690,7 @@
  "test_results": {
   "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
   "claim_scan": "clean on all governed files",
-  "collection_guard": "repo-wide collection == tests/ (3363 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
+  "collection_guard": "repo-wide collection == tests/ (3391 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
   "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
   "full_suite_venv": "3349 passed, 6 skipped, 0 failed, 57 warnings \u2014 post-R11.9 canonical suite (3355 collected)",
   "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
