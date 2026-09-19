@@ -7,7 +7,7 @@ never agent-invented).
 sha256 `7903cd5a…2622ca` (sidecar-verified), member digests
 cross-checked against `retrieval/retrieval_record_hmaglofdb.json`.
 **Package:** `glof-events/p3_event_package_v0.json`
-(sha256 `d2849cfd69140c1c1330ea7b6d8c24e9a2eb8817b3660693c45ab0539b320f5c`,
+(sha256 `0e786f9cbd79e0975b947baee30c40f9fdb0081b0c3d285a2dde07208393dc0d`,
 sidecar present). Implementation: `nepal/research_v0/p3_intake.py`;
 regression-pinned by `tests/test_p3_hmaglofdb_intake.py`.
 
@@ -27,8 +27,8 @@ regression-pinned by `tests/test_p3_hmaglofdb_intake.py`.
 ## Derived label package
 
 - **45 loadable event labels** (30 Nepal + 15 hydrologically-adjacent
-  Tibetan headwater rows in mapped basins): koshi 31, karnali 8,
-  gandaki 5, bagmati 1. All `vertical_id=glof`, `mechanism=
+  Tibetan headwater rows in mapped basins): koshi 32, karnali 8,
+  gandaki 5. All `vertical_id=glof`, `mechanism=
   lake_outburst`, `geometry_role=lake_point`, UNADJUDICATED with no
   reviewer identities (owner adjudication is a separate step).
 - **1,175 observation opportunities** (47 PDGL lakes × JJA
@@ -37,10 +37,14 @@ regression-pinned by `tests/test_p3_hmaglofdb_intake.py`.
 - **1,175 control windows**, state **derived** via
   `derive_control_state` — all honestly `CENSORED_OR_AMBIGUOUS`
   (a NEGATIVE control requires an OBSERVED_FULL opportunity).
-- **Holdout plan** `p3-hmaglofdb-basin-holdout-v0`: rule `basin`,
+- **Event holdout plan** `p3-hmaglofdb-basin-holdout-v0`: rule `basin`,
   assigned before filtering; test = {koshi, gandaki} (2 named
-  evaluation regions), validation = {karnali}, train = {bagmati};
-  embargo 14 d; cascade groups atomic by construction.
+  evaluation regions), validation = {karnali}, train is empty under the
+  explicit `holdout_mode=evaluation_only` waiver. Event labels are
+  evaluation inputs only and never enter regime fitting; the separate
+  regime holdout is the authenticated temporal amendment (JJA 2001–2017
+  train / 2018–2019 embargo / 2020–2025 holdout). Cascade groups remain
+  atomic by construction.
 
 ## Linkage-uncertainty ledger (nothing dropped silently)
 
@@ -49,7 +53,7 @@ regression-pinned by `tests/test_p3_hmaglofdb_intake.py`.
 | `basin_outside_operative_universe` | 542 |
 | `unresolved_timing` | 296 |
 | `unparseable_year` | 66 (year ranges — raw values retained) |
-| `province_conflict` | 1 (GF 345: hydrological koshi vs Province Bagmati — hydrology governs) |
+| `province_conflict` | 2 (GF 345 and Melamchi GF 515: hydrological koshi vs Province Bagmati — hydrology governs; administrative fields are preserved separately; HMAGLOFDB serializes the province as the canonical abbreviation `Bagmati`) |
 
 ## Honest limitations (V0)
 

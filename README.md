@@ -184,16 +184,15 @@ lane is **208 passed**, and the shared GLOF/regime regression lane is
 lane skip remain disclosed. No seismic payload bytes were acquired, and
 warning, production, and promotion authority remain false.
 
-### Post-acquisition status (2026-09-19, R11.9)
+### Post-acquisition status (2026-09-19, R11.9 historical snapshot)
 
 P5 owner-authorized acquisition landed: HMAGLOFDB v1.3.0 events, ICIMOD
 PDGL 2015 opportunity frame, RDS7952 basin boundaries, and dual-channel
 ERA5-Land (CDS + GEE) over the three operative basins — all byte-bound
 under `retrieval/role_manifests_v0.json` (event / opportunity / feature /
-sidecar, distinct source IDs). The real descriptive path executes through
-the frozen runner: honest `CANDIDATE_ONLY` demotion — the source is
-`UNREVIEWED` pending two independent reviewer records + adjudication, so
-the regime engine is never invoked.
+sidecar, distinct source IDs). The R11.9 text below is retained as the
+historical pre-temporal-amendment snapshot; the current P5-A2 state is
+recorded immediately after it.
 
 The FMX audit now runs only through the verified feature-role manifest
 (`nepal/real_fmx.py`): frame bytes are re-checked before parsing, the
@@ -208,11 +207,33 @@ reproduction, not just sidecar integrity. The seismic STEIM admission
 gate (`allow_steim_decoding`) is a wired strict-bool flag — closed by
 default pending governed-env decoder qualification.
 
-Remaining gates are owner-side or physical, not code: two-reviewer intake
-+ adjudication, post-review regime execution, seismic storage
+Remaining gates in that historical snapshot were owner-side or physical:
+two-reviewer intake + adjudication, post-review regime execution, seismic storage
 (~11 GiB free vs 10 GiB cap + 8 GiB reserve) and waveform acquisition.
 `DESIGN_DRAFT_COMPLETE`; seismic remains retrospective-only and
 non-associable; seismic is **not** a Nepal predictor.
 
 The merged tree now collects **3355** tests; the fresh canonical suite
 is **3349 passed / 6 skipped / 0 failed / 57 warnings**.
+
+### P5-A2 temporal amendment (current state, 2026-09-20)
+
+The owner-authenticated amendment separates source geography from hydrology:
+Melamchi remains the raw river value, Sindhupalchok and Bagmati Province
+remain administrative fields, and the derived hydrological mapping is
+`hydro_subbasin=Indrawati`, `basin_group=koshi`, `basin_id=koshi`.
+The regime axis is temporal: JJA 2001–2017 train, JJA 2018–2019 embargo,
+and JJA 2020–2025 holdout, with all three feature basins in the fit and no
+geographic-transfer claim. Event labels use the explicit
+`evaluation_only` waiver and never enter regime fitting.
+
+The real run is complete and honest: 4,692 train rows, 552 embargo rows,
+and 1,656 holdout rows were evaluated; the receipt is `CANDIDATE_ONLY`
+because the artifact verdict is `UNSUPERVISED_STRUCTURE_NOT_STABLE`.
+Replay is `REPLAY_OK`; promotion, warning, and production authority remain
+false. A fourth basin is dormant and is not required for this temporal path.
+
+The current canonical suite records **3387 passed / 6 skipped / 0 failed /
+57 warnings** across **3393 collected** tests. Five rasterio skips and one
+documented descriptive-artifact skip remain disclosed. Seismic waveform
+bytes and STEIM admission remain a separate storage-gated track.

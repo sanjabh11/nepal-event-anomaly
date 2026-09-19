@@ -1167,7 +1167,7 @@ Posture after this round: `DESIGN_DRAFT_COMPLETE`,
 `WARNING_PATH_AUTHORIZED: NO`.
 
 
-## R11.9 semantic-binding closure — 2026-09-19 (SWE2)
+## R11.9 semantic-binding closure — 2026-09-19 (historical snapshot; superseded by P5-A2)
 
 Post-acquisition audit (20 findings) closed the remaining structural
 proof gaps; the posture gate's `CANDIDATE_ONLY` hold is intact and
@@ -1203,8 +1203,8 @@ Posture: `DESIGN_DRAFT_COMPLETE`; source `EVIDENCE_VERIFIED` (reviews adjudicate
 | R11.9-21 | **RESOLVED** — cutoff record rebound to canonical `retrieval_record_era5_hma_operative.json`; `cutoff_record_problems` now requires `canonical:true`, operative anchor-set equality, and rejects non-HMA file lists |
 | R11.9-22 | **RESOLVED** — canonical record carries evidence-derived `pull_utc_start/end` (CDS start → EE completion 07:48:22Z; never mtime) + per-channel completions; validator rejects missing/stale/pre-completion times |
 | R11.9-23 | **RESOLVED** — full chain regenerated: retrieval→cutoff→preprocessing→FMX→manifests→package→receipt→replay, all digests recomputed |
-| R11.9-24/25 | **ESCALATED** — regime honest `RUN_ERROR` (2 fit groups < MIN_GEO_GROUPS=3); `scope_amendment_fourth_group_v0.json` prepared (koshi L2 sub-basin split, ~26 requests) — owner signature required; no invented coords, gate untouched |
-| R11.9-26 | **RESOLVED** — holdout report split: `axis_preflight=PASS` / `engine_admissibility=BLOCKED` |
+| R11.9-24/25 | **HISTORICAL PRE-P5-A2 ESCALATION, SUPERSEDED** — the pre-amendment regime returned honest `RUN_ERROR` (2 fit groups < MIN_GEO_GROUPS=3); `scope_amendment_fourth_group_v0.json` remains dormant (koshi L2 sub-basin split, ~26 requests) and is not a prerequisite for the authenticated temporal run; no invented coords, gate untouched |
+| R11.9-26 | **HISTORICAL PRE-P5-A2 STATE** — the pre-amendment holdout report split `axis_preflight=PASS` / `engine_admissibility=BLOCKED`; the authenticated temporal amendment now records `axis_preflight=PASS` and an engine-admissible 3-basin fit |
 | R11.9-27 | **RESOLVED** — carrier group domains derived from frame bytes at audit time, not hardcoded |
 | R11.9-28 | **RESOLVED** — sidecar + scope doc distinguish source-level verification from label adjudication (labels stay UNADJUDICATED) |
 | R11.9-29 | **RESOLVED (disclosed)** — dual role recorded in adjudication + sidecar; conservative posture retained; stricter reading needs a third non-owner review |

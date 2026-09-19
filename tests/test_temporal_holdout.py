@@ -288,3 +288,43 @@ class TestIndrawatiNeverBagmati:
         hp = pkg["holdout_plan"]
         assert hp["holdout_mode"] == "evaluation_only"
         assert hp["train_waiver_reason"].strip()
+
+
+class TestP5A2Documentation:
+    """Keep the operative docs aligned with the authenticated P5-A2
+    mapping and temporal event/regime split.
+
+    These are release guards rather than scientific claims: historical
+    pre-amendment entries may remain in the ledger, but active wording
+    must not resurrect Bagmati hydrology or a fourth-group prerequisite.
+    """
+
+    def test_active_docs_bind_melamchi_fields_and_temporal_path(self):
+        from pathlib import Path
+        root = Path(__file__).parents[1]
+        rule = (root / "docs/science/P3_BASIN_ASSIGNMENT_RULE_V0.md").read_text()
+        scope = (root / "docs/science/P5_SCOPE_RECONCILIATION_V0.md").read_text()
+        assert "`Melamchi` → `koshi`" in rule
+        assert "raw_river_basin=Melamchi" in rule
+        assert "administrative_district=Sindhupalchok" in rule
+        assert "basin_group=koshi" in rule
+        assert "hydro_subbasin=Indrawati" in rule
+        assert "train is empty under the explicit" in scope
+        assert "not a prerequisite for" in scope
+
+    def test_intake_report_hash_and_counts_match_bound_package(self):
+        import hashlib
+        from pathlib import Path
+        root = Path(__file__).parents[1]
+        evidence = Path("/Users/sanjayb/nepal-event-anomaly-evidence/"
+                        "p5-glof-2026-09-19")
+        package = evidence / "glof-events/p3_event_package_v0.json"
+        if not package.exists():
+            pytest.skip("real evidence root absent")
+        report = (root / "docs/science/P3_HMAGLOFDB_INTAKE_REPORT_V0.md"
+                  ).read_text()
+        digest = hashlib.sha256(package.read_bytes()).hexdigest()
+        assert digest in report
+        assert "koshi 32, karnali 8" in report
+        assert "`holdout_mode=evaluation_only`" in report
+        assert "train = {bagmati}" not in report

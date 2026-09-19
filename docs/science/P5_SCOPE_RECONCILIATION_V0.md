@@ -35,9 +35,11 @@ not infer a Nepal-only event universe.
 Two distinct group axes exist and are NOT the same object:
 
 - **Event holdout** (`p3-hmaglofdb-basin-holdout-v0`): assigns EVENTS
-  for evaluation — train={bagmati}, validation={karnali},
-  test={gandaki, koshi}. Bagmati's single event stays honestly in the
-  event record even though no feature frame exists for it.
+  for evaluation — train is empty under the explicit
+  `holdout_mode=evaluation_only` waiver, validation={karnali},
+  test={gandaki, koshi}. The Melamchi event is hydrologically `koshi`
+  while its raw and administrative fields remain preserved; no event
+  label is passed to regime fitting.
 - **Regime fit groups** (`RegimeRunConfig.train_groups/heldout_groups`):
   declare FEATURE-frame `basin_group` values — only
   {koshi, gandaki, karnali} exist. Declared: train={koshi, gandaki},
@@ -54,7 +56,7 @@ All manifests, the runner package, holdout digests, and this record
 use the same three-basin operative set. Any proposal to widen scope
 is a formal amendment, never a silent drift.
 
-## 5. Addendum 2026-09-19 (post-review) — review semantics + fourth-group gate
+## 5. Historical pre-P5-A2 snapshot (2026-09-19; superseded by §6) — review semantics + fourth-group gate
 
 **Source review vs label adjudication (R11.9-28).** Two independent
 byte-bound intake reviews (owner + RAVI) plus owner adjudication are
@@ -73,14 +75,17 @@ reports), not independence from the project owner. If a stricter
 reading is required, a third non-owner review must be obtained before
 claiming independent qualification.
 
-**Fourth-group gate (R11.9-24/25).** `MIN_GEO_GROUPS=3` requires ≥3
-fit groups; the frozen 3-basin universe yields only 2 under any
-honest heldout assignment → the regime returns `RUN_ERROR`. The gate
-is NOT weakened. A prepared scope amendment
-(`retrieval/scope_amendment_fourth_group_v0.json`) proposes an L2
+**Historical fourth-group gate (R11.9-24/25).** Before the temporal
+amendment, `MIN_GEO_GROUPS=3` required ≥3 fit groups; the frozen
+3-basin universe yielded only 2 under an honest geographic heldout
+assignment, so the regime returned `RUN_ERROR`. The gate was not
+weakened. A prepared scope amendment
+(`retrieval/scope_amendment_fourth_group_v0.json`) proposed an L2
 sub-basin split within koshi (Tamor/Arun vs Dudh Koshi) using the
 same approved inventory + boundary sources (~26 requests, inside the
-P5 cap). **Owner signature required before any new bytes.**
+P5 cap). That proposal is now dormant and is not a prerequisite for
+the authenticated temporal run in §6; no fourth-group bytes are to be
+acquired unless geographic LORO is explicitly requested later.
 
 **Holdout gate report semantics (R11.9-26).** The gate report now
 distinguishes `axis_preflight=PASS` (disjoint nonempty groups on the

@@ -16,7 +16,7 @@ population in either inventory and no L2 polygons** — a geographic
 fact recorded in the anchor record (`mahakali_bagmati_finding`); no
 lake-derived anchor exists for them under any rule. **No analysis
 may scope five basins.** (HMAGLOFDB does contain a small number of
-bagmati-system flood *events* — e.g. Melamchi 2021 — which are
+events reported in Bagmati Province — e.g. Melamchi 2021 — which are
 labelled and assigned for completeness but carry no ERA5 anchor
 feature frame; they cannot enter feature-linked modelling.)
 
@@ -29,7 +29,14 @@ table in `nepal/research_v0/p3_intake.py::RIVER_BASIN_TO_UNIVERSE`
 `Tamor`, `Arun`, `Tama Koshi`, Tibetan `Poiqu`/`Pumqu` → `koshi`;
 `Humla`, `Mugu Karnali`, `Bheri`, `Dhauliganga`, `West Seti` →
 `karnali`; `Kali Gandaki`, `Marsyangdi`, `Upper Mustang`,
-`Budhi Gandaki`, Pokhara `Seti` → `gandaki`; `Melamchi` → `bagmati`).
+`Budhi Gandaki`, Pokhara `Seti` → `gandaki`; `Melamchi` → `koshi`).
+The Melamchi row keeps its source and administrative values separately
+(`raw_river_basin=Melamchi`, `administrative_district=Sindhupalchok`,
+`administrative_province=Bagmati`). The source serializes the province as
+`Bagmati`; this is the canonical abbreviation for Bagmati Province in the
+source record and is not a hydrological basin label. Its derived
+hydrological fields are `basin_group=koshi` and
+`hydro_subbasin=Indrawati`.
 Rows whose river is absent from the table are **ledger-recorded**
 (`basin_outside_operative_universe`, raw value retained) and never
 silently dropped; no agent-chosen coordinates or polygon point-in-poly

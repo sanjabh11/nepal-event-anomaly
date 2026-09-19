@@ -413,7 +413,7 @@ The merged tree collects **3273** tests. The fresh canonical suite records
 authorization, protected paths, or authority flags changed.
 
 
-## R11.9 semantic-binding closure (2026-09-19)
+## R11.9 semantic-binding closure (2026-09-19; historical snapshot superseded by P5-A2)
 
 P5 owner-authorized acquisition landed earlier this round (HMAGLOFDB
 v1.3.0, PDGL 2015, RDS7952, dual-channel ERA5-Land; 131 ledger payloads).
@@ -450,3 +450,26 @@ still required before admission.  Owner-side gates unchanged:
 two-reviewer review, adjudication, post-review regime execution,
 seismic storage/bytes.  Protected paths untouched; all authority flags
 false; seismic stays non-associable and is not a Nepal predictor.
+
+## P5-A2 temporal-amendment execution (2026-09-20)
+
+The authenticated temporal amendment is the operative state. Melamchi's
+raw source value remains `Melamchi`; administrative values remain
+Sindhupalchok and Bagmati Province; hydrological derivation is
+Indrawati -> Sun Koshi -> Koshi, with `basin_group=koshi` and
+`basin_id=koshi`. The regime split is JJA 2001–2017 train, JJA 2018–2019
+embargo, and JJA 2020–2025 holdout. The event-level empty-train condition
+is the typed `evaluation_only` waiver; event labels do not enter fitting.
+
+The real engine executed over 4,692 train rows, excluding 552 embargo rows
+and locking 1,656 temporal holdout rows. It returned the permitted
+research-only result `CANDIDATE_ONLY` with artifact verdict
+`UNSUPERVISED_STRUCTURE_NOT_STABLE`; this is a scientific result, not a
+pipeline failure. Replay is `REPLAY_OK`, all authority flags remain false,
+and the dormant fourth-group proposal is not a prerequisite for the temporal
+path.
+
+Fresh verification at this content head: 3,393 collected; 3,387 passed,
+6 skipped, 0 failed, 57 warnings. The six skips are five disclosed
+rasterio quarantines and one documented candidate-only descriptive-artifact
+guard. The manifest rebind records these values after the content commit.
