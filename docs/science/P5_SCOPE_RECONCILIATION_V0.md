@@ -42,10 +42,12 @@ Two distinct group axes exist and are NOT the same object:
   label is passed to regime fitting.
 - **Regime fit groups** (`RegimeRunConfig.train_groups/heldout_groups`):
   declare FEATURE-frame `basin_group` values — only
-  {koshi, gandaki, karnali} exist. Declared: train={koshi, gandaki},
-  heldout={karnali} (LORO-style). Verified in
-  `retrieval/holdout_feature_gate_report.json`: nonempty, disjoint,
-  in-universe, nonempty masks — **PASS**.
+  {koshi, gandaki, karnali} exist. Under the authenticated P5-A2
+  amendment, all three are in the temporal fit and
+  `heldout_groups=[]`; the lock is the declared train/embargo/holdout
+  interval trio, not a simultaneous geographic LORO split. Verified in
+  `retrieval/holdout_feature_gate_report.json`: interval-derived fit,
+  embargo, and holdout masks are disjoint and nonempty — **PASS**.
 
 No bagmati features are invented; the event holdout is not coerced;
 the regime fit cannot and does not claim bagmati coverage.

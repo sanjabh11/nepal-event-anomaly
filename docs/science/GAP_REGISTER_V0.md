@@ -1131,7 +1131,7 @@ real regime fitting remain owner/data-gated. Posture remains
 `DESIGN_DRAFT_COMPLETE`,
 `NO_QUALIFYING_PILOT_SOURCE`, and `WARNING_PATH_AUTHORIZED: NO`.
 
-## Post-acquisition reconciliation — 2026-09-19 (Codex audit findings)
+## Post-acquisition reconciliation — 2026-09-19 (historical pre-P5-A2 snapshot; superseded)
 
 After the P5 acquisition + P3 intake + Phase-4 wiring commits
 (`419356e` content, `480f48e` manifest rebind), the Codex audit
@@ -1147,16 +1147,16 @@ design.
 | INT-02 | **RESOLVED** | 4 distinct role manifests (`retrieval/role_manifests_v0.json`); `RunEvidenceManifestV0` instantiated with all roles — `problems()==[]`, `verify_problems()==[]` |
 | OP-01 | **RESOLVED** | `glof-lakes/lake_to_basin_linkage_v0.json` — explicit digest-bound pdgl→basin map (47 lakes, 0 conflicts) from `basin_coverage`; lake-level opportunities preserved verbatim |
 | SCOPE-01/02 | **RESOLVED (record)** | `P5_SCOPE_RECONCILIATION_V0.md` — 3-basin final; hydrological (not national) event scope declared; 5-basin contract text reconciled |
-| HOLD-01 | **RESOLVED** | `retrieval/holdout_feature_gate_report.json` — axes decoupled; regime groups train={koshi,gandaki}/heldout={karnali} verified PASS; event holdout preserved |
+| HOLD-01 | **HISTORICAL STATE — SUPERSEDED** | The pre-amendment geographic split is retained as history. Current `retrieval/holdout_feature_gate_report.json` binds the authenticated temporal axis: all three basins fit, `heldout_groups=[]`, embargo/holdout intervals validated; event holdout remains separate. |
 | FMX-01 | **RESOLVED** | Feature-role manifest binds both channels + derived frames + provenance; semantic matrix digest + cutoff `2025-10-01T00:00:00Z` declared |
 | FMX-02 | **RESOLVED** | `verify_inputs_against_manifest` floor in `era5_anchor_intake.py`; tamper/undeclared/stale-sidecar probes fail closed |
 | FMX-03 | **RESOLVED** | Real audit over 6900×19 frame → **FMX_PASS**, 0 rejects; `era5-multibasin/features/fmx_audit_report_v0.json` digested |
-| REG-01 | **EXECUTED → CANDIDATE_ONLY** | Real `run_glof_descriptive_poc` ran; honest demotion — source posture `CANDIDATE_ONLY`/`UNREVIEWED` (reviews pending); authority flags all false; `retrieval/p5_glof_descriptive_receipt_v0.json` |
+| REG-01 | **HISTORICAL STATE — SUPERSEDED** | The pre-amendment run was source-gated. The current P5-A2 run is independently replayable and returns `CANDIDATE_ONLY` because `UNSUPERVISED_STRUCTURE_NOT_STABLE`; authority flags remain false. |
 | REPLAY-01 | **RESOLVED** | `scripts/replay_p5.py` → **REPLAY_OK**: 131 ledger bytes + 4 role manifests + package digests + sidecars + authority flags all verify (caught + fixed a CWD-dependent `evidence_root` defect) |
 | REL-01 | **RESOLVED** | stale `rebind_manifest_p5.py` quarantined to /tmp; `.write-leases/` gitignored |
 | LIC-01 | **RESOLVED** | licence snapshots for all 4 roles (RDS7952 agreement extracted byte-bound; ERA5-CDS/GEE/HMA reference snapshots) |
 | MULTI-01 | **RESOLVED** | CDS/GEE kept as distinct channel identities in feature-manifest lineage + `retrieval_record_era5_hma_operative.json` |
-| GOV-01 / REV-01 | **OPEN — owner-side** | `retrieval/p3_review_packet_v0.json` binds 13 artifacts + 5 review questions for 2 reviewers + adjudicator; labels stay `UNADJUDICATED`, source `CANDIDATE_ONLY` until real review evidence exists — cannot be delegated to an agent |
+| GOV-01 / REV-01 | **SOURCE REVIEW CLOSED; LABEL REVIEW OPEN** | Source-level reviews and adjudication are byte-bound and complete. `EventLabelV0` labels intentionally remain `UNADJUDICATED`; association cannot proceed without a separate label adjudication. |
 | CTRL-01 | **BY DESIGN** | All controls `CENSORED_OR_AMBIGUOUS` (UNKNOWN opportunities) — no NEGATIVEs manufacturable this cycle; association stays stage-gated |
 | DOC-01 | **RESOLVED** | This reconciliation + `P5_SCOPE_RECONCILIATION_V0.md` |
 | STORAGE-01 / SEIS-01 / SEIS-02 | **PARTIAL** | obspy 1.5.1 cp314 **QUALIFIED** in isolated env (`seismic-4w/obspy_qualification_probe.json`: STEIM1/2 BE+LE decode, malformed-input rejection); waveform acquisition blocked on storage (11 GiB free vs 10 GiB cap + 8 GiB reserve) — separate volume or smaller-scope amendment needed |
@@ -1240,3 +1240,19 @@ temporal-aware: empty heldout_groups iff holdout_axis='temporal'
 with declared intervals; fit_partition recomputation is
 group∩interval bounded; stability vocabulary admits
 temporal_holdout. All authority flags remain false.
+
+### P5-A2 final verification — 2026-09-20
+
+The source-level review packet is now complete: the byte-bound sidecar
+contains two distinct reviewer assessments and the adjudication record;
+`SourceRecordV0` is `EVIDENCE_VERIFIED`/`INDEPENDENTLY_VERIFIED`. This
+does not adjudicate individual event labels, which remain
+`UNADJUDICATED` by design. The real FMX report is `FMX_PASS` over
+6,900 × 19 values, and the replay is `REPLAY_OK` with full recomputation.
+
+The release-bound repository evidence is 3,393 collected tests with
+3,387 passed, 6 disclosed skips, 0 failures, and 57 warnings. The
+temporal result is publishable only as a research-only negative finding;
+no association, geographic-transfer, forecast, warning, or production
+claim follows from it. The dormant fourth-group amendment remains outside
+the temporal critical path.
