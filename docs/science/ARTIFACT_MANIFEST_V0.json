@@ -1,6 +1,6 @@
 {
  "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
- "content_head": "296293df07b414e484873d413da15fb7d472c20e",
+ "content_head": "c3fe9a2e4a31c9690aa831cc3f1a0f4a98ea4cd7",
  "files": [
   {
    "relpath": ".github/workflows/research-v0.yml",
@@ -29,8 +29,8 @@
   },
   {
    "relpath": "docs/science/GAP_REGISTER_V0.md",
-   "sha256": "e92abfcb9eb736c90654a4bfce8b47d144b6f49a00c433e34e4d6cb69e7dcce0",
-   "size_bytes": 116548
+   "sha256": "508e4e91caf03c59da21c0ba557c7d8e753b032fcf779f4f309f4bcaeea221b6",
+   "size_bytes": 117520
   },
   {
    "relpath": "docs/science/GOVERNANCE_EXERCISE_RECORD_V0.md",
@@ -83,6 +83,11 @@
    "size_bytes": 4133
   },
   {
+   "relpath": "docs/science/P5_A2_TEMPORAL_REGIME_RESULT_V0.md",
+   "sha256": "4539a78b29fa7010ea24ab0c014896836015c88b62151448b3adbbd32afdd900",
+   "size_bytes": 3065
+  },
+  {
    "relpath": "docs/science/P5_ACQUISITION_AUTHORIZATION_RECORD_V0.md",
    "sha256": "963e8d37c0b07d9c699cdd7732f4ef87fb13101be6555712672655b182763063",
    "size_bytes": 19011
@@ -94,8 +99,8 @@
   },
   {
    "relpath": "docs/science/P5_SCOPE_RECONCILIATION_V0.md",
-   "sha256": "9fee83d2e6600c431e4ea82c874cdb8926b5a77785014a5517a7f66e5a1a5ce7",
-   "size_bytes": 6840
+   "sha256": "574b17cfce195438ebe57fc8d1b092deaca19dd72f1a24177f70298655001636",
+   "size_bytes": 7009
   },
   {
    "relpath": "docs/science/PHASE4_DUAL_MANIFEST_DECISION_V0.md",
@@ -683,9 +688,9 @@
    "size_bytes": 14244
   }
  ],
- "generated": "P5-A2 documentation and temporal-holdout reconciliation rebind (content 296293d)",
+ "generated": "P5-A2 final result report and stale-scope reconciliation rebind (content c3fe9a2)",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "296293df07b414e484873d413da15fb7d472c20e",
+ "manifest_commit": "c3fe9a2e4a31c9690aa831cc3f1a0f4a98ea4cd7",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
