@@ -602,6 +602,19 @@ class RegimeRunConfig:
     # Both must be non-empty and disjoint; the mask must honour them.
     train_groups: tuple = ()
     heldout_groups: tuple = ()
+    # Holdout axis (P5-A2 temporal amendment): "geographic" keeps the
+    # classic LORO lock (heldout_groups required, disjoint).
+    # "temporal" replaces it with owner-declared train/embargo/holdout
+    # date intervals — heldout_groups must then be EMPTY (a run
+    # cannot declare two lock axes), all intervals must be ISO-date
+    # (start, end) pairs ordered train < embargo < holdout, and every
+    # held-out row must fall inside embargo∪holdout.  Temporal mode
+    # reports temporal extrapolation only — geographic transfer stays
+    # unevaluated.
+    holdout_axis: str = "geographic"
+    temporal_train_interval: tuple = ()
+    temporal_embargo_interval: tuple = ()
+    temporal_holdout_interval: tuple = ()
     # REG-01 calendar-aware bootstrap: cadence + declared block
     # length + gap policy are bound configuration, never derived.
     cadence: str = "1D"
@@ -1085,18 +1098,38 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
             return {"status": "RUN_ERROR",
                     "reason": "duplicate era boundary dates declared"}
     # Holdout binding (I-07): the mask is meaningless unless it is
-    # tied to declared, disjoint train/held-out group membership.
+    # tied to a declared holdout axis — geographic (disjoint group
+    # membership) or temporal (owner-declared train/embargo/holdout
+    # date intervals, P5-A2).  The axis is declared, never inferred.
     train_groups = set(config.train_groups)
     heldout_groups = set(config.heldout_groups)
-    if not train_groups or not heldout_groups:
+    holdout_axis = getattr(config, "holdout_axis", "geographic")
+    if holdout_axis not in ("geographic", "temporal"):
         return {"status": "RUN_ERROR",
-                "reason": "train_groups and heldout_groups must both "
-                          "be non-empty — an undeclared holdout cannot "
-                          "produce a terminal regime status"}
-    if train_groups & heldout_groups:
-        return {"status": "RUN_ERROR",
-                "reason": f"train/heldout groups overlap: "
-                          f"{sorted(train_groups & heldout_groups)}"}
+                "reason": f"holdout_axis must be 'geographic' or "
+                          f"'temporal'; got {holdout_axis!r}"}
+    if holdout_axis == "geographic":
+        if not train_groups or not heldout_groups:
+            return {"status": "RUN_ERROR",
+                    "reason": "train_groups and heldout_groups must "
+                              "both be non-empty — an undeclared "
+                              "holdout cannot produce a terminal "
+                              "regime status"}
+        if train_groups & heldout_groups:
+            return {"status": "RUN_ERROR",
+                    "reason": f"train/heldout groups overlap: "
+                              f"{sorted(train_groups & heldout_groups)}"}
+    else:
+        if heldout_groups:
+            return {"status": "RUN_ERROR",
+                    "reason": "heldout_groups must be empty when "
+                              "holdout_axis='temporal' — a run cannot "
+                              "declare two lock axes"}
+        if not train_groups:
+            return {"status": "RUN_ERROR",
+                    "reason": "train_groups must be non-empty for a "
+                              "temporal holdout — the fit's basin "
+                              "membership is still declared"}
     mask = np.asarray(train_mask)
     if mask.shape[0] != len(df):
         return {"status": "RUN_ERROR",
@@ -1115,10 +1148,77 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
         return {"status": "RUN_ERROR",
                 "reason": f"train rows contain undeclared groups: "
                           f"{sorted(mask_groups - train_groups)}"}
-    if not held_mask_groups <= heldout_groups:
-        return {"status": "RUN_ERROR",
-                "reason": f"held-out rows contain undeclared groups: "
-                          f"{sorted(held_mask_groups - heldout_groups)}"}
+    if holdout_axis == "geographic":
+        if not held_mask_groups <= heldout_groups:
+            return {"status": "RUN_ERROR",
+                    "reason": f"held-out rows contain undeclared "
+                              f"groups: "
+                              f"{sorted(held_mask_groups - heldout_groups)}"}
+    else:
+        # P5-A2 temporal axis: the lock is a declared date interval,
+        # not a group — held rows must live in the SAME declared
+        # basins (temporal extrapolation, never geographic transfer)
+        if not held_mask_groups <= train_groups:
+            return {"status": "RUN_ERROR",
+                    "reason": f"temporal held-out rows contain "
+                              f"undeclared groups: "
+                              f"{sorted(held_mask_groups - train_groups)}"}
+        import datetime as _dt
+        ivals = {}
+        for name in ("temporal_train_interval",
+                     "temporal_embargo_interval",
+                     "temporal_holdout_interval"):
+            iv = getattr(config, name, ())
+            if not isinstance(iv, (list, tuple)) or len(iv) != 2 or \
+                    not all(isinstance(x, str) and _iso_date_ok(x)
+                            for x in iv):
+                return {"status": "RUN_ERROR",
+                        "reason": f"{name} must be a (start, end) "
+                                  "pair of ISO dates for a temporal "
+                                  "holdout — undeclared intervals "
+                                  "cannot bound a lock"}
+            ivals[name] = tuple(_dt.date.fromisoformat(x) for x in iv)
+        tr, em, ho = (ivals["temporal_train_interval"],
+                      ivals["temporal_embargo_interval"],
+                      ivals["temporal_holdout_interval"])
+        if not (tr[0] <= tr[1] < em[0] <= em[1] < ho[0] <= ho[1]):
+            return {"status": "RUN_ERROR",
+                    "reason": "temporal intervals must be strictly "
+                              "ordered train < embargo < holdout — "
+                              "overlap or inversion leaks the lock"}
+        dates = pd.to_datetime(df[config.date_col],
+                               errors="coerce", utc=True)
+        dates = pd.Series(dates.dt.date, index=df.index)
+        in_tr_iv = (dates >= tr[0]) & (dates <= tr[1])
+        if not (~mask | in_tr_iv).all():
+            return {"status": "RUN_ERROR",
+                    "reason": "train mask contains rows outside the "
+                              "declared temporal_train_interval — "
+                              "the mask must honour the amendment"}
+        held_dates = dates[~mask]
+        in_em = (held_dates >= em[0]) & (held_dates <= em[1])
+        in_ho = (held_dates >= ho[0]) & (held_dates <= ho[1])
+        if not (in_em | in_ho).all():
+            return {"status": "RUN_ERROR",
+                    "reason": "held-out rows fall outside the "
+                              "declared embargo+holdout intervals — "
+                              "undeclared rows cannot sit in the "
+                              "lock"}
+        n_embargo = int(in_em.sum())
+        n_holdout = int(in_ho.sum())
+        if n_embargo == 0 or n_holdout == 0:
+            return {"status": "RUN_ERROR",
+                    "reason": "declared embargo and holdout "
+                              "intervals must both contain rows — "
+                              "an empty interval is not a lock"}
+        _temporal_lock = {
+            "train_interval": list(config.temporal_train_interval),
+            "embargo_interval": list(config.temporal_embargo_interval),
+            "holdout_interval": list(config.temporal_holdout_interval),
+            "n_embargo_rows_excluded": n_embargo,
+            "n_holdout_rows": n_holdout,
+            "claim_scope": "temporal extrapolation only — "
+                           "geographic transfer unevaluated"}
     train_mask = mask
     # the multi-region gate applies to the FIT side: held-out groups
     # must not inflate the geographic diversity of the model fit
@@ -1484,6 +1584,7 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
         "n_pass": sum(1 for f in loro.values()
                       if f["status"] == "PASS"),
         "locked_groups_excluded": sorted(heldout_groups),
+        "holdout_axis": holdout_axis,
     }
     loro_pass = (all(f["status"] == "PASS" for f in loro.values())
                  and len(loro) >= MIN_GEO_GROUPS)
@@ -1492,15 +1593,32 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
     # model (never fitted) — coverage of the locked universe is a
     # reported diagnostic, and any fit access would be a violation.
     locked_cov = {}
-    for g in sorted(heldout_groups):
-        m_g = np.asarray(~train_mask) & \
+    if holdout_axis == "temporal":
+        # P5-A2: locked rows are the declared temporal holdout
+        # interval within the SAME basins — embargo rows are
+        # excluded from evaluation entirely.  Per-basin occupancy
+        # contrast reports temporal extrapolation only.
+        _locked_eval_groups = sorted(mask_groups)
+        _dates = pd.to_datetime(df[config.date_col],
+                                errors="coerce", utc=True)
+        _in_ho = ((_dates.dt.date >= ho[0]) &
+                  (_dates.dt.date <= ho[1])).to_numpy()
+        stability["temporal_holdout"] = _temporal_lock
+    else:
+        _locked_eval_groups = sorted(heldout_groups)
+        _in_ho = np.ones(len(df), dtype=bool)
+    for g in _locked_eval_groups:
+        m_g = np.asarray(~train_mask) & _in_ho & \
             (df[config.group_col].astype(str) == g)
         sub_g = df.loc[m_g, feature_cols]
         rec = {"n_rows": int(len(sub_g)),
                "occupancy_js_vs_reference": None, "status": None}
         if len(sub_g) == 0:
             rec["status"] = "EMPTY"
-            rec["reason"] = "declared held-out group has no rows"
+            rec["reason"] = (
+                "declared temporal holdout interval has no rows "
+                "for this group" if holdout_axis == "temporal" else
+                "declared held-out group has no rows")
         else:
             lab_g = model.predict(prep.transform(sub_g))
             occ_g = np.bincount(lab_g,

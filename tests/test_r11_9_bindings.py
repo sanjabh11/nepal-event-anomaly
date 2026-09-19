@@ -481,3 +481,87 @@ class TestGroupStructure:
         heldout = {"karnali"}
         assert fit.isdisjoint(heldout)
         assert len(fit) >= MIN_GEO_GROUPS
+
+
+class TestFieldSeparation:
+    """P5-A2: raw/admin/hydrological field separation (exact values)."""
+
+    @_REAL
+    def test_melamchi_field_separation_exact(self):
+        import json as _j
+        pkg = _j.loads((EVIDENCE /
+                        "glof-events/p3_event_package_v0.json"
+                        ).read_text())
+        mel = [e for e in pkg["event_labels"]
+               if e.get("raw_river_basin") == "Melamchi"]
+        assert len(mel) == 1, "exactly one Melamchi label expected"
+        e = mel[0]
+        assert e["raw_river_basin"] == "Melamchi"
+        assert e["administrative_district"] == "Sindhupalchok"
+        assert e["administrative_province"] == "Bagmati"
+        assert e["basin_group"] == "koshi"
+        assert e["hydro_subbasin"] == "Indrawati"
+        assert e["basin_id"] == e["basin_group"] == "koshi"
+
+    @_REAL
+    def test_basin_id_never_diverges(self):
+        import json as _j
+        pkg = _j.loads((EVIDENCE /
+                        "glof-events/p3_event_package_v0.json"
+                        ).read_text())
+        for e in pkg["event_labels"]:
+            assert e["basin_id"] == e["basin_group"], e["event_id"]
+
+    def test_label_rejects_divergent_projection(self):
+        from nepal.research_v0.records import EventLabelV0
+        lbl = EventLabelV0(
+            event_id="s:v:1", vertical_id="glof", source_id="s",
+            source_version="v", event_time_start="2020-01-01",
+            event_time_end="2020-01-01",
+            event_time_precision="day", event_time_basis="b",
+            geometry_role="lake_point", basin_id="bagmati",
+            basin_group="koshi", uncertainty_seconds=0.0)
+        assert any("basin_id" in p for p in lbl.problems())
+
+
+class TestTemporalHoldout:
+    """P5-A2 temporal amendment (R11.9-24 via temporal axis)."""
+
+    @_REAL
+    def test_amendment_intervals_bound(self):
+        import json as _j
+        a = _j.loads((EVIDENCE /
+                      "retrieval/p5_amendment_v2_temporal_holdout.json"
+                      ).read_text())
+        d = a["declared"]
+        assert d["holdout_axis"] == "temporal"
+        assert d["temporal_train_interval"] == \
+            ["2001-06-01", "2017-08-31"]
+        assert d["temporal_embargo_interval"] == \
+            ["2018-06-01", "2019-08-31"]
+        assert d["temporal_holdout_interval"] == \
+            ["2020-06-01", "2025-08-31"]
+
+    @_REAL
+    def test_train_mask_derived_from_intervals(self):
+        import pandas as _pd
+        frame = _pd.read_csv(EVIDENCE / FRAME_REL)
+        d = _pd.to_datetime(frame["date"])
+        mask = ((d >= "2001-06-01") & (d <= "2017-08-31"))
+        assert int(mask.sum()) == 4692
+        assert set(frame.basin_group[mask]) == \
+            {"koshi", "gandaki", "karnali"}
+        embargo = (d >= "2018-06-01") & (d <= "2019-08-31")
+        holdout = d >= "2020-06-01"
+        assert not (mask & (embargo | holdout)).any()
+
+    @_REAL
+    def test_hydrology_adjudication_bound(self):
+        import json as _j
+        m = _j.loads((EVIDENCE /
+                      "retrieval/role_manifests_v0.json").read_text())
+        sidecar = m["sidecar"]
+        bound = {f["relpath"] for f in sidecar["source_files"]}
+        assert "retrieval/hydrology_adjudication_v0.json" in bound
+        assert "retrieval/p5_amendment_v2_temporal_holdout.json" \
+            in bound

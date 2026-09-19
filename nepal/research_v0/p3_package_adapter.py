@@ -342,6 +342,8 @@ def build_sidecar_manifest(evidence_root: Path) -> dict:
             "retrieval/p3_review_packet_v0.json",
             "retrieval/holdout_feature_gate_report.json",
             "retrieval/anchor_derivation_record.json",
+            "retrieval/hydrology_adjudication_v0.json",
+            "retrieval/p5_amendment_v2_temporal_holdout.json",
             "era5-multibasin/features/fmx_audit_report_v0.json",
             "era5-multibasin/features/cutoff_record_v0.json",
             "era5-multibasin/features/preprocessing_provenance_v0.json"

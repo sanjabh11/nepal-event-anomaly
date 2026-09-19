@@ -92,3 +92,40 @@ grid-snapped to the ERA5_LAND/HOURLY 0.1° pixel grid and are not
 exactly the declared ±0.1° anchor boxes (centre offsets ≤0.043°) —
 recorded in the canonical retrieval record's
 `pull_geometry_disclosure`. Documented deviation, not hidden.
+
+## 6. Addendum 2026-09-19 (P5-A2) — field separation + temporal holdout
+
+**Adopted amendments.** The owner adopted (a) the field-separation
+rule and (b) the temporal-holdout amendment
+(`retrieval/p5_amendment_v2_temporal_holdout.json`,
+`retrieval/hydrology_adjudication_v0.json`).
+
+**Field separation.** Every emitted `EventLabelV0` now carries
+`raw_river_basin`, `administrative_district`,
+`administrative_province`, `basin_group`, and `hydro_subbasin`. For
+the Melamchi row: raw `"Melamchi"`, district `"Sindhupalchok"`,
+province `"Bagmati"`, `basin_group="koshi"`,
+`hydro_subbasin="Indrawati"` — hydrological drainage truth
+(Melamchi→Indrawati→Sun Koshi→Koshi; RDS7952 L3 Indrawati nests
+under L2 Koshi). `basin_id` remains a compatibility projection
+that must equal `basin_group`; a divergence is a hard validation
+defect. A province mismatch is ledgered metadata and never
+overrides `basin_group`.
+
+**Temporal holdout.** `holdout_axis="temporal"`:
+fit = JJA 2001–2017 (4,692 rows across all three basins —
+MIN_GEO_GROUPS=3 satisfied); embargo = JJA 2018–2019 (552 rows,
+excluded from fit AND evaluation); holdout = JJA 2020–2025
+(1,656 rows). `heldout_groups` is empty — a run cannot declare two
+lock axes. `claim_scope` is temporal extrapolation only;
+geographic transfer is UNEVALUATED.
+
+**Event holdout.** With Melamchi→koshi, no residual basin remains
+for the event train partition: `holdout_mode="evaluation_only"`
+with an explicit waiver — event labels are evaluation inputs,
+never fit inputs.
+
+**Fourth-group status.** `scope_amendment_fourth_group_v0.json`
+remains dormant — optional future work only if geographic
+leave-one-basin-out validation is explicitly required. Not on the
+temporal-PoC critical path.

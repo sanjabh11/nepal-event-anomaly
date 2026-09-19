@@ -32,6 +32,8 @@ CONTROL_DOCS = (
     "retrieval/p3_review_packet_v0.json",
     "retrieval/holdout_feature_gate_report.json",
     "retrieval/anchor_derivation_record.json",
+    "retrieval/hydrology_adjudication_v0.json",
+    "retrieval/p5_amendment_v2_temporal_holdout.json",
     "retrieval/p5_coverage_ledger_20260919.json",
     "retrieval/retrieval_record_era5_multibasin.json",
     "era5-multibasin/features/fmx_audit_report_v0.json",

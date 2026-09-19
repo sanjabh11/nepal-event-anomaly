@@ -193,11 +193,14 @@ _CONFIG_FIELDS = frozenset({
     "elevation_col", "era_boundaries", "era_col", "era_drift_max",
     "era_waiver_reason", "fitted_on", "fold_seed_policy",
     "forecast_feature_set", "forecast_vintage_digests", "gap_policy",
-    "group_col", "heldout_groups", "k_candidates", "label_blinding",
+    "group_col", "heldout_groups", "holdout_axis", "k_candidates",
+    "label_blinding",
     "max_missingness", "missingness_policy", "mode", "n_bootstrap",
     "n_null_replicates", "null_alpha", "retrospective_data_class",
     "season_col", "seeds",
-    "source_manifest", "train_groups", "unit_col"})
+    "source_manifest", "temporal_embargo_interval",
+    "temporal_holdout_interval", "temporal_train_interval",
+    "train_groups", "unit_col"})
 
 #: Producer-side floors mirrored from ``science_v0.regimes`` — the
 #: serialized config must respect the same constants the run
@@ -243,6 +246,7 @@ _STABILITY_FIELDS = frozenset({
     "component_alignment", "drift_max_abs_mean_shift",
     "effort_sensitivity", "elevation", "era_drift",
     "fold_seed_policy", "k_instability", "leave_one_region_out",
+    "temporal_holdout",
     "locked_group_coverage", "missingness_sensitivity",
     "modal_k_frequency", "n_bootstrap", "required_gates",
     "season_refits", "seed_ari_max", "seed_ari_min", "seed_coverage",
@@ -584,15 +588,24 @@ def _scalar_floor_problems(
         problems.append(
             "SCHEMA_MALFORMED: fit_groups must be distinct")
     hg = payload.get("heldout_groups_declared")
-    if "heldout_groups_declared" in payload and (
-            not isinstance(hg, (list, tuple)) or not hg or
-            any(not isinstance(g, str) or not g.strip()
-                for g in hg)):
+    _p5a2_temporal = isinstance(payload.get("config"), Mapping) and \
+        payload["config"].get("holdout_axis") == "temporal" and \
+        bool(payload["config"].get("temporal_holdout_interval"))
+    if "heldout_groups_declared" in payload and not _p5a2_temporal \
+            and (not isinstance(hg, (list, tuple)) or not hg or
+                 any(not isinstance(g, str) or not g.strip()
+                     for g in hg)):
         problems.append(
             "SCHEMA_MALFORMED: heldout_groups_declared must be a "
             "non-empty sequence of non-empty strings — the "
             "producer requires a declared locked holdout; a "
             "payload claiming none was never produced")
+    if "heldout_groups_declared" in payload and _p5a2_temporal \
+            and hg:
+        problems.append(
+            "SCHEMA_MALFORMED: heldout_groups_declared must be "
+            "empty under holdout_axis='temporal' — a run cannot "
+            "declare two lock axes")
     elif "heldout_groups_declared" in payload and \
             len(set(hg)) != len(hg):
         problems.append(
@@ -1903,9 +1916,19 @@ def _row_universe_problems(
     if isinstance(fp, Mapping) and ubm_groups and \
             isinstance(fp.get("train_groups"), (list, tuple)):
         train_groups = {str(g) for g in fp["train_groups"]}
+        # P5-A2: under a temporal lock the fit surface is
+        # group-membership AND the declared train interval —
+        # recompute the same bounded set the producer fitted.
+        _cfg = payload.get("config")
+        _tiv = (_cfg.get("temporal_train_interval")
+                if isinstance(_cfg, Mapping) else None)
+        _temporal = isinstance(_cfg, Mapping) and \
+            _cfg.get("holdout_axis") == "temporal" and \
+            isinstance(_tiv, (list, tuple)) and len(_tiv) == 2
         train_keys = [k for k, (u, _d, _r)
                       in zip(unit_keys, assignments)
-                      if ubm_groups.get(u) in train_groups]
+                      if ubm_groups.get(u) in train_groups and
+                      (not _temporal or _tiv[0] <= _d <= _tiv[1])]
         declared = fp.get("train_row_keys_digest")
         if _is_sha256(declared) and \
                 declared != sorted_row_key_digest(train_keys):
@@ -1928,7 +1951,8 @@ def _row_universe_problems(
         # not the latest fitted row date was never produced.
         train_dates = sorted(
             d for k, (u, d, _r) in zip(unit_keys, assignments)
-            if ubm_groups.get(u) in train_groups)
+            if ubm_groups.get(u) in train_groups and
+            (not _temporal or _tiv[0] <= d <= _tiv[1]))
         cutoff = fp.get("cutoff_iso")
         if isinstance(cutoff, str):
             expected = train_dates[-1] if train_dates else ""
@@ -2312,8 +2336,28 @@ def _config_semantic_problems(
     _str_seq("train_groups", non_empty=True, distinct=True)
     # R10 run parity: run_regimes RUN_ERRORs without a declared
     # non-empty holdout — a serialized config with none was never
-    # produced.
-    _str_seq("heldout_groups", non_empty=True, distinct=True)
+    # produced.  P5-A2: under holdout_axis='temporal' the lock is the
+    # declared interval trio and heldout_groups must be EMPTY (a run
+    # cannot declare two lock axes).
+    _p5a2 = cfg.get("holdout_axis") == "temporal"
+    _str_seq("heldout_groups", non_empty=not _p5a2, distinct=True)
+    if _p5a2:
+        hg_cfg = cfg.get("heldout_groups")
+        if isinstance(hg_cfg, (list, tuple)) and hg_cfg:
+            problems.append(
+                "SCHEMA_MALFORMED: config.heldout_groups must be "
+                "empty under holdout_axis='temporal'")
+        for _iv_name in ("temporal_train_interval",
+                         "temporal_embargo_interval",
+                         "temporal_holdout_interval"):
+            _iv = cfg.get(_iv_name)
+            if not isinstance(_iv, (list, tuple)) or len(_iv) != 2 \
+                    or not all(isinstance(x, str) and
+                               len(x) == 10 for x in _iv):
+                problems.append(
+                    f"SCHEMA_MALFORMED: config.{_iv_name} must be "
+                    "a (start, end) pair of ISO dates under a "
+                    "temporal holdout")
     tg = cfg.get("train_groups")
     hgv = cfg.get("heldout_groups")
     if isinstance(tg, (list, tuple)) and \

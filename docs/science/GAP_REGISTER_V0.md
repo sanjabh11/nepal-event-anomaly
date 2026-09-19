@@ -1177,7 +1177,7 @@ owner-side gates remain open by design.
 |---|---|---|
 | R11.9-01 verifier/rebind | CLOSED | GLM3 lane landed `0113677` + `49d46e8`; suite 3324/6/1 then module-move fix verified by focused reruns |
 | R11.9-02/13 two-reviewer intake | CLOSED — reviews adjudicated | `reviewer_1`=sanjayb (owner, agent evidence adopted), `reviewer_2`=RAVI (independent, in-thread signature), `adjudicator`=sanjayb (owner, dual role disclosed); `evidence_sidecar_v0.json` binds source/version/license/coverage/timing/reviewers/decision; source promoted `EVIDENCE_VERIFIED` + `INDEPENDENTLY_VERIFIED` |
-| R11.9-03/10 real regime + holdout | BLOCKED — structural | reviews closed + source `EVIDENCE_VERIFIED`; engine invoked; honest `RUN_ERROR`: >=3 fit groups vs 2 after LORO holdout — governed run needs >=4 frame groups (4th-basin acquisition or owner amendment); gate must NOT be weakened |
+| R11.9-03/10 real regime + holdout | AMENDED — P5-A2 temporal | Codex adjudication rejected Indrawati-as-Bagmati (Indrawati is a Koshi sub-basin per byte-bound RDS7952 DBF; mahakali/bagmati have zero glacial lakes in both inventories — frozen fact). Owner amendment `p5_amendment_v2_temporal_holdout.json`: train JJA 2001-2017 / embargo 2018-2019 / holdout 2020-2025, all 3 basins in fit, temporal extrapolation only. Melamchi remapped to koshi via `hydrology_adjudication_v0.json`; event holdout now typed `evaluation_only` (empty train, waiver bound). Engine: `holdout_axis='temporal'` + interval/embargo/leak gates; `MIN_GEO_GROUPS` unweakened |
 | R11.9-04 FMX role binding | CLOSED | `run_real_fmx` now requires the verified feature-role manifest; frame bytes re-checked before parse; report binds `feature_role_digest`, `frame_sha256`, `row_universe_digest`, `semantic_matrix_digest` |
 | R11.9-05 asserted preprocessing | CLOSED | `PREPROCESSING_PROVENANCE_V0` record persisted (`features/preprocessing_provenance_v0.json`); `fitted_row_count`=4600 train rows + `train_row_digest` recomputed from live bytes — mismatches emit `FMX_BLOCKED_PROVENANCE` |
 | R11.9-06 hard-coded cutoff | CLOSED | `CUTOFF_RECORD_V0` persisted (`features/cutoff_record_v0.json`) bound to `retrieval_record_era5_multibasin.json` sha + `pull_utc_end`; availability margin proven; failures emit `FMX_BLOCKED_CUTOFF` |
@@ -1215,3 +1215,28 @@ Posture: `DESIGN_DRAFT_COMPLETE`; source `EVIDENCE_VERIFIED` (reviews adjudicate
 
 EE pull-geometry deviation (grid-snapped boxes vs declared ±0.1°
 anchor boxes) is now disclosed in the canonical retrieval record.
+
+## P5-A2 closure round — 2026-09-19 (temporal amendment)
+
+| Finding | Disposition |
+|---|---|
+| Field separation (Melamchi) | **RESOLVED** — five declared fields on EventLabelV0; exact-value regression; basin_id==basin_group enforced |
+| Hydrology adjudication binding | **RESOLVED** — bound in sidecar role + replay CONTROL_DOCS |
+| Temporal amendment | **RESOLVED** — authenticated amendment bound; holdout_axis="temporal"; intervals engine-validated |
+| Temporal train mask | **RESOLVED** — mask derived from declared intervals (4,692 rows); embargo/holdout excluded from fit |
+| evaluation_only waiver | **RESOLVED** — HoldoutPlanV0.holdout_mode + train_waiver_reason typed contract |
+| Geographic transfer claims | **RESOLVED** — claim_scope temporal-only; geographic transfer UNEVALUATED |
+| Fourth group | **DORMANT** — optional future geographic LORO only |
+| Seismic / censored controls / deferred surfaces | unchanged (separate tracks / by design) |
+
+### P5-A2 execution result — 2026-09-19
+
+The temporal regime run executed end-to-end (real K-sweep, seeds,
+temporal-block bootstrap, null replicates, ablations over 4,692
+train rows): receipt `CANDIDATE_ONLY` — artifact verdict
+`UNSUPERVISED_STRUCTURE_NOT_STABLE` (honest demotion, not a forced
+descriptive pass). Producer-validation floor extended
+temporal-aware: empty heldout_groups iff holdout_axis='temporal'
+with declared intervals; fit_partition recomputation is
+group∩interval bounded; stability vocabulary admits
+temporal_holdout. All authority flags remain false.

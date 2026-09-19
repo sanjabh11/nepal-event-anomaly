@@ -405,6 +405,16 @@ class EventLabelV0:
     adjudication_state: str = "UNADJUDICATED"
     adjudication_notes: str = ""
     reviewer_ids: tuple[str, ...] = ()
+    # P5-A2 field separation (hydrology adjudication): raw source and
+    # administrative geography are preserved verbatim and are never
+    # conflated with the derived hydrological group.  ``basin_id`` is
+    # a compatibility projection that MUST equal ``basin_group`` —
+    # it is not an independent source of truth.
+    raw_river_basin: str = ""
+    administrative_district: str = ""
+    administrative_province: str = ""
+    basin_group: str = ""
+    hydro_subbasin: str = ""
 
     @property
     def adjudicated(self) -> bool:
@@ -425,6 +435,14 @@ class EventLabelV0:
                             f"{sorted(GEOMETRY_ROLES)}")
         start = _ts(problems, "event_time_start", self.event_time_start)
         end = _ts(problems, "event_time_end", self.event_time_end)
+        # P5-A2: the compatibility projection can never diverge from
+        # the adjudicated hydrological group — a mismatch is a hard
+        # defect, not a warning.
+        if self.basin_group and self.basin_id != self.basin_group:
+            problems.append(
+                f"basin_id {self.basin_id!r} != basin_group "
+                f"{self.basin_group!r} — the compatibility projection "
+                "may never diverge from the hydrological group")
         interval_width: Optional[float] = None
         if start is not None and end is not None:
             if end < start:
@@ -701,6 +719,14 @@ class HoldoutPlanV0:
     assigned_before_filtering: bool = True
     test_locked: bool = True
     embargo_seconds: Optional[float] = None
+    # P5-A2: typed contract exception — "evaluation_only" permits an
+    # empty train partition ONLY when a waiver reason is declared
+    # (events are evaluation labels, never fit inputs — an empty
+    # event-train after hydrological adjudication is truthful, not a
+    # gap).  Not a generic relaxation: validation/test groups remain
+    # mandatory, disjoint, and fully assigned.
+    holdout_mode: str = "standard"
+    train_waiver_reason: str = ""
 
     def problems(self) -> list[str]:
         problems: list[str] = []
@@ -710,8 +736,22 @@ class HoldoutPlanV0:
                 f"assignment_rule {self.assignment_rule!r} not in "
                 f"{sorted(ASSIGNMENT_RULES)} — random row splits are "
                 "prohibited")
-        if not self.train_groups:
-            problems.append("train groups must be non-empty")
+        if self.holdout_mode not in ("standard", "evaluation_only"):
+            problems.append(
+                f"holdout_mode {self.holdout_mode!r} not in "
+                "('standard', 'evaluation_only')")
+        elif self.holdout_mode == "evaluation_only":
+            if not self.train_waiver_reason or \
+                    not self.train_waiver_reason.strip():
+                problems.append("evaluation_only mode requires a "
+                                "declared train_waiver_reason")
+        else:
+            if not self.train_groups:
+                problems.append("train groups must be non-empty")
+            if self.train_waiver_reason:
+                problems.append("train_waiver_reason declared but "
+                                "holdout_mode is 'standard' — a waiver "
+                                "without its mode is invalid")
         if not self.validation_groups:
             problems.append("validation groups must be non-empty")
         if not self.test_groups:

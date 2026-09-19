@@ -96,8 +96,25 @@ RIVER_BASIN_TO_UNIVERSE = {
     "budhi gandaki": "gandaki",
     "gandaki": "gandaki",
     "seti": "gandaki",            # Pokhara Seti (West Seti above)
-    # Bagmati system
-    "melamchi": "bagmati",        # Indrawati/Bagmati tributary
+    # Melamchi: administratively Bagmati Province, but hydrologically
+    # drains Melamchi -> Indrawati -> Sun Koshi -> Koshi (RDS7952 L3
+    # 'Indrawati' nests under L2 Koshi) — adjudicated to drainage
+    # truth by retrieval/hydrology_adjudication_v0.json (2026-09-19)
+    "melamchi": "koshi",
+}
+
+#: Declared hydrological sub-basin per river key (P5-A2 field
+#: separation).  Rivers that ARE L3 sub-basin names map to themselves;
+#: adjudicated overrides carry their own sub-basin — Melamchi's ruling
+#: is bound in retrieval/hydrology_adjudication_v0.json.
+_HYDRO_SUBBASIN = {
+    "melamchi": "Indrawati",
+}
+
+#: Administrative district where an adjudication record declares one
+#: (source CSV carries only Province).
+_ADMIN_DISTRICT = {
+    "melamchi": "Sindhupalchok",
 }
 
 #: Nepal province expected for each mapped basin (cross-check only —
@@ -388,6 +405,7 @@ def _build_labels(
         width = _epoch(end) - _epoch(start)
         gf = row["GF_ID"]
         s = series.get(gf, {})
+        river_key = _norm(row["River_Basin"]).lower()
         labels.append(EventLabelV0(
             event_id=f"{_SOURCE_ID}:{_SOURCE_VERSION}:{gf}",
             vertical_id="glof",
@@ -411,7 +429,14 @@ def _build_labels(
             parent_event_id=s.get("parent_event_id", ""),
             adjudication_state="UNADJUDICATED",
             adjudication_notes="",
-            reviewer_ids=()))
+            reviewer_ids=(),
+            raw_river_basin=_norm(row["River_Basin"]),
+            administrative_district=_ADMIN_DISTRICT.get(
+                river_key, ""),
+            administrative_province=_norm(row["Province"]),
+            basin_group=basin,
+            hydro_subbasin=_HYDRO_SUBBASIN.get(
+                river_key, _norm(row["River_Basin"]))))
         by_basin[basin] = by_basin.get(basin, 0) + 1
         if row["Country"] == "Nepal":
             nepal_loadable += 1
@@ -492,6 +517,17 @@ def _build_holdout(events: list[EventLabelV0]) -> HoldoutPlanV0:
     test = tuple(sorted(g for g in groups if g in ("koshi", "gandaki")))
     validation = tuple(sorted(g for g in groups if g == "karnali"))
     train = tuple(sorted(groups - set(test) - set(validation)))
+    # P5-A2: after hydrological adjudication (Melamchi -> koshi) no
+    # residual basin remains for the event train partition — that is
+    # truthful, not a gap: event labels are evaluation inputs only,
+    # never fit inputs.  Declared as the typed evaluation_only mode,
+    # never a rotated split manufacturing a train group.
+    mode = "standard" if train else "evaluation_only"
+    waiver = ("" if train else
+              "no residual basin remains after hydrological "
+              "adjudication (retrieval/hydrology_adjudication_v0.json); "
+              "event labels are evaluation-only inputs and are never "
+              "passed to regime fitting")
     return HoldoutPlanV0(
         holdout_plan_id="p3-hmaglofdb-basin-holdout-v0",
         assignment_rule="basin",
@@ -502,7 +538,9 @@ def _build_holdout(events: list[EventLabelV0]) -> HoldoutPlanV0:
         evaluation_region_names=test,
         assigned_before_filtering=True,
         test_locked=True,
-        embargo_seconds=_EMBARGO_SECONDS)
+        embargo_seconds=_EMBARGO_SECONDS,
+        holdout_mode=mode,
+        train_waiver_reason=waiver)
 
 
 def _parse_report(

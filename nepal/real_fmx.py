@@ -143,10 +143,13 @@ def _row_universe_digest(frame: pd.DataFrame) -> str:
 def _train_row_digest(frame: pd.DataFrame,
                       train_groups: Sequence[str]) -> str:
     mask = frame["basin_group"].isin(list(train_groups))
+    return _row_key_digest(frame[mask])
+
+
+def _row_key_digest(rows: pd.DataFrame) -> str:
     keys = sorted(
         f"{u}|{d}" for u, d in zip(
-            frame.loc[mask, "unit_id"].astype(str),
-            frame.loc[mask, "date"].astype(str)))
+            rows["unit_id"].astype(str), rows["date"].astype(str)))
     return sha256_canonical(keys)
 
 
@@ -154,32 +157,44 @@ def build_preprocessing_provenance(
         frame: pd.DataFrame,
         *,
         frame_sha256: str,
-        train_groups: Sequence[str] = TRAIN_GROUPS) -> dict:
+        train_groups: Sequence[str] = TRAIN_GROUPS,
+        train_mask: Sequence[bool] | None = None,
+        temporal_interval: Sequence[str] | None = None) -> dict:
     """Derive the PREPROCESSING_PROVENANCE_V0 record from live bytes.
 
     The regime frame is produced by deterministic, row-independent
     transforms (box-mean -> daily aggregation); no scaler or imputer
     was fit.  The record therefore declares that policy honestly and
-    binds the actual train partition: fitted_row_count equals the
-    count of frame rows in the declared train groups, and
-    train_row_digest is the digest of their (unit_id, date) keys —
-    recomputed from bytes, never asserted.
+    binds the actual train partition: ``fitted_row_count`` equals the
+    count of rows in the declared train partition, and
+    ``train_row_digest`` is the digest of their (unit_id, date) keys —
+    recomputed from bytes, never asserted.  Under the P5-A2 temporal
+    amendment the partition is the declared interval mask (all three
+    fit basins); under geographic holdout it is the group-membership
+    mask — either way the digest binds real rows.
     """
     groups = tuple(train_groups)
-    mask = frame["basin_group"].isin(list(groups))
-    return {
+    rec: dict[str, Any] = {
         "schema": PREPROCESSING_PROVENANCE_SCHEMA,
         "frame_sha256": frame_sha256,
         "fit_policy": "deterministic_row_independent — box-mean over "
                       "frozen anchors, hourly->daily aggregation; no "
                       "learned scaler/imputer exists to leak",
-        "train_groups": list(groups),
-        "fitted_row_count": int(mask.sum()),
-        "train_row_digest": _train_row_digest(frame, groups),
+        "train_groups": list(groups)}
+    if train_mask is not None:
+        rows = frame[pd.Series(list(train_mask), index=frame.index)]
+        if temporal_interval is not None:
+            rec["temporal_train_interval"] = \
+                list(temporal_interval)
+    else:
+        rows = frame[frame["basin_group"].isin(list(groups))]
+    rec.update({
+        "fitted_row_count": int(len(rows)),
+        "train_row_digest": _row_key_digest(rows),
         "columns_train_only": [
             c for c in list(PREDICTORS) + list(_CARRIER_META)
-            if c in frame.columns],
-    }
+            if c in frame.columns]})
+    return rec
 
 
 def cutoff_record_problems(record: Any,
@@ -320,14 +335,26 @@ def preprocessing_record_problems(
             "preprocessing_record.train_groups must be non-empty "
             "strings")
         return problems
-    mask = frame["basin_group"].isin(list(groups))
-    actual_rows = int(mask.sum())
+    # the partition is self-describing: a declared temporal interval
+    # selects rows by date (P5-A2), otherwise group membership does —
+    # never a caller-supplied mask
+    tiv = record.get("temporal_train_interval")
+    if isinstance(tiv, (list, tuple)) and len(tiv) == 2 and \
+            all(isinstance(x, str) for x in tiv):
+        dates = pd.to_datetime(frame["date"]).dt.date
+        import datetime as _dt
+        lo, hi = (_dt.date.fromisoformat(tiv[0]),
+                  _dt.date.fromisoformat(tiv[1]))
+        rows = frame[(dates >= lo) & (dates <= hi)]
+    else:
+        rows = frame[frame["basin_group"].isin(list(groups))]
+    actual_rows = int(len(rows))
     if record.get("fitted_row_count") != actual_rows:
         problems.append(
             f"preprocessing_record.fitted_row_count "
             f"{record.get('fitted_row_count')} != actual train rows "
             f"{actual_rows}")
-    actual_digest = _train_row_digest(frame, groups)
+    actual_digest = _row_key_digest(rows)
     if record.get("train_row_digest") != actual_digest:
         problems.append(
             "preprocessing_record.train_row_digest does not match "
@@ -462,8 +489,7 @@ def run_real_fmx(feature_manifest: Mapping[str, Any],
     col_digests = _column_digests(frame)
     predictor_digests = {c: col_digests[c] for c in PREDICTORS}
     train_groups = tuple(preprocessing_record["train_groups"])
-    train_rows = int(
-        frame["basin_group"].isin(list(train_groups)).sum())
+    train_rows = int(preprocessing_record["fitted_row_count"])
     train_only = {
         c: "train_only" for c in
         preprocessing_record["columns_train_only"]}
