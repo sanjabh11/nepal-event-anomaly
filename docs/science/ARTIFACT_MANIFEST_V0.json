@@ -1,6 +1,6 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "419356edad37712f7be91a9ed1b24c5c656f57f7",
+  "content_head": "0113677481419ff544254e403fc243108cc24ceb",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
@@ -9,8 +9,8 @@
     },
     {
       "relpath": ".gitignore",
-      "sha256": "99cc6b18884bfc219996f843ffde10bbb11aea3b00d833f1a581791d29b7f295",
-      "size_bytes": 538
+      "sha256": "2caa9a0da1600c0f3755ce85d9451f832cc60602a9db1236d6da5510cd5bd52a",
+      "size_bytes": 595
     },
     {
       "relpath": "README.md",
@@ -29,8 +29,8 @@
     },
     {
       "relpath": "docs/science/GAP_REGISTER_V0.md",
-      "sha256": "680f5696536754ae885c18866286eb8985bbbe989f837222c287a2dccb4d926b",
-      "size_bytes": 104134
+      "sha256": "66a5414d02baa53cf68a3c5b43e00610a2eab5e59825110254fd87a1600ebf72",
+      "size_bytes": 108341
     },
     {
       "relpath": "docs/science/GOVERNANCE_EXERCISE_RECORD_V0.md",
@@ -91,6 +91,11 @@
       "relpath": "docs/science/P5_OPERATIVE_ANCHOR_NOTE_V0.md",
       "sha256": "bb1dfd4c0079e749b524fde9b7298404e8f8f9b0fe92fc2bc09fc2ab5bcc4030",
       "size_bytes": 1702
+    },
+    {
+      "relpath": "docs/science/P5_SCOPE_RECONCILIATION_V0.md",
+      "sha256": "28c071af533da4525581ebaeb7ae83d12020305fd66c8a354ce612ff53a0304a",
+      "size_bytes": 2674
     },
     {
       "relpath": "docs/science/PHASE4_DUAL_MANIFEST_DECISION_V0.md",
@@ -183,6 +188,11 @@
       "size_bytes": 4173
     },
     {
+      "relpath": "nepal/era5_anchor_intake.py",
+      "sha256": "137f154f295f632d292093e64955dbc8ceaeb703686a909958638e0dd449dc43",
+      "size_bytes": 16767
+    },
+    {
       "relpath": "nepal/era5_download.py",
       "sha256": "d563a66e907adbcfb20528f179047c82e7878f590f31bf411854d651d3280a2f",
       "size_bytes": 36438
@@ -268,6 +278,11 @@
       "size_bytes": 25923
     },
     {
+      "relpath": "nepal/research_v0/p3_package_adapter.py",
+      "sha256": "422db9350859cfcbc30eccf2d39b1d8b8d855f8f794b18829bfa26168c38d848",
+      "size_bytes": 15720
+    },
+    {
       "relpath": "nepal/research_v0/policy.py",
       "sha256": "44d4020a423f9ebf621282fff7b2f931ca1084968e3999cc8c159176f113f1c8",
       "size_bytes": 17409
@@ -276,6 +291,11 @@
       "relpath": "nepal/research_v0/producer_validation.py",
       "sha256": "31369a0f250f58e7df1ead75ce57dcb220ddc9953106da8d14761d337f5ccd09",
       "size_bytes": 153568
+    },
+    {
+      "relpath": "nepal/real_fmx.py",
+      "sha256": "e916d1a07195a6a89ba2276679ca0098802276d85467d264bb809579d0d9ff78",
+      "size_bytes": 7483
     },
     {
       "relpath": "nepal/research_v0/records.py",
@@ -329,8 +349,8 @@
     },
     {
       "relpath": "nepal/seismic_sidecar/contracts.py",
-      "sha256": "b4ba61062df13ce240e01f06512cbe4d5b2b1ce4b1a727e3c3d9a7f84e334967",
-      "size_bytes": 24578
+      "sha256": "7d1321ed9f7ff1a44b337b7293760e421e1d6dad7a399c164db93663f52d7026",
+      "size_bytes": 24857
     },
     {
       "relpath": "nepal/seismic_sidecar/events.py",
@@ -368,6 +388,11 @@
       "size_bytes": 6985
     },
     {
+      "relpath": "scripts/replay_p5.py",
+      "sha256": "a7b3dce71dae2c4bf35e9559ef4e142d49224e2807c105058e82ac1e1fe7faac",
+      "size_bytes": 5059
+    },
+    {
       "relpath": "tests/fixtures/__init__.py",
       "sha256": "554e2961161d47e79350cb29bbaef5ef1aec830ad01405caf89a7c286a1d0084",
       "size_bytes": 334
@@ -394,8 +419,8 @@
     },
     {
       "relpath": "tests/test_era5_anchor_intake.py",
-      "sha256": "8cb35f974f64b777090182ee1592d96d937ebf28e805d257f532e2a8c2b5d0fb",
-      "size_bytes": 6054
+      "sha256": "6fd8e4a92495df280179960f20c6fff0997086d2be3faead1e99afff7da6bf7d",
+      "size_bytes": 7639
     },
     {
       "relpath": "tests/test_experiment_v0_adapters.py",
@@ -446,6 +471,11 @@
       "relpath": "tests/test_p3_hmaglofdb_intake.py",
       "sha256": "b4dcd46d5eae713e685af9f9557f9baac772a3ec02c14b2dd21b33da6c300df6",
       "size_bytes": 16452
+    },
+    {
+      "relpath": "tests/test_p3_package_adapter.py",
+      "sha256": "c157a909d693286c6aff8b0b81a5553f1a387b2153f3c06b75dbf39323989d61",
+      "size_bytes": 5087
     },
     {
       "relpath": "tests/test_p5_glof_intake.py",
@@ -643,9 +673,9 @@
       "size_bytes": 26884
     }
   ],
-  "generated": "2026-09-19",
+  "generated": "2026-09-19 post-acquisition closure rebind (content 0113677)",
   "interpreter": ".venv/bin/python",
-  "manifest_commit": "419356edad37712f7be91a9ed1b24c5c656f57f7",
+  "manifest_commit": "0113677481419ff544254e403fc243108cc24ceb",
   "manifest_version": "ARTIFACT_MANIFEST_V0.3",
   "repository_relative_root": ".",
   "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -653,10 +683,10 @@
   "scope": "governed science artifacts: docs/science, nepal/research_v0, research tests, CI workflow, README \u2014 non-science sources excluded by design",
   "self_excluded": true,
   "test_results": {
-    "full_suite_venv": "3317 passed, 6 skipped (5 rasterio + 1 documented lane skip), 0 failed, 57 warnings",
+    "full_suite_venv": "3324 passed, 6 skipped, 1 failed at content d44c9ec \u2014 the failure (research_v0 isolation AST: real_fmx write surface) was fixed by moving the module to nepal/real_fmx.py; focused isolation+intake+adapter rerun 22/22 green",
     "promotion_matrix": "699 passed (r9 179 + r10 520)",
     "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
-    "collection_guard": "repo-wide collection == tests/ (3323 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
+    "collection_guard": "repo-wide collection == tests/ (3331 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
     "claim_scan": "clean on all governed files",
     "research_v0": "123 passed",
     "p5_io_contract": "34 passed",
@@ -674,8 +704,8 @@
     "seismic_focused_lane": "208 passed combined (143 component + 47 intake + 14 shared regression + 4 addendum)",
     "seismic_shared_regression": "14 passed (vocabulary isolation, record lane, engine lane, producer floor, adapter rejection)",
     "r11_9_dual_manifest": "6 passed \u2014 RUN_EVIDENCE_MANIFEST_V0 amendment ratified and wired; strict-xfail pins removed",
-    "p3_hmaglofdb_intake": "19 passed \u2014 byte-bound v1.3.0 intake incl. real-evidence lane",
-    "era5_anchor_intake": "7 passed \u2014 CDS+EE two-channel anchor intake incl. real-bytes smoke",
+    "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
+    "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
     "run_evidence_manifest": "11 passed \u2014 role binding, tamper detection, per-role byte verify"
   }
 }
