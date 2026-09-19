@@ -1,11 +1,11 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "0ee203c309638a9766f02b8c03d7d73aa7c6a0e7",
+  "content_head": "81bc820f6c2c55994acdcace0129d348ec22c1d4",
   "files": [
     {
       "relpath": ".github/workflows/research-v0.yml",
-      "sha256": "fec5a1453d52fd88d3ffa49dfca6c079c9ea5c07220c30d9ff530f6bb663cee0",
-      "size_bytes": 14540
+      "sha256": "b28f8cc2cf36ea7671b34382f7f78bf5b66700dd338ca22dcf7910529c9e2727",
+      "size_bytes": 14667
     },
     {
       "relpath": ".gitignore",
@@ -21,6 +21,11 @@
       "relpath": "conftest.py",
       "sha256": "00050cd3d65cef658b01694405a89c0053b2ce42594e294f265f2eb774c91a58",
       "size_bytes": 743
+    },
+    {
+      "relpath": "docs/science/G3_F1_STEIM_ADMISSION_DECISION_V0.md",
+      "sha256": "38efe97a4293e70ca4fb3b3cb261c317d5fa204db7f339e7b503d2de42765090",
+      "size_bytes": 5124
     },
     {
       "relpath": "docs/science/GAP_REGISTER_V0.md",
@@ -64,8 +69,18 @@
     },
     {
       "relpath": "docs/science/P3_ATTESTATION_TEMPLATE.md",
-      "sha256": "a34a1d433233636c13c6eb1fc63600041eeeabb6e2ea820c7d3e71432edf99f9",
-      "size_bytes": 6351
+      "sha256": "7abd191437d54d7009c2c88877777d2c077f0dfde86a6ae0e49df663c717ac5b",
+      "size_bytes": 7681
+    },
+    {
+      "relpath": "docs/science/P5_ACQUISITION_AUTHORIZATION_RECORD_V0.md",
+      "sha256": "623b58fd75c718c3d2f6c90803f55c7a6d5c2b2bd4d30297aa839e76ed1ba2aa",
+      "size_bytes": 17670
+    },
+    {
+      "relpath": "docs/science/PHASE4_DUAL_MANIFEST_DECISION_V0.md",
+      "sha256": "1535616affdfd3029bc53faa5cb1f10473928e3b5587c9f5ce655f62d8d5805c",
+      "size_bytes": 5050
     },
     {
       "relpath": "docs/science/SEISMIC_SOURCE_QUALIFICATION_V0.md",
@@ -304,8 +319,8 @@
     },
     {
       "relpath": "nepal/seismic_sidecar/io.py",
-      "sha256": "26b452e4decdaae631888d0ad6fe867a2052404fb16ecee96e81c005365b62cb",
-      "size_bytes": 36850
+      "sha256": "09db8ffc4162834ff5b9b29cf809db4d6d56e021c0db5e6ac80c5ad750167d6d",
+      "size_bytes": 37997
     },
     {
       "relpath": "nepal/seismic_sidecar/observability.py",
@@ -426,6 +441,16 @@
       "relpath": "tests/test_r11_5_release_closure.py",
       "sha256": "8fe973e703e0a23929a6bc40e7c4a02b18882ac86909dd358e32a7d0fc90d3d2",
       "size_bytes": 4774
+    },
+    {
+      "relpath": "tests/test_r11_9_dual_manifest_contract.py",
+      "sha256": "3637a6b855eb3ba1601dd41d2a9adc7814092596570a1fccbd7cd940daa1aaab",
+      "size_bytes": 7105
+    },
+    {
+      "relpath": "tests/test_r11_9_steim_seam.py",
+      "sha256": "1f005019c32b2f6eccdccd36960fee2b1035a7b4d1489eedab9a4d7031732099",
+      "size_bytes": 3705
     },
     {
       "relpath": "tests/test_r6_association.py",
@@ -580,7 +605,7 @@
   ],
   "generated": "2026-09-19",
   "interpreter": ".venv/bin/python",
-  "manifest_commit": "0ee203c309638a9766f02b8c03d7d73aa7c6a0e7",
+  "manifest_commit": "81bc820f6c2c55994acdcace0129d348ec22c1d4",
   "manifest_version": "ARTIFACT_MANIFEST_V0.3",
   "repository_relative_root": ".",
   "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -588,10 +613,10 @@
   "scope": "governed science artifacts: docs/science, nepal/research_v0, research tests, CI workflow, README \u2014 non-science sources excluded by design",
   "self_excluded": true,
   "test_results": {
-    "full_suite_venv": "3267 passed, 6 skipped (5 rasterio + 1 documented lane skip), 0 failed, 57 warnings",
+    "full_suite_venv": "3277 passed, 6 skipped (5 rasterio + 1 documented lane skip), 0 failed, 57 warnings",
     "promotion_matrix": "699 passed (r9 179 + r10 520)",
     "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
-    "collection_guard": "repo-wide collection == tests/ (3273 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
+    "collection_guard": "repo-wide collection == tests/ (3286 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
     "claim_scan": "clean on all governed files",
     "research_v0": "123 passed",
     "p5_io_contract": "34 passed",
