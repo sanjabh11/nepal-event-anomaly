@@ -22,12 +22,18 @@ records.  It performs three fail-closed jobs:
 
 Supported waveform encodings are declared, not implicit: raw
 INT16/INT32/FLOAT32/FLOAT64 (big-endian, per the SEED data-record
-contract) decode natively; STEIM1/STEIM2 and all other encodings
-require the optional ``obspy`` decoder — absent it, the record fails
-closed as unobservable rather than guessing.  Rotation policy for v0
-admits both orthogonal (E/N/Z) and rotated (1/2/Z) three-component
-records — component-averaged energy features are orientation-
-agnostic; rotated channels are never silently relabelled E/N.
+contract) decode natively.  STEIM1/STEIM2 admission is **closed by
+contract** (G3-F1): the optional ``obspy`` decoder is resolved and
+exercised only to produce an accurate rejection reason, and its output
+is deliberately not admitted, because no ratified decision yet binds a
+pinned decoder version plus representative-byte qualification to the
+record.  A STEIM payload therefore always fails closed as unobservable
+— with the real reason reported — rather than being silently decoded
+under an unpinned dependency.  All other encodings are rejected as
+undeclared.  Rotation policy for v0 admits both orthogonal (E/N/Z) and
+rotated (1/2/Z) three-component records — component-averaged energy
+features are orientation-agnostic; rotated channels are never silently
+relabelled E/N.
 """
 from __future__ import annotations
 
@@ -402,9 +408,21 @@ def decode_records(
                          for m in recs)
         if need_obspy:
             if any(m.encoding in _STEIM_ENCODINGS for m in recs):
-                _, problem = _decode_obspy(data)
+                # G3-F1: the decoder is exercised to report the REAL
+                # reason, and then its output is discarded — STEIM
+                # admission is closed by contract.  Reporting the
+                # decoder's success as a failure (or formatting a
+                # None problem as "— None") would fabricate evidence.
+                encodings = sorted({m.encoding for m in recs})
+                _, decoder_problem = _decode_obspy(data)
+                if decoder_problem is None:
+                    decoder_problem = (
+                        "the optional obspy decoder parsed the payload, "
+                        "but STEIM admission is closed by contract "
+                        "pending a ratified G3-F1 decision")
                 problems.append(
-                    f"{trace_id}: STEIM encoding — {problem}")
+                    f"{trace_id}: STEIM encoding {encodings} is "
+                    f"inadmissible — {decoder_problem}")
             else:
                 problems.append(
                     f"{trace_id}: encoding "

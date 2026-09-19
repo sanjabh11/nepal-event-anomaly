@@ -37,6 +37,7 @@ on:
       - "tests/test_glof_poc_real_path.py"
       - "tests/test_regime_real_path.py"
       - "tests/test_r11_5_release_closure.py"
+      - "tests/test_r11_9_steim_seam.py"
       - "tests/test_seismic_*.py"
       - "tests/test_framework_v1_*.py"
       - "conftest.py"
@@ -76,6 +77,7 @@ on:
       - "tests/test_glof_poc_real_path.py"
       - "tests/test_regime_real_path.py"
       - "tests/test_r11_5_release_closure.py"
+      - "tests/test_r11_9_steim_seam.py"
       - "tests/test_seismic_*.py"
       - "tests/test_framework_v1_*.py"
       - "conftest.py"
@@ -243,7 +245,8 @@ jobs:
             tests/test_seismic_sidecar_observability.py \
             tests/test_seismic_sidecar_runner.py \
             tests/test_seismic_shared_regression.py \
-            tests/test_research_v0_seismic_addendum.py -q -rs
+            tests/test_research_v0_seismic_addendum.py \
+            tests/test_r11_9_steim_seam.py -q -rs
 
       - name: Frozen framework_v1 contract tests
         # tests/test_framework_v1_*.py exercise the frozen

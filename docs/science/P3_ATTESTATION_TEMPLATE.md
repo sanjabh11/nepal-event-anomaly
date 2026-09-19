@@ -90,15 +90,30 @@ authorization exists until every field is filled and signed. A
 completed P5 section authorizes bounded retrieval only — it is not a
 pilot selection, not a qualification, and not an operational approval.
 
-| Field | Required content (blank until owner fills) |
+| Field | Value (source-specific scope prepared 2026-09-19; authentication pending) |
 |---|---|
-| Source + exact version + DOI | `source_id`, pinned version, canonical DOI/record ID — e.g. `icimod_hmaglofdb_v1_3_0`, v1.3.0, RDS DOI `10.26066/RDS.1973283` (Zenodo record `10.5281/zenodo.18257243`) |
-| Licence scope | terms governing the bytes and attribution obligations — for HMAGLOFDB the metadata-tag question is RESOLVED: CC BY 4.0 governs (RDS declaration; Zenodo CC0 tag superseded, conservatively read as CC BY 4.0) |
-| Evidence root | directory path where acquired bytes and byte-bound sidecars land |
-| Storage reserve | minimum free-disk floor that aborts acquisition |
-| Retrieval limits | maximum bytes, maximum requests, rate limits, and the authorized retrieval time window |
-| Stop rules | conditions that halt retrieval (hash mismatch, licence change on record, scope drift, storage floor reached, endpoint divergence) |
-| Owner signature | authenticated owner name, date, and signature line: ______________________ |
+| Source + exact version + DOI | `icimod_hmaglofdb_v1_3_0`; v1.3.0; RDS DOI `10.26066/RDS.1973283`; Zenodo mirror `10.5281/zenodo.18257243`; concept DOI `10.5281/zenodo.7271187`; GitHub tag `v1.3.0` = tree `1d975de` |
+| Licence scope | CC BY 4.0 governs (RDS declaration; GitHub `LICENSE`; Zenodo `cc-zero` tag superseded, conservatively read as CC BY 4.0). Attribution: cite ICIMOD per RDS terms; licence snapshot saved at retrieval |
+| Evidence root | `/Users/sanjayb/nepal-event-anomaly-evidence/p5-glof-2026-09-19/` — fresh, absolute, outside the repository and outside `data/` |
+| Storage reserve | abort below 8 GiB free on the evidence-root volume; pre- and post-write checks on every write |
+| Retrieval limits | <= 1 GiB total, <= 40 requests, <= 1 concurrent, sequential, dry-run first; session inside `2026-09-19T00:00Z .. 2026-09-20T00:00Z` |
+| Stop rules | halt and quarantine on any of: digest mismatch against the published MD5; licence change on either record; scope or version drift; storage floor reached; endpoint divergence; unrecordable linkage keys |
+| Owner signature | `OWNER-PENDING` — authenticated owner name, date, and signature line: ______________________ |
+
+**Scope detail.** `P5-A` HMAGLOFDB v1.3.0 event source (107,879-byte
+archive, published MD5 `b6af9657ed28d793b058789835dd4ac8`). `P5-B`
+optionally-supplied opportunity frame under Option A: ICIMOD 2015
+potentially-dangerous-lake inventory, RDS DOI `10.26066/RDS.1971950`,
+CC BY 4.0. `P5-C` multi-basin ERA5-Land over five predeclared anchors
+(`koshi`, `gandaki`, `karnali`, `mahakali`, `bagmati`), JJA 2001-2025,
+the seven existing pre-registered variables. `P5-D` a bounded four-node
+`4W` qualification slice only.
+
+The full field-by-field record, the anchor derivation rule, the
+read-only evidence annex, and the exhaustive list of remaining
+owner-only fields live in
+`docs/science/P5_ACQUISITION_AUTHORIZATION_RECORD_V0.md`. That record
+is the single authoritative field list; this table is its summary.
 
 ### Opportunity-frame policy question (owner decision required)
 
@@ -106,12 +121,16 @@ pilot selection, not a qualification, and not an operational approval.
 > opportunity frame (with linkage + uncertainty recorded), or must
 > opportunities be source-native?
 
-- [ ] Option A — an independently byte-bound lake-inventory source may
+- [x] Option A — an independently byte-bound lake-inventory source may
       supply the opportunity frame, provided linkage keys and
       uncertainty are recorded.
 - [ ] Option B — opportunities must be source-native.
 
-Owner decision: _blank_ — no decision is recorded in this template.
-Until one is executed, the GLOF opportunity frame stays
-`PENDING-OWNER-POLICY` (no native non-event frame; external
-lake-inventory linkage needs owner decision).
+Owner decision: **Option A** (accepted by the owner 2026-09-19; see
+`P5_ACQUISITION_AUTHORIZATION_RECORD_V0.md` P5-B). The opportunity
+frame must therefore be externally byte-bound with linkage keys
+(`GL_ID` / `LakeDB_ID` / `G_ID`) and a linkage-uncertainty ledger;
+unlinked inventory lakes are recorded, never silently dropped. Until
+the P5 record is signed, the frame is not acquired and remains
+`PENDING-OWNER-POLICY`; Option A settles *admissibility*, not
+acquisition.
