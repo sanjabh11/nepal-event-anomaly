@@ -1,6 +1,6 @@
 {
  "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
- "content_head": "1df75dd4ff7ed7e82558c7ac658aee06edb95e5f",
+ "content_head": "24f9c11f8c7162d2a878ead189ec1eb2d9d70b82",
  "files": [
   {
    "relpath": ".github/workflows/research-v0.yml",
@@ -14,8 +14,8 @@
   },
   {
    "relpath": "README.md",
-   "sha256": "2cfd556fb74361dbad63866249c21cecbfed9476d4b86926962f9b8193583f8c",
-   "size_bytes": 13450
+   "sha256": "ad965125ebebb1976adc528c0d232a58af270323388dbb43adf9d25d20bb4990",
+   "size_bytes": 15306
   },
   {
    "relpath": "conftest.py",
@@ -29,8 +29,8 @@
   },
   {
    "relpath": "docs/science/GAP_REGISTER_V0.md",
-   "sha256": "57dffdf9de6a661fd58d7a54fd89846f79430baba82a3f5cc662d61991b30bc8",
-   "size_bytes": 117926
+   "sha256": "4e430de329e7ff9c805a4a4af2aca5bc7b90ed13c798988f8bf2ffdda842c74b",
+   "size_bytes": 120604
   },
   {
    "relpath": "docs/science/GOVERNANCE_EXERCISE_RECORD_V0.md",
@@ -91,6 +91,11 @@
    "relpath": "docs/science/P5_ACQUISITION_AUTHORIZATION_RECORD_V0.md",
    "sha256": "963e8d37c0b07d9c699cdd7732f4ef87fb13101be6555712672655b182763063",
    "size_bytes": 19011
+  },
+  {
+   "relpath": "docs/science/P5_EXTENSION_STATUS_V0.md",
+   "sha256": "3aaf8adff473e70b60d84dd30fb0ce48f143760fecfa99e899931335f8ddcebe",
+   "size_bytes": 2851
   },
   {
    "relpath": "docs/science/P5_OPERATIVE_ANCHOR_NOTE_V0.md",
@@ -304,8 +309,8 @@
   },
   {
    "relpath": "nepal/research_v0/producer_validation.py",
-   "sha256": "1f9ed99ff23928cedc6e25c6a3ed4c43e1f7d7722b7ca29002c399c4ed33cd01",
-   "size_bytes": 159147
+   "sha256": "9e625313993739855be6a1e40604304067122a21cf47985d38c67e57ff819d0c",
+   "size_bytes": 160526
   },
   {
    "relpath": "nepal/research_v0/records.py",
@@ -349,18 +354,18 @@
   },
   {
    "relpath": "nepal/science_v0/regimes.py",
-   "sha256": "9ffd636260718b1bf7cd5e4b16204102217d942846d2d33fed4f8305f248c05f",
-   "size_bytes": 151688
+   "sha256": "76043720871d6c7183e4d3f1ecfe6e378b72887d2429ad0f4484aa83af9fa274",
+   "size_bytes": 155943
   },
   {
    "relpath": "nepal/science_v0/seasonal_frame.py",
-   "sha256": "0436723be988a13150a6127bb1b44649772b00b95c4a8fd6f4f0a99c4771e744",
-   "size_bytes": 10767
+   "sha256": "809bdbdc6ae404a207b30660c0d0be56a3aa71f0281fe792f01d90b5efb7da68",
+   "size_bytes": 14017
   },
   {
    "relpath": "nepal/seismic_sidecar/__init__.py",
-   "sha256": "9d8327df6e728e402575b15f2ac5d44fb2f79772087c5afd0722014e5607a4f3",
-   "size_bytes": 3447
+   "sha256": "769513cc77f7a0fc57af4fb4793153c50489c525ac8738c7da11a653bbe3a3a0",
+   "size_bytes": 3961
   },
   {
    "relpath": "nepal/seismic_sidecar/contracts.py",
@@ -388,6 +393,11 @@
    "size_bytes": 16847
   },
   {
+   "relpath": "nepal/seismic_sidecar/one_station_contract.py",
+   "sha256": "0b6825d402fc472b1eaf99cc9dbaeba48b85cf25225b55f13f5af98836f322be",
+   "size_bytes": 21754
+  },
+  {
    "relpath": "nepal/seismic_sidecar/provenance.py",
    "sha256": "536a33b6f67e6fb22d3f8d8214739a1ec1f91b7ec7598dd99d58027c0cec0372",
    "size_bytes": 24287
@@ -404,8 +414,8 @@
   },
   {
    "relpath": "scripts/rebind_manifest.py",
-   "sha256": "db30805034d0c78dfc62b2e2b443888e14845ec8b5345f38edd08953ca4f24ea",
-   "size_bytes": 1899
+   "sha256": "4214f3f3c56b4fde2bd62196cde3d7313896072cb34d7cdba4021c27888ba4c5",
+   "size_bytes": 2088
   },
   {
    "relpath": "scripts/replay_p5.py",
@@ -414,13 +424,13 @@
   },
   {
    "relpath": "scripts/replay_seasonal_p5.py",
-   "sha256": "6154643002394777500a5d2006a2a6f6f729234a15fd778fa4cf3c960804424a",
-   "size_bytes": 7954
+   "sha256": "92bbef6169099053c490c11db92fa56f84bbe3aa471d863d012d643b9dfb3488",
+   "size_bytes": 13600
   },
   {
    "relpath": "scripts/run_seasonal_p5.py",
-   "sha256": "e8d7efd8325c9ebf6e67457c0e5cbd4310b65cffafdaad9fb7720f39ba6ea0f9",
-   "size_bytes": 10131
+   "sha256": "25040ad6050c534908b8f6c2d1bf3a76a98fe1667f596b39dfecdacb078b03a3",
+   "size_bytes": 15028
   },
   {
    "relpath": "tests/fixtures/__init__.py",
@@ -498,6 +508,11 @@
    "size_bytes": 18675
   },
   {
+   "relpath": "tests/test_one_station_contract.py",
+   "sha256": "ea55cf51beab8f2aa2a6d564bc91e1a6c2e95c5e8c73b00e234e4e44b9461031",
+   "size_bytes": 15202
+  },
+  {
    "relpath": "tests/test_p3_hmaglofdb_intake.py",
    "sha256": "b4dcd46d5eae713e685af9f9557f9baac772a3ec02c14b2dd21b33da6c300df6",
    "size_bytes": 16452
@@ -534,8 +549,8 @@
   },
   {
    "relpath": "tests/test_r11_5_release_closure.py",
-   "sha256": "285f2e38a4509867cebccf9e4b8b26505aace124f108ef3c43050af000bcef8a",
-   "size_bytes": 6709
+   "sha256": "26aa878985fb208a6133767a688f24cdf83c3c558870615e791d0afa58954fde",
+   "size_bytes": 8463
   },
   {
    "relpath": "tests/test_r11_9_bindings.py",
@@ -668,9 +683,14 @@
    "size_bytes": 40955
   },
   {
+   "relpath": "tests/test_seasonal_frame_adversarial.py",
+   "sha256": "24a1e2b84792d3e22accd9470e9149c43a07f119d969544c7e81a79078d68538",
+   "size_bytes": 7815
+  },
+  {
    "relpath": "tests/test_seasonal_lane.py",
-   "sha256": "b93098419433538996f9d1c746d926efc185ba6ce7968caa68d0e114b10862c0",
-   "size_bytes": 19407
+   "sha256": "068a4031b106e57c248814ebf893fc1814db81138dc80083915ce1d7fb46247d",
+   "size_bytes": 29137
   },
   {
    "relpath": "tests/test_seismic_shared_regression.py",
@@ -720,7 +740,7 @@
  ],
  "generated": "post-P5 seasonal-lane bind (content 1df75dd) \u2014 seasonal estimand executed UNSUPERVISED_STRUCTURE_NOT_STABLE; seismic preflight BLOCKED; head-resolvability guard added",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "1df75dd4ff7ed7e82558c7ac658aee06edb95e5f",
+ "manifest_commit": "24f9c11f8c7162d2a878ead189ec1eb2d9d70b82",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -730,21 +750,23 @@
  "test_results": {
   "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
   "claim_scan": "clean on all governed files",
-  "collection_guard": "repo-wide collection == tests/ (3424 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
+  "collection_guard": "repo-wide collection == tests/ (3529 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
   "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
-  "full_suite_venv": "3417 passed, 6 skipped, 0 failed, 57 warnings \u2014 post-seasonal-lane canonical suite (3424 collected); the collection-guard drift self-resolved at this rebind",
+  "full_suite_venv": "3523 passed, 6 skipped, 0 failed, 57 warnings \u2014 post-seasonal-v1 canonical suite (3529 collected); the two pre-rebind manifest-drift failures resolve at this rebind",
   "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
   "p5_a2_status_consistency": "local guard passed; CI guard configured \u2014 current CANDIDATE_ONLY / UNSUPERVISED_STRUCTURE_NOT_STABLE result, false authority flags, and release metadata aligned",
   "p5_a2_temporal_holdout": "110 passed, 1 skipped \u2014 temporal mapping, waiver, and documentation regression lane",
   "p5_io_contract": "34 passed",
-  "p5_seasonal_lane": "29 passed \u2014 preflight refusals (covariance/grain/role/K/null-strata/LORO scope), parameter-count guard, negative-control statistics, frame-builder integrity, bound-artifact + receipt checks",
-  "p5_seasonal_replay": "REPLAY_OK \u2014 deterministic frame rebuild, envelope+freeze digests, producer floor, receipt bindings, negative-control refusal",
+  "p5_one_station_contract": "78 passed \u2014 V1 status vocabulary, v0 mapping completeness, authority-flag strictness, event-anchor/digest requirements, BLOCKED constraints, forbidden-term scan, window bounds, round-trips",
+  "p5_seasonal_frame_adversarial": "11 passed \u2014 input-domain refusals (non-JJA labels, out-of-window dates, undeclared units/years, duplicate/non-consecutive coverage), honest-missingness ledger drops, real-frame clean-build regression",
+  "p5_seasonal_lane": "44 passed \u2014 preflight refusals, parameter-count guard, negative-control statistics, frame-builder integrity, gate-observation semantics, Arm A verification, receipt authority, claim-vocabulary ceiling",
+  "p5_seasonal_replay": "REPLAY_OK \u2014 deterministic frame rebuild, envelope+freeze digests, producer floor, receipt bindings, gate-observation semantics, Arm A verification, authority fields, negative-control refusal",
   "promotion_matrix": "699 passed (r9 179 + r10 520)",
   "r10_promotion": "520 passed (505 R10 matrix + 15 R10.1 residual regressions)",
   "r11_2_provenance": "35 passed",
   "r11_3_provenance": "23 passed",
   "r11_5_real_path": "93 passed, 1 skipped (p5_glof_intake + real_fmx_audit + glof_poc_real_path + regime_real_path)",
-  "r11_5_release_closure": "6 passed (manifest_commit identity, lane governance, collection census, CLI stale-commit rejection, head resolvability, dangling-head rejection)",
+  "r11_5_release_closure": "7 passed (manifest_commit identity, lane governance, collection census, CLI stale-commit rejection, head resolvability, dangling-head rejection, suite-result internal consistency)",
   "r11_9_dual_manifest": "6 passed \u2014 RUN_EVIDENCE_MANIFEST_V0 amendment ratified and wired; strict-xfail pins removed",
   "r11_9_semantic_binding": "22 passed \u2014 verified-manifest FMX, cutoff/preprocessing records, semantic role binding, full-recomputation replay (13 synthetic probes + 9 real-evidence gates, skipif when root absent)",
   "r11_glof_poc_contract": "132 passed",
