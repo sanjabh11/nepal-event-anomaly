@@ -26,9 +26,13 @@ NEW_GOVERNED = [
     "scripts/run_seasonal_p5.py",
     "scripts/replay_seasonal_p5.py",
     "scripts/rebind_manifest.py",
+    "scripts/run_daily_p5.py",
+    "scripts/validate_evidence_index.py",
+    "scripts/generate_evidence_index_v1.py",
     "tests/test_seasonal_lane.py",
     "tests/test_seasonal_frame_adversarial.py",
     "tests/test_one_station_contract.py",
+    "tests/test_evidence_index_validator.py",
     "docs/science/P5_EXTENSION_STATUS_V0.md",
 ]
 

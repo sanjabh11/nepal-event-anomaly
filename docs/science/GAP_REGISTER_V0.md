@@ -1289,3 +1289,27 @@ floor — re-measure before any future retrieval.
 | Option 3 execution | **BLOCKED (dispositioned)** — `p5_d_owner_disposition_v1.json`; unblocking conditions are owner-gated |
 | Arm C pressure levels / ObsPy admission / publication | **DEFERRED** — separate owner amendments required |
 | xarray/sklearn warnings (56+1) | **DISCLOSED** — upstream deprecations + synthetic-fixture convergence warning; no action this cycle |
+
+---
+
+## Post-audit reconciliation — second round (2026-09-20, Codex deep audit #2)
+
+Second external audit found that provenance repair itself needed
+repair: the daily artifact had never been persisted, the evidence
+index was path-fragile and carried a stale digest, and the seismic
+contract had residual surface gaps. Historical records are preserved
+unchanged — supersession is by new records, never rewrite.
+
+| Finding | Disposition |
+|---|---|
+| Daily artifact bytes missing (receipt-bound only) | **RESOLVED** — amendment v5 records the lineage gap; `run_daily_p5.py` re-executed the frozen protocol under a declared config and serialized `p5_glof_regime_artifact_v1.json`; v1 receipt binds it; v0 receipt preserved as historical. Verdict reproduced: `UNSUPERVISED_STRUCTURE_NOT_STABLE` |
+| `regime_replayed` without artifact validation | **RESOLVED** — daily replay emits `artifact_replayed` only when the persisted artifact exists, envelope+freeze digests recompute, producer floor is clean, and the receipt binds those bytes; otherwise `chain_recomputed_receipt_only` |
+| Arm A verified receipt-embedded digest only | **RESOLVED** — `verify_daily_reference` requires the live artifact file: existence, envelope/freeze digest recompute, floor, receipt↔artifact agreement; missing/mutated artifact fails closed |
+| Evidence index stale replay digest | **RESOLVED** — diagnosed as an ordering artifact (index written before the post-rebind replay regenerated the report; report is deterministic — two in-memory replays produce identical bytes). v0 index preserved; v1 successor generated after all evidence bytes are final |
+| Index absolute paths / missing provenance | **RESOLVED** — v1 index uses logical `root_id` + relative paths, per-file sidecar digests, `state` vocabulary, generator/commit/UTC/manifest provenance, `supersedes` pointer; `scripts/validate_evidence_index.py` (30 tests) fails closed on every audited defect class |
+| Four-root claim vs three physical roots | **RESOLVED** — v1 index + docs declare three physical roots; seismic preflight is a logical surface rooted inside the daily root |
+| Stale audit/protocol records presented as current | **RESOLVED** — `p5_post_implementation_audit_v0.json` and `p5_extension_protocol_v0.json` preserved unchanged, marked `superseded` in index v1; current state lives in `P5_EXTENSION_STATUS_V0.md` + the final verification record |
+| Manifest `generated` names old head | **RESOLVED** — corrected at the v1 rebind |
+| Seismic contract residual gaps | **RESOLVED** — ≤24h window bound; `BLOCKED`/`RUN_ERROR`/`NOT_OPERATIONAL` bind no byte evidence; strict event anchors (source_id, event_utc, tolerance, relation, source_digest); scientific statuses require the full execution-digest chain; bounded malformed-input errors (305 contract tests) |
+| Option 3 execution / ObsPy admission / Arm C / publication | **OWNER-GATED** — unchanged; dispositioned, not codeable |
+

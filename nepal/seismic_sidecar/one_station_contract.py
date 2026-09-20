@@ -21,14 +21,48 @@ BLOCKED semantics: ``BLOCKED`` is a PREFLIGHT terminal state — the
 lane stopped before waveform bytes existed and no event is bound into
 evidence.  It is the one-station analog of v0's ``UNOBSERVABLE``
 surfaced *before* retrieval, and it is NOT a scientific result: it
-carries a ``blocked_reason`` and must never carry a
-``waveform_digest`` or an ``event_anchor``.  The scientific terminal
-statuses (``OBSERVABILITY_PASS``, ``CANDIDATE_ANOMALIES_ONLY``,
-``NO_QUALIFIED_SIGNAL``) are the only statuses that may bind byte
-evidence and an event anchor.
+carries a ``blocked_reason`` and must never carry a byte-evidence
+digest of any kind (waveform, StationXML, or any execution-binding
+digest) or an ``event_anchor``.
+
+NOT_OPERATIONAL semantics: ``NOT_OPERATIONAL`` is a METADATA-ONLY
+terminal marker meaning "the lane ran but its output carries no
+operational authority".  It is the fixed claim ceiling, not a
+scientific result — scientific outcomes go to the three scientific
+statuses.  It requires a non-empty ``reason`` and must never carry a
+``waveform_digest``, ``stationxml_digest``, ``event_anchor``, or any
+execution-binding digest.
+
+Declared-window bound: ``window_start``/``window_end`` are strict
+explicit-UTC ISO-8601 timestamps and the declared span must not
+exceed 86400 seconds (24h) inclusive of endpoints — a one-station
+observability receipt never claims a longer analysis window.
+
+Event-anchor strictness: on the scientific statuses ``event_anchor``
+must be a Mapping carrying at minimum ``date`` (ISO calendar date,
+inside the declared and authorized windows), ``source`` (non-empty),
+``source_id`` (non-empty), ``event_utc`` (strict ISO-8601 UTC with
+seconds), ``timing_tolerance_s`` (positive finite number),
+``relation_to_window`` (one of ``inside``/``edge``/``lead``), and
+``source_digest`` (64-hex sha256) — the anchor is byte-bound to its
+documenting source.
+
+Execution-binding digest surface: ``source_digest``,
+``stationxml_digest``, ``decoder_environment_digest``,
+``feature_contract_digest``, ``windowing_digest``,
+``evaluation_digest``, ``timing_verification_digest``, and
+``storage_receipt_digest`` are declared OPTIONAL fields — ``None``
+(or empty) is admissible, but when present each must be a 64-hex
+sha256.  A scientific terminal binds the full chain: ``event_anchor``
+plus ``waveform_digest``, ``stationxml_digest``,
+``windowing_digest``, ``evaluation_digest``, and
+``timing_verification_digest`` are all REQUIRED.  ``RUN_ERROR``,
+``BLOCKED``, and ``NOT_OPERATIONAL`` must not carry any of them —
+a non-scientific terminal binds no byte evidence and no event.
 """
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime as _dt, timezone
@@ -54,9 +88,12 @@ ONE_STATION_CLAIM_SCOPE = "research_only_no_operational_authorization"
 #:   reproducibility or independent verification is insufficient.
 #: - NO_QUALIFIED_SIGNAL — bytes and gates pass; the predeclared
 #:   contrast is not reproduced (an honest null result).
-#: - NOT_OPERATIONAL — the fixed claim ceiling; a ceiling marker,
-#:   never a success status.
-#: - RUN_ERROR — contract/manifest/config failure.
+#: - NOT_OPERATIONAL — the fixed claim ceiling; a METADATA-ONLY
+#:   terminal marker ("the lane ran but its output carries no
+#:   operational authority"), never a success status and never a
+#:   scientific result — it binds no byte evidence and no event.
+#: - RUN_ERROR — contract/manifest/config failure; binds no byte
+#:   evidence and no event.
 #: - BLOCKED — preflight terminal state (no bytes/event bound);
 #:   NOT a scientific result.
 ONE_STATION_STATUSES = frozenset({
@@ -65,12 +102,21 @@ ONE_STATION_STATUSES = frozenset({
     "RUN_ERROR", "BLOCKED"})
 
 #: The statuses that terminate a scientific evaluation — each REQUIRES
-#: a bound in-window event anchor and byte digests (waveform +
-#: StationXML).  BLOCKED/RUN_ERROR/NOT_OPERATIONAL are non-scientific
-#: terminals.
+#: a bound in-window event anchor and the required byte-evidence
+#: digest chain (see _ONE_STATION_REQUIRED_SCIENTIFIC_DIGESTS).
+#: BLOCKED/RUN_ERROR/NOT_OPERATIONAL are non-scientific terminals.
 ONE_STATION_SCIENTIFIC_STATUSES = frozenset({
     "OBSERVABILITY_PASS", "CANDIDATE_ANOMALIES_ONLY",
     "NO_QUALIFIED_SIGNAL"})
+
+#: Non-scientific terminals — metadata/error/preflight markers that
+#: bind no byte evidence and no event anchor.
+_ONE_STATION_NON_SCIENTIFIC_STATUSES = (
+    ONE_STATION_STATUSES - ONE_STATION_SCIENTIFIC_STATUSES)
+
+#: Maximum span of a declared analysis window: 24h inclusive of
+#: endpoints (86400 seconds).
+ONE_STATION_MAX_WINDOW_S = 86400
 
 #: Documented mapping from the existing v0 sidecar receipt statuses
 #: (``contracts.RECEIPT_STATUSES``) to the V1 one-station vocabulary.
@@ -135,6 +181,29 @@ _FORBIDDEN_CLAIM_TERMS = re.compile(
 
 _FREE_TEXT_FIELDS = ("reason", "blocked_reason")
 
+#: Every byte-evidence digest field on the receipt — the existing
+#: waveform/StationXML pair plus the declared optional
+#: execution-binding surface.  Absent (None/empty) is admissible;
+#: when present each must be a 64-hex sha256.
+_ONE_STATION_DIGEST_FIELDS = (
+    "waveform_digest", "stationxml_digest", "source_digest",
+    "decoder_environment_digest", "feature_contract_digest",
+    "windowing_digest", "evaluation_digest",
+    "timing_verification_digest", "storage_receipt_digest")
+
+#: The digest chain a scientific terminal MUST bind — bytes-bound
+#: scientific claims need the full windowing/evaluation/timing
+#: provenance chain, not just the raw byte digests.
+_ONE_STATION_REQUIRED_SCIENTIFIC_DIGESTS = (
+    "waveform_digest", "stationxml_digest", "windowing_digest",
+    "evaluation_digest", "timing_verification_digest")
+
+#: Declared vocabulary for ``event_anchor.relation_to_window`` — how
+#: the documented event's ``event_utc`` relates to the declared
+#: analysis window: fully inside it, on its edge, or leading it
+#: (within ``timing_tolerance_s``).
+_EVENT_ANCHOR_RELATIONS = frozenset({"inside", "edge", "lead"})
+
 
 def _req(problems: list[str], name: str, value: Any) -> None:
     if value is None or value == "" or value == [] or value == () \
@@ -183,16 +252,24 @@ def _window_dates(receipt: "OneStationReceiptV1",
     start_raw, end_raw = receipt.window_start, receipt.window_end
     if not start_raw and not end_raw:
         return None, None
-    ws = parse_strict_utc(start_raw) if start_raw else None
-    we = parse_strict_utc(end_raw) if end_raw else None
+    ws = parse_strict_utc(start_raw) if isinstance(
+        start_raw, str) else None
+    we = parse_strict_utc(end_raw) if isinstance(
+        end_raw, str) else None
     if ws is None or we is None:
         problems.append("window_start/window_end must both be "
-                        "explicit-UTC timestamps when a window is "
-                        "declared")
+                        "strict ISO-8601 explicit-UTC timestamps "
+                        "when a window is declared")
         return None, None
     if we <= ws:
         problems.append("window_end precedes window_start — "
                         "inverted window")
+    elif we - ws > ONE_STATION_MAX_WINDOW_S:
+        problems.append(
+            "declared window exceeds the maximum span of "
+            f"{ONE_STATION_MAX_WINDOW_S} seconds (24h inclusive of "
+            "endpoints) — a one-station observability receipt never "
+            "claims a longer analysis window")
     return _utc_date(start_raw), _utc_date(end_raw)
 
 
@@ -215,13 +292,29 @@ class OneStationReceiptV1:
     window_start: str = ""
     window_end: str = ""
     # Documented in-window event descriptor: a Mapping carrying at
-    # least ``date`` (ISO YYYY-MM-DD, inside the declared window) and
-    # ``source`` (the documenting catalog/literature).  Required for
-    # the scientific terminal statuses; forbidden on BLOCKED — a
-    # preflight terminal binds no event.
+    # least ``date`` (ISO YYYY-MM-DD, inside the declared window),
+    # ``source`` and ``source_id`` (the documenting
+    # catalog/literature), ``event_utc`` (strict ISO-8601 UTC with
+    # seconds), ``timing_tolerance_s`` (positive finite seconds),
+    # ``relation_to_window`` (inside/edge/lead), and
+    # ``source_digest`` (64-hex sha256 — the anchor is byte-bound to
+    # its source).  Required for the scientific terminal statuses;
+    # forbidden on every non-scientific terminal.
     event_anchor: Mapping = field(default_factory=dict)
     waveform_digest: str = ""
     stationxml_digest: str = ""
+    # Execution-binding digest surface (declared optional): None is
+    # admissible, but when present each must be a 64-hex sha256.
+    # Scientific terminals must bind the required subset (see
+    # _ONE_STATION_REQUIRED_SCIENTIFIC_DIGESTS); RUN_ERROR,
+    # NOT_OPERATIONAL, and BLOCKED must carry none of them.
+    source_digest: Optional[str] = None
+    decoder_environment_digest: Optional[str] = None
+    feature_contract_digest: Optional[str] = None
+    windowing_digest: Optional[str] = None
+    evaluation_digest: Optional[str] = None
+    timing_verification_digest: Optional[str] = None
+    storage_receipt_digest: Optional[str] = None
     reason: str = ""
     blocked_reason: str = ""
     notes: tuple = ()
@@ -244,7 +337,11 @@ class OneStationReceiptV1:
             problems.append(
                 f"record_type {self.record_type!r} must be exactly "
                 f"{ONE_STATION_RECEIPT_TYPE!r}")
-        if self.status not in ONE_STATION_STATUSES:
+        # ``status`` must be a declared vocabulary string — a
+        # non-string (or unhashable) value is a bounded problem,
+        # never an exception.
+        status = self.status if isinstance(self.status, str) else None
+        if status not in ONE_STATION_STATUSES:
             problems.append(
                 f"status {self.status!r} not in "
                 f"{sorted(ONE_STATION_STATUSES)}")
@@ -312,9 +409,8 @@ class OneStationReceiptV1:
                         "may narrow, never widen")
         # ---- declared analysis window ------------------------------
         win_lo, win_hi = _window_dates(self, problems)
-        window_required = self.status in \
-            ONE_STATION_SCIENTIFIC_STATUSES or \
-            self.status == "BLOCKED"
+        window_required = status in \
+            ONE_STATION_SCIENTIFIC_STATUSES or status == "BLOCKED"
         if window_required and not self.window_start:
             problems.append(
                 f"status {self.status} requires a declared "
@@ -327,29 +423,69 @@ class OneStationReceiptV1:
                     "window — observability outside the approved "
                     "interval is inadmissible")
         # ---- digests ------------------------------------------------
-        for name in ("waveform_digest", "stationxml_digest"):
+        # Every declared digest field is optional (None/empty
+        # admissible) but byte-bound when present: a non-string or
+        # non-64-hex value is a bounded problem, never an exception.
+        for name in _ONE_STATION_DIGEST_FIELDS:
             v = getattr(self, name)
             if v and (not isinstance(v, str) or
                       not _SHA256_RE.match(v)):
                 problems.append(f"{name} must be a 64-hex sha256 "
                                 "digest when present")
         # ---- event anchor -------------------------------------------
+        # A non-empty anchor must be a Mapping carrying the full
+        # documented-event field surface; each missing or malformed
+        # field is a distinct bounded problem.
         anchor_present = bool(self.event_anchor)
         if anchor_present:
             if not isinstance(self.event_anchor, Mapping):
                 problems.append("event_anchor must be a mapping "
-                                "carrying at least date and source")
+                                "carrying the documented in-window "
+                                "event fields")
             else:
-                if not _iso_date(self.event_anchor.get("date")):
+                anchor = self.event_anchor
+                ev_date = _iso_date(anchor.get("date"))
+                if ev_date is None:
                     problems.append("event_anchor.date must be a "
                                     "real ISO calendar date")
-                src = self.event_anchor.get("source")
+                src = anchor.get("source")
                 if not isinstance(src, str) or not src.strip():
                     problems.append("event_anchor.source must name "
                                     "the documenting catalog or "
                                     "literature source")
-                ev_date = _iso_date(
-                    self.event_anchor.get("date"))
+                src_id = anchor.get("source_id")
+                if not isinstance(src_id, str) or \
+                        not src_id.strip():
+                    problems.append("event_anchor.source_id must "
+                                    "be a non-empty source "
+                                    "identifier")
+                ev_utc = anchor.get("event_utc")
+                if not isinstance(ev_utc, str) or \
+                        parse_strict_utc(ev_utc) is None:
+                    problems.append(
+                        "event_anchor.event_utc must be a strict "
+                        "ISO-8601 explicit-UTC timestamp with "
+                        "seconds")
+                tol = anchor.get("timing_tolerance_s")
+                if isinstance(tol, bool) or \
+                        not isinstance(tol, (int, float)) or \
+                        not math.isfinite(tol) or tol <= 0:
+                    problems.append(
+                        "event_anchor.timing_tolerance_s must be a "
+                        "positive finite number of seconds")
+                rel = anchor.get("relation_to_window")
+                if not isinstance(rel, str) or \
+                        rel not in _EVENT_ANCHOR_RELATIONS:
+                    problems.append(
+                        "event_anchor.relation_to_window must be "
+                        f"one of {sorted(_EVENT_ANCHOR_RELATIONS)}")
+                src_digest = anchor.get("source_digest")
+                if not isinstance(src_digest, str) or \
+                        not _SHA256_RE.match(src_digest):
+                    problems.append(
+                        "event_anchor.source_digest must be a "
+                        "64-hex sha256 digest — the anchor is "
+                        "byte-bound to its documenting source")
                 if ev_date is not None:
                     if win_lo is not None and win_hi is not None and \
                             not (win_lo <= ev_date.date() <= win_hi):
@@ -364,39 +500,43 @@ class OneStationReceiptV1:
                             "event_anchor.date is outside the "
                             "authorized window")
         # ---- status-specific terminals ------------------------------
-        if self.status in ONE_STATION_SCIENTIFIC_STATUSES:
+        if status in ONE_STATION_SCIENTIFIC_STATUSES:
             _req(problems,
-                 f"{self.status} requires event_anchor",
+                 f"{status} requires event_anchor",
                  self.event_anchor)
-            if not self.waveform_digest:
+            for name in _ONE_STATION_REQUIRED_SCIENTIFIC_DIGESTS:
+                if not getattr(self, name):
+                    problems.append(
+                        f"{status} requires {name} — a bytes-bound "
+                        "scientific verdict needs the full "
+                        "windowing/evaluation/timing evidence chain")
+        elif status in _ONE_STATION_NON_SCIENTIFIC_STATUSES:
+            # RUN_ERROR / NOT_OPERATIONAL / BLOCKED bind no byte
+            # evidence and no event — a non-scientific terminal is a
+            # metadata/error/preflight marker, never a scientific
+            # result.
+            for name in _ONE_STATION_DIGEST_FIELDS:
+                if getattr(self, name):
+                    problems.append(
+                        f"{status} must not carry {name} — a "
+                        "non-scientific terminal binds no byte "
+                        "evidence")
+            if anchor_present:
                 problems.append(
-                    f"{self.status} requires waveform_digest — a "
-                    "scientific verdict binds the qualified bytes")
-            if not self.stationxml_digest:
-                problems.append(
-                    f"{self.status} requires stationxml_digest — "
-                    "StationXML metadata evidence is bound with the "
-                    "verdict")
-        if self.status == "BLOCKED":
+                    f"{status} must not carry event_anchor — a "
+                    "non-scientific terminal binds no event")
+        if status == "BLOCKED":
             if not isinstance(self.blocked_reason, str) or \
                     not self.blocked_reason.strip():
                 problems.append("BLOCKED requires a non-empty "
                                 "blocked_reason")
-            if self.waveform_digest:
-                problems.append(
-                    "BLOCKED must not carry waveform_digest — "
-                    "preflight terminal: no bytes exist")
-            if anchor_present:
-                problems.append(
-                    "BLOCKED must not carry event_anchor — "
-                    "preflight terminal: no event is bound")
         elif self.blocked_reason:
             problems.append("blocked_reason is admissible only on a "
                             "BLOCKED receipt")
-        if self.status in ("RUN_ERROR", "NOT_OPERATIONAL") and \
+        if status in ("RUN_ERROR", "NOT_OPERATIONAL") and \
                 not (isinstance(self.reason, str) and
                      self.reason.strip()):
-            problems.append(f"{self.status} requires a non-empty "
+            problems.append(f"{status} requires a non-empty "
                             "reason")
         # ---- free-text claim scan ------------------------------------
         for name in _FREE_TEXT_FIELDS:
@@ -449,9 +589,14 @@ def one_station_receipt_from_dict(
         raise ValueError(f"one-station receipt carries undeclared "
                          f"fields {sorted(extra)}")
     kwargs = {k: payload[k] for k in keys}
+    # Bounded type coercion: malformed field types are passed through
+    # untouched so ``.problems()`` reports them as validation
+    # defects instead of deserialization raising a type error.
     for name in ("notes", "authorized_stations", "authorized_window"):
-        kwargs[name] = tuple(kwargs[name])
-    kwargs["event_anchor"] = dict(kwargs["event_anchor"])
+        v = kwargs[name]
+        kwargs[name] = tuple(v) if isinstance(v, (list, tuple)) else v
+    ea = kwargs["event_anchor"]
+    kwargs["event_anchor"] = dict(ea) if isinstance(ea, Mapping) else ea
     return OneStationReceiptV1(**kwargs)
 
 
@@ -465,6 +610,7 @@ def one_station_receipt_skeleton() -> dict[str, Any]:
 __all__ = [
     "ONE_STATION_RECEIPT_TYPE", "ONE_STATION_CLAIM_SCOPE",
     "ONE_STATION_STATUSES", "ONE_STATION_SCIENTIFIC_STATUSES",
-    "ONE_STATION_STATUS_MAP", "AUTHORIZED_STATION_IDS",
+    "ONE_STATION_STATUS_MAP", "ONE_STATION_MAX_WINDOW_S",
+    "AUTHORIZED_STATION_IDS",
     "AUTHORIZED_WAVEFORM_WINDOW", "OneStationReceiptV1",
     "one_station_receipt_from_dict", "one_station_receipt_skeleton"]

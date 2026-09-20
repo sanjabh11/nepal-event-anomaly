@@ -64,7 +64,7 @@ def replay(lane_root: Path, daily_root: Path) -> dict:
     daily_csv = (daily_root / "era5-multibasin/features/"
                  "regime_frame_hma_jja_2001_2025.csv")
     daily_receipt = (daily_root / "retrieval/"
-                     "p5_glof_descriptive_receipt_v0.json")
+                     "p5_glof_descriptive_receipt_v1.json")
     frame_p = lane_root / "features/seasonal_frame_jja_2001_2025.csv"
     prov_p = lane_root / "features/seasonal_frame_provenance_v0.json"
     nc_p = lane_root / "features/negative_control_frame.csv"
@@ -219,14 +219,29 @@ def replay(lane_root: Path, daily_root: Path) -> dict:
         if mismatched:
             failures.append("receipt_bindings")
 
-        # Arm A verification must be present and passed
+        # Arm A verification must be present and passed — and the
+        # LIVE daily artifact+receipt chain is re-verified at replay
+        # time (a recorded verified=True is never trusted alone)
         ref = (rcpt["arms"].get("A_reference") or {}) \
             .get("verification") or {}
         ref_ok = ref.get("verified") is True
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from run_seasonal_p5 import verify_daily_reference
+        live_ref = verify_daily_reference(daily_root)
+        live_ok = live_ref["verified"] is True
+        # the recorded bound digest must equal the live artifact's
+        recorded = (rcpt["arms"].get("A_reference") or {}) \
+            .get("bound_artifact_digest")
+        digest_agrees = (recorded is not None and
+                         recorded ==
+                         live_ref.get("artifact_digest"))
         report["checks"]["arm_a_verification"] = {
             "present": bool(ref), "verified": ref_ok,
-            "problems": ref.get("problems")}
-        if not ref_ok:
+            "live_reverified": live_ok,
+            "bound_digest_matches_live": digest_agrees,
+            "problems": ref.get("problems"),
+            "live_problems": live_ref.get("problems")}
+        if not ref_ok or not live_ok or not digest_agrees:
             failures.append("arm_a_verification")
 
         # receipt-level semantics: failed_gates/terminal_reason

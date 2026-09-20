@@ -267,7 +267,9 @@ def replay(evidence_root: Path) -> dict:
 
     # 6. regime receipt is deterministic-carried (digest sidecar) AND
     # its report_digest recomputes from its own content
-    rcpt = root / "retrieval/p5_glof_descriptive_receipt_v0.json"
+    rcpt = root / "retrieval/p5_glof_descriptive_receipt_v1.json"
+    if not rcpt.exists():  # fall back to the historical v0 receipt
+        rcpt = root / "retrieval/p5_glof_descriptive_receipt_v0.json"
     if rcpt.exists():
         rs = rcpt.with_name(rcpt.name + ".sha256")
         ok = rs.exists() and \
@@ -291,13 +293,62 @@ def replay(evidence_root: Path) -> dict:
                 body.get("warning_path_authorized")}
         if any(report["checks"]["receipt_authority"].values()):
             failures.append("authority_flags")
+
+        # R-04/R-05 — a bound digest is not an artifact: the regime
+        # replay state is `artifact_replayed` ONLY when a persisted
+        # artifact exists whose envelope digest recomputes, whose
+        # freeze digest verifies, whose producer floor is clean, and
+        # whose digest equals the receipt's bound digest.
+        art_p = root / "retrieval/p5_glof_regime_artifact_v1.json"
+        artifact_ok = False
+        if not art_p.exists():
+            report["checks"]["daily_artifact"] = {
+                "exists": False,
+                "note": "receipt-bound only — artifact bytes never "
+                        "persisted (amendment v5 records the lineage)"}
+            failures.append("daily_artifact_missing")
+        else:
+            art = json.loads(art_p.read_text())
+            pre_freeze = {k: v for k, v in art.items()
+                          if k not in ("frozen", "freeze_digest")}
+            env_ok = sha256_canonical(
+                {k: v for k, v in pre_freeze.items()
+                 if k != "regime_artifact_digest"}
+                ) == art.get("regime_artifact_digest")
+            fz_ok = art.get("frozen") is True and \
+                sha256_canonical(pre_freeze) == \
+                art.get("freeze_digest")
+            from nepal.research_v0.producer_validation import (
+                validate_producer_payload)
+            probe = dict(art)
+            probe.setdefault("frozen", True)
+            floor = validate_producer_payload(probe)
+            binds = body.get("regime_artifact_digest") == \
+                art.get("regime_artifact_digest")
+            report["checks"]["daily_artifact"] = {
+                "exists": True, "envelope_digest": env_ok,
+                "freeze_digest": fz_ok,
+                "producer_floor_problems": floor,
+                "receipt_binds_artifact": binds,
+                "status": art.get("status")}
+            for ok_, name in ((env_ok, "artifact_envelope"),
+                              (fz_ok, "artifact_freeze"),
+                              (not floor, "artifact_floor"),
+                              (binds, "artifact_receipt_binding")):
+                if not ok_:
+                    failures.append("daily_" + name)
+            artifact_ok = env_ok and fz_ok and not floor and binds
         # R11.9-30: distinguish chain-recomputation replay from a
         # successful regime replay — a blocked engine is honest
-        # evidence, not a replay failure, but must be labelled
+        # evidence, not a replay failure, but must be labelled.
+        # `artifact_replayed` requires a validated persisted
+        # artifact; without one the honest state is
+        # `chain_recomputed_receipt_only`.
         report["regime_replay_state"] = (
             "regime_execution_blocked"
             if body.get("status") == "RUN_ERROR"
-            else "regime_replayed")
+            else ("artifact_replayed" if artifact_ok
+                  else "chain_recomputed_receipt_only"))
 
     report["status"] = "REPLAY_FAIL" if failures else "REPLAY_OK"
     report["failures"] = failures

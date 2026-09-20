@@ -402,6 +402,16 @@ class TestRealEvidencePath:
         assert report["replay_scope"] == "full_recomputation"
         assert report["checks"]["fmx_rebuild"]["digest_match"] is True
         assert report["status"] == "REPLAY_OK", report["failures"]
+        # R-04 — `artifact_replayed` requires a validated persisted
+        # artifact: the v1 artifact exists, its envelope+freeze
+        # digests recompute, and the receipt binds these bytes
+        da = report["checks"]["daily_artifact"]
+        assert da["exists"] is True
+        assert da["envelope_digest"] is True
+        assert da["freeze_digest"] is True
+        assert da["receipt_binds_artifact"] is True
+        assert da["producer_floor_problems"] == []
+        assert report["regime_replay_state"] == "artifact_replayed"
 
 
 class TestCutoffProbes:

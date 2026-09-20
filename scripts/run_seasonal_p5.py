@@ -51,11 +51,13 @@ DEFAULT_LANE_ROOT = Path(
     "/Users/sanjayb/nepal-event-anomaly-evidence/"
     "p5-seasonal-v1-2026-09-20")
 
-# Arm A — the bound daily artifact digest (from the P5-A2 receipt;
-# referenced, never re-derived).  Verified against the live receipt
-# at run time — a stale or mutated daily reference rejects the arm.
-DAILY_ARTIFACT_DIGEST = (
-    "982e7b6e270dfd5e990ed6f2957e55485e1e9fbfd8e4d6ac1c6cfa93c3188327")
+# Arm A — the bound daily artifact (v1 lineage, amendment v5: the
+# v0 artifact was receipt-bound only — its bytes were never
+# persisted; the v1 artifact is serialized and byte-bound under the
+# declared config).  Verified against live bytes at run time — a
+# stale or mutated daily reference rejects the arm.
+DAILY_ARTIFACT_RELPATH = "retrieval/p5_glof_regime_artifact_v1.json"
+DAILY_RECEIPT_RELPATH = "retrieval/p5_glof_descriptive_receipt_v1.json"
 DAILY_TERMINAL_STATUSES = {"CANDIDATE_ONLY", "DESCRIPTIVE_REGIME_ONLY",
                            "UNSUPERVISED_STRUCTURE_NOT_STABLE",
                            "UNDERPOWERED_DESCRIPTIVE_ONLY"}
@@ -70,16 +72,26 @@ def _write_sidecar(p: Path) -> None:
     Path(str(p) + ".sha256").write_text(f"{_sha(p)}  {p.name}\n")
 
 
-def verify_daily_reference(receipt_path: Path) -> dict:
+def verify_daily_reference(daily_root: Path) -> dict:
     """Arm A reference-chain verification — the daily result is bound
-    by reference ONLY when the live receipt bytes, its embedded
-    artifact digest, its terminal status, and every authority flag
-    agree.  A stale or mutated reference is rejected, never carried."""
-    checks = {"receipt_exists": receipt_path.exists(),
-              "receipt_sha256": None, "embedded_digest_match": None,
-              "status": None, "status_terminal": None,
+    by reference ONLY when the live receipt AND the live artifact
+    bytes agree: receipt sidecar, embedded digest, terminal status,
+    all-false authority, PLUS the artifact file's envelope digest
+    recomputing to the receipt's bound digest and the freeze digest
+    verifying.  A missing/mutated artifact fails closed — a digest
+    alone is not an artifact."""
+    checks = {"receipt_exists": False, "artifact_exists": False,
+              "receipt_sha256": None, "artifact_sha256": None,
+              "artifact_digest": None, "status": None,
+              "status_terminal": None,
               "authority_flags_all_false": None,
+              "artifact_envelope_digest_match": None,
+              "artifact_freeze_digest_ok": None,
               "verified": False, "problems": []}
+    receipt_path = daily_root / DAILY_RECEIPT_RELPATH
+    artifact_path = daily_root / DAILY_ARTIFACT_RELPATH
+    checks["receipt_exists"] = receipt_path.exists()
+    checks["artifact_exists"] = artifact_path.exists()
     if not checks["receipt_exists"]:
         checks["problems"].append(
             f"daily receipt {receipt_path} missing — Arm A cannot "
@@ -89,16 +101,12 @@ def verify_daily_reference(receipt_path: Path) -> dict:
     try:
         rcpt = json.loads(receipt_path.read_text())
     except (OSError, json.JSONDecodeError) as exc:
-        checks["problems"].append(f"daily receipt unreadable: {exc}")
-        return checks
-    embedded = rcpt.get("regime_artifact_digest")
-    checks["embedded_digest_match"] = \
-        embedded == DAILY_ARTIFACT_DIGEST
-    if not checks["embedded_digest_match"]:
         checks["problems"].append(
-            f"daily receipt regime_artifact_digest {embedded} != "
-            f"declared reference {DAILY_ARTIFACT_DIGEST} — the "
-            "reference chain is stale or mutated")
+            f"daily reference unreadable: {exc}")
+        return checks
+    # receipt semantics are checked BEFORE the artifact early-return —
+    # a receipt with true authority flags must report that violation
+    # even when its artifact is missing
     status = rcpt.get("status")
     checks["status"] = status
     checks["status_terminal"] = status in DAILY_TERMINAL_STATUSES
@@ -120,6 +128,55 @@ def verify_daily_reference(receipt_path: Path) -> dict:
             "research_only_no_operational_authorization":
         checks["problems"].append(
             "daily receipt claim_scope is not research-only")
+    embedded = rcpt.get("regime_artifact_digest")
+    checks["artifact_digest"] = embedded
+    if not checks["artifact_exists"]:
+        checks["problems"].append(
+            f"daily artifact {artifact_path} missing — a "
+            "receipt-bound digest without artifact bytes is not a "
+            "verified reference")
+        return checks
+    checks["artifact_sha256"] = _sha(artifact_path)
+    try:
+        art = json.loads(artifact_path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        checks["problems"].append(
+            f"daily reference unreadable: {exc}")
+        return checks
+    # the artifact file's envelope digest must recompute to the
+    # receipt's bound digest — the receipt binds THESE bytes
+    from nepal.research_v0._hashing import sha256_canonical
+    pre_freeze = {k: v for k, v in art.items()
+                  if k not in ("frozen", "freeze_digest")}
+    recomputed = sha256_canonical(
+        {k: v for k, v in pre_freeze.items()
+         if k != "regime_artifact_digest"})
+    checks["artifact_envelope_digest_match"] = \
+        recomputed == art.get("regime_artifact_digest")
+    checks["artifact_freeze_digest_ok"] = (
+        art.get("frozen") is True and
+        sha256_canonical(pre_freeze) == art.get("freeze_digest"))
+    checks["receipt_binds_artifact"] = (
+        embedded == art.get("regime_artifact_digest"))
+    if not checks["artifact_envelope_digest_match"]:
+        checks["problems"].append(
+            "daily artifact envelope digest does not recompute — "
+            "the artifact may be tampered")
+    if not checks["artifact_freeze_digest_ok"]:
+        checks["problems"].append(
+            "daily artifact freeze digest does not verify")
+    if not checks["receipt_binds_artifact"]:
+        checks["problems"].append(
+            f"daily receipt binds {embedded} but the artifact "
+            f"carries {art.get('regime_artifact_digest')} — the "
+            "reference chain is stale or mutated")
+    # producer floor on the live artifact
+    from nepal.research_v0.producer_validation import (
+        validate_producer_payload)
+    floor = validate_producer_payload(art)
+    if floor:
+        checks["problems"].append(
+            f"daily artifact fails producer floor: {floor[:2]}")
     checks["verified"] = not checks["problems"]
     return checks
 
@@ -228,8 +285,6 @@ def main() -> int:
     lane_root = Path(args.lane_root).resolve()
     daily_csv = (daily_root / "era5-multibasin/features/"
                  "regime_frame_hma_jja_2001_2025.csv")
-    daily_receipt = (daily_root / "retrieval/"
-                     "p5_glof_descriptive_receipt_v0.json")
     features_dir = lane_root / "features"
     run_dir = lane_root / "run"
     features_dir.mkdir(parents=True, exist_ok=True)
@@ -269,14 +324,15 @@ def main() -> int:
     manifest = _manifest(build["sha256"], prov_sha, lane_root)
 
     # ---- Arm A: daily reference — full chain verified ---------------
-    ref = verify_daily_reference(daily_receipt)
+    ref = verify_daily_reference(daily_root)
     receipt["arms"]["A_reference"] = {
-        "bound_artifact_digest": DAILY_ARTIFACT_DIGEST,
+        "bound_artifact_digest": ref["artifact_digest"],
         "receipt_sha256": ref["receipt_sha256"],
+        "artifact_sha256": ref["artifact_sha256"],
         "daily_status": ref["status"],
         "verification": ref,
-        "note": "daily P5-A2 result bound by reference — never "
-                "rerun under seasonal settings"}
+        "note": "daily P5-A2 result bound by live receipt+artifact "
+                "bytes — never rerun under seasonal settings"}
     if not ref["verified"]:
         receipt["problems"].append(
             "Arm A daily reference chain failed verification: "

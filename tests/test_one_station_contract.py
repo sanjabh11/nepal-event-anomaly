@@ -15,7 +15,8 @@ import pytest
 from nepal.seismic_sidecar.contracts import RECEIPT_STATUSES
 from nepal.seismic_sidecar.one_station_contract import (
     AUTHORIZED_STATION_IDS, AUTHORIZED_WAVEFORM_WINDOW,
-    ONE_STATION_CLAIM_SCOPE, ONE_STATION_RECEIPT_TYPE,
+    ONE_STATION_CLAIM_SCOPE, ONE_STATION_MAX_WINDOW_S,
+    ONE_STATION_RECEIPT_TYPE,
     ONE_STATION_SCIENTIFIC_STATUSES, ONE_STATION_STATUS_MAP,
     ONE_STATION_STATUSES, OneStationReceiptV1,
     one_station_receipt_from_dict, one_station_receipt_skeleton)
@@ -28,18 +29,51 @@ _AUTHORITY_FLAGS = (
 _SCIENTIFIC = ("OBSERVABILITY_PASS", "CANDIDATE_ANOMALIES_ONLY",
                "NO_QUALIFIED_SIGNAL")
 
+_NON_SCIENTIFIC = ("RUN_ERROR", "NOT_OPERATIONAL", "BLOCKED")
+
+#: Every declared byte-evidence digest field on the receipt.
+_DIGEST_FIELDS = (
+    "waveform_digest", "stationxml_digest", "source_digest",
+    "decoder_environment_digest", "feature_contract_digest",
+    "windowing_digest", "evaluation_digest",
+    "timing_verification_digest", "storage_receipt_digest")
+
+#: The digest chain a scientific terminal MUST bind.
+_REQUIRED_SCIENTIFIC_DIGESTS = (
+    "waveform_digest", "stationxml_digest", "windowing_digest",
+    "evaluation_digest", "timing_verification_digest")
+
+
+def _full_anchor(**kw) -> dict:
+    """A complete documented in-window event anchor — mutate via kw."""
+    anchor = {
+        "date": "2023-04-15",
+        "source": "documented catalog entry",
+        "source_id": "catalog:NEP-2023-04-15",
+        "event_utc": "2023-04-15T06:11:25Z",
+        "timing_tolerance_s": 30.0,
+        "relation_to_window": "inside",
+        "source_digest": "c" * 64,
+    }
+    anchor.update(kw)
+    return anchor
+
 
 def _good(**kw) -> OneStationReceiptV1:
     """A fully-qualified OBSERVABILITY_PASS receipt — mutate via kw."""
     base = dict(
         status="OBSERVABILITY_PASS",
         station_id="374",
-        window_start="2023-04-10T00:00:00Z",
-        window_end="2023-04-20T00:00:00Z",
-        event_anchor={"date": "2023-04-15",
-                      "source": "documented catalog entry"},
+        # Exactly 24h — the maximum admissible span, inclusive of
+        # endpoints.
+        window_start="2023-04-15T00:00:00Z",
+        window_end="2023-04-16T00:00:00Z",
+        event_anchor=_full_anchor(),
         waveform_digest="a" * 64,
-        stationxml_digest="b" * 64)
+        stationxml_digest="b" * 64,
+        windowing_digest="d" * 64,
+        evaluation_digest="e" * 64,
+        timing_verification_digest="f" * 64)
     base.update(kw)
     return OneStationReceiptV1(**base)
 
@@ -166,8 +200,9 @@ class TestScientificTerminals:
                                        "source": "s"}).problems())
 
     def test_event_anchor_must_be_in_window(self):
-        r = _good(event_anchor={"date": "2023-05-01",
-                                "source": "documented"})
+        r = _good(event_anchor=_full_anchor(
+            date="2023-05-01", event_utc="2023-05-01T00:00:00Z",
+            relation_to_window="lead"))
         assert any("outside the declared window" in p
                    for p in r.problems())
 
@@ -184,7 +219,7 @@ class TestBlockedTerminal:
             status="BLOCKED",
             station_id="312",
             window_start="2023-04-01T00:00:00Z",
-            window_end="2023-05-09T00:00:00Z",
+            window_end="2023-04-02T00:00:00Z",
             blocked_reason="no documented event overlaps the "
                            "declared window")
         base.update(kw)
@@ -253,9 +288,10 @@ class TestStationAndWindow:
 
     def test_window_outside_authorized_window_rejected(self):
         r = _good(window_start="2023-06-01T00:00:00Z",
-                  window_end="2023-06-10T00:00:00Z",
-                  event_anchor={"date": "2023-06-05",
-                                "source": "documented"})
+                  window_end="2023-06-02T00:00:00Z",
+                  event_anchor=_full_anchor(
+                      date="2023-06-01",
+                      event_utc="2023-06-01T00:00:00Z"))
         assert any("outside the authorized" in p
                    for p in r.problems())
 
@@ -298,7 +334,7 @@ class TestForbiddenClaimVocabulary:
         r = OneStationReceiptV1(
             status="BLOCKED", station_id="312",
             window_start="2023-04-01T00:00:00Z",
-            window_end="2023-05-09T00:00:00Z",
+            window_end="2023-04-02T00:00:00Z",
             blocked_reason="retrieval would enable an operational "
                            "warning product")
         assert any("forbidden claim vocabulary" in p
@@ -326,7 +362,7 @@ class TestSerialization:
                 r = OneStationReceiptV1(
                     status="BLOCKED", station_id="312",
                     window_start="2023-04-01T00:00:00Z",
-                    window_end="2023-05-09T00:00:00Z",
+                    window_end="2023-04-02T00:00:00Z",
                     blocked_reason="preflight gate unmet")
             else:
                 r = OneStationReceiptV1(
@@ -376,3 +412,242 @@ class TestSerialization:
         r = _good()
         with pytest.raises(dataclasses.FrozenInstanceError):
             r.status = "OBSERVABILITY_PASS"  # noqa: DC01
+
+
+class TestWindowDurationBound:
+    """R-12: a declared analysis window spans at most 86400 s (24h),
+    inclusive of endpoints."""
+
+    def test_max_window_constant_is_24h(self):
+        assert ONE_STATION_MAX_WINDOW_S == 86400
+
+    def test_exactly_24h_window_admitted(self):
+        # _good's default window is exactly 24h — the inclusive bound.
+        assert _good().problems() == []
+
+    def test_one_second_over_24h_rejected(self):
+        r = _good(window_start="2023-04-15T00:00:00Z",
+                  window_end="2023-04-16T00:00:01Z")
+        assert any("86400" in p for p in r.problems())
+
+    def test_multi_day_window_rejected(self):
+        r = _good(window_start="2023-04-10T00:00:00Z",
+                  window_end="2023-04-20T00:00:00Z")
+        assert any("86400" in p for p in r.problems())
+
+    def test_malformed_window_bound_rejected(self):
+        r = _good(window_end="not-a-timestamp")
+        assert any("explicit-UTC" in p for p in r.problems())
+
+    def test_non_string_window_bound_rejected(self):
+        # Numeric epochs are not ISO-8601 strings — bounded problem.
+        r = _good(window_start=1681430400.0)
+        assert any("explicit-UTC" in p for p in r.problems())
+
+    def test_partial_window_rejected(self):
+        r = _good(window_end="")
+        assert any("window" in p for p in r.problems())
+
+
+class TestEventAnchorStrictness:
+    """R-15: a scientific event anchor carries the full documented
+    field surface — each missing/malformed field is a distinct
+    problem."""
+
+    @pytest.mark.parametrize("name", [
+        "date", "source", "source_id", "event_utc",
+        "timing_tolerance_s", "relation_to_window", "source_digest"])
+    def test_each_missing_anchor_field_rejected(self, name):
+        anchor = _full_anchor()
+        anchor.pop(name)
+        r = _good(event_anchor=anchor)
+        assert any(f"event_anchor.{name}" in p
+                   for p in r.problems()), name
+
+    @pytest.mark.parametrize("bad", [
+        {"date": "15-04-2023"},
+        {"date": "2023-04-15T06:11:25Z"},      # not a calendar date
+        {"source": ""},
+        {"source": "   "},
+        {"source": 7},
+        {"source_id": ""},
+        {"source_id": "   "},
+        {"event_utc": "2023-04-15"},           # date only
+        {"event_utc": "2023-04-15T06:11Z"},    # no seconds
+        {"event_utc": "2023-04-15 06:11:25"},  # naive
+        {"event_utc": 1681438285},             # not an ISO string
+        {"timing_tolerance_s": 0},
+        {"timing_tolerance_s": -5},
+        {"timing_tolerance_s": "30"},          # string, not number
+        {"timing_tolerance_s": float("nan")},
+        {"timing_tolerance_s": float("inf")},
+        {"timing_tolerance_s": True},
+        {"relation_to_window": "before"},
+        {"relation_to_window": "INSIDE"},      # case-sensitive
+        {"relation_to_window": ["inside"]},
+        {"source_digest": "zz" * 32},
+        {"source_digest": "c" * 63},
+        {"source_digest": "C" * 64},           # lowercase hex only
+    ])
+    def test_malformed_anchor_fields_rejected(self, bad):
+        r = _good(event_anchor=_full_anchor(**bad))
+        assert r.problems(), bad
+
+    @pytest.mark.parametrize("rel", ["inside", "edge", "lead"])
+    def test_relation_vocabulary_admitted(self, rel):
+        r = _good(event_anchor=_full_anchor(relation_to_window=rel))
+        assert not any("relation_to_window" in p
+                       for p in r.problems())
+
+    def test_anchor_extra_keys_admitted(self):
+        r = _good(event_anchor=_full_anchor(magnitude=4.9))
+        assert r.problems() == []
+
+
+class TestExecutionDigestSurface:
+    """R-16: the declared optional execution-binding digests — absent
+    is admissible, present must be 64-hex sha256, and the scientific
+    terminals must bind the required chain."""
+
+    def test_all_digest_fields_on_skeleton(self):
+        skel = one_station_receipt_skeleton()
+        for name in _DIGEST_FIELDS:
+            assert name in skel
+
+    def test_optional_digests_may_stay_absent(self):
+        # source_digest, decoder_environment_digest,
+        # feature_contract_digest, storage_receipt_digest are not
+        # required even on a scientific receipt.
+        assert _good().problems() == []
+
+    @pytest.mark.parametrize("name", _DIGEST_FIELDS)
+    def test_valid_digest_admitted(self, name):
+        r = _good(**{name: "0" * 64})
+        assert not any(name in p for p in r.problems())
+
+    @pytest.mark.parametrize("name", _DIGEST_FIELDS)
+    @pytest.mark.parametrize("bad", ["nothex", "A" * 64, 64,
+                                     ["a" * 64]])
+    def test_malformed_digest_rejected(self, name, bad):
+        r = _good(**{name: bad})
+        assert any(name in p for p in r.problems())
+
+    @pytest.mark.parametrize("status", _SCIENTIFIC)
+    @pytest.mark.parametrize("name", _REQUIRED_SCIENTIFIC_DIGESTS)
+    def test_scientific_requires_full_chain(self, status, name):
+        r = _good(status=status, **{name: None})
+        assert any(name in p for p in r.problems())
+
+    def test_new_fields_round_trip(self):
+        r = _good(source_digest="1" * 64,
+                  decoder_environment_digest="2" * 64,
+                  feature_contract_digest="3" * 64,
+                  storage_receipt_digest="4" * 64)
+        assert r.problems() == []
+        rt = one_station_receipt_from_dict(r.to_dict())
+        assert rt == r
+
+    def test_digest_fields_required_in_payload(self):
+        """The exact-field deserializer: a serialized receipt missing
+        a declared digest field rejects."""
+        d = _good().to_dict()
+        d.pop("windowing_digest")
+        with pytest.raises(ValueError):
+            one_station_receipt_from_dict(d)
+
+
+class TestNonScientificTerminalsBindNothing:
+    """R-13/R-14/R-16: BLOCKED, NOT_OPERATIONAL, and RUN_ERROR carry
+    no byte evidence of any kind and no event anchor."""
+
+    @pytest.mark.parametrize("status", _NON_SCIENTIFIC)
+    @pytest.mark.parametrize("name", _DIGEST_FIELDS)
+    def test_no_digest_binds(self, status, name):
+        kw = {"station_id": "374"}
+        if status == "BLOCKED":
+            kw.update(window_start="2023-04-01T00:00:00Z",
+                      window_end="2023-04-02T00:00:00Z",
+                      blocked_reason="preflight gate unmet")
+        else:
+            kw["reason"] = "terminal reason"
+        r = OneStationReceiptV1(status=status, **kw,
+                                **{name: "a" * 64})
+        assert any(name in p for p in r.problems())
+
+    @pytest.mark.parametrize("status", _NON_SCIENTIFIC)
+    def test_no_event_anchor_binds(self, status):
+        kw = {"station_id": "374"}
+        if status == "BLOCKED":
+            kw.update(window_start="2023-04-01T00:00:00Z",
+                      window_end="2023-04-02T00:00:00Z",
+                      blocked_reason="preflight gate unmet")
+        else:
+            kw["reason"] = "terminal reason"
+        r = OneStationReceiptV1(status=status,
+                                event_anchor=_full_anchor(), **kw)
+        assert any("event_anchor" in p for p in r.problems())
+
+    def test_not_operational_metadata_only_admitted(self):
+        """R-14: NOT_OPERATIONAL is a metadata-only claim-ceiling
+        marker — reason required, no evidence bound."""
+        r = OneStationReceiptV1(
+            status="NOT_OPERATIONAL", station_id="374",
+            reason="claim ceiling marker — design artifact only")
+        assert r.problems() == []
+
+    def test_run_error_binds_no_evidence(self):
+        r = OneStationReceiptV1(
+            station_id="374", reason="config rejected",
+            waveform_digest="a" * 64)
+        assert any("waveform_digest" in p for p in r.problems())
+
+
+class TestBoundedProblems:
+    """R-17: .problems() never raises on malformed field types —
+    every defect is a bounded problem string."""
+
+    @pytest.mark.parametrize("anchor", [
+        "scalar", 42, ["date", "source"], None, ()])
+    def test_non_mapping_anchor_bounded(self, anchor):
+        problems = _good(event_anchor=anchor).problems()
+        assert isinstance(problems, list) and problems
+
+    def test_anchor_with_missing_keys_bounded(self):
+        assert _good(event_anchor={"date": "2023-04-15"}).problems()
+        assert _good(event_anchor={"unexpected": 1}).problems()
+
+    @pytest.mark.parametrize("kw", [
+        {"status": ["RUN_ERROR"]},
+        {"status": {"x": 1}},
+        {"status": 42},
+        {"waveform_digest": 12345},
+        {"windowing_digest": ["a" * 64]},
+        {"evaluation_digest": object()},
+        {"station_id": 374},
+        {"window_start": 1681430400},
+        {"window_end": ["2023-04-16T00:00:00Z"]},
+        {"notes": "not a tuple"},
+        {"notes": 7},
+        {"authorized_stations": "374"},
+        {"authorized_stations": ({"x": 1},)},
+        {"authorized_window": "2023-04-01"},
+        {"reason": 5},
+        {"blocked_reason": object()},
+    ])
+    def test_malformed_field_types_never_raise(self, kw):
+        problems = _good(**kw).problems()
+        assert isinstance(problems, list) and problems, kw
+
+    def test_from_dict_malformed_field_types_bounded(self):
+        """Deserialization of malformed field types yields a receipt
+        whose .problems() flags the defect — never a type error."""
+        d = _good().to_dict()
+        d["event_anchor"] = "scalar-not-mapping"
+        r = one_station_receipt_from_dict(d)
+        assert any("event_anchor" in p for p in r.problems())
+        d["notes"] = "free text"
+        r = one_station_receipt_from_dict(d)
+        assert any("notes" in p for p in r.problems())
+        d["authorized_stations"] = "374"
+        r = one_station_receipt_from_dict(d)
+        assert any("authorized_stations" in p for p in r.problems())

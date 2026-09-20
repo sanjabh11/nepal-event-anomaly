@@ -230,7 +230,11 @@ geographic-transfer claim. Event labels use the explicit
 The real run is complete and honest: 4,692 train rows, 552 embargo rows,
 and 1,656 holdout rows were evaluated; the receipt is `CANDIDATE_ONLY`
 because the artifact verdict is `UNSUPERVISED_STRUCTURE_NOT_STABLE`.
-Replay is `REPLAY_OK`; promotion, warning, and production authority remain
+Replay is `REPLAY_OK` with `artifact_replayed` — the persisted v1
+artifact's envelope/freeze digests recompute and the v1 receipt binds
+those bytes (the v0 receipt is preserved as historical: it bound a
+digest whose artifact bytes were never persisted; amendment v5 records
+the lineage repair). Promotion, warning, and production authority remain
 false. A fourth basin is dormant and is not required for this temporal path.
 
 The current canonical suite records the post-seasonal-v1 totals
@@ -271,9 +275,21 @@ executed. The seasonal adapter refuses contaminated inputs closed
 (non-JJA labels, out-of-window dates, undeclared units/years,
 duplicate or non-consecutive coverage) while honest missingness stays
 ledgered. Arm A verifies the full daily reference chain (receipt
-bytes, embedded artifact digest, terminal status, all-false
-authority) before binding; the lane receipt carries `terminal_reason`,
+bytes, **live artifact bytes** — envelope + freeze digests recompute,
+producer floor clean — terminal status, all-false authority) before
+binding; the lane receipt carries `terminal_reason`,
 `failed_gates`, and an explicit all-false authority block.
+
+**P5-A2 artifact lineage repair (amendment v5).** The original daily
+run bound only the artifact *digest* into its v0 receipt — the
+artifact bytes were never persisted. The v0 receipt is preserved as
+historical; `scripts/run_daily_p5.py` re-executed the frozen protocol
+under a declared config to serialize
+`retrieval/p5_glof_regime_artifact_v1.json` and issue a lineage-bound
+`p5_glof_descriptive_receipt_v1.json`. The verdict reproduced:
+`UNSUPERVISED_STRUCTURE_NOT_STABLE`. Daily replay emits
+`artifact_replayed` only after validating the persisted artifact —
+a receipt-bound digest alone is never "replayed".
 
 Option 3 (seismic sidecar) completed desk preflight and is **BLOCKED**:
 no cataloged event inside the authorized 2023-04-01→05-09 waveform
@@ -283,11 +299,19 @@ disposition in `retrieval/p5_d_owner_disposition_v1.json`; no retrieval
 was performed. A versioned one-station receipt contract
 (`nepal/seismic_sidecar/one_station_contract.py`) was drafted under the
 preflight amendment as a synthetic design surface only — it authorizes
-nothing and performs no I/O. Seismic remains retrospective-only and is
-**not** a Nepal predictor.
+nothing and performs no I/O. Post-audit hardening: ≤24h window bound,
+`BLOCKED`/`RUN_ERROR`/`NOT_OPERATIONAL` bind no byte evidence, strict
+event anchors (source_id, event_utc, timing tolerance, relation,
+source digest), required execution-digest chain for scientific
+statuses, bounded malformed-input errors. Seismic remains
+retrospective-only and is **not** a Nepal predictor.
 
-Cross-root provenance: `retrieval/p5_evidence_index_v0.json` binds all
-evidence roots (daily, seasonal v0, seasonal v1, seismic probe) with
-byte-level digests. The current P5 state is indexed in
+Cross-root provenance: `retrieval/p5_evidence_index_v1.json` binds the
+three physical roots (daily, seasonal v0 immutable, seasonal v1) plus
+the seismic preflight as a logical surface under the daily root —
+logical `root_id`s, relative paths, per-file digests + sidecars, and
+provenance fields, machine-verified fail-closed by
+`scripts/validate_evidence_index.py`. The superseded v0 index is
+preserved immutably. The current P5 state is indexed in
 `docs/science/P5_EXTENSION_STATUS_V0.md`; post-seasonal audit
 dispositions are recorded in `docs/science/GAP_REGISTER_V0.md`.

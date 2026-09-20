@@ -10,12 +10,26 @@ carries evidence state only.
 
 | Lane | State | Evidence |
 |---|---|---|
-| P5-A2 daily | `CANDIDATE_ONLY` receipt / `UNSUPERVISED_STRUCTURE_NOT_STABLE` artifact — honest negative | `p5-glof-2026-09-19/retrieval/p5_glof_descriptive_receipt_v0.json` |
+| P5-A2 daily | `UNSUPERVISED_STRUCTURE_NOT_STABLE` artifact — honest negative; v1 receipt+artifact are byte-bound (amendment v5 lineage repair); v0 receipt is HISTORICAL (receipt-bound only) | `p5-glof-2026-09-19/retrieval/p5_glof_descriptive_receipt_v1.json` + `p5_glof_regime_artifact_v1.json` |
 | Seasonal v0 | SUPERSEDED semantics — immutable, never patched | `p5-seasonal-jja-2026-09-20/` |
 | **Seasonal v1 (current)** | `UNSUPERVISED_STRUCTURE_NOT_STABLE` — second honest negative; same three open gates under corrected semantics | `p5-seasonal-v1-2026-09-20/run/seasonal_lane_receipt_v0.json` |
-| Option 3 seismic | **BLOCKED** at preflight — zero in-window events, no bytes, storage marginal; formal disposition recorded | `p5_d_preflight_reconciliation_v0.json` + `p5_d_owner_disposition_v1.json` |
+| Option 3 seismic | **BLOCKED** at preflight — zero in-window events, no bytes, storage marginal; formal disposition recorded; one-station contract hardened (24h window bound, BLOCKED binds no byte evidence, strict event anchors, bounded errors) | `p5_d_preflight_reconciliation_v0.json` + `p5_d_owner_disposition_v1.json` + `nepal/seismic_sidecar/one_station_contract.py` |
 | Arm C pressure levels | DEFERRED — separate owner amendment required | — |
 | Event association | BLOCKED — labels `UNADJUDICATED`, controls censored (by design) | — |
+
+## P5-A2 artifact lineage (amendment v5)
+
+The original P5-A2 run bound only the artifact **digest** into the
+v0 receipt — the artifact bytes were never persisted. Amendment v5
+(`retrieval/p5_amendment_v5_artifact_lineage.json`) records the gap
+honestly: the v0 receipt is preserved as historical, and a declared
+v1 config re-executed the frozen protocol solely to serialize the
+artifact. The v1 artifact carries a different digest (the engine and
+config surface evolved) — the honest check is the scientific verdict,
+which reproduced: `UNSUPERVISED_STRUCTURE_NOT_STABLE`. Daily replay
+now emits `artifact_replayed` only when the persisted artifact's
+envelope and freeze digests recompute and the receipt binds those
+bytes — a receipt-bound digest alone is never "replayed".
 
 ## Seasonal v1 result detail
 
@@ -26,9 +40,13 @@ carries evidence state only.
 
 ## Cross-root index
 
-`p5-glof-2026-09-19/retrieval/p5_evidence_index_v0.json` binds all
-four roots (daily, seasonal v0, seasonal v1, seismic probe) with
-byte-level digests — the single cross-root provenance surface.
+`p5-glof-2026-09-19/retrieval/p5_evidence_index_v1.json` binds the
+three physical roots (daily, seasonal v0 immutable, seasonal v1
+current) plus the seismic preflight as a logical surface inside the
+daily root — relative paths under logical `root_id`s, per-file
+digests + sidecars, provenance fields, and a `supersedes` pointer to
+the immutable v0 index. `scripts/validate_evidence_index.py` verifies
+it fail-closed (30-test suite).
 
 ## Owner-gated items (not executable without approval)
 

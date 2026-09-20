@@ -524,59 +524,108 @@ class TestSeasonalV1Semantics:
         v = json.loads(RECEIPT_JSON.read_text()) \
             ["arms"]["A_reference"]["verification"]
         assert v["verified"] is True
-        assert v["embedded_digest_match"] is True
+        assert v["receipt_binds_artifact"] is True
+        assert v["artifact_envelope_digest_match"] is True
+        assert v["artifact_freeze_digest_ok"] is True
         assert v["authority_flags_all_false"] is True
         assert v["status_terminal"] is True
 
 
-class TestDailyReferenceVerification:
-    """The Arm A reference chain must reject stale or mutated daily
-    evidence — a hardcoded digest alone is not verification."""
+DAILY_ARTIFACT_V1 = EVIDENCE / "p5-glof-2026-09-19" / "retrieval" / \
+    "p5_glof_regime_artifact_v1.json"
+DAILY_RECEIPT_V1 = EVIDENCE / "p5-glof-2026-09-19" / "retrieval" / \
+    "p5_glof_descriptive_receipt_v1.json"
 
-    def test_verify_daily_reference_accepts_real_receipt(self):
-        if not DAILY_RECEIPT.exists():
-            pytest.skip("daily receipt absent")
+
+def _fake_daily_root(tmp_path, receipt=None, artifact=None):
+    """Materialize a synthetic daily root holding the two governed
+    Arm A files under retrieval/."""
+    ret = tmp_path / "retrieval"
+    ret.mkdir(parents=True)
+    if receipt is not None:
+        (ret / "p5_glof_descriptive_receipt_v1.json").write_text(
+            json.dumps(receipt))
+    if artifact is not None:
+        (ret / "p5_glof_regime_artifact_v1.json").write_text(
+            json.dumps(artifact))
+    return tmp_path
+
+
+class TestDailyReferenceVerification:
+    """The Arm A reference chain must reject stale, mutated, or
+    receipt-only daily evidence — a bound digest without artifact
+    bytes is not verification (R-05)."""
+
+    def test_verify_daily_reference_accepts_real_chain(self):
+        if not DAILY_RECEIPT_V1.exists() or \
+                not DAILY_ARTIFACT_V1.exists():
+            pytest.skip("daily v1 artifact/receipt absent")
         import run_seasonal_p5 as drv
-        v = drv.verify_daily_reference(DAILY_RECEIPT)
+        v = drv.verify_daily_reference(
+            DAILY_RECEIPT_V1.parents[1])
         assert v["verified"] is True
         assert v["problems"] == []
+        assert v["artifact_envelope_digest_match"] is True
+        assert v["artifact_freeze_digest_ok"] is True
+        assert v["receipt_binds_artifact"] is True
 
-    def test_verify_daily_reference_rejects_mutated_digest(
-            self, tmp_path):
+    def test_missing_artifact_fails_closed(self, tmp_path):
+        """A receipt whose artifact bytes are absent is NOT a
+        verified reference — the digest alone cannot stand in."""
         import run_seasonal_p5 as drv
-        fake = tmp_path / "receipt.json"
-        fake.write_text(json.dumps({
-            "regime_artifact_digest": "0" * 64,
+        root = _fake_daily_root(tmp_path, receipt={
+            "regime_artifact_digest": "a" * 64,
             "status": "CANDIDATE_ONLY",
             "promotion_eligible": False,
             "production_authorized": False,
             "warning_path_authorized": False,
             "claim_scope":
-                "research_only_no_operational_authorization"}))
-        v = drv.verify_daily_reference(fake)
+                "research_only_no_operational_authorization"})
+        v = drv.verify_daily_reference(root)
         assert v["verified"] is False
-        assert any("stale or mutated" in p
+        assert v["artifact_exists"] is False
+        assert any("artifact" in p and "bytes" in p
                    for p in v["problems"])
+
+    def test_receipt_digest_disagreement_fails_closed(
+            self, tmp_path):
+        """Receipt binds a digest the artifact does not carry."""
+        import run_seasonal_p5 as drv
+        root = _fake_daily_root(
+            tmp_path,
+            receipt={
+                "regime_artifact_digest": "b" * 64,
+                "status": "CANDIDATE_ONLY",
+                "promotion_eligible": False,
+                "production_authorized": False,
+                "warning_path_authorized": False,
+                "claim_scope":
+                    "research_only_no_operational_authorization"},
+            artifact={"regime_artifact_digest": "a" * 64,
+                      "status": "UNSUPERVISED_STRUCTURE_NOT_STABLE",
+                      "frozen": True, "freeze_digest": "c" * 64})
+        v = drv.verify_daily_reference(root)
+        assert v["verified"] is False
+        assert v["receipt_binds_artifact"] is False
 
     def test_verify_daily_reference_rejects_true_authority(
             self, tmp_path):
         import run_seasonal_p5 as drv
-        fake = tmp_path / "receipt.json"
-        fake.write_text(json.dumps({
-            "regime_artifact_digest": drv.DAILY_ARTIFACT_DIGEST,
+        root = _fake_daily_root(tmp_path, receipt={
+            "regime_artifact_digest": "a" * 64,
             "status": "CANDIDATE_ONLY",
             "promotion_eligible": True,
             "production_authorized": False,
             "warning_path_authorized": False,
             "claim_scope":
-                "research_only_no_operational_authorization"}))
-        v = drv.verify_daily_reference(fake)
+                "research_only_no_operational_authorization"})
+        v = drv.verify_daily_reference(root)
         assert v["verified"] is False
         assert any("authority" in p for p in v["problems"])
 
     def test_verify_daily_reference_rejects_missing(self, tmp_path):
         import run_seasonal_p5 as drv
-        v = drv.verify_daily_reference(tmp_path / "absent.json")
+        v = drv.verify_daily_reference(tmp_path / "absent_root")
         assert v["verified"] is False
         assert v["problems"]
 
