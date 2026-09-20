@@ -256,7 +256,8 @@ _CADENCE_RE = re.compile(
 _STABILITY_FIELDS = frozenset({
     "component_alignment", "drift_max_abs_mean_shift",
     "effort_sensitivity", "elevation", "era_drift",
-    "fold_seed_policy", "k_instability", "leave_one_region_out",
+    "fold_seed_policy", "gate_observations", "k_instability",
+    "leave_one_region_out",
     "temporal_holdout",
     "locked_group_coverage", "missingness_sensitivity",
     "modal_k_frequency", "n_bootstrap", "required_gates",
@@ -2730,6 +2731,32 @@ def _gate_problems(payload: Mapping[str, Any]) -> list[str]:
                 "at least one open required gate — a fully "
                 "closed gate map is DESCRIPTIVE_REGIME_ONLY, "
                 "not a demotion")
+    # SEASONAL-02: when carried, gate_observations is exact — one
+    # record per declared gate, observed_status inside the axis
+    # vocabulary, binding a real bool.  A malformed observation
+    # cannot launder a NOT_APPLICABLE or SKIPPED axis into a pass.
+    obs = stability.get("gate_observations")
+    if obs is not None:
+        _OBS_VOCAB = {"PASS", "FAIL", "SKIPPED", "NOT_APPLICABLE",
+                      "NONCONVERGED"}
+        if not isinstance(obs, Mapping):
+            problems.append(
+                "SCHEMA_MALFORMED: gate_observations must be a "
+                "mapping of per-gate observation records")
+        else:
+            for g, o in obs.items():
+                if g not in REQUIRED_REGIME_GATE_NAMES:
+                    problems.append(
+                        f"SCHEMA_MALFORMED: gate_observations "
+                        f"carries undeclared gate {g!r}")
+                    continue
+                if not isinstance(o, Mapping) or \
+                        o.get("observed_status") not in _OBS_VOCAB or \
+                        not isinstance(o.get("binding"), bool):
+                    problems.append(
+                        f"SCHEMA_MALFORMED: gate_observations[{g}] "
+                        "must carry observed_status inside the axis "
+                        "vocabulary and a boolean binding flag")
     declared = payload.get("stability_report_digest")
     if _is_sha256(declared):
         try:

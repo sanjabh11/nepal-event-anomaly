@@ -233,10 +233,14 @@ because the artifact verdict is `UNSUPERVISED_STRUCTURE_NOT_STABLE`.
 Replay is `REPLAY_OK`; promotion, warning, and production authority remain
 false. A fourth basin is dormant and is not required for this temporal path.
 
-The current canonical suite records **3387 passed / 6 skipped / 0 failed /
-57 warnings** across **3393 collected** tests. Five rasterio skips and one
-documented descriptive-artifact skip remain disclosed. Seismic waveform
-bytes and STEIM admission remain a separate storage-gated track.
+The current canonical suite records the post-seasonal-v1 totals
+recorded in `docs/science/ARTIFACT_MANIFEST_V0.json` (historical
+snapshots: 3387 passed / 3393 collected at P5-A2; 3417+1 collection-
+drift failure / 3424 collected at the v0 seasonal rebind). Five
+rasterio skips and one documented descriptive-artifact skip remain
+disclosed, plus ~56 upstream xarray/netCDF4 deprecation warnings.
+Seismic waveform bytes and STEIM admission remain a separate
+storage-gated track.
 
 ### P5 seasonal lane (amendment v3, executed 2026-09-20)
 
@@ -253,9 +257,37 @@ incomplete. A second honest negative. The declared negative-control arm
 was refused before any model fitting. Independent replay:
 `scripts/replay_seasonal_p5.py` → `REPLAY_OK` (deterministic frame
 rebuild, envelope + freeze digests, producer floor, receipt bindings).
+
+The current evidence root is `p5-seasonal-v1-2026-09-20` (the v0 root
+`p5-seasonal-jja-2026-09-20` is immutable and superseded *semantics
+only* — identical scientific outcome). Post-audit v1 semantics:
+`stability.gate_observations` separates each gate's observed status
+(`PASS`/`FAIL`/`SKIPPED`/`NOT_APPLICABLE`) from whether it bound the
+terminal status — diagnostic LORO serializes `SKIPPED`/non-binding
+rather than a bare `true`, and `NOT_APPLICABLE` axes are no longer
+indistinguishable from executed passes. `year_block` is a
+metadata/resampling carrier — no year-block stability predicate is
+executed. The seasonal adapter refuses contaminated inputs closed
+(non-JJA labels, out-of-window dates, undeclared units/years,
+duplicate or non-consecutive coverage) while honest missingness stays
+ledgered. Arm A verifies the full daily reference chain (receipt
+bytes, embedded artifact digest, terminal status, all-false
+authority) before binding; the lane receipt carries `terminal_reason`,
+`failed_gates`, and an explicit all-false authority block.
+
 Option 3 (seismic sidecar) completed desk preflight and is **BLOCKED**:
 no cataloged event inside the authorized 2023-04-01→05-09 waveform
 window, no waveform bytes, storage marginal — recorded in
-`retrieval/p5_d_preflight_reconciliation_v0.json`; no retrieval was
-performed. Seismic remains retrospective-only and is **not** a Nepal
-predictor.
+`retrieval/p5_d_preflight_reconciliation_v0.json` with formal
+disposition in `retrieval/p5_d_owner_disposition_v1.json`; no retrieval
+was performed. A versioned one-station receipt contract
+(`nepal/seismic_sidecar/one_station_contract.py`) was drafted under the
+preflight amendment as a synthetic design surface only — it authorizes
+nothing and performs no I/O. Seismic remains retrospective-only and is
+**not** a Nepal predictor.
+
+Cross-root provenance: `retrieval/p5_evidence_index_v0.json` binds all
+evidence roots (daily, seasonal v0, seasonal v1, seismic probe) with
+byte-level digests. The current P5 state is indexed in
+`docs/science/P5_EXTENSION_STATUS_V0.md`; post-seasonal audit
+dispositions are recorded in `docs/science/GAP_REGISTER_V0.md`.

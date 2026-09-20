@@ -36,7 +36,7 @@ _COLLECTION_RE = re.compile(r"(\d+) tests collected")
 #: = manifest count + this module's own tests while the file is ungoverned.
 #: The manifest-only rebind adds the file and re-records collection_guard,
 #: after which the adjustment is zero and any drift trips the gate.
-_OWN_TEST_COUNT = 6
+_OWN_TEST_COUNT = 7
 
 
 def _manifest():
@@ -143,3 +143,36 @@ class TestR115ReleaseClosure:
         assert live == expected, (
             f"repo-wide collection {live} != expected {expected} "
             f"(manifest collection_guard: {guard!r})")
+
+    def test_recorded_suite_result_is_internally_consistent(self):
+        """REL-01 — the recorded full-suite result must be internally
+        consistent with the recorded collection count.  The recorded
+        pass count cannot be re-verified without a full-suite run, but
+        recorded totals and collection counts CAN drift apart — this
+        gate catches the recorded-state inconsistency itself."""
+        m = _manifest()
+        suite_txt = m["test_results"]["full_suite_venv"]
+        tallies = re.search(
+            r"(\d+) passed,\s*(\d+) skipped,\s*(\d+) failed",
+            suite_txt)
+        assert tallies, (
+            f"full_suite_venv format unrecognized: {suite_txt!r}")
+        passed, skipped, failed = map(int, tallies.groups())
+        collected_m = re.search(r"\((\d+) collected\)", suite_txt)
+        assert collected_m, (
+            f"full_suite_venv carries no collection count: "
+            f"{suite_txt!r}")
+        recorded_collected = int(collected_m.group(1))
+        guard = m["test_results"]["collection_guard"]
+        guard_m = re.search(r"\((\d+) nodes?\)", guard)
+        assert guard_m, (
+            f"collection_guard format unrecognized: {guard!r}")
+        guard_count = int(guard_m.group(1))
+        assert passed + skipped + failed == recorded_collected, (
+            f"recorded suite {passed}+{skipped}+{failed} != "
+            f"recorded collection {recorded_collected} — the "
+            "manifest's own test-results record is stale")
+        assert recorded_collected == guard_count, (
+            f"full_suite_venv collection {recorded_collected} != "
+            f"collection_guard {guard_count} — the recorded suite "
+            "result predates the current collection census")

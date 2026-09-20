@@ -3,6 +3,9 @@
 
 Executes the locked seasonal estimand:
   Arm A  — the daily P5-A2 result bound by reference (never rerun).
+           The full reference chain is verified before binding:
+           receipt bytes, embedded artifact digest, status, and
+           authority flags must all agree, or Arm A is rejected.
   Arm B  — the six-feature seasonal contract on the byte-verified
            basin-year frame (tied covariance primary).
   Arm NC — a declared negative-control input (feature-shuffled
@@ -10,16 +13,20 @@ Executes the locked seasonal estimand:
            rejected before any model fitting; if the engine ever
            produced an artifact from it, the harness is broken.
 
-Writes into the lane-local evidence root (LANE_ROOT):
+Writes into the lane evidence root (LANE_ROOT):
   features/seasonal_frame_jja_2001_2025.csv (+sha256)
   features/seasonal_frame_provenance_v0.json (+sha256)
   features/negative_control_frame.csv (+sha256)
   run/seasonal_regime_artifact_v0.json (+sha256)
   run/seasonal_lane_receipt_v0.json (+sha256)
 Verified independently by scripts/replay_seasonal_p5.py.
+
+Portable: --daily-root / --lane-root override the canonical evidence
+roots; the resolved roots are bound into the receipt.
 """
 from __future__ import annotations
 
+import argparse
 import datetime as _dt
 import hashlib
 import json
@@ -38,21 +45,21 @@ from nepal.science_v0.seasonal_frame import (SEASONAL_FEATURES,
                                            SEASONAL_UNITS,
                                            build_seasonal_frame)
 
-DAILY_ROOT = Path("/Users/sanjayb/nepal-event-anomaly-evidence/"
-                  "p5-glof-2026-09-19")
-DAILY_CSV = (DAILY_ROOT / "era5-multibasin/features/"
-             "regime_frame_hma_jja_2001_2025.csv")
-LANE_ROOT = Path("/Users/sanjayb/nepal-event-anomaly-evidence/"
-                 "p5-seasonal-jja-2026-09-20")
-FEATURES_DIR = LANE_ROOT / "features"
-RUN_DIR = LANE_ROOT / "run"
+DEFAULT_DAILY_ROOT = Path(
+    "/Users/sanjayb/nepal-event-anomaly-evidence/p5-glof-2026-09-19")
+DEFAULT_LANE_ROOT = Path(
+    "/Users/sanjayb/nepal-event-anomaly-evidence/"
+    "p5-seasonal-v1-2026-09-20")
 
 # Arm A — the bound daily artifact digest (from the P5-A2 receipt;
-# referenced, never re-derived).
+# referenced, never re-derived).  Verified against the live receipt
+# at run time — a stale or mutated daily reference rejects the arm.
 DAILY_ARTIFACT_DIGEST = (
     "982e7b6e270dfd5e990ed6f2957e55485e1e9fbfd8e4d6ac1c6cfa93c3188327")
-DAILY_RECEIPT = (DAILY_ROOT / "retrieval/"
-                 "p5_glof_descriptive_receipt_v0.json")
+DAILY_TERMINAL_STATUSES = {"CANDIDATE_ONLY", "DESCRIPTIVE_REGIME_ONLY",
+                           "UNSUPERVISED_STRUCTURE_NOT_STABLE",
+                           "UNDERPOWERED_DESCRIPTIVE_ONLY"}
+LANE_TERMINAL_STATUSES = DAILY_TERMINAL_STATUSES | {"RUN_ERROR"}
 
 
 def _sha(p: Path) -> str:
@@ -63,7 +70,62 @@ def _write_sidecar(p: Path) -> None:
     Path(str(p) + ".sha256").write_text(f"{_sha(p)}  {p.name}\n")
 
 
-def _manifest(frame_sha: str, prov_sha: str) -> dict:
+def verify_daily_reference(receipt_path: Path) -> dict:
+    """Arm A reference-chain verification — the daily result is bound
+    by reference ONLY when the live receipt bytes, its embedded
+    artifact digest, its terminal status, and every authority flag
+    agree.  A stale or mutated reference is rejected, never carried."""
+    checks = {"receipt_exists": receipt_path.exists(),
+              "receipt_sha256": None, "embedded_digest_match": None,
+              "status": None, "status_terminal": None,
+              "authority_flags_all_false": None,
+              "verified": False, "problems": []}
+    if not checks["receipt_exists"]:
+        checks["problems"].append(
+            f"daily receipt {receipt_path} missing — Arm A cannot "
+            "bind a reference that does not exist")
+        return checks
+    checks["receipt_sha256"] = _sha(receipt_path)
+    try:
+        rcpt = json.loads(receipt_path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        checks["problems"].append(f"daily receipt unreadable: {exc}")
+        return checks
+    embedded = rcpt.get("regime_artifact_digest")
+    checks["embedded_digest_match"] = \
+        embedded == DAILY_ARTIFACT_DIGEST
+    if not checks["embedded_digest_match"]:
+        checks["problems"].append(
+            f"daily receipt regime_artifact_digest {embedded} != "
+            f"declared reference {DAILY_ARTIFACT_DIGEST} — the "
+            "reference chain is stale or mutated")
+    status = rcpt.get("status")
+    checks["status"] = status
+    checks["status_terminal"] = status in DAILY_TERMINAL_STATUSES
+    if not checks["status_terminal"]:
+        checks["problems"].append(
+            f"daily receipt status {status!r} is not a declared "
+            "terminal status")
+    flags = {k: rcpt.get(k) for k in
+             ("promotion_eligible", "production_authorized",
+              "warning_path_authorized")}
+    checks["authority_flags"] = flags
+    checks["authority_flags_all_false"] = all(v is False
+                                              for v in flags.values())
+    if not checks["authority_flags_all_false"]:
+        checks["problems"].append(
+            f"daily receipt authority flags are not all false: "
+            f"{flags}")
+    if rcpt.get("claim_scope") != \
+            "research_only_no_operational_authorization":
+        checks["problems"].append(
+            "daily receipt claim_scope is not research-only")
+    checks["verified"] = not checks["problems"]
+    return checks
+
+
+def _manifest(frame_sha: str, prov_sha: str,
+              lane_root: Path) -> dict:
     return {
         "source_id": "era5-land-seasonal-jja-basin-year-v1",
         "source_digests": sorted([frame_sha, prov_sha]),
@@ -73,7 +135,7 @@ def _manifest(frame_sha: str, prov_sha: str) -> dict:
                    "daily JJA frame (era5-multibasin/features/"
                    "regime_frame_hma_jja_2001_2025.csv) under "
                    "p5_amendment_v3_seasonal_estimand",
-        "evidence_root": str(LANE_ROOT),
+        "evidence_root": str(lane_root),
         "source_files": [
             {"relpath": "features/seasonal_frame_jja_2001_2025.csv",
              "sha256": frame_sha},
@@ -139,20 +201,57 @@ def _negative_control_frame(df: pd.DataFrame) -> pd.DataFrame:
     return nc
 
 
-def main() -> int:
-    FEATURES_DIR.mkdir(parents=True, exist_ok=True)
-    RUN_DIR.mkdir(parents=True, exist_ok=True)
+def _failed_gates(artifact: dict) -> list[str]:
+    gates = (artifact.get("stability") or {}).get("required_gates")
+    if not isinstance(gates, dict):
+        return []
+    return sorted(g for g, v in gates.items() if v is not True)
 
-    receipt = {"record_type": "SEASONAL_LANE_RECEIPT_V0",
-               "schema": "P5_SEASONAL_LANE_V0",
+
+def _terminal_reason(artifact: dict) -> str | None:
+    status = artifact.get("status")
+    if status == "RUN_ERROR":
+        return artifact.get("reason")
+    failed = _failed_gates(artifact)
+    if not failed:
+        return None
+    return (f"{status} — failed required gates: "
+            + ", ".join(failed))
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--daily-root", default=str(DEFAULT_DAILY_ROOT))
+    ap.add_argument("--lane-root", default=str(DEFAULT_LANE_ROOT))
+    args = ap.parse_args()
+    daily_root = Path(args.daily_root).resolve()
+    lane_root = Path(args.lane_root).resolve()
+    daily_csv = (daily_root / "era5-multibasin/features/"
+                 "regime_frame_hma_jja_2001_2025.csv")
+    daily_receipt = (daily_root / "retrieval/"
+                     "p5_glof_descriptive_receipt_v0.json")
+    features_dir = lane_root / "features"
+    run_dir = lane_root / "run"
+    features_dir.mkdir(parents=True, exist_ok=True)
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    receipt = {"record_type": "SEASONAL_LANE_RECEIPT_V1",
+               "schema": "P5_SEASONAL_LANE_V1",
                "claim_scope": "research_only_no_operational_"
                               "authorization",
+               "authority": {
+                   "promotion_eligible": False,
+                   "production_authorized": False,
+                   "warning_path_authorized": False,
+                   "operational_claim": False},
+               "roots": {"daily_root": str(daily_root),
+                         "lane_root": str(lane_root)},
                "estimand": "basin-year JJA hydroclimate seasonal "
                            "types (75 rows = 3 basins x 25 seasons)",
                "arms": {}, "status": "RUN_ERROR", "problems": []}
 
     # ---- frame build ------------------------------------------------
-    build = build_seasonal_frame(DAILY_CSV, FEATURES_DIR)
+    build = build_seasonal_frame(daily_csv, features_dir)
     frame = build["frame"]
     receipt["frame"] = {
         "csv": str(build["csv"]), "sha256": build["sha256"],
@@ -164,24 +263,26 @@ def main() -> int:
         receipt["problems"].append(
             f"seasonal frame has {len(frame)} rows, expected 75 — "
             "basin-year ledger must be reconciled")
-        _emit(receipt)
+        _emit(receipt, run_dir)
         return 1
     prov_sha = _sha(Path(build["provenance"]))
-    manifest = _manifest(build["sha256"], prov_sha)
+    manifest = _manifest(build["sha256"], prov_sha, lane_root)
 
-    # ---- Arm A: daily reference bound by digest ----------------------
-    daily_rcpt_sha = _sha(DAILY_RECEIPT) if DAILY_RECEIPT.exists() \
-        else None
-    daily_status = None
-    if DAILY_RECEIPT.exists():
-        daily_status = json.loads(DAILY_RECEIPT.read_text()) \
-            .get("status")
+    # ---- Arm A: daily reference — full chain verified ---------------
+    ref = verify_daily_reference(daily_receipt)
     receipt["arms"]["A_reference"] = {
         "bound_artifact_digest": DAILY_ARTIFACT_DIGEST,
-        "receipt_sha256": daily_rcpt_sha,
-        "daily_status": daily_status,
+        "receipt_sha256": ref["receipt_sha256"],
+        "daily_status": ref["status"],
+        "verification": ref,
         "note": "daily P5-A2 result bound by reference — never "
                 "rerun under seasonal settings"}
+    if not ref["verified"]:
+        receipt["problems"].append(
+            "Arm A daily reference chain failed verification: "
+            + "; ".join(ref["problems"]))
+        _emit(receipt, run_dir)
+        return 1
 
     # ---- Arm B: the seasonal run -------------------------------------
     cfg = _config(manifest)
@@ -190,10 +291,12 @@ def main() -> int:
     arm_b = {"covariance_type": cfg.covariance_type,
              "k_candidates": list(cfg.k_candidates),
              "status": artifact.get("status"),
-             "reason": artifact.get("reason")}
+             "reason": artifact.get("reason"),
+             "terminal_reason": _terminal_reason(artifact),
+             "failed_gates": _failed_gates(artifact)}
     if artifact.get("status") != "RUN_ERROR":
         frozen = freeze_regime_artifact(dict(artifact))
-        art_path = RUN_DIR / "seasonal_regime_artifact_v0.json"
+        art_path = run_dir / "seasonal_regime_artifact_v0.json"
         art_path.write_text(json.dumps(frozen, indent=1,
                                        sort_keys=True) + "\n")
         _write_sidecar(art_path)
@@ -203,11 +306,13 @@ def main() -> int:
             frozen.get("regime_artifact_digest")
         arm_b["required_gates"] = (frozen.get("stability") or {}) \
             .get("required_gates")
+        arm_b["gate_observations"] = (frozen.get("stability") or {}) \
+            .get("gate_observations")
     receipt["arms"]["B_surface_core"] = arm_b
 
     # ---- Arm NC: declared negative control ---------------------------
     nc = _negative_control_frame(frame)
-    nc_path = FEATURES_DIR / "negative_control_frame.csv"
+    nc_path = features_dir / "negative_control_frame.csv"
     nc.to_csv(nc_path, index=False)
     _write_sidecar(nc_path)
     nc_cfg = _config(manifest, input_role="negative_control")
@@ -235,14 +340,16 @@ def main() -> int:
             "harness failure")
     else:
         receipt["status"] = arm_b["status"]
-    _emit(receipt)
+        receipt["terminal_reason"] = arm_b["terminal_reason"]
+    _emit(receipt, run_dir)
     print(json.dumps({k: receipt[k] for k in
-                      ("status", "arms")}, indent=1))
+                      ("status", "terminal_reason", "arms")
+                      if k in receipt}, indent=1))
     return 0
 
 
-def _emit(receipt: dict) -> None:
-    out = RUN_DIR / "seasonal_lane_receipt_v0.json"
+def _emit(receipt: dict, run_dir: Path) -> None:
+    out = run_dir / "seasonal_lane_receipt_v0.json"
     out.write_text(json.dumps(receipt, indent=1, sort_keys=True)
                    + "\n")
     _write_sidecar(out)

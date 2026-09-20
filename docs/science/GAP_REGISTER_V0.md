@@ -1263,3 +1263,29 @@ HMAGLOFDB bytes, v1.3 row census, lake-join fields, integer GF_ID /
 payload-verified facts. The remaining source gates are label
 adjudication and non-censored opportunity controls; neither is inferred
 from source-level review or the negative descriptive regime result.
+
+## P5 post-seasonal reconciliation — 2026-09-20 (Codex audit dispositions)
+
+The v1 seasonal evidence root supersedes v0 *semantics only* — the
+scientific outcome is unchanged (`UNSUPERVISED_STRUCTURE_NOT_STABLE`,
+the same three open gates). Older entries above are historical and
+remain accurate for their dates; the storage figure recorded at P5-D
+preflight (9.5 GiB free) is a point-in-time measurement, not a current
+floor — re-measure before any future retrieval.
+
+| Finding | Disposition |
+|---|---|
+| Manifest recorded 3417 vs live 3418 | **RESOLVED** — recorded result updated at rebind; suite-result-drift regression added to release closure |
+| README stale suite counts | **RESOLVED** — current-state section carries the fresh numbers; historical reports preserved |
+| No cross-root evidence index | **RESOLVED** — `p5_evidence_index_v0.json` binds daily + seasonal v0 (immutable) + seasonal v1 + seismic roots |
+| LORO SKIPPED folds serialized as gate `true` | **RESOLVED** — `gate_observations` separates observed_status (`SKIPPED`) from binding (`false`); no geographic-transfer reading possible |
+| `year_block` implied executed predicate | **RESOLVED** — demoted to metadata/resampling carrier in provenance, module docs, and provenance record |
+| `NOT_APPLICABLE` indistinguishable from `PASS` | **RESOLVED** — `gate_observations` emits per-gate observed_status (season_refits/elevation/effort record N/A with reasons) |
+| Seasonal adapter under-validates input domain | **RESOLVED** — JJA labels, Jun1–Aug31 dates, unique/consecutive 92-day coverage, declared unit/year domains refuse closed; contamination cannot masquerade as missingness |
+| Arm A binds a hardcoded digest | **RESOLVED** — `verify_daily_reference` checks receipt bytes, embedded artifact digest, terminal status, and all-false authority flags |
+| Receipt lacks terminal reason/authority | **RESOLVED** — receipt carries `terminal_reason`, `failed_gates`, and explicit all-false authority block |
+| Scripts not portable | **RESOLVED** — `--daily-root`/`--lane-root` args; resolved roots bound into receipt and checked at replay |
+| One-station seismic vocabulary | **DESIGN-ONLY** — `one_station_contract.py` drafted under preflight amendment (synthetic; no retrieval authorized) |
+| Option 3 execution | **BLOCKED (dispositioned)** — `p5_d_owner_disposition_v1.json`; unblocking conditions are owner-gated |
+| Arm C pressure levels / ObsPy admission / publication | **DEFERRED** — separate owner amendments required |
+| xarray/sklearn warnings (56+1) | **DISCLOSED** — upstream deprecations + synthetic-fixture convergence warning; no action this cycle |

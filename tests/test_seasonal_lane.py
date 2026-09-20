@@ -10,13 +10,18 @@ nonphysical structure is refused twice: by declaration AND by the
 statistical gates themselves.
 """
 import dataclasses
+import re
 import hashlib
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]
+                     / "scripts"))
 
 from nepal.science_v0.regimes import (RegimeRunConfig, run_regimes,
                                     _gmm_free_params,
@@ -29,9 +34,12 @@ from nepal.science_v0.seasonal_frame import (SEASONAL_FEATURES,
                                            JJA_DAYS)
 
 EVIDENCE = Path("/Users/sanjayb/nepal-event-anomaly-evidence")
-DAILY_CSV = (EVIDENCE / "p5-glof-2026-09-19/era5-multibasin/features/"
+DAILY_ROOT = EVIDENCE / "p5-glof-2026-09-19"
+DAILY_CSV = (DAILY_ROOT / "era5-multibasin/features/"
              "regime_frame_hma_jja_2001_2025.csv")
-LANE_ROOT = EVIDENCE / "p5-seasonal-jja-2026-09-20"
+DAILY_RECEIPT = (DAILY_ROOT / "retrieval/"
+                 "p5_glof_descriptive_receipt_v0.json")
+LANE_ROOT = EVIDENCE / "p5-seasonal-v1-2026-09-20"
 SEASONAL_CSV = (LANE_ROOT / "features/"
                 "seasonal_frame_jja_2001_2025.csv")
 ARTIFACT_JSON = LANE_ROOT / "run/seasonal_regime_artifact_v0.json"
@@ -316,12 +324,14 @@ class TestSeasonalFrameBuilder:
         rows = []
         for basin in ("gandaki", "karnali", "koshi"):
             for y in range(2001, 2003):
-                n = JJA_DAYS if not (basin == "koshi" and y == 2002) \
-                    else JJA_DAYS - 5
-                for i in range(n):
+                days = pd.date_range(f"{y}-06-01", f"{y}-08-31")
+                # honest missingness: one basin-year is truncated by
+                # 5 trailing days — a ledger drop, not contamination
+                if basin == "koshi" and y == 2002:
+                    days = days[:-5]
+                for d in days:
                     rows.append({
-                        "date": f"{y}-06-{(i % 30) + 1:02d}"
-                        if i < 61 else f"{y}-08-{(i - 61) + 1:02d}",
+                        "date": d.strftime("%Y-%m-%d"),
                         "t2m_daily": rng.normal(2, 1),
                         "d2m_daily": rng.normal(0, 1),
                         "pdd_daily": abs(rng.normal(3, 1)),
@@ -331,7 +341,6 @@ class TestSeasonalFrameBuilder:
                         "season": "JJA",
                         "era": "pre_2013", "elevation_m": 4500.0})
         df = pd.DataFrame(rows)
-        df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
         csv = tmp_path / "daily.csv"
         df.to_csv(csv, index=False)
         sha = hashlib.sha256(csv.read_bytes()).hexdigest()
@@ -433,3 +442,219 @@ class TestSeasonalArtifactIntegrity:
         declared = sidecar.read_text().split()[0]
         assert hashlib.sha256(DAILY_CSV.read_bytes()).hexdigest() \
             == declared
+
+
+class TestSeasonalV1Semantics:
+    """SEASONAL-02 — the audit-driven semantic corrections: gate
+    observations distinguish PASS from NOT_APPLICABLE/SKIPPED, the
+    diagnostic LORO can never read as geographic validation, the
+    Arm A reference chain is verified, and every authority field is
+    explicitly false."""
+
+    def test_gate_observations_cover_gate_universe(self):
+        if not ARTIFACT_JSON.exists():
+            pytest.skip("seasonal artifact absent")
+        a = json.loads(ARTIFACT_JSON.read_text())
+        stab = a["stability"]
+        gates = stab["required_gates"]
+        obs = stab["gate_observations"]
+        assert set(obs) == set(gates)
+        vocab = {"PASS", "FAIL", "SKIPPED", "NOT_APPLICABLE",
+                 "NONCONVERGED"}
+        for g, o in obs.items():
+            assert o["observed_status"] in vocab
+            assert isinstance(o["binding"], bool)
+
+    def test_loro_never_reads_as_geographic_validation(self):
+        if not ARTIFACT_JSON.exists():
+            pytest.skip("seasonal artifact absent")
+        a = json.loads(ARTIFACT_JSON.read_text())
+        assert a["config"]["loro_policy"] == "diagnostic"
+        obs = a["stability"]["gate_observations"]["loro"]
+        assert obs["binding"] is False
+        assert obs["observed_status"] == "SKIPPED"
+        # the binding bool and the observation disagree by design —
+        # a consumer reading required_gates alone would see True and
+        # wrongly infer an executed LORO pass
+        assert a["stability"]["required_gates"]["loro"] is True
+        folds = a["stability"]["leave_one_region_out"]["folds"]
+        assert all(f["status"] == "SKIPPED" for f in folds.values())
+
+    def test_not_applicable_axes_are_not_passes(self):
+        if not ARTIFACT_JSON.exists():
+            pytest.skip("seasonal artifact absent")
+        obs = json.loads(ARTIFACT_JSON.read_text()) \
+            ["stability"]["gate_observations"]
+        # the single-season axis and the waived effort axis must
+        # record NOT_APPLICABLE — not a silent executed pass
+        assert obs["season_refits"]["observed_status"] == \
+            "NOT_APPLICABLE"
+        assert obs["effort"]["observed_status"] == "NOT_APPLICABLE"
+
+    def test_receipt_authority_all_false_explicit(self):
+        if not RECEIPT_JSON.exists():
+            pytest.skip("seasonal receipt absent")
+        r = json.loads(RECEIPT_JSON.read_text())
+        auth = r["authority"]
+        for k in ("promotion_eligible", "production_authorized",
+                  "warning_path_authorized", "operational_claim"):
+            assert auth[k] is False, f"{k} is not explicitly false"
+
+    def test_receipt_negative_status_carries_reason_and_gates(self):
+        if not RECEIPT_JSON.exists():
+            pytest.skip("seasonal receipt absent")
+        r = json.loads(RECEIPT_JSON.read_text())
+        b = r["arms"]["B_surface_core"]
+        if b["status"] in ("UNSUPERVISED_STRUCTURE_NOT_STABLE",
+                           "CANDIDATE_ONLY"):
+            assert b["failed_gates"], "negative status without a " \
+                "failed-gate summary"
+            assert b["terminal_reason"], "negative status without " \
+                "a terminal reason"
+            # receipt gates agree with the artifact's bound map
+            if ARTIFACT_JSON.exists():
+                ag = json.loads(ARTIFACT_JSON.read_text()) \
+                    ["stability"]["required_gates"]
+                assert sorted(b["failed_gates"]) == sorted(
+                    g for g, v in ag.items() if v is not True)
+
+    def test_arm_a_verification_present_and_passed(self):
+        if not RECEIPT_JSON.exists():
+            pytest.skip("seasonal receipt absent")
+        v = json.loads(RECEIPT_JSON.read_text()) \
+            ["arms"]["A_reference"]["verification"]
+        assert v["verified"] is True
+        assert v["embedded_digest_match"] is True
+        assert v["authority_flags_all_false"] is True
+        assert v["status_terminal"] is True
+
+
+class TestDailyReferenceVerification:
+    """The Arm A reference chain must reject stale or mutated daily
+    evidence — a hardcoded digest alone is not verification."""
+
+    def test_verify_daily_reference_accepts_real_receipt(self):
+        if not DAILY_RECEIPT.exists():
+            pytest.skip("daily receipt absent")
+        import run_seasonal_p5 as drv
+        v = drv.verify_daily_reference(DAILY_RECEIPT)
+        assert v["verified"] is True
+        assert v["problems"] == []
+
+    def test_verify_daily_reference_rejects_mutated_digest(
+            self, tmp_path):
+        import run_seasonal_p5 as drv
+        fake = tmp_path / "receipt.json"
+        fake.write_text(json.dumps({
+            "regime_artifact_digest": "0" * 64,
+            "status": "CANDIDATE_ONLY",
+            "promotion_eligible": False,
+            "production_authorized": False,
+            "warning_path_authorized": False,
+            "claim_scope":
+                "research_only_no_operational_authorization"}))
+        v = drv.verify_daily_reference(fake)
+        assert v["verified"] is False
+        assert any("stale or mutated" in p
+                   for p in v["problems"])
+
+    def test_verify_daily_reference_rejects_true_authority(
+            self, tmp_path):
+        import run_seasonal_p5 as drv
+        fake = tmp_path / "receipt.json"
+        fake.write_text(json.dumps({
+            "regime_artifact_digest": drv.DAILY_ARTIFACT_DIGEST,
+            "status": "CANDIDATE_ONLY",
+            "promotion_eligible": True,
+            "production_authorized": False,
+            "warning_path_authorized": False,
+            "claim_scope":
+                "research_only_no_operational_authorization"}))
+        v = drv.verify_daily_reference(fake)
+        assert v["verified"] is False
+        assert any("authority" in p for p in v["problems"])
+
+    def test_verify_daily_reference_rejects_missing(self, tmp_path):
+        import run_seasonal_p5 as drv
+        v = drv.verify_daily_reference(tmp_path / "absent.json")
+        assert v["verified"] is False
+        assert v["problems"]
+
+
+class TestGateObservationFloor:
+    """The producer floor rejects malformed gate_observations — a
+    tri-state or misnamed observation cannot launder semantics."""
+
+    def _payload(self, obs):
+        from nepal.research_v0.producer_validation import _gate_problems
+        stab = {"required_gates":
+                {g: True for g in
+                 ("seed_policy", "modal_k_unanimous", "seed_ari",
+                  "seed_coverage", "loro", "temporal_bootstrap",
+                  "season_refits", "elevation", "missingness",
+                  "effort", "era_drift", "shuffled_null",
+                  "season_matched_null")},
+                "gate_observations": obs}
+        return _gate_problems({"stability": stab})
+
+    def test_wellformed_observations_accepted(self):
+        obs = {g: {"observed_status": "PASS", "binding": True,
+                   "reason": None}
+               for g in ("seed_policy", "modal_k_unanimous",
+                         "seed_ari", "seed_coverage", "loro",
+                         "temporal_bootstrap", "season_refits",
+                         "elevation", "missingness", "effort",
+                         "era_drift", "shuffled_null",
+                         "season_matched_null")}
+        assert not any("gate_observations" in p
+                       for p in self._payload(obs))
+
+    def test_undeclared_gate_in_observations_rejected(self):
+        obs = {"bogus_gate": {"observed_status": "PASS",
+                              "binding": True}}
+        assert any("undeclared gate" in p
+                   for p in self._payload(obs))
+
+    def test_malformed_observation_rejected(self):
+        obs = {"loro": {"observed_status": "TRISTATE",
+                        "binding": "yes"}}
+        assert any("gate_observations[loro]" in p
+                   for p in self._payload(obs))
+
+
+class TestClaimVocabularyCeiling:
+    """The lane's evidence must never carry operational, warning,
+    forecast, or geographic-transfer claim language — the claim-scan
+    floor is enforced at test level, not only at release."""
+
+    _FORBIDDEN = re.compile(
+        r"\b(forecast(?!_vintage|_feature_set)|early[-_ ]?warning|"
+        r"evacuat|bulletin|siren|public[-_ ]?safety|"
+        r"operationali[sz]e|production[-_ ]?deploy)\b",
+        re.IGNORECASE)
+
+    def _walk_strings(self, obj):
+        if isinstance(obj, str):
+            yield obj
+        elif isinstance(obj, dict):
+            for v in obj.values():
+                yield from self._walk_strings(v)
+        elif isinstance(obj, (list, tuple)):
+            for v in obj:
+                yield from self._walk_strings(v)
+
+    def test_receipt_carries_no_forbidden_claim_language(self):
+        if not RECEIPT_JSON.exists():
+            pytest.skip("seasonal receipt absent")
+        r = json.loads(RECEIPT_JSON.read_text())
+        hits = [s for s in self._walk_strings(r)
+                if self._FORBIDDEN.search(s)]
+        assert hits == [], f"forbidden claim language: {hits[:3]}"
+
+    def test_artifact_carries_no_forbidden_claim_language(self):
+        if not ARTIFACT_JSON.exists():
+            pytest.skip("seasonal artifact absent")
+        a = json.loads(ARTIFACT_JSON.read_text())
+        hits = [s for s in self._walk_strings(a)
+                if self._FORBIDDEN.search(s)]
+        assert hits == [], f"forbidden claim language: {hits[:3]}"

@@ -22,10 +22,14 @@ MANIFEST = ROOT / "docs/science/ARTIFACT_MANIFEST_V0.json"
 NEW_GOVERNED = [
     "nepal/gitutil.py",
     "nepal/science_v0/seasonal_frame.py",
+    "nepal/seismic_sidecar/one_station_contract.py",
     "scripts/run_seasonal_p5.py",
     "scripts/replay_seasonal_p5.py",
     "scripts/rebind_manifest.py",
     "tests/test_seasonal_lane.py",
+    "tests/test_seasonal_frame_adversarial.py",
+    "tests/test_one_station_contract.py",
+    "docs/science/P5_EXTENSION_STATUS_V0.md",
 ]
 
 

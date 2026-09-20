@@ -2442,6 +2442,95 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
     }
     assert set(required_gates) == REQUIRED_REGIME_GATE_NAMES
     stability["required_gates"] = required_gates
+    # SEASONAL-02: machine-readable gate observations — the boolean
+    # required_gates contract stays the binding surface for freeze,
+    # but a True collapses PASS and NOT_APPLICABLE (and a diagnostic
+    # policy's pass-through) into one indistinguishable value.  Each
+    # gate therefore carries its observed axis status separately from
+    # whether that observation bound the terminal status.  A consumer
+    # must read observed_status, never infer it from the bool.
+    _loro_folds = stability["leave_one_region_out"]["folds"]
+    _loro_statuses = {f["status"] for f in _loro_folds.values()}
+    if _loro_statuses and _loro_statuses <= {"SKIPPED"}:
+        _loro_observed = "SKIPPED"
+    elif config.loro_policy == "diagnostic":
+        _loro_observed = ("PASS" if _loro_statuses == {"PASS"}
+                          else "FAIL"
+                          if "FAIL" in _loro_statuses else "SKIPPED")
+    else:
+        _loro_observed = "PASS" if loro_pass else "FAIL"
+    gate_observations = {
+        "seed_policy": {
+            "observed_status": "PASS" if required_gates["seed_policy"]
+                               else "FAIL",
+            "binding": True,
+            "reason": None if required_gates["seed_policy"] else
+                      "fold_seed_policy is not 'all' — a subset "
+                      "policy is diagnostic-only"},
+        "modal_k_unanimous": {
+            "observed_status": "PASS" if k_freq == 1.0 else "FAIL",
+            "binding": True,
+            "reason": None if k_freq == 1.0 else
+                      f"modal K frequency {k_freq:.4f} < 1.0 — "
+                      "declared seeds select different K"},
+        "seed_ari": {
+            "observed_status": "PASS" if required_gates["seed_ari"]
+                               else "FAIL",
+            "binding": True,
+            "reason": None if required_gates["seed_ari"] else
+                      "per-seed assignment ARI below 0.6 or no "
+                      "converged seed pair"},
+        "seed_coverage": {
+            "observed_status": "PASS" if seed_coverage_complete
+                               else "FAIL",
+            "binding": True,
+            "reason": None if seed_coverage_complete else
+                      "a declared seed did not converge — coverage "
+                      "is incomplete"},
+        "loro": {
+            "observed_status": _loro_observed,
+            "binding": config.loro_policy != "diagnostic",
+            "reason": (None if config.loro_policy != "diagnostic"
+                       else "loro_policy='diagnostic' — fold records "
+                            "are diagnostics, not gate evidence; no "
+                            "geographic-transfer validation may be "
+                            "read from this axis")},
+        "temporal_bootstrap": {
+            "observed_status": boot["status"],
+            "binding": True,
+            "reason": boot.get("reason")},
+        "season_refits": {
+            "observed_status": stability["season_refits"]["status"],
+            "binding": True,
+            "reason": stability["season_refits"].get("reason")},
+        "elevation": {
+            "observed_status": stability["elevation"]["status"],
+            "binding": True,
+            "reason": stability["elevation"].get("reason")},
+        "missingness": {
+            "observed_status": miss_ax["status"],
+            "binding": True,
+            "reason": miss_ax.get("reason")},
+        "effort": {
+            "observed_status":
+                stability["effort_sensitivity"]["status"],
+            "binding": True,
+            "reason": stability["effort_sensitivity"].get("reason")},
+        "era_drift": {
+            "observed_status": era_ax["status"],
+            "binding": True,
+            "reason": era_ax.get("reason")},
+        "shuffled_null": {
+            "observed_status": null_shuf["status"],
+            "binding": True,
+            "reason": null_shuf.get("reason")},
+        "season_matched_null": {
+            "observed_status": null_seas["status"],
+            "binding": True,
+            "reason": null_seas.get("reason")},
+    }
+    assert set(gate_observations) == REQUIRED_REGIME_GATE_NAMES
+    stability["gate_observations"] = gate_observations
     stable = all(required_gates.values())
     structural = ("modal_k_unanimous", "seed_ari", "seed_coverage",
                   "loro")

@@ -15,8 +15,9 @@ Feature contract (locked, p5_amendment_v3_seasonal_estimand.json):
     sd_delta           last valid sd_daily - first valid sd_daily [mm w.e.]
 
 Carrier columns: unit_id, basin_group, season ("JJA"), season_year,
-year_block (5-year blocks, the declared year-block stability
-carrier), era (pre_2013/post_2013), elevation_m (basin constant),
+year_block (5-year blocks) — a metadata/resampling carrier only;
+NO year-block stability predicate is executed in this lane —
+era (pre_2013/post_2013), elevation_m (basin constant),
 date — a SYNTHETIC index date on a fixed 365-day grid anchored at
 2001-07-16.  The index date carries season-year identity only (the
 engine's cadence gate requires uniform spacing; calendar JJA
@@ -57,10 +58,18 @@ JJA_DAYS = 92
 #: Wet-spell threshold (amendment v3).
 WET_SPELL_THRESHOLD_MM = 1.0
 
-#: Declared year-block carrier — the seasonal-grain replacement for
-#: the degenerate all-JJA season-refit interpretation.
+#: Declared year-block carrier — a metadata/resampling carrier only.
+#: NO year-block stability predicate is executed by the engine in
+#: this lane; the blocks exist solely for downstream stratification
+#: and resampling declaration.
 YEAR_BLOCKS = ("2001_2005", "2006_2010", "2011_2015",
                "2016_2020", "2021_2025")
+
+#: Declared input domain — the only units and season-year bounds the
+#: adapter accepts.  Anything outside this domain is contamination
+#: and fails closed (ValueError), never a silent ledger drop.
+EXPECTED_UNITS = ("gandaki", "karnali", "koshi")
+YEAR_MIN, YEAR_MAX = 2001, 2025
 
 #: Synthetic 365-day index grid anchor (JJA midpoint).  Index dates
 #: carry season-year identity only; the uniform 365-day spacing is
@@ -120,10 +129,17 @@ def build_seasonal_frame(daily_csv: Path | str,
     provenance record into ``out_dir`` and returns a build receipt.
 
     Fails closed: input bytes must verify against the daily sha256
-    sidecar; basin-years that cannot produce all six declared
-    features are dropped and ledgered (never imputed); basin
-    carriers (basin_group, era, elevation) must be constant within a
-    unit or the build refuses."""
+    sidecar; input-domain contamination (non-JJA season labels,
+    dates outside June 1..August 31, undeclared units, years outside
+    2001..2025, duplicated or non-consecutive daily coverage within
+    a basin-year, or a required column that cannot be coerced to
+    float64) is refused with ValueError — never silently dropped;
+    basin-years that cannot produce all six declared features are
+    dropped and ledgered (never imputed); basin carriers
+    (basin_group, era, elevation) must be constant within a unit or
+    the basin-year is dropped and ledgered.  ``year_block`` is
+    carried as metadata/resampling declaration only — no year-block
+    stability predicate is executed in this lane."""
     daily_csv = Path(daily_csv)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -134,6 +150,39 @@ def build_seasonal_frame(daily_csv: Path | str,
         raise ValueError(f"daily frame lacks required columns "
                          f"{missing}")
     daily["date"] = pd.to_datetime(daily["date"], errors="raise")
+    # --- strict input-domain refusals: contamination fails closed
+    # with ValueError; it is never silently ledger-dropped ---
+    non_jja = daily.loc[daily["season"] != "JJA", "season"].unique()
+    if len(non_jja):
+        raise ValueError(
+            f"non-JJA season label in daily frame — input "
+            f"contamination: {sorted(str(s) for s in non_jja)}")
+    month = daily["date"].dt.month
+    if ((month < 6) | (month > 8)).any():
+        raise ValueError(
+            "date outside JJA window in daily frame — input "
+            "contamination (a seasonal row must fall within "
+            "June 1..August 31 of its year)")
+    bad_units = sorted(str(u) for u in
+                       set(daily["unit_id"]) - set(EXPECTED_UNITS))
+    if bad_units:
+        raise ValueError(
+            f"undeclared unit in daily frame — {bad_units} not in "
+            f"{EXPECTED_UNITS}")
+    years = daily["date"].dt.year
+    if ((years < YEAR_MIN) | (years > YEAR_MAX)).any():
+        raise ValueError(
+            f"year outside declared domain {YEAR_MIN}..{YEAR_MAX} "
+            "in daily frame — input contamination")
+    for col in ("t2m_daily", "d2m_daily", "pdd_daily", "tp_daily",
+                "sd_daily", "elevation_m"):
+        try:
+            daily[col] = pd.to_numeric(daily[col],
+                                       errors="raise")
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"daily column {col!r} cannot be coerced to "
+                "float64 — input contamination") from exc
     ledger = {"dropped_basin_years": [], "notes": []}
     rows = []
     anchor = pd.Timestamp(INDEX_ANCHOR)
@@ -141,12 +190,26 @@ def build_seasonal_frame(daily_csv: Path | str,
             ["unit_id", daily["date"].dt.year], sort=True):
         year = int(year)
         grp = grp.sort_values("date")
+        if grp["date"].duplicated().any():
+            raise ValueError(
+                "non-unique or non-consecutive daily coverage — "
+                f"input contamination: duplicated dates in "
+                f"({unit}, {year})")
         if len(grp) != JJA_DAYS:
             ledger["dropped_basin_years"].append(
                 {"unit": str(unit), "year": year,
                  "reason": f"{len(grp)} daily rows != {JJA_DAYS} "
                            "JJA days"})
             continue
+        expected_dates = pd.date_range(f"{year}-06-01",
+                                       f"{year}-08-31", freq="D")
+        if not np.array_equal(grp["date"].to_numpy(),
+                              expected_dates.to_numpy()):
+            raise ValueError(
+                "non-unique or non-consecutive daily coverage — "
+                f"input contamination: ({unit}, {year}) has "
+                f"{JJA_DAYS} rows but not the complete "
+                "Jun1..Aug31 set")
         basin = grp["basin_group"].unique()
         era = grp["era"].unique()
         elev = grp["elevation_m"].unique()
@@ -217,10 +280,10 @@ def build_seasonal_frame(daily_csv: Path | str,
                                 "only; NOT a physical observation "
                                 "date; declared cadence '365D'",
         "year_block_carrier": "5-year blocks "
-                              "(2001_2005..2021_2025) — the declared "
-                              "year-block stability predicate "
-                              "replacing the degenerate all-JJA "
-                              "season refit",
+                              "(2001_2005..2021_2025) — a "
+                              "metadata/resampling carrier only; "
+                              "NO year-block stability predicate is "
+                              "executed by the engine in this lane",
         "missingness_policy": "listwise — invalid basin-years "
                               "dropped and ledgered",
         "units": dict(SEASONAL_UNITS),
