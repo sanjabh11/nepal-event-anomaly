@@ -304,6 +304,24 @@ def _cmd_verify_manifest(args: argparse.Namespace) -> int:
     if not isinstance(manifest.get("baseline_head"), str) or \
             len(manifest["baseline_head"]) != 40:
         problems.append("baseline_head missing or not a 40-char SHA")
+    # P5-A2 audit fix — head SHAs must resolve to real commit objects,
+    # not merely be well-formed strings.  A manifest whose content_head
+    # names a non-existent object binds nothing.  The check applies only
+    # when the manifest root is inside a git worktree; synthetic fixtures
+    # without a git context cannot be resolved and are skipped.  The
+    # subprocess call lives in nepal.gitutil — research_v0's isolation
+    # contract forbids subprocess imports in this package.
+    from nepal.gitutil import is_git_worktree, resolves_to_commit
+    _mroot = path.resolve().parents[2]
+    if is_git_worktree(_mroot):
+        for field in ("content_head", "baseline_head"):
+            sha = manifest.get(field)
+            if not isinstance(sha, str) or len(sha) != 40:
+                continue
+            if resolves_to_commit(_mroot, sha) is False:
+                problems.append(
+                    f"{field} {sha} does not resolve to a commit "
+                    "object — the manifest binds a dangling identity")
     files = manifest.get("files")
     if not isinstance(files, list) or not files:
         problems.append("files list missing or empty")

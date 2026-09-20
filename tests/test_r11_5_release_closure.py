@@ -36,7 +36,7 @@ _COLLECTION_RE = re.compile(r"(\d+) tests collected")
 #: = manifest count + this module's own tests while the file is ungoverned.
 #: The manifest-only rebind adds the file and re-records collection_guard,
 #: after which the adjustment is zero and any drift trips the gate.
-_OWN_TEST_COUNT = 4
+_OWN_TEST_COUNT = 6
 
 
 def _manifest():
@@ -84,6 +84,46 @@ class TestR115ReleaseClosure:
         mp.write_text(json.dumps(stale), encoding="utf-8")
         assert _cmd_verify_manifest(
             argparse.Namespace(file=str(mp))) == 1
+
+    def test_manifest_heads_resolve_to_commits(self):
+        """P5-A2 audit fix — the manifest's content_head/baseline_head
+        must resolve to real commit objects; a well-formed but dangling
+        SHA binds nothing (caught: content_head named a non-existent
+        object at the 79d71d1 rebind)."""
+        m = _manifest()
+        for field in ("content_head", "baseline_head"):
+            proc = subprocess.run(
+                ["git", "cat-file", "-t", m[field]],
+                cwd=_REPO_ROOT, capture_output=True, text=True,
+                check=False)
+            assert proc.returncode == 0 and \
+                proc.stdout.strip() == "commit", (
+                    f"manifest {field}={m[field]} does not resolve to "
+                    "a commit object")
+
+    def test_cli_rejects_dangling_head_in_git_repo(self, tmp_path):
+        """Inside a real git worktree, a manifest naming a well-formed
+        but non-existent commit must fail the verifier."""
+        import argparse
+        import hashlib
+        from nepal.research_v0.cli import _cmd_verify_manifest
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        root = tmp_path / "a" / "b"
+        root.mkdir(parents=True)
+        (tmp_path / "f.txt").write_bytes(b"x")
+        manifest = {"content_head": "d" * 40,
+                    "baseline_head": "d" * 40,
+                    "manifest_commit": "d" * 40,
+                    "test_results": {"research_v0": "ok"},
+                    "files": [{"relpath": "f.txt",
+                               "sha256": hashlib.sha256(b"x").hexdigest(),
+                               "size_bytes": 1}]}
+        mp = root / "m.json"
+        mp.write_text(json.dumps(manifest), encoding="utf-8")
+        assert _cmd_verify_manifest(
+            argparse.Namespace(file=str(mp))) == 1, (
+                "dangling content_head must fail closed inside a "
+                "git worktree")
 
     def test_collection_count_matches_manifest(self):
         m = _manifest()

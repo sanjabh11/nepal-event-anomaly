@@ -105,8 +105,8 @@ Round-10 hardening implemented here:
   as the artifact-level ``forecast_vintages`` section inside the
   ``regime_artifact_digest`` envelope (an associable forecast
   artifact carries its vintage records, not only their digests);
-  the serialized config keeps exactly the declared 33-field
-  contract — the records are evidence, never configuration.
+  the serialized config keeps exactly the declared
+  field-set contract — the records are evidence, never configuration.
 * R10-P07 parity — the non-fixture ``source_manifest`` preflight
   mirrors the shared floor's exact typed contract (declared keys
   only, non-empty-string ``source_id``/``lineage``/
@@ -271,9 +271,46 @@ class TrainOnlyPreprocessor:
 
 # ------------------------------------------------------------- fitting
 
-def _fit_gmm(X: np.ndarray, k: int, seed: int) -> dict:
+COVARIANCE_TYPES = ("full", "tied", "diag", "spherical")
+
+
+def _component_covariances(model) -> list:
+    """Per-component covariance matrices in the declared family.
+
+    sklearn's ``covariances_`` shape depends on the covariance
+    family — full (k,d,d), tied (d,d), diag (k,d), spherical (k,).
+    The artifact schema binds a per-component matrix list, so
+    non-full families are expanded to their implied component
+    covariances; the declared ``covariance_type`` in the bound
+    config records the fitted family."""
+    cov = np.asarray(model.covariances_, dtype=np.float64)
+    k = int(model.n_components)
+    if model.covariance_type == "full":
+        return cov.tolist()
+    if model.covariance_type == "tied":
+        return [cov.tolist()] * k
+    if model.covariance_type == "diag":
+        return [np.diag(cov[i]).tolist() for i in range(k)]
+    # spherical: cov is (k,) — a scalar variance per component
+    d = int(model.means_.shape[1])
+    return [(float(cov[i]) * np.eye(d)).tolist() for i in range(k)]
+
+
+def _gmm_free_params(k: int, d: int, covariance_type: str) -> int:
+    """Free parameters of a d-dimensional GMM with k components:
+    k*d means + (k-1) mixing weights + covariance parameters
+    (full: k*d(d+1)/2; tied: d(d+1)/2; diag: k*d; spherical: k)."""
+    cov_params = {"full": k * d * (d + 1) // 2,
+                  "tied": d * (d + 1) // 2,
+                  "diag": k * d,
+                  "spherical": k}[covariance_type]
+    return k * d + (k - 1) + cov_params
+
+
+def _fit_gmm(X: np.ndarray, k: int, seed: int,
+             covariance_type: str = "full") -> dict:
     try:
-        g = GaussianMixture(n_components=k, covariance_type="full",
+        g = GaussianMixture(n_components=k, covariance_type=covariance_type,
                             random_state=int(seed), max_iter=500,
                             n_init=1)
         g.fit(X)
@@ -377,7 +414,8 @@ def _refit_against_reference(sub_df: pd.DataFrame,
                              ref_labels_sub: np.ndarray,
                              modal_k: int,
                              decl_seeds: list,
-                             fold_seed_policy: str) -> dict:
+                             fold_seed_policy: str,
+                             covariance_type: str = "full") -> dict:
     """Refit preprocessing + GMM on ``sub_df`` under the declared seed
     policy, align components to the reference model, and return a fold
     record.  ``js`` is the aligned-occupancy JS against the reference
@@ -403,7 +441,7 @@ def _refit_against_reference(sub_df: pd.DataFrame,
         rec["reason"] = f"refit preprocessing failed: {exc}"
         return rec
     for sd in rec["seeds_declared"]:
-        f = _fit_gmm(X_sub, modal_k, sd)
+        f = _fit_gmm(X_sub, modal_k, sd, covariance_type)
         if not f["converged"]:
             rec["seed_failures"].append(int(sd))
             continue
@@ -452,17 +490,23 @@ def shuffled_null(X: np.ndarray, seed: int) -> np.ndarray:
 
 def season_matched_null(df: pd.DataFrame, feature_cols: list[str],
                         season_col: str, seed: int,
-                        era_col: str | None = None) -> np.ndarray:
+                        era_col: str | None = None,
+                        extra_strata_col: str | None = None
+                        ) -> np.ndarray:
     """Synthetic samples from same seasonal marginals: resample each
     feature independently within season strata — and within
-    (season, era) joint strata when ``era_col`` is bound (REG-04)."""
+    (season, era[, extra]) joint strata when the optional carriers
+    are bound (REG-04; SEASONAL-01: the extra stratifier preserves
+    basin identity in the seasonal-grain null)."""
     rng = np.random.default_rng(seed)
     out = np.empty((len(df), len(feature_cols)))
+    strata = df[season_col].astype(str)
     if era_col is not None and era_col in df.columns:
-        strata = (df[season_col].astype(str) + "|"
-                  + df[era_col].astype(str)).to_numpy()
-    else:
-        strata = df[season_col].to_numpy()
+        strata = strata + "|" + df[era_col].astype(str)
+    if extra_strata_col is not None and \
+            extra_strata_col in df.columns:
+        strata = strata + "|" + df[extra_strata_col].astype(str)
+    strata = strata.to_numpy()
     for si, s in enumerate(pd.unique(strata)):
         idx = np.where(strata == s)[0]
         for j, c in enumerate(feature_cols):
@@ -476,7 +520,8 @@ def season_matched_null(df: pd.DataFrame, feature_cols: list[str],
 def _null_envelope(observed_stat, generator, modal_k: int,
                    decl_seeds: list, n_replicates: int,
                    alpha: float,
-                   k_candidates: tuple = K_CANDIDATES) -> dict:
+                   k_candidates: tuple = K_CANDIDATES,
+                   covariance_type: str = "full") -> dict:
     """Empirical null envelope for the SAME predeclared statistic
     (REG-C04): ``generator(i, gen_seed)`` returns the i-th null
     design matrix (already in fit space) or None on failure; each
@@ -520,7 +565,8 @@ def _null_envelope(observed_stat, generator, modal_k: int,
         # REG-05 selection consistency: the null replicate replays
         # the declared K sweep and takes the BIC-best converged fit —
         # the null is not privileged with the observed modal K.
-        k_fits = [_fit_gmm(X_n, k, fit_seed) for k in k_candidates]
+        k_fits = [_fit_gmm(X_n, k, fit_seed, covariance_type)
+                  for k in k_candidates]
         conv = [f for f in k_fits if f["converged"]]
         if not conv:
             rec["n_failed"] += 1
@@ -655,6 +701,41 @@ class RegimeRunConfig:
     # byte-bound source_manifest, can never appear on a FORECAST_REGIME
     # config, and marks the emitted artifact non-associable.
     retrospective_data_class: str = "REANALYSIS"
+    # SEASONAL-01 (P5 amendment v3): the declared covariance family of
+    # the GMM — one of COVARIANCE_TYPES.  ``full`` remains the default
+    # so the daily-grain contract is unchanged; a ``seasonal``
+    # frame_grain rejects ``full`` outright and every declared
+    # (K, covariance) combination must satisfy the parameter-count
+    # guard (free params < effective fit rows) before any fit.
+    covariance_type: str = "full"
+    # SEASONAL-01: the declared row grain — "daily" (default, the
+    # P5-A2 contract) or "seasonal" (basin-season objects).  Seasonal
+    # grain is a different estimand: it restricts candidates to
+    # K<=4, forbids unrestricted full covariance, and routes the
+    # season axis to a declared year-block carrier.
+    frame_grain: str = "daily"
+    # SEASONAL-01: the declared input role.  "scientific" is the only
+    # role that may produce a regime artifact; a declared
+    # "negative_control" input (nonphysical or deliberately mismatched
+    # features) is rejected BEFORE model fitting — a stable cluster on
+    # a negative-control input is a harness failure, not a result.
+    input_role: str = "scientific"
+    # SEASONAL-01: optional extra stratifier for the season-matched
+    # null — when bound (e.g. "basin_group"), null strata become
+    # (season, era, extra) so the resample preserves basin identity
+    # in addition to season/era marginals.  None keeps the legacy
+    # (season, era) strata — the daily contract is unchanged.
+    null_extra_strata_col: str | None = None
+    # SEASONAL-01: the declared LORO role.  "required" (default) keeps
+    # the axis as a structural gate.  "diagnostic" — legal only under
+    # frame_grain="seasonal" with a temporal holdout — demotes LORO
+    # to emitted diagnostics: basin-year folds are structurally
+    # infeasible at the seasonal effective sample (a leave-one-basin
+    # fold fits ~34 rows against a 6-feature tied-covariance GMM),
+    # and the temporal axis already confines the claim to temporal
+    # extrapolation.  The fold records are still emitted; no
+    # geographic-transfer claim may attach either way.
+    loro_policy: str = "required"
 
 
 def _modal_k(ks: list[int]) -> int:
@@ -751,6 +832,70 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
     if not config.label_blinding or config.fitted_on != "TRAIN_ONLY":
         return {"status": "RUN_ERROR",
                 "reason": "label_blinding and TRAIN_ONLY are mandatory"}
+    # SEASONAL-01: declared input role — a nonphysical or deliberately
+    # mismatched feature contract is rejected before any model
+    # fitting; a stable cluster on it would be a harness failure.
+    if config.input_role not in ("scientific", "negative_control"):
+        return {"status": "RUN_ERROR",
+                "reason": f"input_role {config.input_role!r} is not "
+                          "a declared input role — declare "
+                          "'scientific' or 'negative_control'"}
+    if config.input_role == "negative_control":
+        return {"status": "RUN_ERROR",
+                "reason": "declared negative-control input — "
+                          "nonphysical feature contracts cannot "
+                          "produce a regime fit"}
+    if config.frame_grain not in ("daily", "seasonal"):
+        return {"status": "RUN_ERROR",
+                "reason": f"frame_grain {config.frame_grain!r} is "
+                          "not a declared row grain — declare "
+                          "'daily' or 'seasonal'"}
+    if config.covariance_type not in COVARIANCE_TYPES:
+        return {"status": "RUN_ERROR",
+                "reason": f"covariance_type "
+                          f"{config.covariance_type!r} is not a "
+                          f"declared family "
+                          f"{sorted(COVARIANCE_TYPES)}"}
+    if config.frame_grain == "seasonal":
+        if config.covariance_type == "full":
+            return {"status": "RUN_ERROR",
+                    "reason": "frame_grain 'seasonal' rejects "
+                              "unrestricted full covariance — "
+                              "declare 'tied' or 'diag'"}
+        if any(int(k) > 4 for k in config.k_candidates):
+            return {"status": "RUN_ERROR",
+                    "reason": "frame_grain 'seasonal' restricts "
+                              "candidates to K<=4 — the seasonal "
+                              "effective sample cannot carry "
+                              "higher-K structure"}
+    # SEASONAL-01: the optional null stratifier must be a real column
+    # when declared — an absent carrier cannot silently fall back to
+    # the coarser (season, era) strata.
+    if config.null_extra_strata_col is not None and \
+            (not isinstance(config.null_extra_strata_col, str)
+             or config.null_extra_strata_col not in df.columns):
+        return {"status": "RUN_ERROR",
+                "reason": f"declared null_extra_strata_col "
+                          f"{config.null_extra_strata_col!r} missing "
+                          "from the frame — an absent stratifier "
+                          "cannot silently fall back"}
+    # SEASONAL-01: the LORO role — "diagnostic" is admissible only on
+    # the seasonal temporal lane, where leave-one-basin folds are
+    # structurally underpowered and the claim is already confined to
+    # temporal extrapolation.  It can never weaken a geographic lock.
+    if config.loro_policy not in ("required", "diagnostic"):
+        return {"status": "RUN_ERROR",
+                "reason": f"loro_policy {config.loro_policy!r} is "
+                          "not a declared policy — declare "
+                          "'required' or 'diagnostic'"}
+    if config.loro_policy == "diagnostic" and \
+            not (config.frame_grain == "seasonal"
+                 and config.holdout_axis == "temporal"):
+        return {"status": "RUN_ERROR",
+                "reason": "loro_policy 'diagnostic' is admissible "
+                          "only under frame_grain='seasonal' with "
+                          "holdout_axis='temporal' — the geographic "
+                          "lock can never run LORO diagnostically"}
     # K candidates: a declared subset of {1..5} that MUST contain the
     # K=1 null; non-int or out-of-range values never silently pass.
     if not isinstance(config.k_candidates, (list, tuple)) or \
@@ -1350,6 +1495,27 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
                 "reason": f"declared missingness policy "
                           f"{config.missingness_policy!r} leaves "
                           f"{len(train_df)} train rows (<50)"}
+    # SEASONAL-01: parameter-count guard — on the low-n seasonal
+    # lane every declared (K, covariance_type) combination must have
+    # fewer free parameters than effective fit rows.  An underpowered
+    # declaration fails closed; the sweep is never silently trimmed.
+    # Seasonal-grain only: the daily lane's established contract
+    # admits the full K<=5/full-covariance sweep at its normal n.
+    if config.frame_grain == "seasonal":
+        _n_fit = int(len(train_df))
+        _d = int(len(feature_cols))
+        _infeasible = sorted(
+            int(k) for k in config.k_candidates
+            if _gmm_free_params(int(k), _d, config.covariance_type)
+            >= _n_fit)
+        if _infeasible:
+            return {"status": "RUN_ERROR",
+                    "reason": f"parameter-count guard: declared K "
+                              f"{_infeasible} with covariance "
+                              f"{config.covariance_type!r} and d={_d} "
+                              f"exceed the effective fit sample "
+                              f"n={_n_fit} — the declared sweep itself "
+                              "is underpowered"}
     prep = TrainOnlyPreprocessor()
     try:
         prep.fit(train_df)
@@ -1391,7 +1557,8 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
     fits = []
     for seed in decl_seeds:
         for k in config.k_candidates:
-            fits.append(_fit_gmm(X_train, k, seed))
+            fits.append(_fit_gmm(X_train, k, seed,
+                                 config.covariance_type))
     converged = [f for f in fits if f["converged"]]
     if not converged:
         return {"status": "RUN_ERROR",
@@ -1517,7 +1684,7 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
             continue
         ref_labels_sub = model.predict(prep.transform(sub))
         for sd in fold["seeds_declared"]:
-            f2 = _fit_gmm(X2, modal_k, sd)
+            f2 = _fit_gmm(X2, modal_k, sd, config.covariance_type)
             if not f2["converged"]:
                 fold["seed_failures"].append(int(sd))
                 continue
@@ -1585,9 +1752,23 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
                       if f["status"] == "PASS"),
         "locked_groups_excluded": sorted(heldout_groups),
         "holdout_axis": holdout_axis,
+        # SEASONAL-01: the declared LORO role is bound into the
+        # axis record — under 'diagnostic' the folds still execute
+        # and emit honest statuses, but the axis does not gate.
+        "loro_policy": config.loro_policy,
     }
     loro_pass = (all(f["status"] == "PASS" for f in loro.values())
                  and len(loro) >= MIN_GEO_GROUPS)
+    if config.loro_policy == "diagnostic":
+        # SEASONAL-01: declared diagnostic-only — fold statuses are
+        # emitted above (SKIPPED/PASS/FAIL), the gate is disengaged
+        # by declaration, and no geographic-transfer claim attaches.
+        loro_pass = True
+        stability["leave_one_region_out"]["note"] = (
+            "LORO executed as diagnostics under the declared "
+            "'diagnostic' policy — basin-year folds are "
+            "structurally underpowered at the seasonal effective "
+            "sample; no geographic-transfer claim attaches")
 
     # REG-02: locked held-out groups are PREDICTED by the frozen
     # model (never fitted) — coverage of the locked universe is a
@@ -1694,7 +1875,7 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
                 failures += 1
                 continue
             sd = decl_seeds[b % len(decl_seeds)]
-            f_b = _fit_gmm(X_b, modal_k, sd)
+            f_b = _fit_gmm(X_b, modal_k, sd, config.covariance_type)
             if not f_b["converged"]:
                 failures += 1
                 continue
@@ -1782,7 +1963,8 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
             rec = _refit_against_reference(
                 sub, prep, model, occupancy,
                 model.predict(prep.transform(sub)), modal_k,
-                decl_seeds, config.fold_seed_policy)
+                decl_seeds, config.fold_seed_policy,
+                config.covariance_type)
         season_refits[seas] = rec
     if len(seasons_seen) < 2:
         stability["season_refits"] = {
@@ -1830,7 +2012,8 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
                 rec = _refit_against_reference(
                     sub, prep, model, occupancy,
                     model.predict(prep.transform(sub)), modal_k,
-                    decl_seeds, config.fold_seed_policy)
+                    decl_seeds, config.fold_seed_policy,
+                config.covariance_type)
                 if rec["status"] == "FAIL":
                     elev_ok = False
                 elif rec["status"] == "NONCONVERGED":
@@ -1864,7 +2047,7 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
                                 config.elevation_col].to_numpy(
                                     dtype=np.float64).reshape(-1, 1)
             f_el = _fit_gmm(elev_train, modal_k,
-                            int(decl_seeds[0]))
+                            int(decl_seeds[0]), config.covariance_type)
             if f_el["converged"]:
                 el_lab = f_el["model"].predict(elev_train)
                 ref_lab_el = model.predict(prep.transform(
@@ -1922,7 +2105,8 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
             rec = _refit_against_reference(
                 sub, prep, model, occupancy,
                 model.predict(prep.transform(sub)), modal_k,
-                decl_seeds, config.fold_seed_policy)
+                decl_seeds, config.fold_seed_policy,
+                config.covariance_type)
             miss_ax.update(rec)
             miss_ax["occupancy_js"] = rec["js"]
     else:  # stratified: per-missingness-band occupancy comparison
@@ -1956,7 +2140,8 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
                 brec = _refit_against_reference(
                     sub, prep, model, occupancy,
                     model.predict(prep.transform(sub)),
-                    modal_k, decl_seeds, config.fold_seed_policy)
+                    modal_k, decl_seeds, config.fold_seed_policy,
+                config.covariance_type)
                 brec["n_rows"] = int(len(sub))
             bands[bname] = brec
         evaluable = [r for r in bands.values()
@@ -2051,7 +2236,8 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
                 brec = _refit_against_reference(
                     sub, prep, model, occupancy,
                     model.predict(prep.transform(sub)),
-                    modal_k, decl_seeds, config.fold_seed_policy)
+                    modal_k, decl_seeds, config.fold_seed_policy,
+                config.covariance_type)
                 brec["n_rows"] = int(len(sub))
             bands[str(bname)] = brec
         evaluable = [r for r in bands.values()
@@ -2171,7 +2357,9 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
     def _gen_season(i, gen_seed):
         raw = season_matched_null(train_sub, feature_cols,
                                   config.season_col, seed=gen_seed,
-                                  era_col=config.era_col)
+                                  era_col=config.era_col,
+                                  extra_strata_col=
+                                  config.null_extra_strata_col)
         if not np.isfinite(raw).all():
             return None
         p_n = TrainOnlyPreprocessor().fit(
@@ -2184,12 +2372,14 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
                                modal_k, decl_seeds,
                                config.n_null_replicates,
                                config.null_alpha,
-                               k_candidates=config.k_candidates)
+                               k_candidates=config.k_candidates,
+                               covariance_type=config.covariance_type)
     null_seas = _null_envelope(observed_stat, _gen_season,
                                modal_k, decl_seeds,
                                config.n_null_replicates,
                                config.null_alpha,
-                               k_candidates=config.k_candidates)
+                               k_candidates=config.k_candidates,
+                               covariance_type=config.covariance_type)
     # REG-06: every null family, its inputs, seeds, and replicate
     # statistics are bound and hashed — replay can recompute the
     # envelope without trusting a summary.
@@ -2287,7 +2477,7 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
     # R10: forecast_vintages is artifact-level evidence (the records
     # behind forecast_vintage_digests), never part of the bound
     # configuration — the serialized config keeps exactly the
-    # declared 33-field contract.
+    # declared field-set contract.
     _config_dict.pop("forecast_vintages", None)
     _config_dict["forecast_vintage_digests"] = sorted(
         str(d) for d in config.forecast_vintage_digests)
@@ -2446,7 +2636,10 @@ def run_regimes(df: pd.DataFrame, feature_cols: list[str],
         "nulls": nulls,
         "model": {"weights": model.weights_.tolist(),
                   "means": model.means_.tolist(),
-                  "covariances": model.covariances_.tolist()},
+                  # SEASONAL-01: non-full families emit the implied
+                  # per-component matrices so the artifact schema
+                  # stays k x d x d regardless of family.
+                  "covariances": _component_covariances(model)},
         "preprocessing_digest": None,  # bound below after section
         "k_selection_digest": _digest(
             [{kk: _finite_or_token(f[kk])
@@ -2594,6 +2787,49 @@ def _validate_config_semantics(cfg: dict) -> list[str]:
         problems.append(
             "FORECAST_REGIME config must carry the REANALYSIS "
             "retrospective_data_class default")
+    # SEASONAL-01: the serialized seasonal-lane fields revalidated —
+    # a config whose digest matches but whose covariance, grain, or
+    # input role is undeclared cannot pass freeze.
+    cov = cfg.get("covariance_type", "full")
+    if cov not in COVARIANCE_TYPES:
+        problems.append(f"covariance_type {cov!r} not in "
+                        f"{COVARIANCE_TYPES}")
+    grain = cfg.get("frame_grain", "daily")
+    if grain not in ("daily", "seasonal"):
+        problems.append(f"frame_grain {grain!r} is not "
+                        "'daily'/'seasonal'")
+    elif grain == "seasonal":
+        if cov == "full":
+            problems.append("frame_grain 'seasonal' rejects "
+                            "covariance_type 'full'")
+        if isinstance(ks, (list, tuple)) and \
+                any(isinstance(k, int) and not isinstance(k, bool)
+                    and k > 4 for k in ks):
+            problems.append("frame_grain 'seasonal' restricts "
+                            "k_candidates to K<=4")
+    role = cfg.get("input_role", "scientific")
+    if role not in ("scientific", "negative_control"):
+        problems.append(f"input_role {role!r} is not a declared "
+                        "input role")
+    elif role == "negative_control":
+        problems.append("input_role 'negative_control' can never "
+                        "produce a regime artifact — a bound config "
+                        "declaring it is malformed")
+    nsc = cfg.get("null_extra_strata_col")
+    if nsc is not None and (not isinstance(nsc, str)
+                            or not nsc.strip()):
+        problems.append("null_extra_strata_col must be a non-empty "
+                        "string or None")
+    lp = cfg.get("loro_policy", "required")
+    if lp not in ("required", "diagnostic"):
+        problems.append(f"loro_policy {lp!r} is not "
+                        "'required'/'diagnostic'")
+    elif lp == "diagnostic" and \
+            not (grain == "seasonal"
+                 and cfg.get("holdout_axis") == "temporal"):
+        problems.append("loro_policy 'diagnostic' is admissible "
+                        "only under frame_grain='seasonal' with a "
+                        "temporal holdout axis")
     return problems
 
 

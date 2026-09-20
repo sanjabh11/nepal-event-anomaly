@@ -476,12 +476,12 @@ class TestRegC01BootstrapRefit:
         seed — the bootstrap cycles all declared seeds."""
         real = regimes_mod._fit_gmm
 
-        def flaky(X, k, seed):
+        def flaky(X, k, seed, covariance_type="full"):
             if int(seed) == 7:
                 return {"k": k, "seed": int(seed), "bic": np.inf,
                         "aic": np.inf, "converged": False,
                         "model": None}
-            return real(X, k, seed)
+            return real(X, k, seed, covariance_type)
 
         monkeypatch.setattr(regimes_mod, "_fit_gmm", flaky)
         df = _fixture()
@@ -551,12 +551,12 @@ class TestRegC03SeedCoverage:
     def test_failed_seed_demotes_not_stable(self, monkeypatch):
         real = regimes_mod._fit_gmm
 
-        def flaky(X, k, seed):
+        def flaky(X, k, seed, covariance_type="full"):
             if int(seed) == 2024:
                 return {"k": k, "seed": int(seed), "bic": np.inf,
                         "aic": np.inf, "converged": False,
                         "model": None}
-            return real(X, k, seed)
+            return real(X, k, seed, covariance_type)
 
         monkeypatch.setattr(regimes_mod, "_fit_gmm", flaky)
         df = _fixture()
@@ -625,12 +625,12 @@ class TestRegC04NullEnvelope:
     def test_null_replicate_failure_fails_gate(self, monkeypatch):
         real = regimes_mod._fit_gmm
 
-        def flaky(X, k, seed):
+        def flaky(X, k, seed, covariance_type="full"):
             if int(seed) == 2024:
                 return {"k": k, "seed": int(seed), "bic": np.inf,
                         "aic": np.inf, "converged": False,
                         "model": None}
-            return real(X, k, seed)
+            return real(X, k, seed, covariance_type)
 
         monkeypatch.setattr(regimes_mod, "_fit_gmm", flaky)
         df = _fixture()

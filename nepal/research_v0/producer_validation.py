@@ -181,26 +181,37 @@ _STATUS_MACHINE = {
     "CANDIDATE_ONLY": (False, False)}
 
 #: R10-P02/P11: the exact serialized ``RegimeRunConfig`` field set —
-#: the producer emits ``dataclasses.asdict(config)`` (33 fields;
-#: ``forecast_vintages`` is popped — artifact-level evidence, never
-#: bound configuration).  Unknown keys reject; a key that is present
-#: is validated against the run-preflight semantics; keys a fixture
-#: legitimately omits stay optional at the floor (the run preflight
-#: is the completeness gate).
+#: the producer emits ``dataclasses.asdict(config)`` (42 fields after
+#: SEASONAL-01; ``forecast_vintages`` is popped — artifact-level
+#: evidence, never bound configuration).  Unknown keys reject; a key
+#: that is present is validated against the run-preflight semantics;
+#: keys a fixture legitimately omits stay optional at the floor (the
+#: run preflight is the completeness gate).
 _CONFIG_FIELDS = frozenset({
-    "bootstrap_block_len", "cadence", "date_col", "effort_col",
+    "bootstrap_block_len", "cadence", "covariance_type", "date_col",
+    "effort_col",
     "effort_split", "effort_waiver_reason", "elev_ablation_ari_max",
     "elevation_col", "era_boundaries", "era_col", "era_drift_max",
     "era_waiver_reason", "fitted_on", "fold_seed_policy",
-    "forecast_feature_set", "forecast_vintage_digests", "gap_policy",
-    "group_col", "heldout_groups", "holdout_axis", "k_candidates",
-    "label_blinding",
+    "forecast_feature_set", "forecast_vintage_digests",
+    "frame_grain", "gap_policy",
+    "group_col", "heldout_groups", "holdout_axis", "input_role",
+    "k_candidates",
+    "label_blinding", "loro_policy",
     "max_missingness", "missingness_policy", "mode", "n_bootstrap",
-    "n_null_replicates", "null_alpha", "retrospective_data_class",
+    "n_null_replicates", "null_alpha", "null_extra_strata_col",
+    "retrospective_data_class",
     "season_col", "seeds",
     "source_manifest", "temporal_embargo_interval",
     "temporal_holdout_interval", "temporal_train_interval",
     "train_groups", "unit_col"})
+
+#: SEASONAL-01: the declared seasonal-lane vocabularies — bound here
+#: so the research_v0 floor cannot drift from regimes.py.
+_CONFIG_COVARIANCE_TYPES = frozenset({"full", "tied", "diag",
+                                      "spherical"})
+_CONFIG_FRAME_GRAINS = frozenset({"daily", "seasonal"})
+_CONFIG_INPUT_ROLES = frozenset({"scientific", "negative_control"})
 
 #: Producer-side floors mirrored from ``science_v0.regimes`` — the
 #: serialized config must respect the same constants the run
@@ -2224,6 +2235,7 @@ def _config_semantic_problems(
     _opt_str("effort_col")
     _opt_str("elevation_col")
     _opt_str("era_col")
+    _opt_str("null_extra_strata_col")
     _frac("null_alpha", 0.0, 1.0, exclusive=True)
     _frac("max_missingness", 0.0, 1.0)
     _frac("elev_ablation_ari_max", 0.0, 1.0)
@@ -2299,6 +2311,59 @@ def _config_semantic_problems(
                 "SCHEMA_MALFORMED: config.era_boundaries must be "
                 "a sequence of non-empty strings (ISO dates or "
                 "era labels; may be empty)")
+    # SEASONAL-01: declared covariance/grain/input-role vocabularies —
+    # a serialized config whose values sit outside the declared
+    # vocabularies could never have been produced by run_regimes.
+    if "covariance_type" in cfg and \
+            cfg["covariance_type"] not in _CONFIG_COVARIANCE_TYPES:
+        problems.append(
+            f"SCHEMA_MALFORMED: config.covariance_type "
+            f"{cfg['covariance_type']!r} is not a declared family "
+            f"{sorted(_CONFIG_COVARIANCE_TYPES)}")
+    if "frame_grain" in cfg:
+        if cfg["frame_grain"] not in _CONFIG_FRAME_GRAINS:
+            problems.append(
+                f"SCHEMA_MALFORMED: config.frame_grain "
+                f"{cfg['frame_grain']!r} is not a declared grain "
+                f"{sorted(_CONFIG_FRAME_GRAINS)}")
+        elif cfg["frame_grain"] == "seasonal":
+            if cfg.get("covariance_type") == "full":
+                problems.append(
+                    "SCHEMA_MALFORMED: config.frame_grain "
+                    "'seasonal' rejects covariance_type 'full'")
+            kc_seas = cfg.get("k_candidates")
+            if isinstance(kc_seas, (list, tuple)) and \
+                    any(isinstance(k, int) and
+                        not isinstance(k, bool) and k > 4
+                        for k in kc_seas):
+                problems.append(
+                    "SCHEMA_MALFORMED: config.frame_grain "
+                    "'seasonal' restricts k_candidates to K<=4")
+    if "input_role" in cfg:
+        if cfg["input_role"] not in _CONFIG_INPUT_ROLES:
+            problems.append(
+                f"SCHEMA_MALFORMED: config.input_role "
+                f"{cfg['input_role']!r} is not a declared role "
+                f"{sorted(_CONFIG_INPUT_ROLES)}")
+        elif cfg["input_role"] == "negative_control":
+            problems.append(
+                "SCHEMA_MALFORMED: config.input_role "
+                "'negative_control' can never appear in a bound "
+                "config — the run rejects it before fitting")
+    if "loro_policy" in cfg:
+        if cfg["loro_policy"] not in ("required", "diagnostic"):
+            problems.append(
+                f"SCHEMA_MALFORMED: config.loro_policy "
+                f"{cfg['loro_policy']!r} is not 'required' or "
+                "'diagnostic'")
+        elif cfg["loro_policy"] == "diagnostic" and \
+                not (cfg.get("frame_grain") == "seasonal" and
+                     cfg.get("holdout_axis") == "temporal"):
+            problems.append(
+                "SCHEMA_MALFORMED: config.loro_policy "
+                "'diagnostic' is admissible only under "
+                "frame_grain='seasonal' with "
+                "holdout_axis='temporal'")
     # declared sets
     if "seeds" in cfg:
         seeds = cfg["seeds"]

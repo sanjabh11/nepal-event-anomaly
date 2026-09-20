@@ -335,7 +335,7 @@ class TestDataClassExtension:
         assert "retrospective_data_class" in d
         assert d["retrospective_data_class"] == SEISMIC
         # forecast_vintages is popped from the serialized surface —
-        # the bound contract is exactly 33 fields.
+        # the bound contract is exactly _CONFIG_FIELDS.
         d.pop("forecast_vintages", None)
         from nepal.research_v0.producer_validation import (
             _CONFIG_FIELDS)

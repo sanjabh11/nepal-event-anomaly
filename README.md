@@ -237,3 +237,25 @@ The current canonical suite records **3387 passed / 6 skipped / 0 failed /
 57 warnings** across **3393 collected** tests. Five rasterio skips and one
 documented descriptive-artifact skip remain disclosed. Seismic waveform
 bytes and STEIM admission remain a separate storage-gated track.
+
+### P5 seasonal lane (amendment v3, executed 2026-09-20)
+
+A different estimand from the daily result — never a retry or rescue.
+Basin-year JJA seasonal types over 75 rows (3 basins × 25 seasons,
+51 train / 6 embargo / 18 holdout) on the locked six-feature contract
+(`t2m_mean, d2m_mean, pdd_sum, tp_q95, wet_spell_max_days, sd_delta`),
+tied covariance, K≤4, a seasonal-only parameter-count guard, and
+diagnostic (non-binding) LORO declared in config because 3-basin folds
+are structurally infeasible at n=51. Verdict:
+`UNSUPERVISED_STRUCTURE_NOT_STABLE` — modal K non-unanimous across
+seeds (3/3/4), season-matched null p=0.66, shuffled-null envelope
+incomplete. A second honest negative. The declared negative-control arm
+was refused before any model fitting. Independent replay:
+`scripts/replay_seasonal_p5.py` → `REPLAY_OK` (deterministic frame
+rebuild, envelope + freeze digests, producer floor, receipt bindings).
+Option 3 (seismic sidecar) completed desk preflight and is **BLOCKED**:
+no cataloged event inside the authorized 2023-04-01→05-09 waveform
+window, no waveform bytes, storage marginal — recorded in
+`retrieval/p5_d_preflight_reconciliation_v0.json`; no retrieval was
+performed. Seismic remains retrospective-only and is **not** a Nepal
+predictor.
