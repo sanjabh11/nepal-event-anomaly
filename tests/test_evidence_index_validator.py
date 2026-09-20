@@ -17,6 +17,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]
                      / "scripts"))
 
+import generate_evidence_index_v2 as gei
 import validate_evidence_index as vei
 
 
@@ -397,3 +398,233 @@ def test_multi_root_index_passes(tmp_path):
     assert report["status"] == "INDEX_OK", report["problems"]
     assert report["files_checked"] == 2
     assert report["files_ok"] == 2
+
+
+# ------------------------------------------------------------------
+# V2 exhaustive inventory / partition tests
+# ------------------------------------------------------------------
+
+def _v2_mapping_file(tmp_path, root):
+    mapping = {
+        "daily": {
+            "path": str(root),
+            "role": "synthetic daily evidence",
+            "kind": "physical",
+        },
+        "seismic": {
+            "path": str(root / "seismic"),
+            "role": "synthetic seismic logical partition",
+            "kind": "logical",
+            "physical_root_id": "daily",
+            "path_prefix": "seismic",
+        },
+    }
+    p = tmp_path / "root-map.json"
+    p.write_text(json.dumps(mapping), encoding="utf-8")
+    return p
+
+
+def _generate_v2(tmp_path, *, index_inside_root=False):
+    root = tmp_path / "v2-evidence"
+    root.mkdir()
+    _write_payload(root, "ordinary/payload.json", b"ordinary")
+    _write_payload(root, ".hidden-payload", b"hidden")
+    _write_payload(root, "seismic/trace.bin", b"seismic")
+    mapping = _v2_mapping_file(tmp_path, root)
+    index = (root / "index_v2.json" if index_inside_root
+             else tmp_path / "index_v2.json")
+    report = tmp_path / "generation-report.json"
+    rc = gei.main([
+        "--root-map", str(mapping),
+        "--index-out", str(index),
+        "--report-out", str(report),
+    ])
+    assert rc == 0
+    return root, index, report
+
+
+def test_v2_generation_is_exhaustive_and_partitions_seismic_once(tmp_path):
+    root, index, report_path = _generate_v2(tmp_path)
+    doc = json.loads(index.read_text(encoding="utf-8"))
+    report = vei.validate_index(index)
+
+    assert report["status"] == "INDEX_OK", report["problems"]
+    assert doc["schema"] == vei.SCHEMA_V2
+    assert isinstance(doc["coverage_scope"], dict)
+    assert isinstance(doc["exclusions"], list)
+    assert isinstance(doc["topology"], dict)
+    listed = {(e["root_id"], e["relpath"]) for e in doc["files"]}
+    assert ("daily", ".hidden-payload") in listed
+    assert ("seismic", "trace.bin") in listed
+    assert ("daily", "seismic/trace.bin") not in listed
+    assert json.loads(report_path.read_text(encoding="utf-8"))["status"] == \
+        "INDEX_OK"
+
+
+def test_v2_hidden_payload_fails_full_inventory_coverage(tmp_path):
+    root, index, _ = _generate_v2(tmp_path)
+    _write_payload(root, ".late-hidden", b"late")
+    report = vei.validate_index(index)
+    assert report["status"] == "INDEX_FAIL"
+    assert "inventory coverage" in _problems(report)
+    assert ".late-hidden" in _problems(report)
+
+
+def test_v2_missing_sidecar_fails(tmp_path):
+    root, index, _ = _generate_v2(tmp_path)
+    (root / "ordinary/payload.json.sha256").unlink()
+    report = vei.validate_index(index)
+    assert report["status"] == "INDEX_FAIL"
+    assert "sidecar missing" in _problems(report)
+
+
+def test_v2_sidecar_exception_must_be_explicit_and_validated(tmp_path):
+    root, index, _ = _generate_v2(tmp_path)
+    (root / "ordinary/payload.json.sha256").unlink()
+    doc = json.loads(index.read_text(encoding="utf-8"))
+    entry = next(e for e in doc["files"]
+                 if e["relpath"] == "ordinary/payload.json")
+    entry["sidecar_sha256"] = None
+    entry["sidecar_exception"] = {
+        "code": "approved_missing_sidecar",
+        "reason": "synthetic exception under the declared V2 schema",
+        "authority": "pytest",
+    }
+    p = tmp_path / "sidecar-exception.json"
+    p.write_text(json.dumps(doc), encoding="utf-8")
+    report = vei.validate_index(p)
+    assert report["status"] == "INDEX_OK", report["problems"]
+
+
+def test_v2_unlisted_payload_requires_explicit_exclusion(tmp_path):
+    root, index, _ = _generate_v2(tmp_path)
+    doc = json.loads(index.read_text(encoding="utf-8"))
+    removed = next(e for e in doc["files"]
+                   if e["relpath"] == ".hidden-payload")
+    doc["files"].remove(removed)
+    report_path = tmp_path / "unlisted.json"
+    report_path.write_text(json.dumps(doc), encoding="utf-8")
+    report = vei.validate_index(report_path)
+    assert report["status"] == "INDEX_FAIL"
+    assert "inventory coverage" in _problems(report)
+
+    doc["exclusions"].append({
+        "root_id": "daily",
+        "relpath": ".hidden-payload",
+        "reason": "synthetic explicit exclusion",
+    })
+    doc["final_verification"]["closure"]["exclusions"] = "PASS"
+    doc["final_verification"]["counts"]["included_files"] -= 1
+    doc["final_verification"]["counts"]["excluded_files"] += 1
+    report_path.write_text(json.dumps(doc), encoding="utf-8")
+    report = vei.validate_index(report_path)
+    assert report["status"] == "INDEX_OK", report["problems"]
+
+
+def test_v2_duplicate_logical_assignment_fails(tmp_path):
+    root, index, _ = _generate_v2(tmp_path)
+    doc = json.loads(index.read_text(encoding="utf-8"))
+    seismic = next(e for e in doc["files"] if e["root_id"] == "seismic")
+    doc["files"].append(dict(seismic, root_id="daily",
+                              relpath="seismic/trace.bin"))
+    doc["final_verification"]["counts"]["included_files"] += 1
+    p = tmp_path / "duplicate.json"
+    p.write_text(json.dumps(doc), encoding="utf-8")
+    report = vei.validate_index(p)
+    assert report["status"] == "INDEX_FAIL"
+    assert "physical" in _problems(report)
+
+
+def test_v2_absolute_supersedes_is_rejected(tmp_path):
+    root, index, _ = _generate_v2(tmp_path)
+    old = root / "old-index.json"
+    old.write_text('{"schema":"P5_EVIDENCE_INDEX_V1"}', encoding="utf-8")
+    doc = json.loads(index.read_text(encoding="utf-8"))
+    doc["supersedes"] = {
+        "root_id": "daily",
+        "relpath": str(old),
+        "sha256": _sha(old.read_bytes()),
+    }
+    p = tmp_path / "absolute-supersedes.json"
+    p.write_text(json.dumps(doc), encoding="utf-8")
+    report = vei.validate_index(p)
+    assert report["status"] == "INDEX_FAIL"
+    assert "supersedes.relpath" in _problems(report)
+    assert "absolute" in _problems(report)
+
+
+def test_v2_final_closure_mismatch_fails(tmp_path):
+    _, index, _ = _generate_v2(tmp_path)
+    doc = json.loads(index.read_text(encoding="utf-8"))
+    doc["final_verification"]["closure"]["inventory_coverage"] = "FAIL"
+    p = tmp_path / "closure-mismatch.json"
+    p.write_text(json.dumps(doc), encoding="utf-8")
+    report = vei.validate_index(p)
+    assert report["status"] == "INDEX_FAIL"
+    assert "final_verification" in _problems(report)
+
+
+def test_v2_existing_output_refuses_overwrite(tmp_path):
+    root = tmp_path / "evidence"
+    root.mkdir()
+    _write_payload(root, "payload.bin", b"payload")
+    mapping = _v2_mapping_file(tmp_path, root)
+    index = tmp_path / "existing-index.json"
+    index.write_bytes(b"do-not-overwrite")
+    before = index.read_bytes()
+    rc = gei.main([
+        "--root-map", str(mapping),
+        "--index-out", str(index),
+    ])
+    assert rc != 0
+    assert index.read_bytes() == before
+
+
+def test_v2_index_self_reference_fails(tmp_path):
+    root, index, _ = _generate_v2(tmp_path, index_inside_root=True)
+    doc = json.loads(index.read_text(encoding="utf-8"))
+    doc["files"].append({
+        "root_id": "daily",
+        "relpath": "index_v2.json",
+        "sha256": _sha(index.read_bytes()),
+        "size_bytes": index.stat().st_size,
+        "sidecar_sha256": None,
+        "sidecar_exception": {
+            "code": "index_self_reference_probe",
+            "reason": "synthetic invalid self-reference probe",
+            "authority": "pytest",
+        },
+        "state": "current",
+        "activity": "synthetic self-reference probe",
+        "entity_role": "index",
+    })
+    index.write_text(json.dumps(doc), encoding="utf-8")
+    report = vei.validate_index(index)
+    assert report["status"] == "INDEX_FAIL"
+    assert "self-reference" in _problems(report)
+
+
+def test_v1_remains_non_exhaustive(env, tmp_path):
+    _write_payload(env["root"], "unlisted-v1.json", b"still v1")
+    report = vei.validate_index(env["index"])
+    assert report["status"] == "INDEX_OK", report["problems"]
+
+
+def test_v2_planned_detached_closure_is_excluded_after_publication(tmp_path):
+    root = tmp_path / "evidence"
+    root.mkdir()
+    _write_payload(root, "payload.json", b"payload")
+    mapping = {"daily": {"path": str(root), "role": "daily",
+                          "kind": "physical"}}
+    index = tmp_path / "index.json"
+    closure = root / "retrieval" / "p5_release_closure_v2.json"
+    rc = gei.main([
+        "--root-map", json.dumps(mapping),
+        "--index-out", str(index),
+        "--detached-closure", str(closure),
+    ])
+    assert rc == 0
+    closure.parent.mkdir(parents=True, exist_ok=True)
+    closure.write_text('{"detached": true}', encoding="utf-8")
+    report = vei.validate_index(index)
+    assert report["status"] == "INDEX_OK", report["problems"]

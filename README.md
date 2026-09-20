@@ -230,7 +230,7 @@ geographic-transfer claim. Event labels use the explicit
 The real run is complete and honest: 4,692 train rows, 552 embargo rows,
 and 1,656 holdout rows were evaluated; the receipt is `CANDIDATE_ONLY`
 because the artifact verdict is `UNSUPERVISED_STRUCTURE_NOT_STABLE`.
-Replay is `REPLAY_OK` with `artifact_replayed` — the persisted v1
+Replay is `REPLAY_OK` with `artifact_integrity_replay` — the persisted v1
 artifact's envelope/freeze digests recompute and the v1 receipt binds
 those bytes (the v0 receipt is preserved as historical: it bound a
 digest whose artifact bytes were never persisted; amendment v5 records
@@ -288,8 +288,8 @@ under a declared config to serialize
 `retrieval/p5_glof_regime_artifact_v1.json` and issue a lineage-bound
 `p5_glof_descriptive_receipt_v1.json`. The verdict reproduced:
 `UNSUPERVISED_STRUCTURE_NOT_STABLE`. Daily replay emits
-`artifact_replayed` only after validating the persisted artifact —
-a receipt-bound digest alone is never "replayed".
+`artifact_integrity_replay` only after validating the persisted artifact —
+a receipt-bound digest alone is never an independent model replay.
 
 Option 3 (seismic sidecar) completed desk preflight and is **BLOCKED**:
 no cataloged event inside the authorized 2023-04-01→05-09 waveform
@@ -306,7 +306,17 @@ source digest), required execution-digest chain for scientific
 statuses, bounded malformed-input errors. Seismic remains
 retrospective-only and is **not** a Nepal predictor.
 
-Cross-root provenance: `retrieval/p5_evidence_index_v1.json` binds the
+Cross-root provenance: `retrieval/p5_evidence_index_v2.json` is the
+exhaustive release index: it binds every non-sidecar payload in the daily,
+seismic logical, seasonal-v0, and seasonal-v1 surfaces, requires a sidecar
+for each payload, and records explicit exclusions. The prior
+`retrieval/p5_evidence_index_v1.json` remains a historical 31-file listed
+set; its `INDEX_OK` result never meant root-wide coverage. Both replay
+reports are `artifact_integrity_replay` unless an independent model refit
+is actually performed. Canonical writers refuse existing evidence paths
+and replay defaults to stdout, so reruns cannot replace history.
+
+Historical cross-root provenance: `retrieval/p5_evidence_index_v1.json` binds the
 three physical roots (daily, seasonal v0 immutable, seasonal v1) plus
 the seismic preflight as a logical surface under the daily root —
 logical `root_id`s, relative paths, per-file digests + sidecars, and

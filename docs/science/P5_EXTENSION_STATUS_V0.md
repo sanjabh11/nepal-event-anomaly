@@ -27,9 +27,10 @@ v1 config re-executed the frozen protocol solely to serialize the
 artifact. The v1 artifact carries a different digest (the engine and
 config surface evolved) — the honest check is the scientific verdict,
 which reproduced: `UNSUPERVISED_STRUCTURE_NOT_STABLE`. Daily replay
-now emits `artifact_replayed` only when the persisted artifact's
+now emits `artifact_integrity_replay` only when the persisted artifact's
 envelope and freeze digests recompute and the receipt binds those
-bytes — a receipt-bound digest alone is never "replayed".
+bytes. This is not an independent model refit; a receipt-bound digest alone
+is never a model replay.
 
 ## Seasonal v1 result detail
 
@@ -40,7 +41,16 @@ bytes — a receipt-bound digest alone is never "replayed".
 
 ## Cross-root index
 
-`p5-glof-2026-09-19/retrieval/p5_evidence_index_v1.json` binds the
+`p5-glof-2026-09-19/retrieval/p5_evidence_index_v2.json` is the exhaustive
+release index. It binds every non-sidecar payload in the declared physical
+and logical partitions, requires a live sidecar, and records explicit
+exclusions. The v1 index is preserved as a historical 31-file listed set;
+its `INDEX_OK` status did not prove root-wide coverage. The v2 validator
+also checks final-verification closure, duplicate physical assignment, and
+manifest/head consistency. The index and detached release closure are
+published by exclusive-create writers.
+
+Historical index: `p5-glof-2026-09-19/retrieval/p5_evidence_index_v1.json` binds the
 three physical roots (daily, seasonal v0 immutable, seasonal v1
 current) plus the seismic preflight as a logical surface inside the
 daily root — relative paths under logical `root_id`s, per-file
@@ -54,6 +64,22 @@ it fail-closed (30-test suite).
 2. ObsPy project admission — isolated qualification only; needs a dependency amendment with pin/hash/license
 3. Arm C — separate CDS/feature amendment
 4. Publication / external verification — deferred
+
+## Audit-3 release-integrity disposition
+
+The codeable audit-3 findings are repaired by the release-integrity v2
+amendment: exhaustive inventory replaces the curated v1 list; all currently
+discovered payloads carry validated sidecars; replay scope is explicitly
+integrity-only; daily/seasonal/replay/index writers are refuse-existing and
+atomic; logical relative paths are used for new receipt/report pointers; and
+the seismic contract requires the complete ten-digest scientific chain with
+strict falsey-input and event-timing validation. The detached closure binds
+the live index digest, manifest/head, suite counts, replay modes, warnings,
+skips, owner gates, and all-false authority flags.
+
+`approved_by` remains null in the Option 3 disposition. That record is a
+recommended default, not owner approval. Option 3, ObsPy admission, Arm C,
+publication, remote CI, and external preservation remain separate gates.
 
 ## Warnings disclosure
 

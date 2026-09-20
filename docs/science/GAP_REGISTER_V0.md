@@ -1183,7 +1183,7 @@ owner-side gates remain open by design.
 | R11.9-06 hard-coded cutoff | CLOSED | `CUTOFF_RECORD_V0` persisted (`features/cutoff_record_v0.json`) bound to `retrieval_record_era5_multibasin.json` sha + `pull_utc_end`; availability margin proven; failures emit `FMX_BLOCKED_CUTOFF` |
 | R11.9-07 real-evidence FMX test | CLOSED | `tests/test_r11_9_bindings.py` — 22 tests: 13 synthetic tamper probes + 9 real-evidence gates (skipif when root absent) |
 | R11.9-08 semantic role binding | CLOSED | `semantic_binding_problems` in `run_evidence.py` — package/event-role digest, frame membership + allowlist, FMX role/frame digests, sidecar control-doc coverage all enforced |
-| R11.9-09 integrity-only replay | CLOSED | `replay_p5.py` now rebuilds the FMX report, ledger fields, package digests, semantic bindings, and receipt `report_digest`; `REPLAY_OK` requires digest equality, `replay_scope: full_recomputation` |
+| R11.9-09 integrity-only replay | HISTORICAL CLOSED | The historical record used a broad replay label; current audit-3 reports use `replay_scope: artifact_integrity_replay` and do not claim an independent regime refit |
 | R11.9-11 censored controls | BY DESIGN | unchanged — no manufacturable negatives; association stage-gated |
 | R11.9-12 scope scan | CLOSED | remaining five-basin strings are historical authorization/template records superseded by `P5_SCOPE_RECONCILIATION_V0.md`; operative code/manifests carry only the three-basin universe |
 | R11.9-14/16/17 seismic bytes/storage/execution | OPEN — owner/physics | storage ~11 GiB < 10 GiB cap + 8 GiB reserve; acquisition still gated |
@@ -1303,7 +1303,7 @@ unchanged — supersession is by new records, never rewrite.
 | Finding | Disposition |
 |---|---|
 | Daily artifact bytes missing (receipt-bound only) | **RESOLVED** — amendment v5 records the lineage gap; `run_daily_p5.py` re-executed the frozen protocol under a declared config and serialized `p5_glof_regime_artifact_v1.json`; v1 receipt binds it; v0 receipt preserved as historical. Verdict reproduced: `UNSUPERVISED_STRUCTURE_NOT_STABLE` |
-| `regime_replayed` without artifact validation | **RESOLVED** — daily replay emits `artifact_replayed` only when the persisted artifact exists, envelope+freeze digests recompute, producer floor is clean, and the receipt binds those bytes; otherwise `chain_recomputed_receipt_only` |
+| `regime_replayed` without artifact validation | **HISTORICAL CLOSED** — the prior record used `artifact_replayed`; current audit-3 replay emits `artifact_integrity_replay` after persisted envelope/freeze/floor/receipt checks and makes no independent model-refit claim |
 | Arm A verified receipt-embedded digest only | **RESOLVED** — `verify_daily_reference` requires the live artifact file: existence, envelope/freeze digest recompute, floor, receipt↔artifact agreement; missing/mutated artifact fails closed |
 | Evidence index stale replay digest | **RESOLVED** — diagnosed as an ordering artifact (index written before the post-rebind replay regenerated the report; report is deterministic — two in-memory replays produce identical bytes). v0 index preserved; v1 successor generated after all evidence bytes are final |
 | Index absolute paths / missing provenance | **RESOLVED** — v1 index uses logical `root_id` + relative paths, per-file sidecar digests, `state` vocabulary, generator/commit/UTC/manifest provenance, `supersedes` pointer; `scripts/validate_evidence_index.py` (30 tests) fails closed on every audited defect class |
@@ -1313,3 +1313,30 @@ unchanged — supersession is by new records, never rewrite.
 | Seismic contract residual gaps | **RESOLVED** — ≤24h window bound; `BLOCKED`/`RUN_ERROR`/`NOT_OPERATIONAL` bind no byte evidence; strict event anchors (source_id, event_utc, tolerance, relation, source_digest); scientific statuses require the full execution-digest chain; bounded malformed-input errors (305 contract tests) |
 | Option 3 execution / ObsPy admission / Arm C / publication | **OWNER-GATED** — unchanged; dispositioned, not codeable |
 
+## P5 audit-3 release-integrity reconciliation — 2026-09-21
+
+This section supersedes the prior broad closure wording for the current
+release surface. Historical evidence is preserved; no historical payload is
+rewritten.
+
+| Audit-3 surface | Disposition | Current proof boundary |
+|---|---|---|
+| Curated 31-file index | **SUPERSEDED** | `p5_evidence_index_v2.json` inventories every non-sidecar payload in the declared roots; v1 remains a historical listed-set index |
+| Missing payload sidecars | **REPAIRED** | Existing sidecars were checked and missing sidecars were created by the write-once migration helper; v2 requires a live sidecar or an explicit validated exclusion |
+| Index scope / exclusions | **REPAIRED** | Structured `coverage_scope`, topology, exclusions, inventory counts, and duplicate physical-byte checks are validator-bound |
+| Final verification binding | **REPAIRED** | v2 carries inline closure fields; the detached release closure binds the live v2 index digest and final verification surface |
+| Daily/seasonal replay terminology | **REPAIRED** | Current reports use `artifact_integrity_replay`; no model-refit claim is emitted unless the engine is independently executed |
+| Replay/report overwrites | **REPAIRED** | Default replay is stdout-only; explicit report paths and driver/index outputs are exclusive-create and atomic |
+| Run writer overwrite | **REPAIRED** | Daily and seasonal drivers require a new output root and refuse existing governed paths |
+| Host-specific new pointers | **REPAIRED** | New receipt/report pointers and seasonal root bindings use logical IDs and relative paths; byte-bound legacy source manifests retain their existing contract and are not relabeled |
+| Execution provenance | **REPAIRED** | New run receipts bind activity ID, UTC start/end, command, environment, and environment digest; data maximum dates remain separate data metadata |
+| Seismic scientific digest chain | **REPAIRED** | Scientific statuses require source, waveform, StationXML, decoder, feature, windowing, evaluation, timing, storage, and config digests |
+| Seismic falsey/event bypasses | **REPAIRED** | False/zero values, empty station lists, event UTC/date/window mismatches, and relation mismatches fail closed |
+| Owner approval | **OPEN — OWNER** | `approved_by` remains null; recommended default is not approval |
+| Option 3 acquisition / ObsPy / Arm C | **BLOCKED / DEFERRED** | No acquisition, project admission, or CDS pull is authorized by this remediation |
+| Remote CI / external preservation / publication | **OPEN — EXTERNAL** | Local evidence is strong but does not establish external verification or publication |
+| Scientific power and claim ceiling | **UNCHANGED** | Daily and seasonal honest negatives remain research-only; no forecast, warning, detector, locator, operational, association, or cross-lane predictor claim follows |
+
+The internal release-integrity work is therefore materially stronger, but
+the phrase “all gaps closed” remains prohibited: owner and external gates are
+still open, and `BLOCKED` is not a scientific negative.

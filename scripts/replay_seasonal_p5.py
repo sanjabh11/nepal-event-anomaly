@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""REPLAY for the P5 seasonal lane (amendment v3, v1 semantics).
+"""Artifact-integrity replay for the P5 seasonal lane.
 
-Independent verification of the seasonal evidence root — mirrors
-replay_p5.py's contract: persisted bytes are never trusted, every
-check recomputes from live bytes.
+Independent verification of the seasonal evidence root.  Persisted bytes
+are never trusted, and deterministic frame/gate/binding checks recompute
+from live bytes.  The seasonal regime model is not independently refit by
+this script, so the proof scope is ``artifact_integrity_replay`` rather
+than ``model_reexecuted``.
 
 Checks:
   1. every artifact in the lane root rehashes against its sidecar
@@ -21,7 +23,7 @@ Checks:
 
 Usage:
     PYTHONPATH=. .venv/bin/python -B scripts/replay_seasonal_p5.py \
-        [--daily-root PATH] [--lane-root PATH]
+        [--daily-root PATH] [--lane-root PATH] [--report-out PATH]
 """
 from __future__ import annotations
 
@@ -61,6 +63,12 @@ def replay(lane_root: Path, daily_root: Path) -> dict:
     failures: list[str] = []
     report = {"lane_root": str(lane_root),
               "daily_root": str(daily_root), "checks": {}}
+    report["replay_scope"] = "artifact_integrity_replay"
+    report["model_reexecution"] = {
+        "status": "NOT_RUN",
+        "reason": "seasonal replay rebuilds the frame and validates the "
+                  "persisted artifact; it does not invoke run_regimes",
+    }
     daily_csv = (daily_root / "era5-multibasin/features/"
                  "regime_frame_hma_jja_2001_2025.csv")
     daily_receipt = (daily_root / "retrieval/"
@@ -290,9 +298,22 @@ def replay(lane_root: Path, daily_root: Path) -> dict:
         # bound roots must match the invoked roots — a receipt bound
         # to a different evidence root is stale evidence
         roots = rcpt.get("roots") or {}
-        if roots and (roots.get("lane_root") != str(lane_root) or
-                      roots.get("daily_root") != str(daily_root)):
-            report["checks"]["roots_bound"] = roots
+        if "lane_root_id" in roots or "daily_root_id" in roots:
+            expected = {"daily_root_id": "daily_p5a2",
+                        "lane_root_id": "seasonal_v1_current"}
+            roots_ok = roots == expected
+        else:
+            # Historical v0 receipts used physical paths.  Continue to
+            # verify those immutable records while requiring new receipts
+            # to use logical root IDs.
+            roots_ok = (roots.get("lane_root") == str(lane_root) and
+                        roots.get("daily_root") == str(daily_root))
+        report["checks"]["roots_bound"] = {
+            "recorded": roots, "expected_logical": {
+                "daily_root_id": "daily_p5a2",
+                "lane_root_id": "seasonal_v1_current"},
+            "ok": roots_ok}
+        if roots and not roots_ok:
             failures.append("stale_bound_roots")
 
     report["status"] = "REPLAY_FAIL" if failures else "REPLAY_OK"
@@ -304,18 +325,29 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--daily-root", default=str(DEFAULT_DAILY_ROOT))
     ap.add_argument("--lane-root", default=str(DEFAULT_LANE_ROOT))
+    ap.add_argument(
+        "--report-out",
+        default=None,
+        help="explicit new path for a report; omitted means stdout only")
     args = ap.parse_args()
     lane_root = Path(args.lane_root).resolve()
     daily_root = Path(args.daily_root).resolve()
     report = replay(lane_root, daily_root)
-    out = lane_root / "run/seasonal_replay_report_v0.json"
-    if out.parent.is_dir():
-        b = json.dumps(report, indent=2, sort_keys=True).encode()
-        out.write_bytes(b)
-        Path(str(out) + ".sha256").write_text(
-            hashlib.sha256(b).hexdigest() + f"  {out.name}\n")
+    out = None
+    if args.report_out:
+        from p5_safe_io import write_once_bytes, write_once_text
+        out = Path(args.report_out).resolve()
+        b = json.dumps(report, indent=2, sort_keys=True).encode() + b"\n"
+        try:
+            digest = write_once_bytes(out, b)
+            write_once_text(Path(str(out) + ".sha256"),
+                            f"{digest}  {out.name}\n")
+        except FileExistsError as exc:
+            print(f"REPORT_WRITE_REFUSED: {exc}")
+            return 2
     print(json.dumps(report, indent=1))
-    print(f"\nstatus: {report['status']}")
+    print(f"\nstatus: {report['status']}" +
+          (f"  -> {out}" if out else "  -> stdout only"))
     return 0 if report["status"] == "REPLAY_OK" else 1
 
 

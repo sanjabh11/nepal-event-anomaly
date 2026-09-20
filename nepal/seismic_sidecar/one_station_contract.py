@@ -50,15 +50,18 @@ documenting source.
 Execution-binding digest surface: ``source_digest``,
 ``stationxml_digest``, ``decoder_environment_digest``,
 ``feature_contract_digest``, ``windowing_digest``,
-``evaluation_digest``, ``timing_verification_digest``, and
-``storage_receipt_digest`` are declared OPTIONAL fields — ``None``
-(or empty) is admissible, but when present each must be a 64-hex
-sha256.  A scientific terminal binds the full chain: ``event_anchor``
-plus ``waveform_digest``, ``stationxml_digest``,
-``windowing_digest``, ``evaluation_digest``, and
-``timing_verification_digest`` are all REQUIRED.  ``RUN_ERROR``,
-``BLOCKED``, and ``NOT_OPERATIONAL`` must not carry any of them —
-a non-scientific terminal binds no byte evidence and no event.
+``evaluation_digest``, ``timing_verification_digest``,
+``storage_receipt_digest``, and ``config_digest`` are declared fields —
+``None`` (or an empty string) is admissible only when the digest is not
+bound by a non-scientific terminal, but when present each must be a
+64-hex sha256.  A scientific terminal binds the complete chain:
+``source_digest``, ``waveform_digest``, ``stationxml_digest``,
+``decoder_environment_digest``, ``feature_contract_digest``,
+``windowing_digest``, ``evaluation_digest``,
+``timing_verification_digest``, ``storage_receipt_digest``, and
+``config_digest`` are all REQUIRED.  ``RUN_ERROR``, ``BLOCKED``, and
+``NOT_OPERATIONAL`` must not carry any of them — a non-scientific
+terminal binds no byte evidence and no event.
 """
 from __future__ import annotations
 
@@ -182,21 +185,26 @@ _FORBIDDEN_CLAIM_TERMS = re.compile(
 _FREE_TEXT_FIELDS = ("reason", "blocked_reason")
 
 #: Every byte-evidence digest field on the receipt — the existing
-#: waveform/StationXML pair plus the declared optional
-#: execution-binding surface.  Absent (None/empty) is admissible;
-#: when present each must be a 64-hex sha256.
+#: waveform/StationXML pair plus the declared execution-binding
+#: surface.  Absent (None/empty string) is admissible only when the
+#: status does not require or prohibit the binding; when present each
+#: must be a 64-hex sha256.
 _ONE_STATION_DIGEST_FIELDS = (
     "waveform_digest", "stationxml_digest", "source_digest",
     "decoder_environment_digest", "feature_contract_digest",
     "windowing_digest", "evaluation_digest",
-    "timing_verification_digest", "storage_receipt_digest")
+    "timing_verification_digest", "storage_receipt_digest",
+    "config_digest")
 
-#: The digest chain a scientific terminal MUST bind — bytes-bound
-#: scientific claims need the full windowing/evaluation/timing
-#: provenance chain, not just the raw byte digests.
+#: The complete digest chain a scientific terminal MUST bind — every
+#: source, byte, execution, feature, evaluation, storage, and config
+#: identity participates in a scientific claim.
 _ONE_STATION_REQUIRED_SCIENTIFIC_DIGESTS = (
-    "waveform_digest", "stationxml_digest", "windowing_digest",
-    "evaluation_digest", "timing_verification_digest")
+    "source_digest", "waveform_digest", "stationxml_digest",
+    "decoder_environment_digest", "feature_contract_digest",
+    "windowing_digest", "evaluation_digest",
+    "timing_verification_digest", "storage_receipt_digest",
+    "config_digest")
 
 #: Declared vocabulary for ``event_anchor.relation_to_window`` — how
 #: the documented event's ``event_utc`` relates to the declared
@@ -209,6 +217,16 @@ def _req(problems: list[str], name: str, value: Any) -> None:
     if value is None or value == "" or value == [] or value == () \
             or value == {}:
         problems.append(f"{name} is required")
+
+
+def _digest_is_absent(value: Any) -> bool:
+    """Return whether a digest is explicitly unbound.
+
+    ``False`` and numeric zero are malformed values, not absence.  Keep
+    the check type-aware so their equality with one another cannot make
+    them pass as an empty optional field.
+    """
+    return value is None or (isinstance(value, str) and value == "")
 
 
 def _iso_date(value: Any) -> Optional[_dt]:
@@ -273,6 +291,29 @@ def _window_dates(receipt: "OneStationReceiptV1",
     return _utc_date(start_raw), _utc_date(end_raw)
 
 
+def _event_relation(event_ts: float, window_start_ts: float,
+                    window_end_ts: float,
+                    tolerance_s: float) -> Optional[str]:
+    """Classify an event timestamp relative to a valid analysis window.
+
+    ``edge`` covers either boundary and its timing-tolerance band;
+    ``lead`` covers only the pre-window band.  A timestamp farther away
+    than the tolerance is outside the declared window.
+    """
+    if window_start_ts <= event_ts <= window_end_ts:
+        if (event_ts - window_start_ts <= tolerance_s or
+                window_end_ts - event_ts <= tolerance_s):
+            return "edge"
+        return "inside"
+    if event_ts < window_start_ts and \
+            window_start_ts - event_ts <= tolerance_s:
+        return "lead"
+    if event_ts > window_end_ts and \
+            event_ts - window_end_ts <= tolerance_s:
+        return "edge"
+    return None
+
+
 @dataclass(frozen=True)
 class OneStationReceiptV1:
     """One-station observability lane receipt (V1 design surface).
@@ -303,11 +344,11 @@ class OneStationReceiptV1:
     event_anchor: Mapping = field(default_factory=dict)
     waveform_digest: str = ""
     stationxml_digest: str = ""
-    # Execution-binding digest surface (declared optional): None is
-    # admissible, but when present each must be a 64-hex sha256.
-    # Scientific terminals must bind the required subset (see
-    # _ONE_STATION_REQUIRED_SCIENTIFIC_DIGESTS); RUN_ERROR,
-    # NOT_OPERATIONAL, and BLOCKED must carry none of them.
+    # Execution-binding digest surface: None/empty is admissible only
+    # when the status leaves the field unbound; when present each must
+    # be a 64-hex sha256.  Scientific terminals bind the complete
+    # _ONE_STATION_REQUIRED_SCIENTIFIC_DIGESTS chain; RUN_ERROR,
+    # NOT_OPERATIONAL, and BLOCKED carry none of it.
     source_digest: Optional[str] = None
     decoder_environment_digest: Optional[str] = None
     feature_contract_digest: Optional[str] = None
@@ -315,6 +356,7 @@ class OneStationReceiptV1:
     evaluation_digest: Optional[str] = None
     timing_verification_digest: Optional[str] = None
     storage_receipt_digest: Optional[str] = None
+    config_digest: Optional[str] = None
     reason: str = ""
     blocked_reason: str = ""
     notes: tuple = ()
@@ -358,13 +400,15 @@ class OneStationReceiptV1:
                     "production, warning, detector, or locator "
                     "authority")
         # ---- declared authorization ceilings -----------------------
-        stations_ok = isinstance(
-            self.authorized_stations, (list, tuple)) and \
-            all(isinstance(s, str) and s.strip()
+        stations_sequence = isinstance(
+            self.authorized_stations, (list, tuple))
+        stations_ok = stations_sequence and bool(
+            self.authorized_stations) and all(
+                isinstance(s, str) and s.strip()
                 for s in self.authorized_stations)
         if not stations_ok:
-            problems.append("authorized_stations must be a tuple of "
-                            "non-empty strings")
+            problems.append("authorized_stations must be a non-empty "
+                            "tuple of non-empty strings")
         else:
             outside = sorted(set(self.authorized_stations) -
                              set(AUTHORIZED_STATION_IDS))
@@ -376,7 +420,7 @@ class OneStationReceiptV1:
         if not isinstance(self.station_id, str) or \
                 not self.station_id.strip():
             problems.append("station_id must be a non-empty string")
-        elif stations_ok and self.authorized_stations and \
+        elif stations_sequence and \
                 self.station_id not in self.authorized_stations:
             problems.append(
                 f"station_id {self.station_id!r} is outside the "
@@ -423,25 +467,37 @@ class OneStationReceiptV1:
                     "window — observability outside the approved "
                     "interval is inadmissible")
         # ---- digests ------------------------------------------------
-        # Every declared digest field is optional (None/empty
-        # admissible) but byte-bound when present: a non-string or
-        # non-64-hex value is a bounded problem, never an exception.
+        # Every declared digest field is optional only when unbound;
+        # a non-string or non-64-hex value is malformed, including
+        # falsey values such as False and 0.
         for name in _ONE_STATION_DIGEST_FIELDS:
             v = getattr(self, name)
-            if v and (not isinstance(v, str) or
-                      not _SHA256_RE.match(v)):
+            if not _digest_is_absent(v) and \
+                    (not isinstance(v, str) or
+                     not _SHA256_RE.match(v)):
                 problems.append(f"{name} must be a 64-hex sha256 "
                                 "digest when present")
         # ---- event anchor -------------------------------------------
-        # A non-empty anchor must be a Mapping carrying the full
-        # documented-event field surface; each missing or malformed
-        # field is a distinct bounded problem.
+        # Scientific statuses require a real, non-empty Mapping carrying
+        # the full documented-event field surface.  False/0 are not
+        # absence for that required field.  Non-scientific terminals
+        # retain their no-event semantics for empty/falsey defaults.
         anchor_present = bool(self.event_anchor)
-        if anchor_present:
-            if not isinstance(self.event_anchor, Mapping):
+        anchor_is_mapping = isinstance(self.event_anchor, Mapping)
+        if status in ONE_STATION_SCIENTIFIC_STATUSES:
+            if not anchor_is_mapping:
                 problems.append("event_anchor must be a mapping "
                                 "carrying the documented in-window "
                                 "event fields")
+            elif not anchor_present:
+                _req(problems, f"{status} requires event_anchor",
+                     self.event_anchor)
+        if anchor_present:
+            if not anchor_is_mapping:
+                if status not in ONE_STATION_SCIENTIFIC_STATUSES:
+                    problems.append("event_anchor must be a mapping "
+                                    "carrying the documented in-window "
+                                    "event fields")
             else:
                 anchor = self.event_anchor
                 ev_date = _iso_date(anchor.get("date"))
@@ -460,8 +516,13 @@ class OneStationReceiptV1:
                                     "be a non-empty source "
                                     "identifier")
                 ev_utc = anchor.get("event_utc")
-                if not isinstance(ev_utc, str) or \
-                        parse_strict_utc(ev_utc) is None:
+                event_ts = None
+                if isinstance(ev_utc, str):
+                    try:
+                        event_ts = parse_strict_utc(ev_utc)
+                    except (OverflowError, OSError, ValueError):
+                        event_ts = None
+                if event_ts is None:
                     problems.append(
                         "event_anchor.event_utc must be a strict "
                         "ISO-8601 explicit-UTC timestamp with "
@@ -486,6 +547,15 @@ class OneStationReceiptV1:
                         "event_anchor.source_digest must be a "
                         "64-hex sha256 digest — the anchor is "
                         "byte-bound to its documenting source")
+                event_date = None
+                if event_ts is not None:
+                    try:
+                        event_date = _dt.fromtimestamp(
+                            event_ts, timezone.utc).date()
+                    except (OverflowError, OSError, ValueError):
+                        problems.append(
+                            "event_anchor.event_utc must be a "
+                            "representable UTC timestamp")
                 if ev_date is not None:
                     if win_lo is not None and win_hi is not None and \
                             not (win_lo <= ev_date.date() <= win_hi):
@@ -499,24 +569,65 @@ class OneStationReceiptV1:
                         problems.append(
                             "event_anchor.date is outside the "
                             "authorized window")
+                if event_date is not None and ev_date is not None and \
+                        event_date != ev_date.date():
+                    problems.append(
+                        "event_anchor.date must match the UTC calendar "
+                        "date of event_utc")
+                if event_ts is not None and event_date is not None and \
+                        aw_lo is not None and \
+                        aw_hi is not None and \
+                        not (aw_lo.date() <= event_date <= aw_hi.date()):
+                    problems.append(
+                        "event_anchor.event_utc is outside the "
+                        "authorized window")
+                window_start_ts = None
+                window_end_ts = None
+                if win_lo is not None and win_hi is not None:
+                    try:
+                        window_start_ts = parse_strict_utc(
+                            self.window_start)
+                        window_end_ts = parse_strict_utc(self.window_end)
+                    except (OverflowError, OSError, ValueError):
+                        window_start_ts = window_end_ts = None
+                if event_ts is not None and \
+                        window_start_ts is not None and \
+                        window_end_ts is not None and \
+                        window_end_ts > window_start_ts and \
+                        isinstance(tol, (int, float)) and \
+                        not isinstance(tol, bool) and \
+                        math.isfinite(tol) and tol > 0:
+                    expected_rel = _event_relation(
+                        event_ts, window_start_ts, window_end_ts, tol)
+                    if expected_rel is None:
+                        problems.append(
+                            "event_anchor.event_utc is outside the "
+                            "declared window beyond the timing "
+                            "tolerance")
+                    elif isinstance(rel, str) and \
+                            rel in _EVENT_ANCHOR_RELATIONS and \
+                            rel != expected_rel:
+                        problems.append(
+                            "event_anchor.relation_to_window does not "
+                            f"match event_utc position; expected "
+                            f"{expected_rel!r} using "
+                            "timing_tolerance_s")
         # ---- status-specific terminals ------------------------------
         if status in ONE_STATION_SCIENTIFIC_STATUSES:
-            _req(problems,
-                 f"{status} requires event_anchor",
-                 self.event_anchor)
             for name in _ONE_STATION_REQUIRED_SCIENTIFIC_DIGESTS:
-                if not getattr(self, name):
+                if _digest_is_absent(getattr(self, name)):
                     problems.append(
                         f"{status} requires {name} — a bytes-bound "
-                        "scientific verdict needs the full "
-                        "windowing/evaluation/timing evidence chain")
+                        "scientific verdict needs the complete "
+                        "source/bytes/execution/evaluation/config "
+                        "evidence chain")
         elif status in _ONE_STATION_NON_SCIENTIFIC_STATUSES:
             # RUN_ERROR / NOT_OPERATIONAL / BLOCKED bind no byte
             # evidence and no event — a non-scientific terminal is a
             # metadata/error/preflight marker, never a scientific
             # result.
             for name in _ONE_STATION_DIGEST_FIELDS:
-                if getattr(self, name):
+                if not _digest_is_absent(getattr(self, name)):
                     problems.append(
                         f"{status} must not carry {name} — a "
                         "non-scientific terminal binds no byte "

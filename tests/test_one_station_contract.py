@@ -36,12 +36,16 @@ _DIGEST_FIELDS = (
     "waveform_digest", "stationxml_digest", "source_digest",
     "decoder_environment_digest", "feature_contract_digest",
     "windowing_digest", "evaluation_digest",
-    "timing_verification_digest", "storage_receipt_digest")
+    "timing_verification_digest", "storage_receipt_digest",
+    "config_digest")
 
 #: The digest chain a scientific terminal MUST bind.
 _REQUIRED_SCIENTIFIC_DIGESTS = (
-    "waveform_digest", "stationxml_digest", "windowing_digest",
-    "evaluation_digest", "timing_verification_digest")
+    "source_digest", "waveform_digest", "stationxml_digest",
+    "decoder_environment_digest", "feature_contract_digest",
+    "windowing_digest", "evaluation_digest",
+    "timing_verification_digest", "storage_receipt_digest",
+    "config_digest")
 
 
 def _full_anchor(**kw) -> dict:
@@ -71,9 +75,14 @@ def _good(**kw) -> OneStationReceiptV1:
         event_anchor=_full_anchor(),
         waveform_digest="a" * 64,
         stationxml_digest="b" * 64,
+        source_digest="1" * 64,
+        decoder_environment_digest="2" * 64,
+        feature_contract_digest="3" * 64,
         windowing_digest="d" * 64,
         evaluation_digest="e" * 64,
-        timing_verification_digest="f" * 64)
+        timing_verification_digest="f" * 64,
+        storage_receipt_digest="7" * 64,
+        config_digest="8" * 64)
     base.update(kw)
     return OneStationReceiptV1(**base)
 
@@ -206,6 +215,11 @@ class TestScientificTerminals:
         assert any("outside the declared window" in p
                    for p in r.problems())
 
+    @pytest.mark.parametrize("anchor", [False, 0])
+    def test_falsey_event_anchor_is_not_absent(self, anchor):
+        r = _good(event_anchor=anchor)
+        assert any("event_anchor" in p for p in r.problems())
+
     def test_digests_must_be_sha256_when_present(self):
         assert any("waveform_digest" in p for p in
                    _good(waveform_digest="nothex").problems())
@@ -276,6 +290,15 @@ class TestStationAndWindow:
     def test_station_outside_authorized_list_rejected(self):
         r = _good(station_id="999")
         assert any("outside the declared authorized station" in p
+                   for p in r.problems())
+
+    def test_empty_authorized_station_list_rejected(self):
+        r = _good(authorized_stations=[])
+        assert any("authorized_stations" in p for p in r.problems())
+
+    def test_station_id_must_belong_to_declared_authorized_list(self):
+        r = _good(authorized_stations=("312",))
+        assert any("station_id" in p and "outside" in p
                    for p in r.problems())
 
     def test_authorized_list_may_narrow(self):
@@ -494,10 +517,68 @@ class TestEventAnchorStrictness:
         assert r.problems(), bad
 
     @pytest.mark.parametrize("rel", ["inside", "edge", "lead"])
-    def test_relation_vocabulary_admitted(self, rel):
-        r = _good(event_anchor=_full_anchor(relation_to_window=rel))
-        assert not any("relation_to_window" in p
-                       for p in r.problems())
+    def test_relation_semantics_admitted(self, rel):
+        if rel == "inside":
+            window_start = "2023-04-15T00:00:00Z"
+            window_end = "2023-04-16T00:00:00Z"
+            event_utc = "2023-04-15T06:11:25Z"
+        elif rel == "edge":
+            window_start = "2023-04-15T00:00:00Z"
+            window_end = "2023-04-16T00:00:00Z"
+            event_utc = "2023-04-15T00:00:00Z"
+        else:
+            window_start = "2023-04-15T06:00:00Z"
+            window_end = "2023-04-15T07:00:00Z"
+            event_utc = "2023-04-15T05:59:45Z"
+        r = _good(
+            window_start=window_start,
+            window_end=window_end,
+            event_anchor=_full_anchor(
+                event_utc=event_utc, relation_to_window=rel))
+        assert r.problems() == []
+
+    @pytest.mark.parametrize("rel,event_utc,window_start,window_end", [
+        ("lead", "2023-04-15T06:11:25Z",
+         "2023-04-15T00:00:00Z", "2023-04-16T00:00:00Z"),
+        ("edge", "2023-04-15T06:11:25Z",
+         "2023-04-15T00:00:00Z", "2023-04-16T00:00:00Z"),
+        ("inside", "2023-04-15T05:59:45Z",
+         "2023-04-15T06:00:00Z", "2023-04-15T07:00:00Z"),
+    ])
+    def test_relation_must_match_event_position(self, rel, event_utc,
+                                                window_start, window_end):
+        r = _good(
+            window_start=window_start,
+            window_end=window_end,
+            event_anchor=_full_anchor(
+                event_utc=event_utc, relation_to_window=rel))
+        assert any("relation_to_window" in p for p in r.problems())
+
+    def test_lead_must_stay_within_timing_tolerance(self):
+        r = _good(
+            window_start="2023-04-15T06:00:00Z",
+            window_end="2023-04-15T07:00:00Z",
+            event_anchor=_full_anchor(
+                event_utc="2023-04-15T05:59:29Z",
+                relation_to_window="lead"))
+        assert any("outside the declared window" in p
+                   for p in r.problems())
+
+    @pytest.mark.parametrize("event_utc,date,needle", [
+        ("2023-04-16T00:01:00Z", "2023-04-16", "declared window"),
+        ("2023-05-10T00:00:00Z", "2023-05-10", "authorized window"),
+    ])
+    def test_event_utc_must_be_within_declared_and_authorized_windows(
+            self, event_utc, date, needle):
+        r = _good(event_anchor=_full_anchor(
+            date=date, event_utc=event_utc))
+        assert any("event_utc" in p and needle in p
+                   for p in r.problems())
+
+    def test_anchor_date_must_match_event_utc_date(self):
+        r = _good(event_anchor=_full_anchor(date="2023-04-16"))
+        assert any("date" in p and "event_utc" in p
+                   for p in r.problems())
 
     def test_anchor_extra_keys_admitted(self):
         r = _good(event_anchor=_full_anchor(magnitude=4.9))
@@ -505,20 +586,19 @@ class TestEventAnchorStrictness:
 
 
 class TestExecutionDigestSurface:
-    """R-16: the declared optional execution-binding digests — absent
-    is admissible, present must be 64-hex sha256, and the scientific
-    terminals must bind the required chain."""
+    """The declared execution-binding digests are optional only for
+    non-scientific terminals; scientific terminals bind the full chain."""
 
     def test_all_digest_fields_on_skeleton(self):
         skel = one_station_receipt_skeleton()
         for name in _DIGEST_FIELDS:
             assert name in skel
 
-    def test_optional_digests_may_stay_absent(self):
-        # source_digest, decoder_environment_digest,
-        # feature_contract_digest, storage_receipt_digest are not
-        # required even on a scientific receipt.
-        assert _good().problems() == []
+    def test_non_scientific_digests_may_stay_absent(self):
+        r = OneStationReceiptV1(
+            status="RUN_ERROR", station_id="374",
+            reason="config rejected")
+        assert r.problems() == []
 
     @pytest.mark.parametrize("name", _DIGEST_FIELDS)
     def test_valid_digest_admitted(self, name):
@@ -530,6 +610,14 @@ class TestExecutionDigestSurface:
                                      ["a" * 64]])
     def test_malformed_digest_rejected(self, name, bad):
         r = _good(**{name: bad})
+        assert any(name in p for p in r.problems())
+
+    @pytest.mark.parametrize("name", _DIGEST_FIELDS)
+    @pytest.mark.parametrize("bad", [False, 0])
+    def test_falsey_digest_rejected_even_when_optional(self, name, bad):
+        r = OneStationReceiptV1(
+            status="RUN_ERROR", station_id="374",
+            reason="config rejected", **{name: bad})
         assert any(name in p for p in r.problems())
 
     @pytest.mark.parametrize("status", _SCIENTIFIC)

@@ -30,7 +30,10 @@ import argparse
 import datetime as _dt
 import hashlib
 import json
+import os
+import platform
 import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -44,6 +47,8 @@ from nepal.science_v0.regimes import (RegimeRunConfig, run_regimes,
 from nepal.science_v0.seasonal_frame import (SEASONAL_FEATURES,
                                            SEASONAL_UNITS,
                                            build_seasonal_frame)
+from p5_safe_io import (ExistingEvidenceError, write_once_bytes,
+                        write_once_json, write_once_sidecar)
 
 DEFAULT_DAILY_ROOT = Path(
     "/Users/sanjayb/nepal-event-anomaly-evidence/p5-glof-2026-09-19")
@@ -68,8 +73,21 @@ def _sha(p: Path) -> str:
     return hashlib.sha256(p.read_bytes()).hexdigest()
 
 
-def _write_sidecar(p: Path) -> None:
-    Path(str(p) + ".sha256").write_text(f"{_sha(p)}  {p.name}\n")
+def _utc_now() -> str:
+    return _dt.datetime.now(_dt.timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ")
+
+
+def _environment() -> dict:
+    versions = {}
+    for name in ("numpy", "pandas", "scikit-learn"):
+        try:
+            from importlib.metadata import version
+            versions[name] = version(name)
+        except Exception:
+            versions[name] = "unavailable"
+    return {"python": sys.version.split()[0],
+            "platform": platform.platform(), "packages": versions}
 
 
 def verify_daily_reference(daily_root: Path) -> dict:
@@ -192,6 +210,9 @@ def _manifest(frame_sha: str, prov_sha: str,
                    "daily JJA frame (era5-multibasin/features/"
                    "regime_frame_hma_jja_2001_2025.csv) under "
                    "p5_amendment_v3_seasonal_estimand",
+        # The source-manifest contract must resolve byte-bound source files
+        # on the executing host.  Receipt/report pointers use logical IDs;
+        # this legacy byte-verification field remains physical by contract.
         "evidence_root": str(lane_root),
         "source_files": [
             {"relpath": "features/seasonal_frame_jja_2001_2025.csv",
@@ -279,16 +300,40 @@ def _terminal_reason(artifact: dict) -> str | None:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--daily-root", default=str(DEFAULT_DAILY_ROOT))
-    ap.add_argument("--lane-root", default=str(DEFAULT_LANE_ROOT))
+    ap.add_argument("--lane-root", default=None,
+                    help="deprecated output-root alias")
+    ap.add_argument("--output-root", default=None,
+                    help="new empty output root; required to prevent overwrite")
     args = ap.parse_args()
     daily_root = Path(args.daily_root).resolve()
-    lane_root = Path(args.lane_root).resolve()
+    if args.output_root and args.lane_root and \
+            Path(args.output_root).resolve() != Path(args.lane_root).resolve():
+        print("REFUSED — --lane-root and --output-root disagree")
+        return 2
+    raw_output = args.output_root or args.lane_root
+    if not raw_output:
+        print("REFUSED — --output-root is required; canonical evidence "
+              "paths are write-once")
+        return 2
+    lane_root = Path(raw_output).resolve()
+    started_utc = _utc_now()
     daily_csv = (daily_root / "era5-multibasin/features/"
                  "regime_frame_hma_jja_2001_2025.csv")
     features_dir = lane_root / "features"
     run_dir = lane_root / "run"
     features_dir.mkdir(parents=True, exist_ok=True)
     run_dir.mkdir(parents=True, exist_ok=True)
+    output_paths = (
+        features_dir / "seasonal_frame_jja_2001_2025.csv",
+        features_dir / "seasonal_frame_provenance_v0.json",
+        features_dir / "negative_control_frame.csv",
+        run_dir / "seasonal_regime_artifact_v0.json",
+        run_dir / "seasonal_lane_receipt_v0.json")
+    existing = [str(p) for p in output_paths if p.exists()]
+    if existing:
+        print("REFUSED — output already contains governed evidence: "
+              + ", ".join(existing))
+        return 2
 
     receipt = {"record_type": "SEASONAL_LANE_RECEIPT_V1",
                "schema": "P5_SEASONAL_LANE_V1",
@@ -299,18 +344,47 @@ def main() -> int:
                    "production_authorized": False,
                    "warning_path_authorized": False,
                    "operational_claim": False},
-               "roots": {"daily_root": str(daily_root),
-                         "lane_root": str(lane_root)},
+               "roots": {"daily_root_id": "daily_p5a2",
+                         "lane_root_id": "seasonal_v1_current"},
                "estimand": "basin-year JJA hydroclimate seasonal "
                            "types (75 rows = 3 basins x 25 seasons)",
                "arms": {}, "status": "RUN_ERROR", "problems": []}
+    env = _environment()
+    receipt["execution"] = {
+        "activity_id": f"p5-seasonal-v1-{started_utc}-{os.getpid()}",
+        "started_utc": started_utc,
+        "completed_utc": None,
+        "environment": env,
+        "environment_digest": hashlib.sha256(
+            json.dumps(env, sort_keys=True,
+                       separators=(",", ":")).encode("utf-8")).hexdigest(),
+        "command": list(sys.argv)}
 
     # ---- frame build ------------------------------------------------
-    build = build_seasonal_frame(daily_csv, features_dir)
+    # Build in a temporary directory first.  The governed output root is
+    # published only through write-once atomic copies below.
+    with tempfile.TemporaryDirectory() as td:
+        build_tmp = build_seasonal_frame(daily_csv, Path(td))
+        frame_bytes = Path(build_tmp["csv"]).read_bytes()
+        prov_bytes = Path(build_tmp["provenance"]).read_bytes()
+    frame_out = features_dir / "seasonal_frame_jja_2001_2025.csv"
+    prov_out = features_dir / "seasonal_frame_provenance_v0.json"
+    try:
+        write_once_bytes(frame_out, frame_bytes)
+        write_once_sidecar(frame_out)
+        write_once_bytes(prov_out, prov_bytes)
+        write_once_sidecar(prov_out)
+    except ExistingEvidenceError as exc:
+        print(f"REFUSED — output publication failed: {exc}")
+        return 2
+    build = dict(build_tmp)
+    build["csv"] = frame_out
+    build["provenance"] = prov_out
     frame = build["frame"]
     receipt["frame"] = {
-        "csv": str(build["csv"]), "sha256": build["sha256"],
-        "provenance": str(build["provenance"]),
+        "csv": "features/seasonal_frame_jja_2001_2025.csv",
+        "sha256": build["sha256"],
+        "provenance": "features/seasonal_frame_provenance_v0.json",
         "n_rows": int(len(frame)),
         "dropped_basin_years": build["ledger"]
         ["dropped_basin_years"]}
@@ -353,10 +427,13 @@ def main() -> int:
     if artifact.get("status") != "RUN_ERROR":
         frozen = freeze_regime_artifact(dict(artifact))
         art_path = run_dir / "seasonal_regime_artifact_v0.json"
-        art_path.write_text(json.dumps(frozen, indent=1,
-                                       sort_keys=True) + "\n")
-        _write_sidecar(art_path)
-        arm_b["artifact"] = str(art_path)
+        try:
+            write_once_json(art_path, frozen, indent=1)
+            write_once_sidecar(art_path)
+        except ExistingEvidenceError as exc:
+            print(f"REFUSED — output publication failed: {exc}")
+            return 2
+        arm_b["artifact"] = "run/seasonal_regime_artifact_v0.json"
         arm_b["artifact_sha256"] = _sha(art_path)
         arm_b["regime_artifact_digest"] = \
             frozen.get("regime_artifact_digest")
@@ -364,19 +441,26 @@ def main() -> int:
             .get("required_gates")
         arm_b["gate_observations"] = (frozen.get("stability") or {}) \
             .get("gate_observations")
+        arm_b["config_digest"] = frozen.get("config_digest")
+        receipt["declared_config_digest"] = frozen.get("config_digest")
     receipt["arms"]["B_surface_core"] = arm_b
 
     # ---- Arm NC: declared negative control ---------------------------
     nc = _negative_control_frame(frame)
     nc_path = features_dir / "negative_control_frame.csv"
-    nc.to_csv(nc_path, index=False)
-    _write_sidecar(nc_path)
+    try:
+        write_once_bytes(nc_path, nc.to_csv(index=False).encode("utf-8"))
+        write_once_sidecar(nc_path)
+    except ExistingEvidenceError as exc:
+        print(f"REFUSED — output publication failed: {exc}")
+        return 2
     nc_cfg = _config(manifest, input_role="negative_control")
     nc_result = run_regimes(nc, list(SEASONAL_FEATURES),
                             _train_mask(nc), nc_cfg)
     nc_rejected = nc_result.get("status") == "RUN_ERROR"
     receipt["arms"]["NC_negative_control"] = {
-        "frame": str(nc_path), "frame_sha256": _sha(nc_path),
+        "frame": "features/negative_control_frame.csv",
+        "frame_sha256": _sha(nc_path),
         "input_role": "negative_control",
         "engine_status": nc_result.get("status"),
         "engine_reason": nc_result.get("reason"),
@@ -397,6 +481,7 @@ def main() -> int:
     else:
         receipt["status"] = arm_b["status"]
         receipt["terminal_reason"] = arm_b["terminal_reason"]
+    receipt["execution"]["completed_utc"] = _utc_now()
     _emit(receipt, run_dir)
     print(json.dumps({k: receipt[k] for k in
                       ("status", "terminal_reason", "arms")
@@ -405,10 +490,15 @@ def main() -> int:
 
 
 def _emit(receipt: dict, run_dir: Path) -> None:
+    execution = receipt.get("execution")
+    if isinstance(execution, dict) and execution.get("completed_utc") is None:
+        execution["completed_utc"] = _utc_now()
     out = run_dir / "seasonal_lane_receipt_v0.json"
-    out.write_text(json.dumps(receipt, indent=1, sort_keys=True)
-                   + "\n")
-    _write_sidecar(out)
+    try:
+        write_once_json(out, receipt, indent=1)
+        write_once_sidecar(out)
+    except ExistingEvidenceError as exc:
+        raise SystemExit(f"REFUSED — output publication failed: {exc}")
 
 
 if __name__ == "__main__":

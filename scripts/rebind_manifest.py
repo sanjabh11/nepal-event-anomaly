@@ -20,6 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "docs/science/ARTIFACT_MANIFEST_V0.json"
 
 NEW_GOVERNED = [
+    ".phase-loop/master-plan.md",
+    ".phase-loop/phase-ledger.jsonl",
     "nepal/gitutil.py",
     "nepal/science_v0/seasonal_frame.py",
     "nepal/seismic_sidecar/one_station_contract.py",
@@ -29,10 +31,18 @@ NEW_GOVERNED = [
     "scripts/run_daily_p5.py",
     "scripts/validate_evidence_index.py",
     "scripts/generate_evidence_index_v1.py",
+    "scripts/generate_evidence_index_v2.py",
+    "scripts/build_p5_release_closure_v2.py",
+    "scripts/materialize_evidence_sidecars.py",
+    "scripts/p5_safe_io.py",
     "tests/test_seasonal_lane.py",
     "tests/test_seasonal_frame_adversarial.py",
     "tests/test_one_station_contract.py",
     "tests/test_evidence_index_validator.py",
+    "tests/test_materialize_evidence_sidecars.py",
+    "tests/test_p5_audit3_writers.py",
+    "tests/test_p5_safe_io.py",
+    "docs/science/P5_AUDIT3_REMEDIATION_PLAN_V0.md",
     "docs/science/P5_EXTENSION_STATUS_V0.md",
 ]
 

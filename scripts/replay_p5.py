@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""REPLAY-01 — independent replay of the P5 GLOF real-data chain.
+"""REPLAY-01 — artifact-integrity replay of the P5 GLOF real-data chain.
 
-Rehashes every manifest-bound byte in the evidence root, REBUILDS the
-derived artifacts deterministically (coverage-ledger file list, FMX
-report, cutoff + preprocessing records, package section digests,
-receipt report digest), and compares digests end-to-end.  A check that
-only verifies ledger bytes or sidecars is NOT full replay — the
-status REPLAY_OK is emitted only when computation artifacts reproduce
-(R11.9-09).  Any difference is a replay failure — promotion stays
-impossible.
+Rehashes every declared byte in the evidence root, rebuilds the
+deterministic FMX/package/receipt integrity chain, and validates the
+persisted regime artifact envelope and freeze digests.  This script does
+NOT independently refit the regime model; its proof level is therefore
+``artifact_integrity_replay``.  A future model-execution replay must use
+the separate ``model_reexecuted`` scope after a complete configuration
+and source inventory is available.
 
 Usage:
-    PYTHONPATH=. .venv/bin/python -B scripts/replay_p5.py [--evidence-root PATH]
+    PYTHONPATH=. .venv/bin/python -B scripts/replay_p5.py \
+        [--evidence-root PATH] [--report-out PATH]
 """
 from __future__ import annotations
 
@@ -64,7 +64,14 @@ def replay(evidence_root: Path) -> dict:
     root = Path(evidence_root)
     failures: list[str] = []
     report: dict = {"evidence_root": str(root),
-                    "replay_scope": "full_recomputation",
+                    "replay_scope": "artifact_integrity_replay",
+                    "model_reexecution": {
+                        "status": "NOT_RUN",
+                        "reason": "this replay validates persisted bytes and "
+                                  "does not invoke run_regimes; an independent "
+                                  "model_reexecuted run requires a separate "
+                                  "execution record",
+                    },
                     "checks": {}}
 
     # 1. every coverage-ledger entry rehashes to live bytes
@@ -96,8 +103,11 @@ def replay(evidence_root: Path) -> dict:
         rebuilt = rebuild_ledger_entry(root, e["relpath"])
         # entries may carry annotation fields (status/note); only the
         # re-derived evidence fields are compared
+        # Sidecars are release-integrity metadata and may be materialized
+        # after the acquisition ledger was written.  The historical ledger
+        # remains immutable; only its payload size/digest are replay-bound.
         if any(rebuilt[k] != e.get(k)
-               for k in ("size", "sha256", "sidecar")):
+               for k in ("size", "sha256")):
             field_mismatch.append(e["relpath"])
     disk_payloads = {
         str(p.relative_to(root)) for p in root.rglob("*")
@@ -295,7 +305,7 @@ def replay(evidence_root: Path) -> dict:
             failures.append("authority_flags")
 
         # R-04/R-05 — a bound digest is not an artifact: the regime
-        # replay state is `artifact_replayed` ONLY when a persisted
+        # replay state is `artifact_integrity_replayed` ONLY when a persisted
         # artifact exists whose envelope digest recomputes, whose
         # freeze digest verifies, whose producer floor is clean, and
         # whose digest equals the receipt's bound digest.
@@ -338,16 +348,14 @@ def replay(evidence_root: Path) -> dict:
                 if not ok_:
                     failures.append("daily_" + name)
             artifact_ok = env_ok and fz_ok and not floor and binds
-        # R11.9-30: distinguish chain-recomputation replay from a
-        # successful regime replay — a blocked engine is honest
-        # evidence, not a replay failure, but must be labelled.
-        # `artifact_replayed` requires a validated persisted
-        # artifact; without one the honest state is
-        # `chain_recomputed_receipt_only`.
+        # A persisted artifact whose envelope, freeze, producer floor, and
+        # receipt binding all validate is an integrity replay only.  It is
+        # intentionally not called model-reexecuted: this function never
+        # invokes run_regimes.
         report["regime_replay_state"] = (
             "regime_execution_blocked"
             if body.get("status") == "RUN_ERROR"
-            else ("artifact_replayed" if artifact_ok
+            else ("artifact_integrity_replayed" if artifact_ok
                   else "chain_recomputed_receipt_only"))
 
     report["status"] = "REPLAY_FAIL" if failures else "REPLAY_OK"
@@ -358,16 +366,27 @@ def replay(evidence_root: Path) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--evidence-root", default=str(DEFAULT_ROOT))
+    ap.add_argument(
+        "--report-out",
+        default=None,
+        help="explicit new path for a report; omitted means stdout only")
     args = ap.parse_args()
     report = replay(Path(args.evidence_root))
-    out = Path(args.evidence_root) / "retrieval" / \
-        "p5_replay_report_v0.json"
-    b = json.dumps(report, indent=2, sort_keys=True).encode()
-    out.write_bytes(b)
-    out.with_suffix(".json.sha256").write_text(
-        hashlib.sha256(b).hexdigest() + "\n")
+    out = None
+    if args.report_out:
+        from p5_safe_io import write_once_bytes, write_once_text
+        out = Path(args.report_out).resolve()
+        b = json.dumps(report, indent=2, sort_keys=True).encode() + b"\n"
+        try:
+            digest = write_once_bytes(out, b)
+            write_once_text(Path(str(out) + ".sha256"),
+                            f"{digest}  {out.name}\n")
+        except FileExistsError as exc:
+            print(f"REPORT_WRITE_REFUSED: {exc}")
+            return 2
     print(json.dumps(report, indent=1)[:2000])
-    print(f"\nstatus: {report['status']}  -> {out}")
+    print(f"\nstatus: {report['status']}" +
+          (f"  -> {out}" if out else "  -> stdout only"))
     return 0 if report["status"] == "REPLAY_OK" else 1
 
 
