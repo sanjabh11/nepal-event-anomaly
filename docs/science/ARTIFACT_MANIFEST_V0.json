@@ -1,6 +1,6 @@
 {
  "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
- "content_head": "24f9c11f8c7162d2a878ead189ec1eb2d9d70b82",
+ "content_head": "877385173997b3bbd2518b7a846dfd1c687fbf2f",
  "files": [
   {
    "relpath": ".github/workflows/research-v0.yml",
@@ -14,8 +14,8 @@
   },
   {
    "relpath": "README.md",
-   "sha256": "ad965125ebebb1976adc528c0d232a58af270323388dbb43adf9d25d20bb4990",
-   "size_bytes": 15306
+   "sha256": "e4d5a571acb7e5e95afaf354e5a4955a651a406c2d2add8a4e928682fca810bf",
+   "size_bytes": 16800
   },
   {
    "relpath": "conftest.py",
@@ -29,8 +29,8 @@
   },
   {
    "relpath": "docs/science/GAP_REGISTER_V0.md",
-   "sha256": "4e430de329e7ff9c805a4a4af2aca5bc7b90ed13c798988f8bf2ffdda842c74b",
-   "size_bytes": 120604
+   "sha256": "017b9cfe2844fde582fbc37fc143d9377f624b7118a8c27e7f13a64be7ec20f1",
+   "size_bytes": 123571
   },
   {
    "relpath": "docs/science/GOVERNANCE_EXERCISE_RECORD_V0.md",
@@ -94,8 +94,8 @@
   },
   {
    "relpath": "docs/science/P5_EXTENSION_STATUS_V0.md",
-   "sha256": "3aaf8adff473e70b60d84dd30fb0ce48f143760fecfa99e899931335f8ddcebe",
-   "size_bytes": 2851
+   "sha256": "60e845705944555eb33a9e3cd570b3040fc10abe4f244ad7ac8468310f8eee63",
+   "size_bytes": 4162
   },
   {
    "relpath": "docs/science/P5_OPERATIVE_ANCHOR_NOTE_V0.md",
@@ -394,8 +394,8 @@
   },
   {
    "relpath": "nepal/seismic_sidecar/one_station_contract.py",
-   "sha256": "0b6825d402fc472b1eaf99cc9dbaeba48b85cf25225b55f13f5af98836f322be",
-   "size_bytes": 21754
+   "sha256": "f211d07bdf81071db8041f1d6044fd1062bcd45887e5bfc899a0c71cf83c6a36",
+   "size_bytes": 29545
   },
   {
    "relpath": "nepal/seismic_sidecar/provenance.py",
@@ -413,24 +413,39 @@
    "size_bytes": 6985
   },
   {
+   "relpath": "scripts/generate_evidence_index_v1.py",
+   "sha256": "172e1def7e51e0283f17aa65d5d210b286a94d291c71fd52e5cbc8c4abf728bc",
+   "size_bytes": 10783
+  },
+  {
    "relpath": "scripts/rebind_manifest.py",
-   "sha256": "4214f3f3c56b4fde2bd62196cde3d7313896072cb34d7cdba4021c27888ba4c5",
-   "size_bytes": 2088
+   "sha256": "47b61a1f9a7d5cc46d4e28280711d218dbe0460ca911754ebb0d179e3cbda9fa",
+   "size_bytes": 2252
   },
   {
    "relpath": "scripts/replay_p5.py",
-   "sha256": "7b5242550bb03fa693cc30f1d1a366916642c438dcce0fbb2867fdec7edba57c",
-   "size_bytes": 13727
+   "sha256": "6c013628c721533f04fd193d6a26e644b7ac7ddf95973d909354a32bfd0560eb",
+   "size_bytes": 16395
   },
   {
    "relpath": "scripts/replay_seasonal_p5.py",
-   "sha256": "92bbef6169099053c490c11db92fa56f84bbe3aa471d863d012d643b9dfb3488",
-   "size_bytes": 13600
+   "sha256": "a1a51e09dfc707b14d44bf4267c574ad3b182aea3da791871d85ec7c25ba6738",
+   "size_bytes": 14473
+  },
+  {
+   "relpath": "scripts/run_daily_p5.py",
+   "sha256": "d8b9bf94d739b5c75b33506e25a3c8904638256e8a079628cb80063e06fd6189",
+   "size_bytes": 6736
   },
   {
    "relpath": "scripts/run_seasonal_p5.py",
-   "sha256": "25040ad6050c534908b8f6c2d1bf3a76a98fe1667f596b39dfecdacb078b03a3",
-   "size_bytes": 15028
+   "sha256": "b16e4c757cf2cc2fbdd46a76fb34e1d229e6f1e49112551ca9ab7a3aaabf4782",
+   "size_bytes": 17754
+  },
+  {
+   "relpath": "scripts/validate_evidence_index.py",
+   "sha256": "ec70bafa987d0194fd068c0518e6972ed4cc27168ea41fdcdf4a513efb019346",
+   "size_bytes": 19472
   },
   {
    "relpath": "tests/fixtures/__init__.py",
@@ -461,6 +476,11 @@
    "relpath": "tests/test_era5_anchor_intake.py",
    "sha256": "6fd8e4a92495df280179960f20c6fff0997086d2be3faead1e99afff7da6bf7d",
    "size_bytes": 7639
+  },
+  {
+   "relpath": "tests/test_evidence_index_validator.py",
+   "sha256": "00d21297bd8946db0a1a77ee5cefd93fce9d69b868d0e24b94c176760eb1d63d",
+   "size_bytes": 15523
   },
   {
    "relpath": "tests/test_experiment_v0_adapters.py",
@@ -509,8 +529,8 @@
   },
   {
    "relpath": "tests/test_one_station_contract.py",
-   "sha256": "ea55cf51beab8f2aa2a6d564bc91e1a6c2e95c5e8c73b00e234e4e44b9461031",
-   "size_bytes": 15202
+   "sha256": "542d58d846ed1317adf777a33a91fea9a2ddef2832d32d5c13482fa74fd87157",
+   "size_bytes": 26209
   },
   {
    "relpath": "tests/test_p3_hmaglofdb_intake.py",
@@ -554,8 +574,8 @@
   },
   {
    "relpath": "tests/test_r11_9_bindings.py",
-   "sha256": "2c89ec6bcebf0d98aa4434d20b7fe2024be1a6a869726e0706b4cfebdb9b9bde",
-   "size_bytes": 23092
+   "sha256": "5e92c5625ee71f6dbff7635732fe3ce9a7fce32bc15a5a3584d5778391569489",
+   "size_bytes": 23632
   },
   {
    "relpath": "tests/test_r11_9_dual_manifest_contract.py",
@@ -689,8 +709,8 @@
   },
   {
    "relpath": "tests/test_seasonal_lane.py",
-   "sha256": "068a4031b106e57c248814ebf893fc1814db81138dc80083915ce1d7fb46247d",
-   "size_bytes": 29137
+   "sha256": "2c6783bb68aa71f59a6e67aef32e06e6db1f52ff705e4ff945a8f8ad9a523e96",
+   "size_bytes": 31282
   },
   {
    "relpath": "tests/test_seismic_shared_regression.py",
@@ -738,9 +758,9 @@
    "size_bytes": 14244
   }
  ],
- "generated": "post-P5 seasonal-lane bind (content 1df75dd) \u2014 seasonal estimand executed UNSUPERVISED_STRUCTURE_NOT_STABLE; seismic preflight BLOCKED; head-resolvability guard added",
+ "generated": "post-P5 provenance-repair bind (content 8773851) \u2014 daily artifact serialized under amendment v5; Arm A artifact-bound; evidence index v1; one-station contract hardened; seasonal + daily honest negatives reproduced",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "24f9c11f8c7162d2a878ead189ec1eb2d9d70b82",
+ "manifest_commit": "877385173997b3bbd2518b7a846dfd1c687fbf2f",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -750,17 +770,19 @@
  "test_results": {
   "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
   "claim_scan": "clean on all governed files",
-  "collection_guard": "repo-wide collection == tests/ (3529 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
+  "collection_guard": "repo-wide collection == tests/ (3720 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
   "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
-  "full_suite_venv": "3523 passed, 6 skipped, 0 failed, 57 warnings \u2014 post-seasonal-v1 canonical suite (3529 collected); the two pre-rebind manifest-drift failures resolve at this rebind",
+  "full_suite_venv": "3714 passed, 6 skipped, 0 failed, 57 warnings \u2014 post-repair canonical suite (3720 collected); the two pre-rebind drift/semantics failures resolve at this rebind",
   "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
   "p5_a2_status_consistency": "local guard passed; CI guard configured \u2014 current CANDIDATE_ONLY / UNSUPERVISED_STRUCTURE_NOT_STABLE result, false authority flags, and release metadata aligned",
   "p5_a2_temporal_holdout": "110 passed, 1 skipped \u2014 temporal mapping, waiver, and documentation regression lane",
+  "p5_daily_replay": "REPLAY_OK, regime_replay_state artifact_replayed \u2014 persisted v1 artifact validated (envelope+freeze+floor+receipt binding)",
+  "p5_evidence_index_validator": "30 passed \u2014 schema/vocab/digest/path/provenance/self-reference/sidecar defect classes fail closed",
   "p5_io_contract": "34 passed",
-  "p5_one_station_contract": "78 passed \u2014 V1 status vocabulary, v0 mapping completeness, authority-flag strictness, event-anchor/digest requirements, BLOCKED constraints, forbidden-term scan, window bounds, round-trips",
+  "p5_one_station_contract": "238 passed \u2014 V1 status vocabulary, v0 mapping completeness, authority-flag strictness, event-anchor strictness, execution-digest chain, 24h window bound, BLOCKED/NOT_OPERATIONAL/RUN_ERROR bind nothing, bounded malformed-input errors, forbidden-term scan, window bounds, round-trips",
   "p5_seasonal_frame_adversarial": "11 passed \u2014 input-domain refusals (non-JJA labels, out-of-window dates, undeclared units/years, duplicate/non-consecutive coverage), honest-missingness ledger drops, real-frame clean-build regression",
-  "p5_seasonal_lane": "44 passed \u2014 preflight refusals, parameter-count guard, negative-control statistics, frame-builder integrity, gate-observation semantics, Arm A verification, receipt authority, claim-vocabulary ceiling",
-  "p5_seasonal_replay": "REPLAY_OK \u2014 deterministic frame rebuild, envelope+freeze digests, producer floor, receipt bindings, gate-observation semantics, Arm A verification, authority fields, negative-control refusal",
+  "p5_seasonal_lane": "45 passed \u2014 preflight refusals, parameter-count guard, negative-control statistics, frame-builder integrity, gate-observation semantics, artifact-bound Arm A verification, receipt authority, claim-vocabulary ceiling",
+  "p5_seasonal_replay": "REPLAY_OK \u2014 deterministic frame rebuild, envelope+freeze digests, producer floor, receipt bindings, gate-observation semantics, live Arm A artifact-chain re-verify, authority fields, negative-control refusal",
   "promotion_matrix": "699 passed (r9 179 + r10 520)",
   "r10_promotion": "520 passed (505 R10 matrix + 15 R10.1 residual regressions)",
   "r11_2_provenance": "35 passed",
