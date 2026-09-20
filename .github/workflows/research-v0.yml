@@ -300,6 +300,63 @@ jobs:
                 m["manifest_commit"])
           '
 
+      - name: P5-A2 current-result consistency guard
+        # The temporal result is a deliberately negative scientific
+        # outcome.  Keep the repeated release surfaces aligned without
+        # reopening the hardened validators or treating documentation as
+        # scientific evidence.  Historical sections are allowed to retain
+        # their dated counts; this guard checks only the current P5-A2
+        # report, ledger section, README section, and manifest metadata.
+        run: |
+          set -e
+          PYTHONPATH=. python -B - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+
+          root = Path('.')
+          report = (root / 'docs/science/P5_A2_TEMPORAL_REGIME_RESULT_V0.md').read_text()
+          readme = (root / 'README.md').read_text()
+          ledger = (root / 'docs/science/P0_BASELINE_LEDGER.md').read_text()
+          register = (root / 'docs/science/GAP_REGISTER_V0.md').read_text()
+          manifest = json.loads(
+              (root / 'docs/science/ARTIFACT_MANIFEST_V0.json').read_text())
+
+          assert '**Status:** `CANDIDATE_ONLY`' in report
+          assert '`UNSUPERVISED_STRUCTURE_NOT_STABLE`' in report
+          for flag in ('promotion_eligible=false',
+                       'warning_path_authorized=false',
+                       'production_authorized=false'):
+              assert flag in report, flag
+          for phrase in ('Event labels remain `UNADJUDICATED`',
+                         'controls are `CENSORED_OR_AMBIGUOUS`'):
+              assert phrase in report, phrase
+          assert 'fourth-group amendment' in report
+          assert 'dormant' in report
+          for doc, marker in (
+              (readme, '### P5-A2 temporal amendment (current state'),
+              (ledger, '## P5-A2 temporal-amendment execution'),
+              (register, '## P5-A2 closure round'),
+          ):
+              assert marker in doc, marker
+              current = doc[doc.index(marker):]
+              assert 'CANDIDATE_ONLY' in current
+              assert 'UNSUPERVISED_STRUCTURE_NOT_STABLE' in current
+          guard = manifest['test_results']['collection_guard']
+          match = re.search(r'\((\d+) nodes?\)', guard)
+          assert match, guard
+          suite = manifest['test_results']['full_suite_venv']
+          assert '3387 passed' in suite
+          assert '6 skipped' in suite
+          assert '0 failed' in suite
+          assert '3393 collected' in suite
+          assert int(match.group(1)) == 3393
+          assert manifest['manifest_commit'] == manifest['content_head']
+          print('P5-A2 status consistency: PASS')
+          print('P5-A2 posture: CANDIDATE_ONLY / UNSUPERVISED_STRUCTURE_NOT_STABLE')
+          print('P5-A2 authority flags: all false')
+          PY
+
       - name: Disk reserve guard
         run: |
           avail=$(df -k . | awk 'NR==2 {print $4}')
