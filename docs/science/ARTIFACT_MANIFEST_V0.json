@@ -1,6 +1,6 @@
 {
  "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
- "content_head": "56ea9a14c3be3f0f4ee0c7bb5d25b84ea6e52d49",
+ "content_head": "1df75dd4ff7ed7e82558c7ac658aee06edb95e5f",
  "files": [
   {
    "relpath": ".github/workflows/research-v0.yml",
@@ -14,8 +14,8 @@
   },
   {
    "relpath": "README.md",
-   "sha256": "84278855791b1da32a09eefd52f7667484cb5ee32cce02051e89e19cf2b89699",
-   "size_bytes": 12172
+   "sha256": "2cfd556fb74361dbad63866249c21cecbfed9476d4b86926962f9b8193583f8c",
+   "size_bytes": 13450
   },
   {
    "relpath": "conftest.py",
@@ -253,6 +253,11 @@
    "size_bytes": 40531
   },
   {
+   "relpath": "nepal/gitutil.py",
+   "sha256": "01033627ff7cd4032ba2e8d3bb828d8d5be00f45824ed452b6c85ab61046ebfb",
+   "size_bytes": 1210
+  },
+  {
    "relpath": "nepal/gmm_descriptive.py",
    "sha256": "a882e9a1a1f6105933f2dba6ae8909ea30d0d4f9f68203e4995903bf8cbed4b5",
    "size_bytes": 63342
@@ -274,8 +279,8 @@
   },
   {
    "relpath": "nepal/research_v0/cli.py",
-   "sha256": "14764fec47603eb66a84d3b9192014fe2c84b2581acd3eb7493230212261c019",
-   "size_bytes": 21041
+   "sha256": "7fd90c3990733d69111b4acfb1fb91a56ef0b269f7831ef7eea4c33e63b30ea5",
+   "size_bytes": 22079
   },
   {
    "relpath": "nepal/research_v0/gates.py",
@@ -299,8 +304,8 @@
   },
   {
    "relpath": "nepal/research_v0/producer_validation.py",
-   "sha256": "dfd6a9bfeb8c7d5a4ab4d99fa837ed66aa0be8142b5279e49d82e430bf9d6193",
-   "size_bytes": 155913
+   "sha256": "1f9ed99ff23928cedc6e25c6a3ed4c43e1f7d7722b7ca29002c399c4ed33cd01",
+   "size_bytes": 159147
   },
   {
    "relpath": "nepal/research_v0/records.py",
@@ -344,8 +349,13 @@
   },
   {
    "relpath": "nepal/science_v0/regimes.py",
-   "sha256": "595ba294b8813ec3247a17e0b6b3436ab3b9d9d00aee7d362cd52de7e2bb962c",
-   "size_bytes": 138791
+   "sha256": "9ffd636260718b1bf7cd5e4b16204102217d942846d2d33fed4f8305f248c05f",
+   "size_bytes": 151688
+  },
+  {
+   "relpath": "nepal/science_v0/seasonal_frame.py",
+   "sha256": "0436723be988a13150a6127bb1b44649772b00b95c4a8fd6f4f0a99c4771e744",
+   "size_bytes": 10767
   },
   {
    "relpath": "nepal/seismic_sidecar/__init__.py",
@@ -393,9 +403,24 @@
    "size_bytes": 6985
   },
   {
+   "relpath": "scripts/rebind_manifest.py",
+   "sha256": "db30805034d0c78dfc62b2e2b443888e14845ec8b5345f38edd08953ca4f24ea",
+   "size_bytes": 1899
+  },
+  {
    "relpath": "scripts/replay_p5.py",
    "sha256": "7b5242550bb03fa693cc30f1d1a366916642c438dcce0fbb2867fdec7edba57c",
    "size_bytes": 13727
+  },
+  {
+   "relpath": "scripts/replay_seasonal_p5.py",
+   "sha256": "6154643002394777500a5d2006a2a6f6f729234a15fd778fa4cf3c960804424a",
+   "size_bytes": 7954
+  },
+  {
+   "relpath": "scripts/run_seasonal_p5.py",
+   "sha256": "e8d7efd8325c9ebf6e67457c0e5cbd4310b65cffafdaad9fb7720f39ba6ea0f9",
+   "size_bytes": 10131
   },
   {
    "relpath": "tests/fixtures/__init__.py",
@@ -509,8 +534,8 @@
   },
   {
    "relpath": "tests/test_r11_5_release_closure.py",
-   "sha256": "8fe973e703e0a23929a6bc40e7c4a02b18882ac86909dd358e32a7d0fc90d3d2",
-   "size_bytes": 4774
+   "sha256": "285f2e38a4509867cebccf9e4b8b26505aace124f108ef3c43050af000bcef8a",
+   "size_bytes": 6709
   },
   {
    "relpath": "tests/test_r11_9_bindings.py",
@@ -639,8 +664,13 @@
   },
   {
    "relpath": "tests/test_science_v0_regimes.py",
-   "sha256": "7fcfc2ed0e1a6224d54e5c75762581671032e0811719c7c6a340649f13c2488e",
-   "size_bytes": 40832
+   "sha256": "39141cad7e06de30a26178c7d1c6c69437c21f423beff9837e95ca3db57f2cf4",
+   "size_bytes": 40955
+  },
+  {
+   "relpath": "tests/test_seasonal_lane.py",
+   "sha256": "b93098419433538996f9d1c746d926efc185ba6ce7968caa68d0e114b10862c0",
+   "size_bytes": 19407
   },
   {
    "relpath": "tests/test_seismic_shared_regression.py",
@@ -649,8 +679,8 @@
   },
   {
    "relpath": "tests/test_seismic_sidecar_contract.py",
-   "sha256": "4bf9c127af8bb7b7a4f61de5f4d93751be9eae63f339f372510c3f95d5ec598d",
-   "size_bytes": 18797
+   "sha256": "8f88261b4f5cc0a3f37234dd8cd2e6877efe90d3f206053ff3633207b6f44a33",
+   "size_bytes": 18802
   },
   {
    "relpath": "tests/test_seismic_sidecar_events.py",
@@ -688,9 +718,9 @@
    "size_bytes": 14244
   }
  ],
- "generated": "post-P5-A2 result-consistency guard (content 56ea9a1)",
+ "generated": "post-P5 seasonal-lane bind (content 1df75dd) \u2014 seasonal estimand executed UNSUPERVISED_STRUCTURE_NOT_STABLE; seismic preflight BLOCKED; head-resolvability guard added",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "56ea9a14c3be3f0f4ee0c7bb5d25b84ea6e52d49",
+ "manifest_commit": "1df75dd4ff7ed7e82558c7ac658aee06edb95e5f",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -700,17 +730,21 @@
  "test_results": {
   "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
   "claim_scan": "clean on all governed files",
-  "collection_guard": "repo-wide collection == tests/ (3393 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
+  "collection_guard": "repo-wide collection == tests/ (3424 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
   "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
-  "full_suite_venv": "3387 passed, 6 skipped, 0 failed, 57 warnings \u2014 post-P5-A2 temporal amendment canonical suite (3393 collected)",
+  "full_suite_venv": "3417 passed, 6 skipped, 0 failed, 57 warnings \u2014 post-seasonal-lane canonical suite (3424 collected); the collection-guard drift self-resolved at this rebind",
   "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
+  "p5_a2_status_consistency": "local guard passed; CI guard configured \u2014 current CANDIDATE_ONLY / UNSUPERVISED_STRUCTURE_NOT_STABLE result, false authority flags, and release metadata aligned",
+  "p5_a2_temporal_holdout": "110 passed, 1 skipped \u2014 temporal mapping, waiver, and documentation regression lane",
   "p5_io_contract": "34 passed",
+  "p5_seasonal_lane": "29 passed \u2014 preflight refusals (covariance/grain/role/K/null-strata/LORO scope), parameter-count guard, negative-control statistics, frame-builder integrity, bound-artifact + receipt checks",
+  "p5_seasonal_replay": "REPLAY_OK \u2014 deterministic frame rebuild, envelope+freeze digests, producer floor, receipt bindings, negative-control refusal",
   "promotion_matrix": "699 passed (r9 179 + r10 520)",
   "r10_promotion": "520 passed (505 R10 matrix + 15 R10.1 residual regressions)",
   "r11_2_provenance": "35 passed",
   "r11_3_provenance": "23 passed",
   "r11_5_real_path": "93 passed, 1 skipped (p5_glof_intake + real_fmx_audit + glof_poc_real_path + regime_real_path)",
-  "r11_5_release_closure": "4 passed (manifest_commit identity, lane governance, collection census, CLI stale-commit rejection)",
+  "r11_5_release_closure": "6 passed (manifest_commit identity, lane governance, collection census, CLI stale-commit rejection, head resolvability, dangling-head rejection)",
   "r11_9_dual_manifest": "6 passed \u2014 RUN_EVIDENCE_MANIFEST_V0 amendment ratified and wired; strict-xfail pins removed",
   "r11_9_semantic_binding": "22 passed \u2014 verified-manifest FMX, cutoff/preprocessing records, semantic role binding, full-recomputation replay (13 synthetic probes + 9 real-evidence gates, skipif when root absent)",
   "r11_glof_poc_contract": "132 passed",
@@ -722,8 +756,6 @@
   "seismic_focused_lane": "210 passed combined (143 component + 47 intake + 14 shared regression + 4 addendum)",
   "seismic_shared_regression": "14 passed (vocabulary isolation, record lane, engine lane, producer floor, adapter rejection)",
   "seismic_sidecar": "143 passed component (contract 53 + features 31 + observability 25 + runner 34, incl. one real engine artifact under SEISMIC_WAVEFORM_RETROSPECTIVE)",
-  "seismic_sidecar_intake": "49 passed (io 26 incl. STEIM flag-gate probes + provenance 10 + events 13 \u2014 byte-parsed intake, generation provenance, event package)",
-  "p5_a2_temporal_holdout": "110 passed, 1 skipped \u2014 temporal mapping, waiver, and documentation regression lane",
-  "p5_a2_status_consistency": "local guard passed; CI guard configured \u2014 current CANDIDATE_ONLY / UNSUPERVISED_STRUCTURE_NOT_STABLE result, false authority flags, and release metadata aligned"
+  "seismic_sidecar_intake": "49 passed (io 26 incl. STEIM flag-gate probes + provenance 10 + events 13 \u2014 byte-parsed intake, generation provenance, event package)"
  }
 }
