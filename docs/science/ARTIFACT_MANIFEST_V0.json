@@ -1,11 +1,11 @@
 {
  "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
- "content_head": "0d10e09a15df20dee26baaacedd893d1fabcde60",
+ "content_head": "56ea9a14c3be3f0f4ee0c7bb5d25b84ea6e52d49",
  "files": [
   {
    "relpath": ".github/workflows/research-v0.yml",
-   "sha256": "b28f8cc2cf36ea7671b34382f7f78bf5b66700dd338ca22dcf7910529c9e2727",
-   "size_bytes": 14667
+   "sha256": "71f13e50fdf9556fbe00d4c178908530e56f9dfdfbb7dac5ad99bcf0ba2c6375",
+   "size_bytes": 17455
   },
   {
    "relpath": ".gitignore",
@@ -688,9 +688,9 @@
    "size_bytes": 14244
   }
  ],
- "generated": "post-acquisition HMAGLOFDB status reconciliation (content 0d10e09)",
+ "generated": "post-P5-A2 result-consistency guard (content 56ea9a1)",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "0d10e09a15df20dee26baaacedd893d1fabcde60",
+ "manifest_commit": "56ea9a14c3be3f0f4ee0c7bb5d25b84ea6e52d49",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -723,6 +723,7 @@
   "seismic_shared_regression": "14 passed (vocabulary isolation, record lane, engine lane, producer floor, adapter rejection)",
   "seismic_sidecar": "143 passed component (contract 53 + features 31 + observability 25 + runner 34, incl. one real engine artifact under SEISMIC_WAVEFORM_RETROSPECTIVE)",
   "seismic_sidecar_intake": "49 passed (io 26 incl. STEIM flag-gate probes + provenance 10 + events 13 \u2014 byte-parsed intake, generation provenance, event package)",
-  "p5_a2_temporal_holdout": "110 passed, 1 skipped \u2014 temporal mapping, waiver, and documentation regression lane"
+  "p5_a2_temporal_holdout": "110 passed, 1 skipped \u2014 temporal mapping, waiver, and documentation regression lane",
+  "p5_a2_status_consistency": "local guard passed; CI guard configured \u2014 current CANDIDATE_ONLY / UNSUPERVISED_STRUCTURE_NOT_STABLE result, false authority flags, and release metadata aligned"
  }
 }
