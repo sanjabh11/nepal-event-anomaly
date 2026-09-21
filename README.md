@@ -308,23 +308,25 @@ source digest), required execution-digest chain for scientific
 statuses, bounded malformed-input errors. Seismic remains
 retrospective-only and is **not** a Nepal predictor.
 
-Cross-root provenance: `retrieval/p5_evidence_index_v7.json` is the
+Cross-root provenance: `retrieval/p5_evidence_index_v8.json` is the
 current exhaustive release index: it binds every non-sidecar payload in
 the daily, seismic logical, seasonal-v0, and seasonal-v1 surfaces,
 requires a sidecar for each payload, and records explicit exclusions —
 including typed `planned` slots for outputs published after index
 generation (`CLOSURE_PENDING` pre-publication semantics). The detached
-release closure (`retrieval/p5_release_closure_v7.json`) is published
+release closure (`retrieval/p5_release_closure_v8.json`) is published
 into its declared slot by `scripts/build_p5_release_closure_v4.py` and
 verified post-publication with the explicit
 `--current-tree --repo-root` binding. `CURRENT_TREE_CLOSURE_OK` means
 the bundle matches the live HEAD, manifest digest, and suite receipt;
 default frozen-mode validation remains an internal-consistency check.
 Suite counts are bound to the machine-generated
-`p5_suite_receipt_v4.json`, never free-form. The v7 closure binds the
+`p5_suite_receipt_v5.json`, never free-form. The v8 closure binds the
 append-only `INCIDENT_SURFACE_V2.json`; V1 remains preserved through its
-V2 supersedes digest. Indexes v1–v6 and closure v6 remain immutable
-historical records. Both replay reports are
+V2 supersedes digest. Indexes v1–v7 and closure v6 remain immutable
+historical records; index v7 is an unclosed diagnostic generation
+preserved after its relative planned-slot argument was rejected. Both
+replay reports are
 `artifact_integrity_replay` unless an independent model refit is
 actually performed. Canonical writers refuse existing evidence paths and
 replay defaults to stdout, so reruns cannot replace history.

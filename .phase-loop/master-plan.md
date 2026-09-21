@@ -32,13 +32,13 @@ Hard stops:
 Audit-4 first found the v4 bundle internally consistent but bound to a
 stale snapshot. The v5/v6 repair chain is retained immutably. The
 successor pass reconciles the remaining release metadata and binds the
-current tree as v7:
+current tree as v8:
 
 1. Explicit closure identity inputs and focused regression tests.
 2. Current documentation, manifest wording, and phase ledger update.
 3. One content commit, one manifest rebind, and one machine-generated
    suite receipt v4.
-4. Exhaustive index v7, detached closure v7 binding incident surface V2,
+4. Exhaustive index v8, detached closure v8 binding incident surface V2,
    and current-tree validator.
 5. Full suite, replay, index, closure, claim, manifest, and tree checks;
    no commits after receipt generation.
