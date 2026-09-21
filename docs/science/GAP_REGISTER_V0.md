@@ -1382,7 +1382,7 @@ is superseded by the v7 successor recorded below.
 | Owner approval absent | **OPEN — OWNER** — `NOT_REQUESTED`, `approved_by: null`, `approval_utc: null`; no approval is inferred |
 | v4 vs V2 schema naming | **DOCUMENTED** — index schema `P5_EVIDENCE_INDEX_V2` is the wire format; release bundle version (`v5`) is orthogonal metadata |
 
-### Audit-4 successor reconciliation — 2026-09-21 (v8 release)
+### Audit-4 successor reconciliation — 2026-09-21 (v9 release)
 
 This is the current release-integrity record. It does not alter the
 scientific estimands, replay scope, negative findings, authority flags,
@@ -1390,11 +1390,11 @@ owner gates, or historical evidence roots.
 
 | Residual | Disposition |
 |---|---|
-| Closure v6 bound `INCIDENT_SURFACE_V1` while the current audit record referred to V2 | **REPAIRED** — closure v8 binds `INCIDENT_SURFACE_V2`; V2 carries the supersedes digest for immutable V1, so the incident chain is explicit and append-only |
+| Closure v6 bound `INCIDENT_SURFACE_V1` while the current audit record referred to V2 | **REPAIRED** — closure v9 binds `INCIDENT_SURFACE_V2`; V2 carries the supersedes digest for immutable V1, so the incident chain is explicit and append-only |
 | Closure-builder publication could silently select stale v5/V1/V1-receipt defaults | **REPAIRED** — release version, incident surface, and suite receipt are explicit CLI inputs; omission fails at argument parsing; existing historical Python fixtures now pass their version explicitly |
-| README/P5 status index named v5 as current | **REPAIRED** — current paths/counts now name index v8, closure v8, and suite receipt v5; v1–v7 remain historical/diagnostic |
-| Index v7 was generated without a planned closure slot after a relative-path invocation | **DISCLOSED and superseded** — v7 is preserved as an `INDEX_OK` diagnostic artifact; v8 was generated with an absolute evidence-root planned slot and is the only current closure candidate |
-| Audit-4 phase ledger stopped at “in progress” | **REPAIRED** — the master plan and ledger record the serialized v8 successor and its gates |
-| Manifest described suite counts as projected and pointed to receipt v2 | **REPAIRED** — final manifest wording is receipt-bound to the machine-generated v5 suite receipt |
+| README/P5 status index named v5 as current | **REPAIRED** — current paths/counts now name index v9, closure v9, and suite receipt v6; v1–v8 remain historical/diagnostic |
+| Index v7 was generated without a planned closure slot after a relative-path invocation | **DISCLOSED and superseded** — v7 is preserved as an `INDEX_OK` diagnostic artifact; v8 was generated with an absolute evidence-root planned slot and v9 is the only current closure candidate |
+| Audit-4 phase ledger stopped at “in progress” | **REPAIRED** — the master plan and appended ledger record document the serialized v9 successor and its gates |
+| Manifest described suite counts as projected and pointed to receipt v2 | **REPAIRED** — final manifest wording is receipt-bound to the machine-generated v6 suite receipt |
 | Historical “full recomputation” wording could be read as the current replay proof | **REPAIRED** — historical R11.9 wording is explicitly scoped; current replay remains `artifact_integrity_replay` |
 | Owner approval / Option 3 / ObsPy / Arm C / publication | **OPEN — OWNER/EXTERNAL** — unchanged; no approval is inferred and no acquisition or admission is performed |

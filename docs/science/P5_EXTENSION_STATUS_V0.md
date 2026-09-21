@@ -41,21 +41,22 @@ is never a model replay.
 
 ## Cross-root index
 
-`p5-glof-2026-09-19/retrieval/p5_evidence_index_v8.json` is the current
+`p5-glof-2026-09-19/retrieval/p5_evidence_index_v9.json` is the current
 exhaustive release index. It binds every non-sidecar payload in the
 declared physical and logical partitions, requires a live sidecar, and
 records explicit exclusions — including typed `planned` slots for
 outputs published after index generation (`CLOSURE_PENDING`
 pre-publication semantics). The v1 index is preserved as a historical
-31-file listed set; v2–v7 are superseded exhaustive snapshots (v7 is an
-unclosed diagnostic generation with no planned closure slot). The
+31-file listed set; v2–v8 are superseded exhaustive snapshots (v7 is an
+unclosed diagnostic generation and v8 is its superseded closure-slot
+correction). The
 v2-schema validator also checks final-verification closure, duplicate
 physical assignment, and manifest/head consistency. The index and
 detached release closure are published by exclusive-create writers; the
-closure (`p5_release_closure_v8.json`) is additionally verified with
+closure (`p5_release_closure_v9.json`) is additionally verified with
 `scripts/validate_release_closure.py --current-tree --repo-root`, which
 proves the recorded paths resolve to the recorded SHAs, binds suite
-counts to the machine-generated `p5_suite_receipt_v5.json`, and
+counts to the machine-generated `p5_suite_receipt_v6.json`, and
 distinguishes `FROZEN_SNAPSHOT_CLOSURE_OK` (internal consistency) from
 `CURRENT_TREE_CLOSURE_OK` (the bundle also matches live HEAD, manifest
 digest, and receipt head). Closure v7 binds the append-only
