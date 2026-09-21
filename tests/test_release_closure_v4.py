@@ -28,8 +28,8 @@ _INDEX_REL = "retrieval/p5_evidence_index_v2.json"
 _OUT_REL = "retrieval/p5_release_closure_v4.json"
 _OWNER_REL = "retrieval/p5_d_owner_disposition_v2.json"
 _RECEIPT_REL = "retrieval/p5_suite_receipt_v2.json"
-_DAILY_REPORT_REL = "retrieval/p5_replay_report_v5.json"
-_SEASONAL_REPORT_REL = "run/seasonal_replay_report_v5.json"
+_DAILY_REPORT_REL = "retrieval/p5_replay_report_v6.json"
+_SEASONAL_REPORT_REL = "run/seasonal_replay_report_v6.json"
 
 
 def _sha(data: bytes) -> str:
@@ -469,7 +469,7 @@ def test_dry_run_writes_nothing(world, capsys):
     assert not world.out.exists()
     assert not Path(str(world.out) + ".sha256").exists()
     printed = json.loads(capsys.readouterr().out)
-    assert printed["status"] == "CLOSURE_V4_DRY_RUN_OK"
+    assert printed["status"] == "CLOSURE_DRY_RUN_OK"
     assert printed["closure"]["schema"] == "P5_RELEASE_CLOSURE_V4"
 
 
@@ -489,7 +489,7 @@ def test_write_publishes_closure_and_sidecar(world, capsys):
     rc = closure_mod.main(_cli_args(world) + ["--write"])
     assert rc == 0
     printed = json.loads(capsys.readouterr().out)
-    assert printed["status"] == "CLOSURE_V4_PUBLISHED"
+    assert printed["status"] == "CLOSURE_PUBLISHED"
     assert world.out.is_file()
     digest = _sha(world.out.read_bytes())
     assert printed["sha256"] == digest

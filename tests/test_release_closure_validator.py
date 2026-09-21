@@ -77,8 +77,8 @@ def world(tmp_path):
         "files": []})
 
     receipt_path = retrieval / "p5_suite_receipt.json"
-    daily_replay = retrieval / "p5_replay_report_v5.json"
-    seasonal_replay = seasonal / "run" / "seasonal_replay_report_v5.json"
+    daily_replay = retrieval / "p5_replay_report_v6.json"
+    seasonal_replay = seasonal / "run" / "seasonal_replay_report_v6.json"
     owner_path = retrieval / "p5_d_owner_disposition_v2.json"
     surface_path = audit / "INCIDENT_SURFACE_V1.json"
     index_path = retrieval / "p5_evidence_index_v2.json"
@@ -161,13 +161,13 @@ def world(tmp_path):
                 "generator_activity_id": "suite-run-1"},
             "replays": {
                 "daily": {"root_id": "daily_p5a2",
-                          "relpath": "retrieval/p5_replay_report_v5.json",
+                          "relpath": "retrieval/p5_replay_report_v6.json",
                           "sha256": _sha_path(daily_replay),
                           "status": "REPLAY_OK",
                           "scope": "artifact_integrity_replay"},
                 "seasonal": {"root_id": "seasonal_v1_current",
                              "relpath":
-                             "run/seasonal_replay_report_v5.json",
+                             "run/seasonal_replay_report_v6.json",
                              "sha256": _sha_path(seasonal_replay),
                              "status": "REPLAY_OK",
                              "scope": "artifact_integrity_replay"}},

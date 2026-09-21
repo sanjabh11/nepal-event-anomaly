@@ -186,9 +186,9 @@ def build_closure(*, index: Path, daily_root: Path, seasonal_root: Path,
                   suite_receipt: Path, output: Path,
                   repo_root=None, release_version: str = "v5",
                   daily_report_relpath: str = (
-                      "retrieval/p5_replay_report_v5.json"),
+                      "retrieval/p5_replay_report_v6.json"),
                   seasonal_report_relpath: str = (
-                      "run/seasonal_replay_report_v5.json")) -> dict:
+                      "run/seasonal_replay_report_v6.json")) -> dict:
     started_utc = _utc_now()
     index = Path(index).resolve()
     daily_root = Path(daily_root).resolve()
@@ -409,6 +409,16 @@ def main(argv=None) -> int:
     parser.add_argument("--release-version", default="v5",
                         help="release version recorded in the closure "
                              "(default: v5)")
+    parser.add_argument(
+        "--daily-report-relpath",
+        default="retrieval/p5_replay_report_v6.json",
+        help="daily replay report relpath under the daily root "
+             "(default: the current v6 report)")
+    parser.add_argument(
+        "--seasonal-report-relpath",
+        default="run/seasonal_replay_report_v6.json",
+        help="seasonal replay report relpath under the seasonal root "
+             "(default: the current v6 report)")
     parser.add_argument("--out", required=True,
                         help="closure output path (must be a declared "
                              "planned exclusion of the index)")
@@ -430,6 +440,8 @@ def main(argv=None) -> int:
             incident_surface=Path(args.incident_surface),
             suite_receipt=Path(args.suite_receipt),
             output=output,
+            daily_report_relpath=args.daily_report_relpath,
+            seasonal_report_relpath=args.seasonal_report_relpath,
             repo_root=Path(args.repo_root),
             release_version=args.release_version)
     except (OSError, ValueError, KeyError) as exc:
@@ -438,7 +450,7 @@ def main(argv=None) -> int:
 
     out = output.resolve()
     if not args.write:
-        print(json.dumps({"status": "CLOSURE_V4_DRY_RUN_OK",
+        print(json.dumps({"status": "CLOSURE_DRY_RUN_OK",
                           "out": str(out),
                           "sha256": sha256_bytes(
                               _closure_bytes(closure)),
@@ -451,7 +463,7 @@ def main(argv=None) -> int:
     except (OSError, ValueError) as exc:
         print(f"RELEASE_CLOSURE_FAIL: {exc}")
         return 1
-    print(json.dumps({"status": "CLOSURE_V4_PUBLISHED",
+    print(json.dumps({"status": "CLOSURE_PUBLISHED",
                       "out": str(out), "sha256": digest},
                      indent=2, sort_keys=True))
     return 0
