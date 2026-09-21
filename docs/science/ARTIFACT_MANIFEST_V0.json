@@ -1,6 +1,6 @@
 {
  "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
- "content_head": "6243818d8d51d58eadb6734bd8bc727a695c0be3",
+ "content_head": "7ced561c4202e4f9741602aaacf359ccc5a60e43",
  "files": [
   {
    "relpath": ".github/workflows/research-v0.yml",
@@ -14,7 +14,7 @@
   },
   {
    "relpath": ".phase-loop/master-plan.md",
-   "sha256": "986c4ac0ad760f395926f358565d6d5ddacfe6f3670dc974067e0df69cc7ee20",
+   "sha256": "7d875debbd26670124253a2ba68177a2197c9cb0417f6c071ec0a209a00a2deb",
    "size_bytes": 2003
   },
   {
@@ -24,8 +24,8 @@
   },
   {
    "relpath": "README.md",
-   "sha256": "feefb656ca7444c5c2a22c9dc70623edd474e3ac47bb22d44b733d8bf7fa6c2e",
-   "size_bytes": 18288
+   "sha256": "1a4d02da945ed33701da1db60085fd89016cebfa1112f593e0ca2cadac776e36",
+   "size_bytes": 18399
   },
   {
    "relpath": "conftest.py",
@@ -39,8 +39,8 @@
   },
   {
    "relpath": "docs/science/GAP_REGISTER_V0.md",
-   "sha256": "8125844ed51325152ea7d852b66a2b82621ce10e64ac984934c62a13ab84df33",
-   "size_bytes": 133377
+   "sha256": "2099cd2253d3478d487f4e6fa29497a49d7a9f56db5ab17550edebaacb6c5568",
+   "size_bytes": 133671
   },
   {
    "relpath": "docs/science/GOVERNANCE_EXERCISE_RECORD_V0.md",
@@ -109,8 +109,8 @@
   },
   {
    "relpath": "docs/science/P5_EXTENSION_STATUS_V0.md",
-   "sha256": "b44ff0db45e222728416c2aaa1b57e0c40baea7abdf12d71ee83e7468487b9a0",
-   "size_bytes": 6402
+   "sha256": "7f171c14c6c8bab8bcbe32c9b74bbdab6b803086f53fc7e2c71fecbd0d3cc282",
+   "size_bytes": 6473
   },
   {
    "relpath": "docs/science/P5_OPERATIVE_ANCHOR_NOTE_V0.md",
@@ -855,7 +855,7 @@
  ],
  "generated": "post-P5 audit-4 current-tree bind \u2014 frozen-snapshot vs current-tree closure vocabulary, receipt v2 manifest binding, index generation_head, planned-slot publication semantics",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "6243818d8d51d58eadb6734bd8bc727a695c0be3",
+ "manifest_commit": "7ced561c4202e4f9741602aaacf359ccc5a60e43",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
