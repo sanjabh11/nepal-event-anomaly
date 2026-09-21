@@ -1,6 +1,6 @@
 {
  "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
- "content_head": "e9e37a6efafd3bc696c4c782d5f19325a340d99b",
+ "content_head": "1a0ac1b55e8e2dc43324b2406f4ffe7837dfaecd",
  "files": [
   {
    "relpath": ".github/workflows/research-v0.yml",
@@ -19,8 +19,8 @@
   },
   {
    "relpath": ".phase-loop/phase-ledger.jsonl",
-   "sha256": "e0a7d5e58bec28203c5e67882a05cd07832c7eee49b7d29cf3e6c1f771a854b8",
-   "size_bytes": 621
+   "sha256": "d1814aac73dd743f07edd436e1d94d2b13c7a90e88c077f8f6e350fefc300d54",
+   "size_bytes": 9744
   },
   {
    "relpath": "README.md",
@@ -104,8 +104,8 @@
   },
   {
    "relpath": "docs/science/P5_AUDIT3_REMEDIATION_PLAN_V0.md",
-   "sha256": "0b36a4cda682e69521239b130712bf03fe06bbb1d1deffff345522e9310e062f",
-   "size_bytes": 2795
+   "sha256": "2556073760be2e0ce45fa424f20825f90678506ca7ef5cf2b9623de8cc8fbbc9",
+   "size_bytes": 3821
   },
   {
    "relpath": "docs/science/P5_EXTENSION_STATUS_V0.md",
@@ -429,8 +429,8 @@
   },
   {
    "relpath": "scripts/build_p5_release_closure_v2.py",
-   "sha256": "377720ae3835131fc3cf1b92f1134d0070702ac248f0023c95e6df00ef18283d",
-   "size_bytes": 7345
+   "sha256": "555837a0f61a1031406b1766d98dd9716b96d73c0d8db83d1e869ef35d066dca",
+   "size_bytes": 11797
   },
   {
    "relpath": "scripts/generate_evidence_index_v1.py",
@@ -454,8 +454,8 @@
   },
   {
    "relpath": "scripts/rebind_manifest.py",
-   "sha256": "fff4cee1d15a03103092ec2902700a33424484769cf2e7e37c204673f9a5ddfd",
-   "size_bytes": 2667
+   "sha256": "6604a2c658cf06cc2cbd966a0a10a1667b2bf0f7a911741e9a42f76faeb85696",
+   "size_bytes": 21926
   },
   {
    "relpath": "scripts/replay_p5.py",
@@ -481,6 +481,11 @@
    "relpath": "scripts/validate_evidence_index.py",
    "sha256": "abffbada64d270e1a1e958ca912a04339620d1ea266d4ce4da75831b8219ca02",
    "size_bytes": 53071
+  },
+  {
+   "relpath": "scripts/validate_incident_surface.py",
+   "sha256": "b351dce2df0b06ecd4459321cba774ff9d3f70378db3bc65aa28ab4563135fec",
+   "size_bytes": 4043
   },
   {
    "relpath": "tests/fixtures/__init__.py",
@@ -561,6 +566,11 @@
    "relpath": "tests/test_glof_poc_real_path.py",
    "sha256": "e06382f55402a978fe3c7f8d56abd6e2133f80b07e97efef57c1a64c0171304a",
    "size_bytes": 18675
+  },
+  {
+   "relpath": "tests/test_incident_surface.py",
+   "sha256": "1c38deadd4bb282617a0d4067476ff11d7dc6cf34cd53dc9ab2287c6151e1470",
+   "size_bytes": 5074
   },
   {
    "relpath": "tests/test_materialize_evidence_sidecars.py",
@@ -688,6 +698,11 @@
    "size_bytes": 13146
   },
   {
+   "relpath": "tests/test_rebind_manifest_cli.py",
+   "sha256": "3dee89a2645d1f69b57ec07593eb407c8e4bb4c7ec91c49530ed3b557185b3fa",
+   "size_bytes": 17923
+  },
+  {
    "relpath": "tests/test_regime_real_path.py",
    "sha256": "0f6b71f8964269c9bb072558a4c6f2992d8ecbab71e1f3f3aa06b2a6bd78f277",
    "size_bytes": 6746
@@ -810,7 +825,7 @@
  ],
  "generated": "post-P5 provenance-repair bind (content 8773851) \u2014 daily artifact serialized under amendment v5; Arm A artifact-bound; evidence index v1; one-station contract hardened; seasonal + daily honest negatives reproduced",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "e9e37a6efafd3bc696c4c782d5f19325a340d99b",
+ "manifest_commit": "1a0ac1b55e8e2dc43324b2406f4ffe7837dfaecd",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -820,9 +835,9 @@
  "test_results": {
   "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
   "claim_scan": "clean on all governed files",
-  "collection_guard": "repo-wide collection == tests/ (3794 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
+  "collection_guard": "repo-wide collection == tests/ (3833 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
   "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
-  "full_suite_venv": "3788 passed, 6 skipped, 0 failed, 57 warnings \u2014 post-audit-3 canonical suite (3794 collected); the pre-rebind collection drift gate resolves at this rebind",
+  "full_suite_venv": "3826 passed, 6 skipped, 1 failed (collection-census drift gate, resolves at this rebind), 57 warnings - fresh post-repair full-suite rerun (3833 collected); the +39 census delta is the new rebind-CLI (30) and incident-surface (9) test lanes; single failure is test_r11_5_release_closure::test_collection_count_matches_manifest with recorded 3794 vs live 3833",
   "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
   "p5_a2_status_consistency": "local guard passed; CI guard configured \u2014 current CANDIDATE_ONLY / UNSUPERVISED_STRUCTURE_NOT_STABLE result, false authority flags, and release metadata aligned",
   "p5_a2_temporal_holdout": "110 passed, 1 skipped \u2014 temporal mapping, waiver, and documentation regression lane",
