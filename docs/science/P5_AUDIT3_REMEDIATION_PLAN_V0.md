@@ -1,7 +1,22 @@
 # P5 audit-3 remediation record — release integrity v2
 
-Status: implementation in progress; scientific estimands and historical
-evidence are unchanged.
+> Status (2026-09-21, repair run): **implementation complete; full-suite
+> and replay revalidation executed; final rebind and release-closure
+> regeneration in progress; scientific acquisition owner-gated.**
+> Fresh evidence this run: full local suite
+> `3826 passed / 6 skipped / 1 failed / 57 warnings` on **3833
+> collected** in 1159.86 s - the single failure is the pre-rebind
+> collection-census drift gate (`test_r11_5_release_closure::
+> test_collection_count_matches_manifest`, recorded 3794 vs live 3833
+> from +39 new governed tests), which resolves at this rebind.
+> Daily and seasonal artifact-integrity replays re-executed to **new
+> v4 report paths** (`REPLAY_OK`, scope `artifact_integrity_replay`,
+> 0 failures; frozen v3 reports untouched). The owner-disposition
+> superseding record `p5_d_owner_disposition_v2.json` now exists with
+> `approved_by: null` and `approval_status: PENDING_OWNER_APPROVAL`;
+> v1 preserved byte-identical. Index v2 and closure v2 remain frozen;
+> index v3 and closure v3 are generated at new paths after the rebind.
+> Scientific estimands and historical evidence are unchanged.
 
 ## Scope lock
 

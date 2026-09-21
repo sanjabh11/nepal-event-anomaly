@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import platform
 import subprocess
 import sys
@@ -21,6 +22,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "scripts"))
 from p5_safe_io import sha256_bytes, write_once_json, write_once_sidecar
 from validate_evidence_index import validate_index
+from validate_incident_surface import validate_surface
 
 
 def _sha(path: Path) -> str:
@@ -64,12 +66,57 @@ def _read_report(root_id: str, root: Path, relpath: str) -> dict:
             "scope": payload.get("replay_scope")}
 
 
+ALLOWED_APPROVAL_STATUS = ("PENDING", "PENDING_OWNER_APPROVAL",
+                           "NOT_REQUESTED", "NOT_APPROVED", "APPROVED")
+
+
+def _owner_approval_state(owner: dict) -> dict:
+    """Fail-closed decoding of the owner approval surface (G-05).
+
+    The consumed v1 record carried no approval fields at all; "absent" is
+    not "null" and cannot support a not-approved assertion.  The superseding
+    v2 record must state the triple explicitly, and an approval may only be
+    represented by a real owner identity plus a timestamp.
+    """
+    schema = owner.get("schema")
+    if schema != "P5_D_OWNER_DISPOSITION_V2":
+        raise ValueError(
+            "owner disposition schema must be P5_D_OWNER_DISPOSITION_V2 "
+            f"(got {schema!r}) — v1 has no explicit approval fields")
+    status = owner.get("approval_status")
+    if status not in ALLOWED_APPROVAL_STATUS:
+        raise ValueError("approval_status must be one of "
+                         + ", ".join(ALLOWED_APPROVAL_STATUS)
+                         + f" (got {status!r})")
+    approved_by = owner.get("approved_by")
+    approval_utc = owner.get("approval_utc")
+    if (approved_by is None) != (approval_utc is None):
+        raise ValueError("approved_by and approval_utc must be both null "
+                         "or both set")
+    if approved_by is not None and status != "APPROVED":
+        raise ValueError("approved_by is set but approval_status is not "
+                         "APPROVED")
+    if approved_by is None and status == "APPROVED":
+        raise ValueError("approval_status APPROVED requires an owner "
+                         "identity and timestamp")
+    return {"option3_approved_by": approved_by,
+            "option3_approval_utc": approval_utc,
+            "option3_approval_status": status,
+            "option3_status": owner.get("disposition")}
+
+
 def build_closure(*, index: Path, daily_root: Path, seasonal_root: Path,
-                  owner_disposition: Path, suite: dict, output: Path) -> dict:
+                  owner_disposition: Path, suite: dict, output: Path,
+                  incident_surface: Path,
+                  daily_report_relpath: str = (
+                      "retrieval/p5_replay_report_v3.json"),
+                  seasonal_report_relpath: str = (
+                      "run/seasonal_replay_report_v3.json")) -> dict:
     index = Path(index).resolve()
     daily_root = Path(daily_root).resolve()
     seasonal_root = Path(seasonal_root).resolve()
     owner_disposition = Path(owner_disposition).resolve()
+    incident_surface = Path(incident_surface).resolve()
     if not index.is_file():
         raise ValueError(f"index missing: {index}")
     validation = validate_index(index)
@@ -81,12 +128,27 @@ def build_closure(*, index: Path, daily_root: Path, seasonal_root: Path,
     manifest_sha = _sha(manifest_path)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     owner = json.loads(owner_disposition.read_text(encoding="utf-8"))
+    owner_state = _owner_approval_state(owner)
+    try:
+        owner_relpath = str(owner_disposition.relative_to(
+            daily_root)).replace(os.sep, "/")
+    except ValueError:
+        owner_relpath = owner_disposition.name
+    surface_check = validate_surface(incident_surface)
+    if surface_check.get("status") != "INCIDENT_SURFACE_OK":
+        raise ValueError("incident surface invalid: "
+                         + "; ".join(surface_check.get("problems", [])))
+    try:
+        surface_relpath = str(incident_surface.relative_to(
+            daily_root.parent)).replace(os.sep, "/")
+    except ValueError:
+        surface_relpath = incident_surface.name
     env = _environment()
     reports = {
         "daily": _read_report("daily_p5a2", daily_root,
-                              "retrieval/p5_replay_report_v3.json"),
+                              daily_report_relpath),
         "seasonal": _read_report("seasonal_v1_current", seasonal_root,
-                                  "run/seasonal_replay_report_v3.json"),
+                                  seasonal_report_relpath),
     }
     for name, report in reports.items():
         if report["status"] != "REPLAY_OK":
@@ -129,9 +191,22 @@ def build_closure(*, index: Path, daily_root: Path, seasonal_root: Path,
         "suite": suite,
         "replays": reports,
         "authority": authority,
+        "incident_surface": {
+            "logical_path": surface_relpath,
+            "sha256": _sha(incident_surface),
+            "schema": "INCIDENT_SURFACE_V1",
+            "artifact_count": surface_check["artifact_count"],
+            "validator_status": surface_check["status"],
+            "main_release_excluded": True,
+            "bound_in_main_index": False,
+        },
+        "owner_disposition": {
+            "relpath": owner_relpath,
+            "sha256": _sha(owner_disposition),
+            "schema": owner.get("schema"),
+        },
         "owner_gated": {
-            "option3_approved_by": owner.get("approved_by"),
-            "option3_status": owner.get("disposition"),
+            **owner_state,
             "obspy_admission": "pending_owner_dependency_amendment",
             "arm_c": "deferred_separate_amendment",
             "publication": "deferred",
@@ -157,9 +232,20 @@ def main(argv=None) -> int:
     parser.add_argument("--daily-root", required=True)
     parser.add_argument("--seasonal-root", required=True)
     parser.add_argument("--owner-disposition", required=True)
+    parser.add_argument("--incident-surface", required=True,
+                        help="INCIDENT_SURFACE_V1 descriptor bound into the "
+                             "closure; explicitly excluded from the index")
     parser.add_argument("--suite-json", required=True,
                         help="JSON object with passed/skipped/failed/"
                              "collected/warnings counts")
+    parser.add_argument("--daily-report", default=None,
+                        help="daily replay report relpath bound into the "
+                             "closure (default: retrieval/"
+                             "p5_replay_report_v3.json)")
+    parser.add_argument("--seasonal-report", default=None,
+                        help="seasonal replay report relpath bound into "
+                             "the closure (default: run/"
+                             "seasonal_replay_report_v3.json)")
     parser.add_argument("--output", required=True)
     args = parser.parse_args(argv)
     try:
@@ -168,7 +254,14 @@ def main(argv=None) -> int:
                       daily_root=Path(args.daily_root),
                       seasonal_root=Path(args.seasonal_root),
                       owner_disposition=Path(args.owner_disposition),
-                      suite=suite, output=Path(args.output))
+                      incident_surface=Path(args.incident_surface),
+                      suite=suite, output=Path(args.output),
+                      daily_report_relpath=(
+                          args.daily_report
+                          or "retrieval/p5_replay_report_v3.json"),
+                      seasonal_report_relpath=(
+                          args.seasonal_report
+                          or "run/seasonal_replay_report_v3.json"))
     except (OSError, ValueError, json.JSONDecodeError, KeyError) as exc:
         print(f"RELEASE_CLOSURE_FAIL: {exc}")
         return 1
