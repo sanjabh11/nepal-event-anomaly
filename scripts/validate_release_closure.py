@@ -481,9 +481,24 @@ def validate_closure(closure_path) -> dict:
                for key in keys):
             _approval_consistency(owner_sec, problems,
                                   "owner_disposition")
-        owner_path = _resolve_relpath(daily_root,
-                                      owner_sec.get("relpath"),
-                                      problems, "owner_disposition")
+        owner_rel = (owner_sec.get("relpath")
+                     or owner_sec.get("logical_path")
+                     or owner_sec.get("path"))
+        owner_path = None
+        rel_err = _check_relpath(owner_rel)
+        if rel_err:
+            problems.append(f"owner_disposition: {rel_err}")
+        else:
+            for base in (daily_root, daily_root / "retrieval",
+                         daily_root.parent):
+                candidate = base / owner_rel
+                if candidate.is_file():
+                    owner_path = candidate
+                    break
+            if owner_path is None:
+                problems.append(
+                    f"owner_disposition: file missing on disk: "
+                    f"{owner_rel!r}")
         owner_doc = None
         if _check_binding(owner_path, owner_sec.get("sha256"),
                           problems, "owner_disposition"):
@@ -533,7 +548,8 @@ def validate_closure(closure_path) -> dict:
     if not isinstance(surface, dict):
         problems.append("incident_surface must be a structured object")
     else:
-        rel = surface.get("relpath", surface.get("logical_path"))
+        rel = (surface.get("relpath") or surface.get("logical_path")
+               or surface.get("path"))
         err = _check_relpath(rel)
         target = None
         if err:
