@@ -22,6 +22,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _MANIFEST = _REPO_ROOT / "docs/science/ARTIFACT_MANIFEST_V0.json"
 _LANE_FILES = (
@@ -176,3 +178,21 @@ class TestR115ReleaseClosure:
             f"full_suite_venv collection {recorded_collected} != "
             f"collection_guard {guard_count} — the recorded suite "
             "result predates the current collection census")
+
+    def test_live_release_closure_binds_suite_evidence(self):
+        """A3-10 — when a detached closure exists, it must bind the live
+        suite receipt, index bytes, and replay reports (not just carry
+        count arithmetic).  Skips when no published closure exists."""
+        import sys as _sys
+        _sys.path.insert(0, str(_REPO_ROOT / "scripts"))
+        from validate_release_closure import validate_closure  # noqa: E402
+        daily = Path("/Users/sanjayb/nepal-event-anomaly-evidence/"
+                     "p5-glof-2026-09-19/retrieval")
+        closures = sorted(daily.glob("p5_release_closure_v[4-9]*.json"))
+        if not closures:
+            pytest.skip("no published v4+ release closure to validate")
+        latest = closures[-1]
+        report = validate_closure(latest)
+        assert report["status"] == "CLOSURE_OK", (
+            f"live closure {latest.name} fails post-publication "
+            f"validation: {report['problems'][:5]}")
