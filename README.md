@@ -306,13 +306,19 @@ source digest), required execution-digest chain for scientific
 statuses, bounded malformed-input errors. Seismic remains
 retrospective-only and is **not** a Nepal predictor.
 
-Cross-root provenance: `retrieval/p5_evidence_index_v2.json` is the
+Cross-root provenance: `retrieval/p5_evidence_index_v4.json` is the
 exhaustive release index: it binds every non-sidecar payload in the daily,
 seismic logical, seasonal-v0, and seasonal-v1 surfaces, requires a sidecar
-for each payload, and records explicit exclusions. The prior
-`retrieval/p5_evidence_index_v1.json` remains a historical 31-file listed
-set; its `INDEX_OK` result never meant root-wide coverage. Both replay
-reports are `artifact_integrity_replay` unless an independent model refit
+for each payload, and records explicit exclusions — including typed
+`planned` slots for outputs published after index generation
+(`CLOSURE_PENDING` pre-publication semantics). The detached release
+closure (`retrieval/p5_release_closure_v4.json`) is published into its
+declared slot by `scripts/build_p5_release_closure_v4.py` and verified
+post-publication by `scripts/validate_release_closure.py`; suite counts
+are bound to a machine-generated `p5_suite_receipt_v1.json`, never
+free-form. Prior indexes (v1 listed-set, v2/v3 exhaustive) remain as
+superseded historical records. Both replay reports are
+`artifact_integrity_replay` unless an independent model refit
 is actually performed. Canonical writers refuse existing evidence paths
 and replay defaults to stdout, so reruns cannot replace history.
 
@@ -321,7 +327,7 @@ three physical roots (daily, seasonal v0 immutable, seasonal v1) plus
 the seismic preflight as a logical surface under the daily root —
 logical `root_id`s, relative paths, per-file digests + sidecars, and
 provenance fields, machine-verified fail-closed by
-`scripts/validate_evidence_index.py`. The superseded v0 index is
+`scripts/validate_evidence_index.py`. The superseded v0/v2/v3 indexes are
 preserved immutably. The current P5 state is indexed in
 `docs/science/P5_EXTENSION_STATUS_V0.md`; post-seasonal audit
 dispositions are recorded in `docs/science/GAP_REGISTER_V0.md`.

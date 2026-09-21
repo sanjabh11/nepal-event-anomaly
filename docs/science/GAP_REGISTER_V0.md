@@ -1340,3 +1340,21 @@ rewritten.
 The internal release-integrity work is therefore materially stronger, but
 the phrase “all gaps closed” remains prohibited: owner and external gates are
 still open, and `BLOCKED` is not a scientific negative.
+
+### Audit-3 second-round closure defects — 2026-09-21 (v4 remediation)
+
+The audit-3 progress review found the v3 detached closure failed its own
+contract; v4 remediation replaces it (v3 retained as a non-final record).
+
+| Defect | Disposition |
+|---|---|
+| Closure recorded index v2 relpath while hashing index v3 bytes (path/SHA mismatch) | **REPAIRED** — v4 derives `root_of_trust.relpath`/`root_id` from the actual index argument and enforces a post-resolution path↔SHA equality check |
+| Seed-then-replace at the canonical closure path (append-only violation) | **REPAIRED** — `p5_safe_io.write_once_*` exclusive-create; existing output is fatal; no seed/replace/rename-over path exists |
+| Free-form suite counts unbound to a test execution | **REPAIRED** — `scripts/build_p5_suite_receipt.py` runs pytest itself and emits a sidecarred `P5_SUITE_RECEIPT_V1`; the closure binds receipt relpath+SHA and fails closed on any count inconsistency |
+| Stale warning count (56 vs live 57) and transitional suite counts in manifest | **REPAIRED** — counts come only from the receipt of the final post-rebind run |
+| No strict post-publication validator | **REPAIRED** — `scripts/validate_release_closure.py` proves path↔SHA, planned-slot declaration, receipt↔closure count equality, replay byte/scope binding, all-false authority, approval-field consistency, env digest, and timestamp order |
+| Index marked `CLOSED` before detached closure publication was proven | **REPAIRED** — planned exclusions drive an honest `CLOSURE_PENDING` state; the post-publication validator completes the proof |
+| Completion/reconciliation records outside index and incident surface | **REPAIRED** — both records are bound in `INCIDENT_SURFACE_V1.json` (30 artifacts, `INCIDENT_SURFACE_OK`) |
+| Absolute host paths, missing activity_id/UTC bounds, and ambiguous field names in new replay reports | **REPAIRED** — v5 reports carry schema, `activity_id`, `started_utc`/`completed_utc`, logical `root_id`s, and host paths only under `execution_context` |
+| Release tests checking arithmetic but not closure↔suite evidence binding | **REPAIRED** — closure-v4 builder tests (33) and validator tests (25) cover every defect class on synthetic fixtures |
+| Owner approval still absent | **OPEN — OWNER** — `P5_D_OWNER_DISPOSITION_V2` records `approval_status: NOT_REQUESTED`, `approved_by: null`, `approval_utc: null` |

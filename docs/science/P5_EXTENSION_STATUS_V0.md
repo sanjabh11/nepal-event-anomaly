@@ -41,14 +41,20 @@ is never a model replay.
 
 ## Cross-root index
 
-`p5-glof-2026-09-19/retrieval/p5_evidence_index_v2.json` is the exhaustive
+`p5-glof-2026-09-19/retrieval/p5_evidence_index_v4.json` is the exhaustive
 release index. It binds every non-sidecar payload in the declared physical
 and logical partitions, requires a live sidecar, and records explicit
-exclusions. The v1 index is preserved as a historical 31-file listed set;
-its `INDEX_OK` status did not prove root-wide coverage. The v2 validator
-also checks final-verification closure, duplicate physical assignment, and
-manifest/head consistency. The index and detached release closure are
-published by exclusive-create writers.
+exclusions — including typed `planned` slots for outputs published after
+index generation (`CLOSURE_PENDING` pre-publication semantics). The v1
+index is preserved as a historical 31-file listed set; its `INDEX_OK`
+status did not prove root-wide coverage; v2/v3 are superseded exhaustive
+indexes. The v2-schema validator also checks final-verification closure,
+duplicate physical assignment, and manifest/head consistency. The index
+and detached release closure are published by exclusive-create writers;
+the closure (`p5_release_closure_v4.json`) is additionally verified
+post-publication by `scripts/validate_release_closure.py`, which proves
+the recorded path resolves to the recorded SHA and that suite counts are
+bound to the machine-generated `p5_suite_receipt_v1.json`.
 
 Historical index: `p5-glof-2026-09-19/retrieval/p5_evidence_index_v1.json` binds the
 three physical roots (daily, seasonal v0 immutable, seasonal v1
@@ -83,7 +89,7 @@ publication, remote CI, and external preservation remain separate gates.
 
 ## Warnings disclosure
 
-Fresh suite carries ~56 xarray/netCDF4 deprecation warnings
+Fresh suite carries ~57 xarray/netCDF4 deprecation warnings
 (upstream, monitored) and 1 sklearn ConvergenceWarning in a
 degenerate synthetic fixture (expected). No warning-free claim is
 made.
