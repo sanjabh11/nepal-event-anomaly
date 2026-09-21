@@ -1,6 +1,6 @@
 {
  "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
- "content_head": "d96d112814a1a803c0f2ea54c27796214b130996",
+ "content_head": "894d58ab1bd7892c7580a451e08dd9045f527a31",
  "files": [
   {
    "relpath": ".github/workflows/research-v0.yml",
@@ -434,8 +434,8 @@
   },
   {
    "relpath": "scripts/build_p5_release_closure_v4.py",
-   "sha256": "70159c70ccf522c32e3991a13864b0108ac06810face4fa4bc5aad60f9ce641c",
-   "size_bytes": 20685
+   "sha256": "a25045e4be9f60c8fa93b0a7a2d4affd9d6bab8b010636d64950457cb84d40fa",
+   "size_bytes": 21268
   },
   {
    "relpath": "scripts/build_p5_suite_receipt.py",
@@ -724,12 +724,12 @@
   },
   {
    "relpath": "tests/test_release_closure_v4.py",
-   "sha256": "45f78c6b3b1f54eaeaf5814ab67cdc54e51cd939538ba48362fdff68c9ed6c1a",
-   "size_bytes": 20634
+   "sha256": "4c195f993105deded711eeb2eb9b81ad35f61d011b51b4da9cbeb58de504ecd2",
+   "size_bytes": 20628
   },
   {
    "relpath": "tests/test_release_closure_validator.py",
-   "sha256": "732c8fead799949c646645436590ec9bcbdc7d36e90c9dca943d14ae0fd2a4bd",
+   "sha256": "483492d65d5078748d7241ef69dd6133a6b95b297cc30927829e7348872457f0",
    "size_bytes": 22934
   },
   {
@@ -855,7 +855,7 @@
  ],
  "generated": "post-P5 audit-4 current-tree bind \u2014 frozen-snapshot vs current-tree closure vocabulary, receipt v2 manifest binding, index generation_head, planned-slot publication semantics",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "d96d112814a1a803c0f2ea54c27796214b130996",
+ "manifest_commit": "894d58ab1bd7892c7580a451e08dd9045f527a31",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
