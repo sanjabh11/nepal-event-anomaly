@@ -153,8 +153,21 @@ def _load_exclusions(raw, specs):
             raise GenerationError(f"exclusions[{i}].relpath is not relative")
         if not isinstance(reason, str) or not reason.strip():
             raise GenerationError(f"exclusions[{i}].reason is required")
-        result.append({"root_id": rid, "relpath": relpath,
-                       "reason": reason})
+        entry = {"root_id": rid, "relpath": relpath,
+                 "reason": reason}
+        state = item.get("state")
+        if state is not None:
+            if state not in ("planned", "present"):
+                raise GenerationError(
+                    f"exclusions[{i}].state must be 'planned' or 'present'")
+            entry["state"] = state
+        owner = item.get("owner")
+        if owner is not None:
+            if not isinstance(owner, str) or not owner.strip():
+                raise GenerationError(
+                    f"exclusions[{i}].owner must be a non-empty string")
+            entry["owner"] = owner
+        result.append(entry)
     return result
 
 
