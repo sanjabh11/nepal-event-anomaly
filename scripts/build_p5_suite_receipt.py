@@ -30,7 +30,10 @@ from p5_safe_io import (  # noqa: E402
 from build_p5_release_closure_v4 import (  # noqa: E402
     ClosureError, _environment, _head, _utc_now)
 
-_SUMMARY_RE = re.compile(r"=+\s*(?P<body>.*?)\s*in\s+[\d.]+s\s*=+\s*$")
+_SUMMARY_RE = re.compile(
+    r"^=*\s*(?P<body>(?:\d+\s+(?:passed|skipped|failed|errors?|warnings?|"
+    r"deselected|xfailed|xpassed)[,\s]*)+)\s*in\s+[\d.]+s"
+    r"(?:\s*\([\d:]+\))?\s*=*\s*$")
 _COUNT_RE = re.compile(
     r"(\d+)\s+(passed|skipped|failed|errors?|warnings?|deselected|"
     r"xfailed|xpassed)")
@@ -74,8 +77,12 @@ def run_suite(*, repo: Path, pytest_args: str) -> dict:
     repo = Path(repo).resolve()
     test_args = shlex.split(pytest_args)
 
+    # The census pass must emit the "N tests collected" tail; strip quiet
+    # flags from the caller's args so a doubled -q cannot collapse the
+    # output to per-file counts.
+    census_args = [a for a in test_args if a not in ("-q", "--quiet")]
     collect_argv = [sys.executable, "-B", "-m", "pytest",
-                    "--collect-only", "-q", *test_args]
+                    "--collect-only", "-q", *census_args]
     collect = subprocess.run(collect_argv, cwd=repo, capture_output=True,
                              text=True, check=False)
     collected = _parse_collected(collect.stdout + "\n" + collect.stderr)
