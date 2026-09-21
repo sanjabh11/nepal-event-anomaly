@@ -200,10 +200,12 @@ report binds the role digest, frame digest, row-universe digest, and
 semantic-matrix digest; cutoff is a persisted `CUTOFF_RECORD_V0` bound
 to the retrieval record's completion time; preprocessing provenance is a
 persisted `PREPROCESSING_PROVENANCE_V0` record recomputed from live bytes
-(4,600 train rows proven, not asserted). Replay is full recomputation —
-`scripts/replay_p5.py` rebuilds the FMX report, package digests, ledger
-fields, semantic role bindings, and receipt digest; `REPLAY_OK` requires
-reproduction, not just sidecar integrity. The seismic STEIM admission
+(4,600 train rows proven, not asserted). The historical R11.9 snapshot
+used full recomputation — `scripts/replay_p5.py` rebuilt the FMX report,
+package digests, ledger fields, semantic role bindings, and receipt
+digest. Current P5 replay reports are explicitly
+`artifact_integrity_replay`; they validate persisted bytes and bindings
+and do not claim an independent model refit. The seismic STEIM admission
 gate (`allow_steim_decoding`) is a wired strict-bool flag — closed by
 default pending governed-env decoder qualification.
 
@@ -306,25 +308,26 @@ source digest), required execution-digest chain for scientific
 statuses, bounded malformed-input errors. Seismic remains
 retrospective-only and is **not** a Nepal predictor.
 
-Cross-root provenance: `retrieval/p5_evidence_index_v5.json` is the
-exhaustive release index: it binds every non-sidecar payload in the daily,
-seismic logical, seasonal-v0, and seasonal-v1 surfaces, requires a sidecar
-for each payload, and records explicit exclusions — including typed
-`planned` slots for outputs published after index generation
-(`CLOSURE_PENDING` pre-publication semantics). The detached release
-closure (`retrieval/p5_release_closure_v5.json`) is published into its
-declared slot by `scripts/build_p5_release_closure_v4.py` and verified
-post-publication by `scripts/validate_release_closure.py`, which reports
-`FROZEN_SNAPSHOT_CLOSURE_OK` for internal consistency only and
-`CURRENT_TREE_CLOSURE_OK` only when the bundle also matches the live
-HEAD, manifest digest, and suite receipt. Suite counts are bound to a
-machine-generated `p5_suite_receipt_v2.json`, never free-form. The v4
-bundle is preserved as a frozen-snapshot record bound to an earlier
-content head; prior indexes (v1 listed-set, v2–v4) remain superseded
-historical records. Both replay reports are `artifact_integrity_replay`
-unless an independent model refit is actually performed. Canonical
-writers refuse existing evidence paths and replay defaults to stdout,
-so reruns cannot replace history.
+Cross-root provenance: `retrieval/p5_evidence_index_v7.json` is the
+current exhaustive release index: it binds every non-sidecar payload in
+the daily, seismic logical, seasonal-v0, and seasonal-v1 surfaces,
+requires a sidecar for each payload, and records explicit exclusions —
+including typed `planned` slots for outputs published after index
+generation (`CLOSURE_PENDING` pre-publication semantics). The detached
+release closure (`retrieval/p5_release_closure_v7.json`) is published
+into its declared slot by `scripts/build_p5_release_closure_v4.py` and
+verified post-publication with the explicit
+`--current-tree --repo-root` binding. `CURRENT_TREE_CLOSURE_OK` means
+the bundle matches the live HEAD, manifest digest, and suite receipt;
+default frozen-mode validation remains an internal-consistency check.
+Suite counts are bound to the machine-generated
+`p5_suite_receipt_v4.json`, never free-form. The v7 closure binds the
+append-only `INCIDENT_SURFACE_V2.json`; V1 remains preserved through its
+V2 supersedes digest. Indexes v1–v6 and closure v6 remain immutable
+historical records. Both replay reports are
+`artifact_integrity_replay` unless an independent model refit is
+actually performed. Canonical writers refuse existing evidence paths and
+replay defaults to stdout, so reruns cannot replace history.
 
 Historical cross-root provenance: `retrieval/p5_evidence_index_v1.json` binds the
 three physical roots (daily, seasonal v0 immutable, seasonal v1) plus

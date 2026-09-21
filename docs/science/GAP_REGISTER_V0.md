@@ -1359,13 +1359,14 @@ contract; v4 remediation replaces it (v3 retained as a non-final record).
 | Release tests checking arithmetic but not closure↔suite evidence binding | **REPAIRED** — closure-v4 builder tests (33) and validator tests (25) cover every defect class on synthetic fixtures |
 | Owner approval still absent | **OPEN — OWNER** — `P5_D_OWNER_DISPOSITION_V2` records `approval_status: NOT_REQUESTED`, `approved_by: null`, `approval_utc: null` |
 
-### Audit-4 current-tree binding correction — 2026-09-21 (v5 remediation)
+### Audit-4 current-tree binding correction — 2026-09-21 (historical v5 remediation)
 
 The audit-4 review confirmed the v4 bundle was internally consistent but
 bound to a stale snapshot (content head `d789814`, manifest `ac7921…`,
 receipt `3885/7/0`) while the live tree had advanced to `aa3caa9` /
 manifest `db842e…` / suite `3886/6/0`. The v4 bundle is retained as
-`VALID_FOR_FROZEN_SNAPSHOT_ONLY`; v5 regeneration binds one final tree.
+`VALID_FOR_FROZEN_SNAPSHOT_ONLY`; the v5 regeneration is historical and
+is superseded by the v7 successor recorded below.
 
 | Defect | Disposition |
 |---|---|
@@ -1380,3 +1381,19 @@ manifest `db842e…` / suite `3886/6/0`. The v4 bundle is retained as
 | Remediation plan recorded pre-rebind counts as current | **REPAIRED** — plan header corrected to audit-4 facts |
 | Owner approval absent | **OPEN — OWNER** — `NOT_REQUESTED`, `approved_by: null`, `approval_utc: null`; no approval is inferred |
 | v4 vs V2 schema naming | **DOCUMENTED** — index schema `P5_EVIDENCE_INDEX_V2` is the wire format; release bundle version (`v5`) is orthogonal metadata |
+
+### Audit-4 successor reconciliation — 2026-09-21 (v7 release)
+
+This is the current release-integrity record. It does not alter the
+scientific estimands, replay scope, negative findings, authority flags,
+owner gates, or historical evidence roots.
+
+| Residual | Disposition |
+|---|---|
+| Closure v6 bound `INCIDENT_SURFACE_V1` while the current audit record referred to V2 | **REPAIRED** — closure v7 binds `INCIDENT_SURFACE_V2`; V2 carries the supersedes digest for immutable V1, so the incident chain is explicit and append-only |
+| Closure-builder publication could silently select stale v5/V1/V1-receipt defaults | **REPAIRED** — release version, incident surface, and suite receipt are explicit CLI inputs; omission fails at argument parsing; existing historical Python fixtures now pass their version explicitly |
+| README/P5 status index named v5 as current | **REPAIRED** — current paths/counts now name index v7, closure v7, and suite receipt v4; v1–v6 remain historical |
+| Audit-4 phase ledger stopped at “in progress” | **REPAIRED** — the master plan and ledger record the serialized v7 successor and its gates |
+| Manifest described suite counts as projected and pointed to receipt v2 | **REPAIRED** — final manifest wording is receipt-bound to the machine-generated v4 suite receipt |
+| Historical “full recomputation” wording could be read as the current replay proof | **REPAIRED** — historical R11.9 wording is explicitly scoped; current replay remains `artifact_integrity_replay` |
+| Owner approval / Option 3 / ObsPy / Arm C / publication | **OPEN — OWNER/EXTERNAL** — unchanged; no approval is inferred and no acquisition or admission is performed |

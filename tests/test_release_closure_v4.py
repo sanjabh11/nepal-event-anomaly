@@ -158,7 +158,8 @@ def _kwargs(world: SimpleNamespace) -> dict:
                 seasonal_root=world.seasonal,
                 owner_disposition=world.owner,
                 incident_surface=world.surface,
-                suite_receipt=world.receipt, output=world.out)
+                suite_receipt=world.receipt, output=world.out,
+                release_version="v5")
 
 
 def _cli_args(world: SimpleNamespace) -> list:
@@ -168,6 +169,7 @@ def _cli_args(world: SimpleNamespace) -> list:
             "--owner-disposition", str(world.owner),
             "--incident-surface", str(world.surface),
             "--suite-receipt", str(world.receipt),
+            "--release-version", "v5",
             "--out", str(world.out)]
 
 
@@ -188,8 +190,9 @@ def test_build_closure_assembles_v4_document(world):
 
 
 def test_release_version_is_recorded_from_argument(world):
-    closure = closure_mod.build_closure(release_version="v9",
-                                        **_kwargs(world))
+    kwargs = _kwargs(world)
+    kwargs["release_version"] = "v9"
+    closure = closure_mod.build_closure(**kwargs)
     assert closure["release_version"] == "v9"
 
 
@@ -471,6 +474,19 @@ def test_dry_run_writes_nothing(world, capsys):
     printed = json.loads(capsys.readouterr().out)
     assert printed["status"] == "CLOSURE_DRY_RUN_OK"
     assert printed["closure"]["schema"] == "P5_RELEASE_CLOSURE_V4"
+
+
+def test_cli_requires_explicit_release_identity(world):
+    args = _cli_args(world)
+    args.remove("--incident-surface")
+    args.remove(str(world.surface))
+    args.remove("--suite-receipt")
+    args.remove(str(world.receipt))
+    args.remove("--release-version")
+    args.remove("v5")
+    with pytest.raises(SystemExit) as exc:
+        closure_mod.main(args)
+    assert exc.value.code == 2
 
 
 def test_cli_repo_root_and_release_version_flags(world, capsys):

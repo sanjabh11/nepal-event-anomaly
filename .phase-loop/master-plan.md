@@ -27,21 +27,22 @@ Hard stops:
 - no historical evidence overwrite;
 - no manifest rebind before all implementation and verification checks pass.
 
-## Audit-4 current-tree correction (2026-09-21)
+## Audit-4 current-tree correction and successor (2026-09-21)
 
-Audit-4 found the v4 bundle internally consistent but bound to a stale
-snapshot (d789814 vs HEAD aa3caa9; manifest ac7921 vs db842e; receipt
-3885/7/0 vs current 3886/6/0). Phase order:
+Audit-4 first found the v4 bundle internally consistent but bound to a
+stale snapshot. The v5/v6 repair chain is retained immutably. The
+successor pass reconciles the remaining release metadata and binds the
+current tree as v7:
 
-1. Freeze record marking v4 `VALID_FOR_FROZEN_SNAPSHOT_ONLY` + incident
-   record for the disposition-v2 overwrite.
-2. Parallel agents: current-tree validator mode (FROZEN_SNAPSHOT vs
-   CURRENT_TREE status split, env-digest recompute) + receipt v2
-   (manifest-sha binding, execution-window fields).
-3. Coordinator: docs, single content commit, one rebind, then the
-   serialized chain — receipt v2, replay v6 reports, index v5
-   (CLOSURE_PENDING), closure v5 (CURRENT_TREE_CLOSURE_OK), verification
-   v3, INCIDENT_SURFACE_V2. No commits after receipt generation.
+1. Explicit closure identity inputs and focused regression tests.
+2. Current documentation, manifest wording, and phase ledger update.
+3. One content commit, one manifest rebind, and one machine-generated
+   suite receipt v4.
+4. Exhaustive index v7, detached closure v7 binding incident surface V2,
+   and current-tree validator.
+5. Full suite, replay, index, closure, claim, manifest, and tree checks;
+   no commits after receipt generation.
 
-Hard stops: v4 bytes untouched; no acquisition; owner gates unchanged;
-"all gaps closed" remains prohibited.
+Hard stops: v4–v6 bytes untouched; no acquisition; no dependency
+admission; owner gates and authority flags unchanged; “all gaps closed”
+remains prohibited.

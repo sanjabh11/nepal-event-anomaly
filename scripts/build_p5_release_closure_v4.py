@@ -184,7 +184,7 @@ def _load_receipt(receipt_path: Path, *, live_head: str,
 def build_closure(*, index: Path, daily_root: Path, seasonal_root: Path,
                   owner_disposition: Path, incident_surface: Path,
                   suite_receipt: Path, output: Path,
-                  repo_root=None, release_version: str = "v5",
+                  repo_root=None, release_version: str,
                   daily_report_relpath: str = (
                       "retrieval/p5_replay_report_v6.json"),
                   seasonal_report_relpath: str = (
@@ -371,10 +371,6 @@ DEFAULT_DAILY_ROOT = EVIDENCE_ROOT / "p5-glof-2026-09-19"
 DEFAULT_SEASONAL_ROOT = EVIDENCE_ROOT / "p5-seasonal-v1-2026-09-20"
 DEFAULT_OWNER_DISPOSITION = (DEFAULT_DAILY_ROOT / "retrieval"
                              / "p5_d_owner_disposition_v2.json")
-DEFAULT_INCIDENT_SURFACE = (EVIDENCE_ROOT / "_glmdrift-audit"
-                            / "INCIDENT_SURFACE_V1.json")
-DEFAULT_SUITE_RECEIPT = (DEFAULT_DAILY_ROOT / "retrieval"
-                         / "p5_suite_receipt_v1.json")
 
 
 def _closure_bytes(closure: dict) -> bytes:
@@ -396,19 +392,18 @@ def main(argv=None) -> int:
                         default=str(DEFAULT_SEASONAL_ROOT))
     parser.add_argument("--owner-disposition",
                         default=str(DEFAULT_OWNER_DISPOSITION))
-    parser.add_argument("--incident-surface",
-                        default=str(DEFAULT_INCIDENT_SURFACE))
-    parser.add_argument("--suite-receipt",
-                        default=str(DEFAULT_SUITE_RECEIPT),
+    parser.add_argument("--incident-surface", required=True,
+                        help="validated incident-surface descriptor to bind")
+    parser.add_argument("--suite-receipt", required=True,
                         help="P5_SUITE_RECEIPT_V2 produced by "
                              "build_p5_suite_receipt.py")
     parser.add_argument("--repo-root", default=str(REPO),
                         help="repository root for the live HEAD and "
                              "live manifest binding (default: this "
                              "worktree)")
-    parser.add_argument("--release-version", default="v5",
-                        help="release version recorded in the closure "
-                             "(default: v5)")
+    parser.add_argument("--release-version", required=True,
+                        help="release version recorded in the closure; "
+                             "must be explicit for every publication")
     parser.add_argument(
         "--daily-report-relpath",
         default="retrieval/p5_replay_report_v6.json",
@@ -471,4 +466,3 @@ def main(argv=None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
