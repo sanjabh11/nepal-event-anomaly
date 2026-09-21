@@ -434,7 +434,6 @@ def main(argv=None) -> int:
             # (see baseline_self_rel); the manifest stays self-excluded.
             scopes |= baseline_self_rel(repo_root, scope_path, manifest_path)
             audit = scope_audit(repo_root, bound, scopes)
-            audit = scope_audit(repo_root, bound, scopes)
             print(f"SCOPE_AUDIT_OK: {audit['tracked_files']} tracked files, "
                   f"{audit['bound_files']} bound, "
                   f"{audit['scope_exclusions']} recorded exclusions")
