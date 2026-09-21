@@ -167,6 +167,10 @@ def _load_exclusions(raw, specs):
                 raise GenerationError(
                     f"exclusions[{i}].owner must be a non-empty string")
             entry["owner"] = owner
+        if entry.get("state") == "planned" and "owner" not in entry:
+            raise GenerationError(
+                f"exclusions[{i}].owner is required for planned "
+                "exclusions")
         result.append(entry)
     return result
 
@@ -356,8 +360,7 @@ def build_index(root_mappings, index_out, *, report_out=None,
                              exists_at_validation=True)
     _append_output_exclusion(
         exclusions, report_out, specs, "report output",
-        exists_at_validation=(report_out is None
-                              or report_out.is_file()))
+        exists_at_validation=True)
     _append_output_exclusion(
         exclusions, detached_closure, specs, "detached release closure",
         exists_at_validation=(detached_closure is None
@@ -368,7 +371,9 @@ def build_index(root_mappings, index_out, *, report_out=None,
         raise GenerationError("duplicate exclusion assignment")
 
     # Explicit exclusions must name existing payloads.  Generated outputs
-    # are the only allowed not-yet-existing exclusions at this point.
+    # and coordinator-declared "planned" slots (post-index publication
+    # targets carrying a named owner) are the only allowed
+    # not-yet-existing exclusions at this point.
     output_keys = set()
     for output, label in ((index_out, "index output"),
                           (report_out, "report output"),
@@ -379,6 +384,11 @@ def build_index(root_mappings, index_out, *, report_out=None,
     for exclusion in exclusions:
         key = (exclusion["root_id"], exclusion["relpath"])
         if key in output_keys:
+            continue
+        if exclusion.get("state") == "planned":
+            # A planned slot legitimately does not exist yet; the
+            # validator tolerates its absence (driving CLOSURE_PENDING)
+            # and requires the owner already enforced above.
             continue
         path = specs[key[0]]["path_resolved"] / key[1]
         if not path.is_file():
@@ -426,6 +436,10 @@ def build_index(root_mappings, index_out, *, report_out=None,
     manifest = _manifest_binding(Path(manifest_path).expanduser().resolve(),
                                  Path(repo_root).resolve())
     head = _repo_head(Path(repo_root).resolve())
+    # The manifest section must distinguish "the manifest it binds"
+    # (content_head/manifest_commit) from "the HEAD at generation time":
+    # after a manifest-only rebind commit they legitimately differ.
+    manifest["generation_head"] = head
     supersedes_target = _supersedes_target(supersedes, specs, index_out)
     supersedes_doc = None
     if supersedes_target is not None:
@@ -456,23 +470,26 @@ def build_index(root_mappings, index_out, *, report_out=None,
         "root_ids": sorted(specs),
     }
     # Outputs do not exist when the inventory is built, but they will be
-    # regular payload files by the time the just-written index is validated.
-    planned_output_count = len(output_keys - set(inventory))
-    inventory_count = len(inventory) + planned_output_count
+    # regular payload files by the time the just-written index is
+    # validated.  Every exclusion key outside the pre-write inventory
+    # therefore contributes exactly one payload to the validator's
+    # recount: present-state generator outputs land in the post-write
+    # inventory, and planned slots are counted as planned-absent (or as
+    # inventory if the coordinator publishes before validation).
+    pending_exclusion_keys = {
+        (e["root_id"], e["relpath"]) for e in exclusions
+        if (e["root_id"], e["relpath"]) not in inventory}
+    inventory_count = len(inventory) + len(pending_exclusion_keys)
     included_count = len(files)
     excluded_count = len(exclusions)
     # Typed planned outputs drive the prepublication state: when any
     # excluded output does not yet exist on disk, the index records
     # CLOSURE_PENDING — an honest prepublication state asserting only
     # inventory coverage, never closure publication.
-    planned_absent = 0
-    for exclusion in exclusions:
-        if exclusion.get("state") != "planned":
-            continue
-        path = (specs[exclusion["root_id"]]["path_resolved"]
-                / exclusion["relpath"])
-        if not path.is_file():
-            planned_absent += 1
+    planned_absent = sum(1 for e in exclusions
+                         if e.get("state") == "planned"
+                         and not (specs[e["root_id"]]["path_resolved"]
+                                  / e["relpath"]).is_file())
     has_planned_absent = planned_absent > 0
     final_state = "CLOSURE_PENDING" if has_planned_absent else "CLOSED"
     closure = {

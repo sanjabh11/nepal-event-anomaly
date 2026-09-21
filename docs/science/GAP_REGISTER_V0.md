@@ -1358,3 +1358,25 @@ contract; v4 remediation replaces it (v3 retained as a non-final record).
 | Absolute host paths, missing activity_id/UTC bounds, and ambiguous field names in new replay reports | **REPAIRED** — v5 reports carry schema, `activity_id`, `started_utc`/`completed_utc`, logical `root_id`s, and host paths only under `execution_context` |
 | Release tests checking arithmetic but not closure↔suite evidence binding | **REPAIRED** — closure-v4 builder tests (33) and validator tests (25) cover every defect class on synthetic fixtures |
 | Owner approval still absent | **OPEN — OWNER** — `P5_D_OWNER_DISPOSITION_V2` records `approval_status: NOT_REQUESTED`, `approved_by: null`, `approval_utc: null` |
+
+### Audit-4 current-tree binding correction — 2026-09-21 (v5 remediation)
+
+The audit-4 review confirmed the v4 bundle was internally consistent but
+bound to a stale snapshot (content head `d789814`, manifest `ac7921…`,
+receipt `3885/7/0`) while the live tree had advanced to `aa3caa9` /
+manifest `db842e…` / suite `3886/6/0`. The v4 bundle is retained as
+`VALID_FOR_FROZEN_SNAPSHOT_ONLY`; v5 regeneration binds one final tree.
+
+| Defect | Disposition |
+|---|---|
+| Closure validates frozen bundle, not the live repository | **REPAIRED** — validator gains `--current-tree` mode: `CURRENT_TREE_CLOSURE_OK` requires live HEAD + manifest content_head + manifest sha256 three-way agreement; frozen bundles report `FROZEN_SNAPSHOT_CLOSURE_OK` and are labelled historical |
+| Suite receipt bound to superseded HEAD | **REPAIRED** — `P5_SUITE_RECEIPT_V2` binds `repository_head` + `manifest_sha256` + `content_head`, captured before the run; generated only on the final post-rebind tree |
+| Closure/receipt/manifest/index target different commits | **REPAIRED** — single-snapshot regeneration: no commits after receipt; index v5 → closure v5 → verification v3 all bind the same final tree |
+| Final verification record outside the bound surface | **REPAIRED** — `p5_final_verification_v3.json` is bound into `INCIDENT_SURFACE_V2.json` (append-only successor descriptor) |
+| Index CLOSURE_PENDING vs closure CLOSED ambiguity | **REPAIRED** — bundle-level terminal state (`CURRENT_TREE_RELEASE`) lives in the closure; `CLOSURE_PENDING` remains an honest pre-publication index state |
+| Environment digest syntactic-only | **REPAIRED** — validator recomputes the canonical digest from `environment.packages` and compares |
+| Focused-test claim not command-bound | **REPAIRED** — verification v3 records the exact focused command and observed count |
+| `p5_d_owner_disposition_v2.json` overwritten between index v3 and v4 | **DISCLOSED** — append-only violation recorded in `_glmdrift-audit/2026-09-21-INCIDENT-disposition-v2-overwrite.json`; prior bytes unrecoverable; both variants assert non-approval with null `approved_by` |
+| Remediation plan recorded pre-rebind counts as current | **REPAIRED** — plan header corrected to audit-4 facts |
+| Owner approval absent | **OPEN — OWNER** — `NOT_REQUESTED`, `approved_by: null`, `approval_utc: null`; no approval is inferred |
+| v4 vs V2 schema naming | **DOCUMENTED** — index schema `P5_EVIDENCE_INDEX_V2` is the wire format; release bundle version (`v5`) is orthogonal metadata |

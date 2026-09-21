@@ -193,6 +193,23 @@ class TestR115ReleaseClosure:
             pytest.skip("no published v4+ release closure to validate")
         latest = closures[-1]
         report = validate_closure(latest)
-        assert report["status"] == "CLOSURE_OK", (
-            f"live closure {latest.name} fails post-publication "
+        assert report["status"] == "FROZEN_SNAPSHOT_CLOSURE_OK", (
+            f"live closure {latest.name} fails frozen-snapshot "
             f"validation: {report['problems'][:5]}")
+        # When the closure's recorded head is the live HEAD, current-tree
+        # validation must additionally pass; otherwise the bundle is a
+        # historical snapshot and current-tree mode must fail closed.
+        import subprocess as _sp
+        head = _sp.run(["git", "rev-parse", "HEAD"], cwd=_REPO_ROOT,
+                       capture_output=True, text=True).stdout.strip()
+        doc = json.loads(latest.read_text())
+        recorded = doc.get("repository", {}).get("head")
+        cur = validate_closure(
+            latest, current_tree=True, repo_root=_REPO_ROOT)
+        if recorded == head:
+            assert cur["status"] == "CURRENT_TREE_CLOSURE_OK", (
+                f"closure claims the live HEAD but fails current-tree "
+                f"validation: {cur['problems'][:5]}")
+        else:
+            assert cur["status"] == "CURRENT_TREE_CLOSURE_FAIL", (
+                "stale-bundle closure must fail current-tree validation")

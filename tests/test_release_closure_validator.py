@@ -46,9 +46,16 @@ def _write_sidecar(path: Path) -> None:
 
 HEAD = "a" * 40
 CONTENT_HEAD = "b" * 40
-MANIFEST_SHA = "c" * 64
+MANIFEST_RELPATH = "docs/science/ARTIFACT_MANIFEST_V0.json"
+ENV_PACKAGES = {"pytest": "8.3.2", "packaging": "24.1"}
 RECEIPT_COUNTS = {"collected": 11, "passed": 10, "skipped": 1,
                   "failed": 0, "errors": 0, "warnings": 3}
+
+
+def _env_digest(packages: dict) -> str:
+    """The canonical packages-map digest the validator recomputes."""
+    return _sha_bytes(json.dumps(packages, sort_keys=True,
+                                 separators=(",", ":")).encode("utf-8"))
 
 
 @pytest.fixture
@@ -61,6 +68,13 @@ def world(tmp_path):
     (seasonal / "run").mkdir(parents=True)
     audit = tmp_path / "_glmdrift-audit"
     audit.mkdir()
+    repo = tmp_path / "repo"
+    manifest_path = repo / MANIFEST_RELPATH
+    manifest_path.parent.mkdir(parents=True)
+    manifest_sha = _write_json(manifest_path, {
+        "content_head": CONTENT_HEAD,
+        "manifest_commit": CONTENT_HEAD,
+        "files": []})
 
     receipt_path = retrieval / "p5_suite_receipt.json"
     daily_replay = retrieval / "p5_replay_report_v5.json"
@@ -99,7 +113,10 @@ def world(tmp_path):
 
     index_doc = {
         "schema": "P5_EVIDENCE_INDEX_V2",
-        "manifest_sha256": MANIFEST_SHA,
+        "manifest_sha256": manifest_sha,
+        "manifest": {"relpath": MANIFEST_RELPATH,
+                     "sha256": manifest_sha,
+                     "content_head": CONTENT_HEAD},
         "roots": {
             "daily_p5a2": {"path": str(daily), "role": "daily evidence"},
             "seasonal_v1_current": {"path": str(seasonal),
@@ -135,7 +152,8 @@ def world(tmp_path):
                 "head": HEAD,
                 "content_head": CONTENT_HEAD,
                 "manifest_commit": CONTENT_HEAD,
-                "manifest_sha256": MANIFEST_SHA},
+                "manifest_relpath": MANIFEST_RELPATH,
+                "manifest_sha256": manifest_sha},
             "suite": {
                 "receipt_relpath": "retrieval/p5_suite_receipt.json",
                 "receipt_sha256": _sha_path(receipt_path),
@@ -167,7 +185,9 @@ def world(tmp_path):
                 "sha256": _sha_path(owner_path),
                 "schema": "P5_D_OWNER_DISPOSITION_V2"},
             "environment": {"python": "3.14.0",
-                            "environment_digest": "d" * 64},
+                            "packages": dict(ENV_PACKAGES),
+                            "environment_digest":
+                                _env_digest(ENV_PACKAGES)},
         }
 
     def publish(doc=None) -> Path:
@@ -179,7 +199,9 @@ def world(tmp_path):
     publish()
     return SimpleNamespace(
         tmp=tmp_path, daily=daily, retrieval=retrieval,
-        seasonal=seasonal, audit=audit, receipt_path=receipt_path,
+        seasonal=seasonal, audit=audit, repo=repo,
+        manifest_path=manifest_path, manifest_sha=manifest_sha,
+        receipt_path=receipt_path,
         daily_replay=daily_replay, seasonal_replay=seasonal_replay,
         owner_path=owner_path, surface_path=surface_path,
         index_path=index_path, index_doc=index_doc,
@@ -200,32 +222,32 @@ def _rewrite(path: Path, **changes) -> None:
 class TestReleaseClosureValidator:
     def test_valid_closure_passes(self, world):
         report = _report(world)
-        assert report["status"] == "CLOSURE_OK", report["problems"]
+        assert report["status"] == "FROZEN_SNAPSHOT_CLOSURE_OK", report["problems"]
         assert report["problems"] == []
         assert all(v == "PASS" for v in report["checks"].values())
 
     def test_missing_closure_file_fails(self, world):
         report = vrc.validate_closure(world.tmp / "nope.json")
-        assert report["status"] == "CLOSURE_FAIL"
+        assert report["status"] == "FROZEN_SNAPSHOT_CLOSURE_FAIL"
         assert report["checks"]["closure_file"] == "FAIL"
 
     def test_invalid_json_fails(self, world):
         world.closure_path.write_bytes(b"{not json")
         _write_sidecar(world.closure_path)
-        assert _report(world)["status"] == "CLOSURE_FAIL"
+        assert _report(world)["status"] == "FROZEN_SNAPSHOT_CLOSURE_FAIL"
 
     def test_wrong_schema_fails(self, world):
         doc = world.closure_doc()
         doc["schema"] = "P5_RELEASE_CLOSURE_V2"
         world.publish(doc)
         report = _report(world)
-        assert report["status"] == "CLOSURE_FAIL"
+        assert report["status"] == "FROZEN_SNAPSHOT_CLOSURE_FAIL"
         assert report["checks"]["schema"] == "FAIL"
 
     def test_missing_sidecar_fails(self, world):
         Path(str(world.closure_path) + ".sha256").unlink()
         report = _report(world)
-        assert report["status"] == "CLOSURE_FAIL"
+        assert report["status"] == "FROZEN_SNAPSHOT_CLOSURE_FAIL"
         assert report["checks"]["sidecar"] == "FAIL"
 
     def test_stale_sidecar_fails(self, world):
@@ -233,7 +255,7 @@ class TestReleaseClosureValidator:
         with world.closure_path.open("a") as fh:
             fh.write(" ")
         report = _report(world)
-        assert report["status"] == "CLOSURE_FAIL"
+        assert report["status"] == "FROZEN_SNAPSHOT_CLOSURE_FAIL"
         assert report["checks"]["sidecar"] == "FAIL"
 
     def test_root_of_trust_path_sha_mismatch_fails(self, world):
@@ -243,7 +265,7 @@ class TestReleaseClosureValidator:
         doc["root_of_trust"]["sha256"] = _sha_path(world.receipt_path)
         world.publish(doc)
         report = _report(world)
-        assert report["status"] == "CLOSURE_FAIL"
+        assert report["status"] == "FROZEN_SNAPSHOT_CLOSURE_FAIL"
         assert report["checks"]["root_of_trust"] == "FAIL"
 
     def test_root_of_trust_missing_file_fails(self, world):
@@ -251,7 +273,7 @@ class TestReleaseClosureValidator:
         doc["root_of_trust"]["relpath"] = "retrieval/no_such_index.json"
         world.publish(doc)
         report = _report(world)
-        assert report["status"] == "CLOSURE_FAIL"
+        assert report["status"] == "FROZEN_SNAPSHOT_CLOSURE_FAIL"
         assert report["checks"]["root_of_trust"] == "FAIL"
 
     def test_validator_status_not_index_ok_fails(self, world):
@@ -268,7 +290,7 @@ class TestReleaseClosureValidator:
         _write_json(world.index_path, index)
         world.publish()
         report = _report(world)
-        assert report["status"] == "CLOSURE_FAIL"
+        assert report["status"] == "FROZEN_SNAPSHOT_CLOSURE_FAIL"
         assert report["checks"]["index_crosscheck"] == "FAIL"
         assert any("planned" in p for p in report["problems"])
 
@@ -285,7 +307,7 @@ class TestReleaseClosureValidator:
         doc["repository"]["manifest_sha256"] = "e" * 64
         world.publish(doc)
         report = _report(world)
-        assert report["status"] == "CLOSURE_FAIL"
+        assert report["status"] == "FROZEN_SNAPSHOT_CLOSURE_FAIL"
         assert report["checks"]["index_crosscheck"] == "FAIL"
 
     def test_suite_count_divergence_fails(self, world):
@@ -295,7 +317,7 @@ class TestReleaseClosureValidator:
         doc["suite"]["counts"]["warnings"] = 99
         world.publish(doc)
         report = _report(world)
-        assert report["status"] == "CLOSURE_FAIL"
+        assert report["status"] == "FROZEN_SNAPSHOT_CLOSURE_FAIL"
         assert report["checks"]["suite_binding"] == "FAIL"
 
     def test_receipt_not_green_fails(self, world):
@@ -371,8 +393,158 @@ class TestReleaseClosureValidator:
     def test_cli_exit_codes(self, world, capsys):
         assert vrc.main([str(world.closure_path)]) == 0
         out = json.loads(capsys.readouterr().out)
-        assert out["status"] == "CLOSURE_OK"
+        assert out["status"] == "FROZEN_SNAPSHOT_CLOSURE_OK"
         doc = world.closure_doc()
         doc["authority"]["promotion_eligible"] = True
         world.publish(doc)
         assert vrc.main([str(world.closure_path)]) == 1
+
+
+class TestCurrentTreeValidation:
+    """A4-04/05/15/18: the frozen bundle can be internally consistent
+    while the repository has moved on.  ``--current-tree`` binds the
+    closure to the live tree; frozen mode must stay green."""
+
+    def _current(self, world, monkeypatch, head=HEAD):
+        monkeypatch.setattr(vrc, "_live_head", lambda root: head)
+        return vrc.validate_closure(world.closure_path,
+                                    current_tree=True,
+                                    repo_root=world.repo)
+
+    def test_current_tree_ok_when_live_state_matches(
+            self, world, monkeypatch):
+        report = self._current(world, monkeypatch)
+        assert report["status"] == "CURRENT_TREE_CLOSURE_OK", (
+            report["problems"])
+        assert report["checks"]["current_tree"] == "PASS"
+
+    def test_stale_head_fails_current_tree_but_passes_frozen(
+            self, world, monkeypatch):
+        """A closure built at H1 must fail --current-tree once live
+        HEAD moved to H2, while the frozen snapshot stays valid."""
+        report = self._current(world, monkeypatch, head="d" * 40)
+        assert report["status"] == "CURRENT_TREE_CLOSURE_FAIL"
+        assert report["checks"]["current_tree"] == "FAIL"
+        assert any("repository.head" in p and "live HEAD" in p
+                   for p in report["problems"])
+        frozen = _report(world)
+        assert frozen["status"] == "FROZEN_SNAPSHOT_CLOSURE_OK", (
+            frozen["problems"])
+
+    def test_manifest_sha_drift_fails_current_but_passes_frozen(
+            self, world, monkeypatch):
+        """Index, closure and live manifest must agree three-way; a
+        manifest rebind after publication drifts the live bytes."""
+        doc = world.closure_doc()
+        doc["repository"]["manifest_sha256"] = "e" * 64
+        index = json.loads(world.index_path.read_text())
+        index["manifest"]["sha256"] = "e" * 64
+        index["manifest_sha256"] = "e" * 64
+        _write_json(world.index_path, index)
+        doc["root_of_trust"]["sha256"] = _sha_path(world.index_path)
+        world.publish(doc)
+        frozen = _report(world)
+        assert frozen["status"] == "FROZEN_SNAPSHOT_CLOSURE_OK", (
+            frozen["problems"])
+        report = self._current(world, monkeypatch)
+        assert report["status"] == "CURRENT_TREE_CLOSURE_FAIL"
+        assert any("manifest" in p and "live" in p
+                   for p in report["problems"])
+
+    def test_content_head_drift_fails_current_tree(
+            self, world, monkeypatch):
+        doc = world.closure_doc()
+        doc["repository"]["content_head"] = "f" * 40
+        doc["repository"]["manifest_commit"] = "f" * 40
+        world.publish(doc)
+        report = self._current(world, monkeypatch)
+        assert report["status"] == "CURRENT_TREE_CLOSURE_FAIL"
+        assert any("content_head" in p for p in report["problems"])
+
+    def test_stale_receipt_head_fails_current_tree(
+            self, world, monkeypatch):
+        """The receipt head equals the closure-recorded head (frozen
+        valid) but is neither live HEAD nor live content_head."""
+        report = self._current(world, monkeypatch, head="d" * 40)
+        assert report["status"] == "CURRENT_TREE_CLOSURE_FAIL"
+        assert any("receipt" in p and "repository_head" in p
+                   for p in report["problems"])
+
+    def test_unresolvable_live_head_fails_closed(
+            self, world, monkeypatch):
+        def boom(root):
+            raise ValueError("not a git repository")
+        monkeypatch.setattr(vrc, "_live_head", boom)
+        report = vrc.validate_closure(world.closure_path,
+                                      current_tree=True,
+                                      repo_root=world.repo)
+        assert report["status"] == "CURRENT_TREE_CLOSURE_FAIL"
+        assert any("live HEAD unresolvable" in p
+                   for p in report["problems"])
+
+    def test_missing_live_manifest_fails_closed(
+            self, world, monkeypatch):
+        world.manifest_path.unlink()
+        report = self._current(world, monkeypatch)
+        assert report["status"] == "CURRENT_TREE_CLOSURE_FAIL"
+        assert any("manifest" in p for p in report["problems"])
+
+    def test_current_tree_rejects_manifest_outside_repo(
+            self, world, monkeypatch):
+        doc = world.closure_doc()
+        doc["repository"]["manifest_relpath"] = "../../escape.json"
+        world.publish(doc)
+        report = self._current(world, monkeypatch)
+        assert report["status"] == "CURRENT_TREE_CLOSURE_FAIL"
+
+    def test_cli_current_tree_flag(self, world, monkeypatch, capsys):
+        monkeypatch.setattr(vrc, "_live_head", lambda root: HEAD)
+        rc = vrc.main([str(world.closure_path), "--current-tree",
+                       "--repo-root", str(world.repo)])
+        assert rc == 0
+        out = json.loads(capsys.readouterr().out)
+        assert out["status"] == "CURRENT_TREE_CLOSURE_OK"
+
+    def test_v2_receipt_schema_accepted(self, world):
+        _rewrite(world.receipt_path, schema="P5_SUITE_RECEIPT_V2")
+        world.publish()
+        report = _report(world)
+        assert report["status"] == "FROZEN_SNAPSHOT_CLOSURE_OK", (
+            report["problems"])
+
+
+class TestEnvironmentDigestRecompute:
+    """A4-14: the recorded environment digest must equal the sha256 of
+    the canonical packages serialization — in BOTH modes."""
+
+    def test_tampered_packages_map_fails(self, world):
+        doc = world.closure_doc()
+        doc["environment"]["packages"]["pytest"] = "9.9.9"
+        world.publish(doc)
+        report = _report(world)
+        assert report["status"] == "FROZEN_SNAPSHOT_CLOSURE_FAIL"
+        assert report["checks"]["environment"] == "FAIL"
+        assert any("recomputed" in p for p in report["problems"])
+
+    def test_missing_packages_map_fails_not_skips(self, world):
+        doc = world.closure_doc()
+        del doc["environment"]["packages"]
+        world.publish(doc)
+        report = _report(world)
+        assert report["checks"]["environment"] == "FAIL"
+        assert any("packages" in p for p in report["problems"])
+
+    def test_forged_digest_fails(self, world):
+        doc = world.closure_doc()
+        doc["environment"]["environment_digest"] = "1" * 64
+        world.publish(doc)
+        assert _report(world)["checks"]["environment"] == "FAIL"
+
+    def test_top_level_digest_accepted_and_recomputed(self, world):
+        doc = world.closure_doc()
+        del doc["environment"]["environment_digest"]
+        doc["environment_digest"] = _env_digest(ENV_PACKAGES)
+        world.publish(doc)
+        report = _report(world)
+        assert report["status"] == "FROZEN_SNAPSHOT_CLOSURE_OK", (
+            report["problems"])

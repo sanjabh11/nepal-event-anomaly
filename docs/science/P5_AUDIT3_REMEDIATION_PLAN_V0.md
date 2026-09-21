@@ -1,21 +1,23 @@
 # P5 audit-3 remediation record — release integrity v2
 
-> Status (2026-09-21, repair run): **implementation complete; full-suite
-> and replay revalidation executed; final rebind and release-closure
-> regeneration in progress; scientific acquisition owner-gated.**
-> Fresh evidence this run: full local suite
-> `3826 passed / 6 skipped / 1 failed / 57 warnings` on **3833
-> collected** in 1159.86 s - the single failure is the pre-rebind
-> collection-census drift gate (`test_r11_5_release_closure::
-> test_collection_count_matches_manifest`, recorded 3794 vs live 3833
-> from +39 new governed tests), which resolves at this rebind.
-> Daily and seasonal artifact-integrity replays re-executed to **new
-> v4 report paths** (`REPLAY_OK`, scope `artifact_integrity_replay`,
-> 0 failures; frozen v3 reports untouched). The owner-disposition
-> superseding record `p5_d_owner_disposition_v2.json` now exists with
-> `approved_by: null` and `approval_status: PENDING_OWNER_APPROVAL`;
-> v1 preserved byte-identical. Index v2 and closure v2 remain frozen;
-> index v3 and closure v3 are generated at new paths after the rebind.
+> Status (2026-09-21, audit-4 current-tree correction): **the v4
+> release bundle (index v4, closure v4, suite receipt v1, replay v5
+> reports) is `VALID_FOR_FROZEN_SNAPSHOT_ONLY` — internally consistent
+> but bound to content head `d789814`, which predates the final tree.
+> A current-tree bundle (receipt v2, index v5, closure v5, replay v6
+> reports, verification v3) is generated at new append-only paths from
+> the single final snapshot; `CLOSURE_OK` status vocabulary now
+> distinguishes `FROZEN_SNAPSHOT_CLOSURE_OK` from
+> `CURRENT_TREE_CLOSURE_OK`.**
+> Fresh evidence at audit-4 baseline: full local suite
+> `3886 passed / 6 skipped / 0 failed / 57 warnings` on **3892
+> collected** at current HEAD; the earlier `3826/6/1` figure records a
+> pre-rebind repair-run state, not the final release.
+> Incident disclosure: `p5_d_owner_disposition_v2.json` was overwritten
+> between index v3 and index v4 generation (sha `8a84b305` →
+> `716d12ca`); both variants assert non-approval (`approved_by: null`),
+> and the overwrite is recorded in
+> `_glmdrift-audit/2026-09-21-INCIDENT-disposition-v2-overwrite.json`.
 > Scientific estimands and historical evidence are unchanged.
 
 ## Scope lock

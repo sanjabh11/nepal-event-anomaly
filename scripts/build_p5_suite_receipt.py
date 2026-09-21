@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
-"""Machine-generated P5 test-suite receipt (P5_SUITE_RECEIPT_V1, A3-03).
+"""Machine-generated P5 test-suite receipt (P5_SUITE_RECEIPT_V2, A4-03).
 
 The v4 release closure never accepts free-form suite counts.  It binds a
 receipt produced by THIS generator, which runs the suite itself and
 parses the pytest summary tail.  The generator is fail-closed: if the
 summary cannot be parsed, or the collection count does not equal
 passed+skipped+failed+errors, no receipt is emitted.
+
+V2 freshness binding (A4-03/13/15/17): the receipt captures the live
+manifest bytes (``manifest_sha256``), the manifest's ``content_head``
+and ``manifest_commit``, and the live repository HEAD BEFORE pytest
+runs, so the receipt binds the tree under test rather than a stale
+head.  ``execution_window`` records explicit activity timing — test
+execution timestamps are never data maximum dates (``data_context``
+states this boundary in the emitted document).
 
 Publication is exclusive-create only (write_once_json +
 write_once_sidecar); an existing --out is fatal.  Default is --dry-run:
@@ -29,6 +37,10 @@ from p5_safe_io import (  # noqa: E402
     sha256_bytes, write_once_json, write_once_sidecar)
 from build_p5_release_closure_v4 import (  # noqa: E402
     ClosureError, _environment, _head, _utc_now)
+
+MANIFEST_DEFAULT = REPO / "docs/science/ARTIFACT_MANIFEST_V0.json"
+
+_HEX40 = re.compile(r"[0-9a-fA-F]{40}").fullmatch
 
 _SUMMARY_RE = re.compile(
     r"^=*\s*(?P<body>(?:\d+\s+(?:passed|skipped|failed|errors?|warnings?|"
@@ -72,10 +84,58 @@ def _parse_collected(text: str) -> int:
     raise ClosureError("pytest collection count not found")
 
 
-def run_suite(*, repo: Path, pytest_args: str) -> dict:
+def _load_manifest(manifest_path: Path, repo: Path) -> dict:
+    """Fail-closed manifest load (A4-03): live bytes + bound heads.
+
+    Returns ``{path, relpath, sha256, content_head, manifest_commit}``.
+    The digest is taken over the exact bytes on disk at call time so the
+    receipt binds the manifest under test, not a remembered digest.
+    """
+    manifest_path = Path(manifest_path).expanduser().resolve()
+    try:
+        raw = manifest_path.read_bytes()
+    except OSError as exc:
+        raise ClosureError(
+            f"manifest unreadable: {manifest_path}: {exc}") from exc
+    try:
+        doc = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ClosureError(
+            f"manifest is not parseable JSON: {manifest_path}: "
+            f"{exc}") from exc
+    if not isinstance(doc, dict):
+        raise ClosureError("manifest root must be a JSON object")
+    for field in ("content_head", "manifest_commit"):
+        value = doc.get(field)
+        if not (isinstance(value, str) and _HEX40(value)):
+            raise ClosureError(
+                f"manifest {field} must be a 40-hex commit "
+                f"(got {value!r})")
+    try:
+        relpath = manifest_path.relative_to(
+            Path(repo).resolve()).as_posix()
+    except ValueError:
+        relpath = str(manifest_path)
+    return {
+        "path": manifest_path,
+        "relpath": relpath,
+        "sha256": sha256_bytes(raw),
+        "content_head": doc["content_head"],
+        "manifest_commit": doc["manifest_commit"],
+    }
+
+
+def run_suite(*, repo: Path, pytest_args: str,
+              manifest_path: Path = MANIFEST_DEFAULT) -> dict:
     """Run the suite under *repo* and return the receipt document."""
     repo = Path(repo).resolve()
     test_args = shlex.split(pytest_args)
+
+    # Freshness bindings are captured BEFORE any pytest activity so the
+    # receipt binds the tree under test (A4-03/13): a suite that runs
+    # while HEAD or the manifest moves still records the pre-run state.
+    repository_head = _head(repo)
+    manifest = _load_manifest(manifest_path, repo)
 
     # The census pass must emit the "N tests collected" tail; strip quiet
     # flags from the caller's args so a doubled -q cannot collapse the
@@ -83,6 +143,7 @@ def run_suite(*, repo: Path, pytest_args: str) -> dict:
     census_args = [a for a in test_args if a not in ("-q", "--quiet")]
     collect_argv = [sys.executable, "-B", "-m", "pytest",
                     "--collect-only", "-q", *census_args]
+    collect_started_utc = _utc_now()
     collect = subprocess.run(collect_argv, cwd=repo, capture_output=True,
                              text=True, check=False)
     collected = _parse_collected(collect.stdout + "\n" + collect.stderr)
@@ -90,12 +151,12 @@ def run_suite(*, repo: Path, pytest_args: str) -> dict:
     run_argv = [sys.executable, "-B", "-m", "pytest", *test_args]
     command_digest = sha256_bytes(
         json.dumps(run_argv).encode("utf-8"))
-    started_utc = _utc_now()
+    suite_started_utc = _utc_now()
     start = time.monotonic()
     run = subprocess.run(run_argv, cwd=repo, capture_output=True,
                          text=True, check=False)
     duration_s = round(time.monotonic() - start, 3)
-    completed_utc = _utc_now()
+    suite_completed_utc = _utc_now()
 
     counts = _parse_summary(run.stdout + "\n" + run.stderr)
     counts["collected"] = collected
@@ -108,17 +169,29 @@ def run_suite(*, repo: Path, pytest_args: str) -> dict:
             "receipt")
 
     return {
-        "schema": "P5_SUITE_RECEIPT_V1",
+        "schema": "P5_SUITE_RECEIPT_V2",
         "activity_id": uuid.uuid4().hex,
         "command_digest": command_digest,
         "argv": run_argv,
-        "repository_head": _head(repo),
+        "repository_head": repository_head,
+        "manifest_relpath": manifest["relpath"],
+        "manifest_sha256": manifest["sha256"],
+        "content_head": manifest["content_head"],
+        "manifest_commit": manifest["manifest_commit"],
+        "execution_window": {
+            "collect_started_utc": collect_started_utc,
+            "suite_started_utc": suite_started_utc,
+            "suite_completed_utc": suite_completed_utc,
+        },
         "counts": counts,
         "exit_code": run.returncode,
         "duration_s": duration_s,
-        "started_utc": started_utc,
-        "completed_utc": completed_utc,
+        "started_utc": suite_started_utc,
+        "completed_utc": suite_completed_utc,
         "environment": _environment(),
+        "data_context": (
+            "counts describe test execution on this tree; data maximum "
+            "dates are recorded separately in evidence provenance"),
         "claim_scope": "research_only_no_operational_authorization",
     }
 
@@ -126,7 +199,7 @@ def run_suite(*, repo: Path, pytest_args: str) -> dict:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         description="Generate the machine P5 suite receipt "
-                    "(P5_SUITE_RECEIPT_V1).  Default is --dry-run: run "
+                    "(P5_SUITE_RECEIPT_V2).  Default is --dry-run: run "
                     "the suite and print the receipt, write nothing.  "
                     "--write publishes via exclusive create.")
     parser.add_argument("--repo", default=str(REPO),
@@ -134,6 +207,9 @@ def main(argv=None) -> int:
     parser.add_argument("--pytest-args", default="tests/ -q",
                         help="argument string appended to "
                              "'python -B -m pytest'")
+    parser.add_argument("--manifest", default=str(MANIFEST_DEFAULT),
+                        help="artifact manifest hashed and bound into "
+                             "the receipt before the suite runs")
     parser.add_argument("--out", required=True,
                         help="receipt output path (exclusive create)")
     mode = parser.add_mutually_exclusive_group()
@@ -146,7 +222,8 @@ def main(argv=None) -> int:
 
     try:
         receipt = run_suite(repo=Path(args.repo),
-                            pytest_args=args.pytest_args)
+                            pytest_args=args.pytest_args,
+                            manifest_path=Path(args.manifest))
     except (OSError, ValueError) as exc:
         print(f"SUITE_RECEIPT_FAIL: {exc}")
         return 1

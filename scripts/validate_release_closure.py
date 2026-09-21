@@ -24,14 +24,28 @@ the daily evidence root is ``closure_path.parent.parent``.
 Usage::
 
     validate_release_closure.py <closure.json>
+        [--current-tree [--repo-root PATH]]
+
+Two scopes of verdict (A4-04/05/14/15/18 — a frozen bundle can be
+internally consistent while the repository has since moved on):
+
+- Default (frozen) mode validates the bundle against itself and the
+  evidence roots only.  Success reports
+  ``FROZEN_SNAPSHOT_CLOSURE_OK``.
+- ``--current-tree`` additionally binds the closure to the LIVE
+  repository under ``--repo-root`` (live ``git rev-parse HEAD``, the
+  live manifest file bytes, and the receipt's repository head).
+  Success reports ``CURRENT_TREE_CLOSURE_OK``; drift reports
+  ``CURRENT_TREE_CLOSURE_FAIL`` with the stale binding named.
 
 Emits ``{status, problems, checks, ...}`` as JSON to stdout.  Exit 0 on
-CLOSURE_OK, 1 on CLOSURE_FAIL.  READ-ONLY: the validator never writes.
+an ``*_OK`` status, 1 otherwise.  READ-ONLY: the validator never writes.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -41,9 +55,18 @@ from validate_evidence_index import (  # noqa: E402
     _HEX40, _HEX64, _check_generated_utc, _check_relpath, _resolve,
     _sha256_bytes, _sha256_path)
 
+REPO = Path(__file__).resolve().parents[1]
 SCHEMA = "P5_RELEASE_CLOSURE_V4"
 INDEX_SCHEMA = "P5_EVIDENCE_INDEX_V2"
-RECEIPT_SCHEMA = "P5_SUITE_RECEIPT_V1"
+FROZEN_OK = "FROZEN_SNAPSHOT_CLOSURE_OK"
+FROZEN_FAIL = "FROZEN_SNAPSHOT_CLOSURE_FAIL"
+CURRENT_OK = "CURRENT_TREE_CLOSURE_OK"
+CURRENT_FAIL = "CURRENT_TREE_CLOSURE_FAIL"
+DEFAULT_MANIFEST_RELPATH = "docs/science/ARTIFACT_MANIFEST_V0.json"
+#: The validator accepts both receipt generations: V1 receipts were
+#: published before the V2 manifest-binding fields existed, and a frozen
+#: v4 closure may honestly bind a V1 receipt file.
+RECEIPT_SCHEMAS = ("P5_SUITE_RECEIPT_V1", "P5_SUITE_RECEIPT_V2")
 OWNER_SCHEMA = "P5_D_OWNER_DISPOSITION_V2"
 CLAIM_SCOPE = "research_only_no_operational_authorization"
 REPLAY_STATUS = "REPLAY_OK"
@@ -164,16 +187,43 @@ def _parse_utc(value):
         return None
 
 
-def validate_closure(closure_path) -> dict:
+def _live_head(repo_root) -> str:
+    """Resolve ``git rev-parse HEAD`` under ``repo_root``.
+
+    Raises ValueError when the live HEAD cannot be resolved — the
+    caller treats that as fail-closed, never as a skip.
+    """
+    proc = subprocess.run(["git", "rev-parse", "HEAD"],
+                          cwd=str(repo_root), capture_output=True,
+                          text=True, check=False)
+    head = proc.stdout.strip()
+    if proc.returncode != 0 or not _HEX40(head):
+        raise ValueError(
+            f"git rev-parse HEAD failed under {repo_root}: "
+            f"{proc.stderr.strip() or head or 'no output'}")
+    return head
+
+
+def validate_closure(closure_path, *, current_tree=False,
+                     repo_root=None) -> dict:
     """Validate a published P5_RELEASE_CLOSURE_V4 document.
 
-    Returns ``{status: "CLOSURE_OK"|"CLOSURE_FAIL", closure, schema,
-    problems, checks}``.  Read-only: nothing is written.
+    Default mode validates the frozen bundle: success is
+    ``FROZEN_SNAPSHOT_CLOSURE_OK``.  With ``current_tree=True`` the
+    closure is additionally bound to the live repository under
+    ``repo_root`` (default: this worktree): success is
+    ``CURRENT_TREE_CLOSURE_OK`` and any drift is
+    ``CURRENT_TREE_CLOSURE_FAIL``.
+
+    Returns ``{status, closure, schema, problems, checks}``.
+    Read-only: nothing is written.
     """
     problems: list[str] = []
     checks: dict[str, str] = {}
     closure_path = Path(closure_path)
     resolved = _resolve(closure_path)
+    fail_status = CURRENT_FAIL if current_tree else FROZEN_FAIL
+    ok_status = CURRENT_OK if current_tree else FROZEN_OK
 
     def report(status):
         return {"status": status, "closure": str(resolved),
@@ -189,26 +239,26 @@ def validate_closure(closure_path) -> dict:
     if not closure_path.is_file():
         problems.append(f"closure file missing: {closure_path}")
         checks["closure_file"] = "FAIL"
-        return {"status": "CLOSURE_FAIL", "closure": str(resolved),
+        return {"status": fail_status, "closure": str(resolved),
                 "schema": None, "problems": problems, "checks": checks}
     try:
         raw = closure_path.read_bytes()
     except OSError as exc:
         problems.append(f"closure unreadable: {exc}")
         checks["closure_file"] = "FAIL"
-        return {"status": "CLOSURE_FAIL", "closure": str(resolved),
+        return {"status": fail_status, "closure": str(resolved),
                 "schema": None, "problems": problems, "checks": checks}
     try:
         doc = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         problems.append(f"closure is not valid JSON: {exc}")
         checks["closure_file"] = "FAIL"
-        return {"status": "CLOSURE_FAIL", "closure": str(resolved),
+        return {"status": fail_status, "closure": str(resolved),
                 "schema": None, "problems": problems, "checks": checks}
     if not isinstance(doc, dict):
         problems.append("closure root must be a JSON object")
         checks["closure_file"] = "FAIL"
-        return {"status": "CLOSURE_FAIL", "closure": str(resolved),
+        return {"status": fail_status, "closure": str(resolved),
                 "schema": None, "problems": problems, "checks": checks}
     mark("closure_file", before)
 
@@ -342,6 +392,7 @@ def validate_closure(closure_path) -> dict:
     #         every recorded count equals the receipt's (A3-04), and
     #         the receipt's repository_head is a recorded commit.
     before = len(problems)
+    receipt = None
     suite = doc.get("suite")
     if not isinstance(suite, dict):
         problems.append("suite must be a structured object")
@@ -364,15 +415,14 @@ def validate_closure(closure_path) -> dict:
         receipt_path = _resolve_relpath(daily_root,
                                         suite.get("receipt_relpath"),
                                         problems, "suite")
-        receipt = None
         if _check_binding(receipt_path, suite.get("receipt_sha256"),
                           problems, "suite.receipt"):
             receipt = _load_json(receipt_path, problems,
                                  "suite.receipt")
         if isinstance(receipt, dict):
-            if receipt.get("schema") != RECEIPT_SCHEMA:
-                problems.append(f"suite receipt schema must be "
-                                f"{RECEIPT_SCHEMA!r} "
+            if receipt.get("schema") not in RECEIPT_SCHEMAS:
+                problems.append(f"suite receipt schema must be one of "
+                                f"{list(RECEIPT_SCHEMAS)} "
                                 f"(got {receipt.get('schema')!r})")
             if receipt.get("exit_code") != 0:
                 problems.append("suite receipt exit_code must be 0 "
@@ -520,14 +570,32 @@ def validate_closure(closure_path) -> dict:
     before = len(problems)
     env = doc.get("environment")
     digest = None
+    packages = None
     if not isinstance(env, dict):
         problems.append("environment must be a structured object")
     else:
         digest = env.get("environment_digest")
         if digest is None:
             digest = doc.get("environment_digest")
+        packages = env.get("packages")
     if not (isinstance(digest, str) and _HEX64(digest)):
         problems.append("environment_digest must be 64 hex chars")
+    # A4-14: the recorded digest must equal the recomputed sha256 of the
+    # canonical packages serialization — a missing packages map is a
+    # problem, never a skip.
+    if not isinstance(packages, dict):
+        problems.append("environment.packages must be a structured "
+                        "object mapping package name to version")
+    elif isinstance(digest, str) and _HEX64(digest):
+        recomputed = _sha256_bytes(json.dumps(
+            packages, sort_keys=True,
+            separators=(",", ":")).encode("utf-8"))
+        if recomputed != digest:
+            problems.append(
+                "environment_digest does not equal the recomputed "
+                "sha256 of the canonical environment.packages "
+                "serialization — the packages map was altered after "
+                "the digest was recorded")
     if not _nonempty(doc.get("activity_id")):
         problems.append("activity_id must be a non-empty string")
     started, completed = doc.get("started_utc"), doc.get("completed_utc")
@@ -592,25 +660,134 @@ def validate_closure(closure_path) -> dict:
                             "must be true")
     mark("incident_surface", before)
 
-    return report("CLOSURE_FAIL" if problems else "CLOSURE_OK")
+    # ---- 10. current-tree freshness (A4-04/05/15/18) -----------------
+    # Frozen-mode success proves the bundle is internally consistent;
+    # only --current-tree proves the bundle still describes the LIVE
+    # repository.  Every binding below fails closed and names the
+    # drifted field.
+    if current_tree:
+        before = len(problems)
+        root_path = _resolve(Path(repo_root)) if repo_root else REPO
+
+        live_head = None
+        try:
+            live_head = _live_head(root_path)
+        except (OSError, ValueError) as exc:
+            problems.append(f"live HEAD unresolvable under "
+                            f"{root_path}: {exc}")
+        if (live_head is not None
+                and repo.get("head") != live_head):
+            problems.append(
+                f"repository.head {str(repo.get('head'))[:12]}… != "
+                f"live HEAD {live_head[:12]}… — the closure binds a "
+                "stale repository state")
+
+        manifest_rel = (repo.get("manifest_relpath")
+                        or DEFAULT_MANIFEST_RELPATH)
+        manifest_path = _resolve_relpath(
+            root_path, manifest_rel, problems, "live manifest")
+        live_manifest_sha = None
+        live_content_head = None
+        if manifest_path is not None:
+            if not manifest_path.is_file():
+                problems.append(f"live manifest missing on disk: "
+                                f"{manifest_path}")
+            else:
+                live_manifest_sha = _sha256_path(manifest_path)
+                manifest_doc = _load_json(manifest_path, problems,
+                                          "live manifest")
+                if isinstance(manifest_doc, dict):
+                    live_content_head = manifest_doc.get("content_head")
+        if live_manifest_sha is None:
+            problems.append("live manifest sha256 unavailable — the "
+                            "manifest binding cannot be verified")
+        else:
+            if repo.get("manifest_sha256") != live_manifest_sha:
+                problems.append(
+                    f"repository.manifest_sha256 "
+                    f"{str(repo.get('manifest_sha256'))[:16]}… != live "
+                    f"manifest sha256 {live_manifest_sha[:16]}…")
+            index_manifest_sha = None
+            if isinstance(index_doc, dict):
+                manifest_entry = index_doc.get("manifest")
+                if isinstance(manifest_entry, dict):
+                    index_manifest_sha = manifest_entry.get("sha256")
+                if index_manifest_sha is None:
+                    index_manifest_sha = index_doc.get(
+                        "manifest_sha256")
+            if index_manifest_sha is None:
+                problems.append("resolved index records no "
+                                "manifest.sha256 — the three-way "
+                                "manifest agreement is unverifiable")
+            else:
+                if index_manifest_sha != live_manifest_sha:
+                    problems.append(
+                        f"index manifest.sha256 "
+                        f"{str(index_manifest_sha)[:16]}… != live "
+                        f"manifest sha256 {live_manifest_sha[:16]}…")
+                if index_manifest_sha != repo.get("manifest_sha256"):
+                    problems.append(
+                        f"index manifest.sha256 "
+                        f"{str(index_manifest_sha)[:16]}… != closure "
+                        f"repository.manifest_sha256 "
+                        f"{str(repo.get('manifest_sha256'))[:16]}…")
+        if live_content_head is not None and (
+                repo.get("content_head") != live_content_head):
+            problems.append(
+                f"repository.content_head "
+                f"{str(repo.get('content_head'))[:12]}… != live "
+                f"manifest content_head {live_content_head[:12]}…")
+
+        if isinstance(receipt, dict):
+            valid_heads = {h for h in (live_head, live_content_head)
+                           if isinstance(h, str)}
+            if not valid_heads:
+                problems.append("suite receipt repository_head cannot "
+                                "be verified: live HEAD and manifest "
+                                "content_head are both unresolvable")
+            elif receipt.get("repository_head") not in valid_heads:
+                problems.append(
+                    f"suite receipt repository_head "
+                    f"{str(receipt.get('repository_head'))[:12]}… is "
+                    "neither the live HEAD nor the live manifest "
+                    "content_head")
+        else:
+            problems.append("suite receipt unresolved — the "
+                            "current-tree repository_head binding "
+                            "cannot be verified")
+        mark("current_tree", before)
+
+    return report(fail_status if problems else ok_status)
 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         description="Strict post-publication validator for a "
                     "P5_RELEASE_CLOSURE_V4 document (read-only; JSON "
-                    "report to stdout).")
+                    "report to stdout).  Default mode validates the "
+                    "frozen bundle (FROZEN_SNAPSHOT_CLOSURE_OK); "
+                    "--current-tree additionally binds the live "
+                    "repository (CURRENT_TREE_CLOSURE_OK).")
     parser.add_argument("closure",
                         help="path to the release-closure JSON file")
+    parser.add_argument("--current-tree", action="store_true",
+                        help="verify the closure still binds the LIVE "
+                             "repository state under --repo-root")
+    parser.add_argument("--repo-root", default=None,
+                        help="repository root for --current-tree "
+                             "(default: this worktree)")
     args = parser.parse_args(argv)
     try:
-        report = validate_closure(args.closure)
+        report = validate_closure(args.closure,
+                                  current_tree=args.current_tree,
+                                  repo_root=args.repo_root)
     except (OSError, ValueError) as exc:
-        report = {"status": "CLOSURE_FAIL",
+        report = {"status": (CURRENT_FAIL if args.current_tree
+                             else FROZEN_FAIL),
                   "closure": str(args.closure), "schema": None,
                   "problems": [str(exc)], "checks": {}}
     print(json.dumps(report, indent=2, sort_keys=True))
-    return 0 if report["status"] == "CLOSURE_OK" else 1
+    return 0 if report["status"] in (FROZEN_OK, CURRENT_OK) else 1
 
 
 if __name__ == "__main__":

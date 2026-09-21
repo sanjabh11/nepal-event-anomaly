@@ -628,3 +628,131 @@ def test_v2_planned_detached_closure_is_excluded_after_publication(tmp_path):
     closure.write_text('{"detached": true}', encoding="utf-8")
     report = vei.validate_index(index)
     assert report["status"] == "INDEX_OK", report["problems"]
+
+
+# ------------------------------------------------------------------
+# V2 freshness binding + coordinator-declared planned slots (A4)
+# ------------------------------------------------------------------
+
+def _single_root(tmp_path, *payloads):
+    root = tmp_path / "evidence"
+    root.mkdir()
+    for relpath, data in payloads:
+        _write_payload(root, relpath, data)
+    return root, {"daily": {"path": str(root), "role": "daily",
+                            "kind": "physical"}}
+
+
+def test_v2_manifest_records_generation_head(tmp_path):
+    """The manifest section distinguishes the bound manifest heads from
+    the live HEAD at index-generation time (they differ after a
+    manifest-only rebind commit)."""
+    _, index, _ = _generate_v2(tmp_path)
+    doc = json.loads(index.read_text(encoding="utf-8"))
+    generation_head = doc["manifest"].get("generation_head")
+    assert isinstance(generation_head, str)
+    assert vei._HEX40(generation_head)
+    # Same live HEAD the generator provenance records.
+    assert generation_head == doc["generator"]["repo_commit"]
+    report = vei.validate_index(index)
+    assert report["status"] == "INDEX_OK", report["problems"]
+
+
+def test_v2_planned_exclusion_with_owner_generates_and_validates(
+        tmp_path):
+    """A coordinator can declare a post-index publication slot via
+    --exclusions; it tolerates absence and drives CLOSURE_PENDING."""
+    root, mapping = _single_root(tmp_path, ("payload.json", b"payload"))
+    index = tmp_path / "index.json"
+    exclusions = [{
+        "root_id": "daily",
+        "relpath": "retrieval/future_slot.json",
+        "reason": "post-index publication slot",
+        "state": "planned",
+        "owner": "coordinator",
+    }]
+    rc = gei.main([
+        "--root-map", json.dumps(mapping),
+        "--index-out", str(index),
+        "--exclusions", json.dumps(exclusions),
+    ])
+    assert rc == 0
+    doc = json.loads(index.read_text(encoding="utf-8"))
+    slot = next(e for e in doc["exclusions"]
+                if e["relpath"] == "retrieval/future_slot.json")
+    assert slot["state"] == "planned"
+    assert slot["owner"] == "coordinator"
+    assert doc["final_verification"]["status"] == "CLOSURE_PENDING"
+    assert doc["final_verification"]["closure"]["status"] == \
+        "CLOSURE_PENDING"
+    report = vei.validate_index(index)
+    assert report["status"] == "INDEX_OK", report["problems"]
+
+
+def test_v2_planned_exclusion_without_owner_fails_generation(tmp_path):
+    root, mapping = _single_root(tmp_path, ("payload.json", b"payload"))
+    index = tmp_path / "index.json"
+    exclusions = [{
+        "root_id": "daily",
+        "relpath": "retrieval/future_slot.json",
+        "reason": "post-index publication slot",
+        "state": "planned",
+    }]
+    rc = gei.main([
+        "--root-map", json.dumps(mapping),
+        "--index-out", str(index),
+        "--exclusions", json.dumps(exclusions),
+    ])
+    assert rc == 1
+    assert not index.exists()
+
+
+def test_v2_planned_absent_slot_rejects_closed_status(tmp_path):
+    """When a planned slot is absent, CLOSED is not an honest final
+    state — the validator forces CLOSURE_PENDING."""
+    root, mapping = _single_root(tmp_path, ("payload.json", b"payload"))
+    index = tmp_path / "index.json"
+    exclusions = [{
+        "root_id": "daily",
+        "relpath": "retrieval/future_slot.json",
+        "reason": "post-index publication slot",
+        "state": "planned",
+        "owner": "coordinator",
+    }]
+    rc = gei.main([
+        "--root-map", json.dumps(mapping),
+        "--index-out", str(index),
+        "--exclusions", json.dumps(exclusions),
+    ])
+    assert rc == 0
+    doc = json.loads(index.read_text(encoding="utf-8"))
+    doc["final_verification"]["status"] = "CLOSED"
+    doc["final_verification"]["closure"]["status"] = "CLOSED"
+    p = tmp_path / "claimed-closed.json"
+    p.write_text(json.dumps(doc), encoding="utf-8")
+    report = vei.validate_index(p)
+    assert report["status"] == "INDEX_FAIL"
+    assert "CLOSURE_PENDING" in _problems(report)
+
+
+def test_v2_present_exclusion_needs_no_owner(tmp_path):
+    """Owner is mandatory only for planned slots; a present exclusion
+    of an on-disk payload validates without one."""
+    root, mapping = _single_root(
+        tmp_path, ("payload.json", b"payload"), ("extra.bin", b"x"))
+    index = tmp_path / "index.json"
+    exclusions = [{
+        "root_id": "daily",
+        "relpath": "extra.bin",
+        "reason": "not part of the indexed surface",
+    }]
+    rc = gei.main([
+        "--root-map", json.dumps(mapping),
+        "--index-out", str(index),
+        "--exclusions", json.dumps(exclusions),
+    ])
+    assert rc == 0
+    doc = json.loads(index.read_text(encoding="utf-8"))
+    assert doc["final_verification"]["status"] == "CLOSED"
+    report = vei.validate_index(index)
+    assert report["status"] == "INDEX_OK", report["problems"]

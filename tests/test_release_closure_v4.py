@@ -27,7 +27,7 @@ _CONTENT_HEAD = "b" * 40
 _INDEX_REL = "retrieval/p5_evidence_index_v2.json"
 _OUT_REL = "retrieval/p5_release_closure_v4.json"
 _OWNER_REL = "retrieval/p5_d_owner_disposition_v2.json"
-_RECEIPT_REL = "retrieval/p5_suite_receipt_v1.json"
+_RECEIPT_REL = "retrieval/p5_suite_receipt_v2.json"
 _DAILY_REPORT_REL = "retrieval/p5_replay_report_v5.json"
 _SEASONAL_REPORT_REL = "run/seasonal_replay_report_v5.json"
 
@@ -51,7 +51,7 @@ def _write_sidecar(path: Path) -> None:
 
 def _receipt_doc(**overrides) -> dict:
     doc = {
-        "schema": "P5_SUITE_RECEIPT_V1",
+        "schema": "P5_SUITE_RECEIPT_V2",
         "activity_id": "f" * 32,
         "command_digest": "e" * 64,
         "repository_head": _LIVE_HEAD,
@@ -69,7 +69,11 @@ def _receipt_doc(**overrides) -> dict:
 
 
 def _write_receipt(world: SimpleNamespace, **overrides) -> None:
-    _write_json(world.receipt, _receipt_doc(**overrides))
+    doc = _receipt_doc(**overrides)
+    # A V2 receipt binds the manifest bytes; default to the live
+    # manifest sha unless the test overrides it.
+    doc.setdefault("manifest_sha256", _sha(world.manifest.read_bytes()))
+    _write_json(world.receipt, doc)
     _write_sidecar(world.receipt)
 
 
@@ -110,7 +114,8 @@ def world(tmp_path, monkeypatch) -> SimpleNamespace:
         "approval_utc": None,
         "disposition": "RECOMMENDED-DEFAULT"})
 
-    receipt = _write_json(daily / _RECEIPT_REL, _receipt_doc())
+    receipt = _write_json(daily / _RECEIPT_REL, _receipt_doc(
+        manifest_sha256=_sha(manifest.read_bytes())))
     _write_sidecar(receipt)
 
     daily_report = _write_json(daily / _DAILY_REPORT_REL, {
@@ -173,13 +178,38 @@ def _cli_args(world: SimpleNamespace) -> list:
 def test_build_closure_assembles_v4_document(world):
     closure = closure_mod.build_closure(**_kwargs(world))
     assert closure["schema"] == "P5_RELEASE_CLOSURE_V4"
-    assert closure["release_version"] == "v4"
+    assert closure["release_version"] == "v5"
     assert closure["claim_scope"] == (
         "research_only_no_operational_authorization")
     assert closure["started_utc"] <= closure["completed_utc"]
     assert len(closure["activity_id"]) == 32
     assert all(value is False
                for value in closure["authority"].values())
+
+
+def test_release_version_is_recorded_from_argument(world):
+    closure = closure_mod.build_closure(release_version="v9",
+                                        **_kwargs(world))
+    assert closure["release_version"] == "v9"
+
+
+def test_bundle_section_records_terminal_state(world):
+    closure = closure_mod.build_closure(**_kwargs(world))
+    bundle = closure["bundle"]
+    assert bundle["index_relpath"] == _INDEX_REL
+    assert bundle["index_sha256"] == _sha(world.index.read_bytes())
+    assert bundle["closure_relpath"] == _OUT_REL
+    assert bundle["terminal_state"] == "CURRENT_TREE_RELEASE"
+
+
+def test_repository_section_binds_the_live_tree(world):
+    closure = closure_mod.build_closure(**_kwargs(world))
+    repo = closure["repository"]
+    assert repo["head"] == _LIVE_HEAD
+    assert repo["content_head"] == _CONTENT_HEAD
+    assert repo["manifest_commit"] == _CONTENT_HEAD
+    assert repo["manifest_relpath"] == "manifest.json"
+    assert repo["manifest_sha256"] == _sha(world.manifest.read_bytes())
 
 
 def test_every_embedded_digest_is_a_real_sha256(world):
@@ -296,8 +326,24 @@ def test_receipt_sidecar_digest_mismatch_fails(world):
 
 
 def test_receipt_wrong_schema_fails(world):
-    _write_receipt(world, schema="P5_SUITE_RECEIPT_V0")
-    with pytest.raises(ClosureError, match="P5_SUITE_RECEIPT_V1"):
+    _write_receipt(world, schema="P5_SUITE_RECEIPT_V1")
+    with pytest.raises(ClosureError, match="P5_SUITE_RECEIPT_V2"):
+        closure_mod.build_closure(**_kwargs(world))
+
+
+def test_receipt_missing_manifest_sha256_fails(world):
+    """A V2 receipt must bind the manifest bytes; a missing field is
+    fatal, not skipped."""
+    doc = _receipt_doc()  # no manifest_sha256 key at all
+    _write_json(world.receipt, doc)
+    _write_sidecar(world.receipt)
+    with pytest.raises(ClosureError, match="manifest_sha256"):
+        closure_mod.build_closure(**_kwargs(world))
+
+
+def test_receipt_manifest_sha256_mismatch_fails(world):
+    _write_receipt(world, manifest_sha256="d" * 64)
+    with pytest.raises(ClosureError, match="manifest_sha256"):
         closure_mod.build_closure(**_kwargs(world))
 
 
@@ -425,6 +471,18 @@ def test_dry_run_writes_nothing(world, capsys):
     printed = json.loads(capsys.readouterr().out)
     assert printed["status"] == "CLOSURE_V4_DRY_RUN_OK"
     assert printed["closure"]["schema"] == "P5_RELEASE_CLOSURE_V4"
+
+
+def test_cli_repo_root_and_release_version_flags(world, capsys):
+    rc = closure_mod.main(_cli_args(world) + [
+        "--repo-root", str(world.repo), "--release-version", "v6"])
+    assert rc == 0
+    printed = json.loads(capsys.readouterr().out)
+    closure = printed["closure"]
+    assert closure["release_version"] == "v6"
+    assert closure["repository"]["head"] == _LIVE_HEAD
+    assert closure["repository"]["manifest_sha256"] == _sha(
+        world.manifest.read_bytes())
 
 
 def test_write_publishes_closure_and_sidecar(world, capsys):

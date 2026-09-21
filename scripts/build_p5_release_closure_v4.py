@@ -132,8 +132,14 @@ def _derive_root_binding(index_path: Path, daily_root: Path,
                        f"evidence root {daily_root}")
 
 
-def _load_receipt(receipt_path: Path) -> dict:
-    """Fail-closed receipt load; the closure never trusts free counts."""
+def _load_receipt(receipt_path: Path, *, live_head: str,
+                  content_head, manifest_sha256: str) -> dict:
+    """Fail-closed receipt load; the closure never trusts free counts.
+
+    The V2 receipt additionally binds the manifest bytes and a
+    repository head that must be either live HEAD or the manifest's
+    content_head — a receipt minted against any other tree is stale.
+    """
     raw = receipt_path.read_bytes()
     sidecar = Path(str(receipt_path) + ".sha256")
     if not sidecar.is_file():
@@ -141,8 +147,9 @@ def _load_receipt(receipt_path: Path) -> dict:
     if sidecar.read_text().split()[0] != sha256_bytes(raw):
         raise ClosureError("suite receipt sidecar digest mismatch")
     receipt = json.loads(raw.decode("utf-8"))
-    if receipt.get("schema") != "P5_SUITE_RECEIPT_V1":
-        raise ClosureError("receipt schema must be P5_SUITE_RECEIPT_V1")
+    if receipt.get("schema") != "P5_SUITE_RECEIPT_V2":
+        raise ClosureError("receipt schema must be P5_SUITE_RECEIPT_V2 "
+                           f"(got {receipt.get('schema')!r})")
     if receipt.get("exit_code") != 0:
         raise ClosureError(f"suite receipt exit_code must be 0 (got "
                            f"{receipt.get('exit_code')!r})")
@@ -156,12 +163,28 @@ def _load_receipt(receipt_path: Path) -> dict:
     if not isinstance(collected, int) or collected != expected:
         raise ClosureError(f"suite receipt collected {collected!r} != "
                            f"passed+skipped+failed+errors {expected}")
+    receipt_manifest_sha = receipt.get("manifest_sha256")
+    if receipt_manifest_sha is None:
+        raise ClosureError("suite receipt carries no manifest_sha256 — "
+                           "a V2 receipt must bind the manifest bytes")
+    if receipt_manifest_sha != manifest_sha256:
+        raise ClosureError(
+            "suite receipt manifest_sha256 "
+            f"{str(receipt_manifest_sha)[:16]}… != live manifest "
+            f"sha256 {manifest_sha256[:16]}…")
+    receipt_head = receipt.get("repository_head")
+    if receipt_head not in (live_head, content_head):
+        raise ClosureError(
+            "suite receipt repository_head matches neither the "
+            "manifest content_head nor live HEAD; the receipt must "
+            "come from the post-rebind tree")
     return receipt
 
 
 def build_closure(*, index: Path, daily_root: Path, seasonal_root: Path,
                   owner_disposition: Path, incident_surface: Path,
                   suite_receipt: Path, output: Path,
+                  repo_root=None, release_version: str = "v5",
                   daily_report_relpath: str = (
                       "retrieval/p5_replay_report_v5.json"),
                   seasonal_report_relpath: str = (
@@ -174,6 +197,7 @@ def build_closure(*, index: Path, daily_root: Path, seasonal_root: Path,
     incident_surface = Path(incident_surface).resolve()
     suite_receipt = Path(suite_receipt).resolve()
     output = Path(output).resolve()
+    repo_root = Path(repo_root).resolve() if repo_root else REPO
     if not index.is_file():
         raise ClosureError(f"index missing: {index}")
     if output.exists():
@@ -207,9 +231,15 @@ def build_closure(*, index: Path, daily_root: Path, seasonal_root: Path,
                            "planned exclusion of the index; publish "
                            "only into declared slots")
 
+    # The repository binding is read from the LIVE tree under
+    # repo_root: live HEAD plus the live manifest bytes (content_head,
+    # manifest_commit, sha256).  The manifest relpath is the one the
+    # index declares, resolved under repo_root.
+    live_head = _head(repo_root)
     manifest_rel = index_doc["manifest"]["relpath"]
-    manifest_path = REPO / manifest_rel
+    manifest_path = repo_root / manifest_rel
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest_sha = _sha(manifest_path)
     owner = json.loads(owner_disposition.read_text(encoding="utf-8"))
     owner_state = _owner_approval_state(owner)
 
@@ -218,20 +248,16 @@ def build_closure(*, index: Path, daily_root: Path, seasonal_root: Path,
         raise ClosureError("incident surface invalid: "
                            + "; ".join(surface_check.get("problems", [])))
 
-    receipt = _load_receipt(suite_receipt)
-    receipt_relpath = suite_receipt.relative_to(daily_root).as_posix()
-    receipt_sha = _sha(suite_receipt)
     # The receipt must bind the post-rebind tree.  A manifest-only
     # rebind commit is content-inert, so the receipt head is valid if it
     # matches EITHER the manifest's content_head OR live HEAD; matching
-    # neither is fatal.
-    live_head = _head(REPO)
-    receipt_head = receipt.get("repository_head")
-    if receipt_head not in (manifest.get("content_head"), live_head):
-        raise ClosureError(
-            "suite receipt repository_head matches neither the "
-            "manifest content_head nor live HEAD; the receipt must "
-            "come from the post-rebind tree")
+    # neither is fatal.  The V2 receipt additionally binds the manifest
+    # bytes by sha256.
+    receipt = _load_receipt(suite_receipt, live_head=live_head,
+                            content_head=manifest.get("content_head"),
+                            manifest_sha256=manifest_sha)
+    receipt_relpath = suite_receipt.relative_to(daily_root).as_posix()
+    receipt_sha = _sha(suite_receipt)
 
     def _read_report(rid: str, root: Path, relpath: str) -> dict:
         path = root / relpath
@@ -279,7 +305,7 @@ def build_closure(*, index: Path, daily_root: Path, seasonal_root: Path,
         "schema": "P5_RELEASE_CLOSURE_V4",
         "title": "Detached P5 release-integrity closure (v4)",
         "generated_utc": completed_utc,
-        "release_version": "v4",
+        "release_version": release_version,
         "claim_scope": "research_only_no_operational_authorization",
         "activity_id": uuid.uuid4().hex,
         "started_utc": started_utc,
@@ -289,7 +315,15 @@ def build_closure(*, index: Path, daily_root: Path, seasonal_root: Path,
             "content_head": manifest["content_head"],
             "manifest_commit": manifest["manifest_commit"],
             "manifest_relpath": manifest_rel,
-            "manifest_sha256": _sha(manifest_path),
+            "manifest_sha256": manifest_sha,
+        },
+        "bundle": {
+            "index_relpath": index_relpath,
+            "index_sha256": index_sha,
+            "closure_relpath": closure_relpath,
+            # Reaching this point means every fail-closed check above
+            # passed — the bundle is bound to the live tree.
+            "terminal_state": "CURRENT_TREE_RELEASE",
         },
         "root_of_trust": {
             "index_schema": index_doc["schema"],
@@ -366,8 +400,15 @@ def main(argv=None) -> int:
                         default=str(DEFAULT_INCIDENT_SURFACE))
     parser.add_argument("--suite-receipt",
                         default=str(DEFAULT_SUITE_RECEIPT),
-                        help="P5_SUITE_RECEIPT_V1 produced by "
+                        help="P5_SUITE_RECEIPT_V2 produced by "
                              "build_p5_suite_receipt.py")
+    parser.add_argument("--repo-root", default=str(REPO),
+                        help="repository root for the live HEAD and "
+                             "live manifest binding (default: this "
+                             "worktree)")
+    parser.add_argument("--release-version", default="v5",
+                        help="release version recorded in the closure "
+                             "(default: v5)")
     parser.add_argument("--out", required=True,
                         help="closure output path (must be a declared "
                              "planned exclusion of the index)")
@@ -388,7 +429,9 @@ def main(argv=None) -> int:
             owner_disposition=Path(args.owner_disposition),
             incident_surface=Path(args.incident_surface),
             suite_receipt=Path(args.suite_receipt),
-            output=output)
+            output=output,
+            repo_root=Path(args.repo_root),
+            release_version=args.release_version)
     except (OSError, ValueError, KeyError) as exc:
         print(f"RELEASE_CLOSURE_FAIL: {exc}")
         return 1
