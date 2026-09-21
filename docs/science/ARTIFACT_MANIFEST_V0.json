@@ -1,6 +1,6 @@
 {
  "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
- "content_head": "a8884c978cc78ff6ed612c6d76bfa9b900a8a706",
+ "content_head": "94b0d3093a163644a290cd5b44bc5ed2e56b9520",
  "files": [
   {
    "relpath": ".github/workflows/research-v0.yml",
@@ -439,8 +439,8 @@
   },
   {
    "relpath": "scripts/build_p5_suite_receipt.py",
-   "sha256": "dbb01f269c6468c2596aba1f70f68a1182b6e1b65bcf7d6edc458da65e0a85d7",
-   "size_bytes": 6346
+   "sha256": "f08204eae0890ae722eb950468033b0b7560f139c10114b24d42adf28a44405a",
+   "size_bytes": 6721
   },
   {
    "relpath": "scripts/generate_evidence_index_v1.py",
@@ -850,7 +850,7 @@
  ],
  "generated": "post-P5 audit-3 repair bind (content 94e47ff) \u2014 closure v4 builder/validator, machine suite receipt, CLOSURE_PENDING index semantics, v5 replay envelopes, incident-surface 30 artifacts; owner gates unchanged",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "a8884c978cc78ff6ed612c6d76bfa9b900a8a706",
+ "manifest_commit": "94b0d3093a163644a290cd5b44bc5ed2e56b9520",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
