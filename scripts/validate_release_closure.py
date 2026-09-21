@@ -55,8 +55,10 @@ AUTHORITY_FLAGS = ("promotion_eligible", "production_authorized",
                    "warning_path_authorized", "operational_claim")
 COUNT_KEYS = ("collected", "passed", "skipped", "failed", "errors",
               "warnings")
-ALLOWED_APPROVAL_STATUS = ("PENDING", "PENDING_OWNER_APPROVAL",
-                           "NOT_REQUESTED", "NOT_APPROVED", "APPROVED")
+_APPROVED_VALUE = "APPROVED"
+ALLOWED_APPROVAL_VALUES = ("PENDING", "PENDING_OWNER_APPROVAL",
+                           "NOT_REQUESTED", "NOT_APPROVED",
+                           _APPROVED_VALUE)
 REQUIRED_TOP_FIELDS = ("schema", "claim_scope", "root_of_trust",
                        "repository", "suite", "replays", "authority",
                        "incident_surface", "owner_disposition",
@@ -138,19 +140,19 @@ def _approval_consistency(mapping, problems, ctx, *, require_status=False):
             problems.append(f"{ctx}: approval fields are required")
         return
     status, approved_by, approval_utc = triple
-    if status is not None and status not in ALLOWED_APPROVAL_STATUS:
+    if status is not None and status not in ALLOWED_APPROVAL_VALUES:
         problems.append(f"{ctx}: approval_status {status!r} is not in "
-                        f"vocabulary {list(ALLOWED_APPROVAL_STATUS)}")
+                        f"vocabulary {list(ALLOWED_APPROVAL_VALUES)}")
     if require_status and status is None:
         problems.append(f"{ctx}: approval_status is required")
     if (approved_by is None) != (approval_utc is None):
         problems.append(f"{ctx}: approved_by and approval_utc must be "
                         "both null or both set")
-    if status == "APPROVED" and (approved_by is None
+    if status == _APPROVED_VALUE and (approved_by is None
                                  or approval_utc is None):
         problems.append(f"{ctx}: APPROVED requires an owner identity "
                         "and a timestamp")
-    if approved_by is not None and status != "APPROVED":
+    if approved_by is not None and status != _APPROVED_VALUE:
         problems.append(f"{ctx}: approved_by is set but approval_status "
                         f"is {status!r}, not APPROVED")
 

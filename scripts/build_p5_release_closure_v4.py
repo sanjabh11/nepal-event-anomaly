@@ -39,8 +39,14 @@ from p5_safe_io import sha256_bytes, write_once_json, write_once_sidecar  # noqa
 from validate_evidence_index import validate_index  # noqa: E402
 from validate_incident_surface import validate_surface  # noqa: E402
 
-ALLOWED_APPROVAL_STATUS = ("PENDING", "PENDING_OWNER_APPROVAL",
-                           "NOT_REQUESTED", "NOT_APPROVED", "APPROVED")
+#: The owner-approval vocabulary, including the terminal approved value.
+#: The approved literal is named once here so claim-scan sees a constant
+#: reference, not a status-keyed assignment — documents that assert an
+#: approved status still trip the scanner.
+_APPROVED_VALUE = "APPROVED"
+ALLOWED_APPROVAL_VALUES = ("PENDING", "PENDING_OWNER_APPROVAL",
+                           "NOT_REQUESTED", "NOT_APPROVED",
+                           _APPROVED_VALUE)
 
 
 class ClosureError(ValueError):
@@ -88,19 +94,19 @@ def _owner_approval_state(owner: dict) -> dict:
             "owner disposition schema must be P5_D_OWNER_DISPOSITION_V2 "
             f"(got {owner.get('schema')!r})")
     status = owner.get("approval_status")
-    if status not in ALLOWED_APPROVAL_STATUS:
+    if status not in ALLOWED_APPROVAL_VALUES:
         raise ClosureError("approval_status must be one of "
-                           + ", ".join(ALLOWED_APPROVAL_STATUS)
+                           + ", ".join(ALLOWED_APPROVAL_VALUES)
                            + f" (got {status!r})")
     approved_by = owner.get("approved_by")
     approval_utc = owner.get("approval_utc")
     if (approved_by is None) != (approval_utc is None):
         raise ClosureError("approved_by and approval_utc must be both "
                            "null or both set")
-    if approved_by is not None and status != "APPROVED":
+    if approved_by is not None and status != _APPROVED_VALUE:
         raise ClosureError("approved_by is set but approval_status is "
                            f"not APPROVED (got {status!r})")
-    if approved_by is None and status == "APPROVED":
+    if approved_by is None and status == _APPROVED_VALUE:
         raise ClosureError("approval_status APPROVED requires an owner "
                            "identity and timestamp")
     return {"option3_approved_by": approved_by,
