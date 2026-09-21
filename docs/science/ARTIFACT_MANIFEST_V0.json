@@ -862,7 +862,7 @@
     "claim_scan": "clean on all governed files",
     "collection_guard": "repo-wide collection == tests/ (3892 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
     "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
-    "full_suite_venv": "3884 passed, 6 skipped, 1 failed (collection-census drift gate, resolves at this rebind), 57 warnings \u2014 fresh post-audit-3-repair full-suite rerun (3891 collected pre-A3-10 test; final census 3892 includes the live-closure binding gate)",
+    "full_suite_venv": "3885 passed, 7 skipped, 0 failed, 57 warnings (3892 collected) \u2014 authoritative counts bound by the machine-generated p5_suite_receipt_v1.json on the final tree; prior content-commit run: 3884/6/1 on 3891 (census drift gate + pre-A3-10 collection)",
     "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
     "p5_a2_status_consistency": "local guard passed; CI guard configured \u2014 current CANDIDATE_ONLY / UNSUPERVISED_STRUCTURE_NOT_STABLE result, false authority flags, and release metadata aligned",
     "p5_a2_temporal_holdout": "110 passed, 1 skipped \u2014 temporal mapping, waiver, and documentation regression lane",
