@@ -1,6 +1,6 @@
 {
  "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
- "content_head": "ad31019a1bec115ef811383a46bfaf8df2852b39",
+ "content_head": "c6ea30473a243ce69abd8aea9901ab356fdc8bb2",
  "files": [
   {
    "relpath": ".github/workflows/research-v0.yml",
@@ -434,8 +434,8 @@
   },
   {
    "relpath": "scripts/build_p5_release_closure_v4.py",
-   "sha256": "c0306a34c9ab81f5e100fc8733bafd2e20e05fe542caca413c4e1c6056588b41",
-   "size_bytes": 18032
+   "sha256": "b050a773879707ea42cf002232676b52b59d3ccf965982f1ec5ff86e0af31fd4",
+   "size_bytes": 18365
   },
   {
    "relpath": "scripts/build_p5_suite_receipt.py",
@@ -499,8 +499,8 @@
   },
   {
    "relpath": "scripts/validate_release_closure.py",
-   "sha256": "5a22ef13bf46cfd13c80cae9cc7797e60649ae025d70f86e41b1624c551269ad",
-   "size_bytes": 28078
+   "sha256": "bb65386d24c18035b6eea43acb53a94049f711d34370a4728aeec70b662e3775",
+   "size_bytes": 28149
   },
   {
    "relpath": "tests/fixtures/__init__.py",
@@ -850,7 +850,7 @@
  ],
  "generated": "post-P5 audit-3 repair bind (content 94e47ff) \u2014 closure v4 builder/validator, machine suite receipt, CLOSURE_PENDING index semantics, v5 replay envelopes, incident-surface 30 artifacts; owner gates unchanged",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "ad31019a1bec115ef811383a46bfaf8df2852b39",
+ "manifest_commit": "c6ea30473a243ce69abd8aea9901ab356fdc8bb2",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
