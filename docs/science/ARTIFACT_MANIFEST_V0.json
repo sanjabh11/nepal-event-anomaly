@@ -1,6 +1,6 @@
 {
  "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
- "content_head": "894d58ab1bd7892c7580a451e08dd9045f527a31",
+ "content_head": "6243818d8d51d58eadb6734bd8bc727a695c0be3",
  "files": [
   {
    "relpath": ".github/workflows/research-v0.yml",
@@ -14,8 +14,8 @@
   },
   {
    "relpath": ".phase-loop/master-plan.md",
-   "sha256": "35ccefe45e7618b7a10603feab8197d177bb033eb88e7673dfca64c613c2c5ed",
-   "size_bytes": 2018
+   "sha256": "986c4ac0ad760f395926f358565d6d5ddacfe6f3670dc974067e0df69cc7ee20",
+   "size_bytes": 2003
   },
   {
    "relpath": ".phase-loop/phase-ledger.jsonl",
@@ -24,8 +24,8 @@
   },
   {
    "relpath": "README.md",
-   "sha256": "6e3774a7d2f659c4c0d0933ea10efe1fb6188177170aeed754990c0eed08bde9",
-   "size_bytes": 18139
+   "sha256": "feefb656ca7444c5c2a22c9dc70623edd474e3ac47bb22d44b733d8bf7fa6c2e",
+   "size_bytes": 18288
   },
   {
    "relpath": "conftest.py",
@@ -39,8 +39,8 @@
   },
   {
    "relpath": "docs/science/GAP_REGISTER_V0.md",
-   "sha256": "e2a6d8432a2a749e063f0b8ef3913de3ccab80f29829137d997fd58ed265156c",
-   "size_bytes": 131618
+   "sha256": "8125844ed51325152ea7d852b66a2b82621ce10e64ac984934c62a13ab84df33",
+   "size_bytes": 133377
   },
   {
    "relpath": "docs/science/GOVERNANCE_EXERCISE_RECORD_V0.md",
@@ -109,8 +109,8 @@
   },
   {
    "relpath": "docs/science/P5_EXTENSION_STATUS_V0.md",
-   "sha256": "e730470b69d7bdb78e02c4a685b41fc971abd04bf97222827c4b4cedb6a485f2",
-   "size_bytes": 6381
+   "sha256": "b44ff0db45e222728416c2aaa1b57e0c40baea7abdf12d71ee83e7468487b9a0",
+   "size_bytes": 6402
   },
   {
    "relpath": "docs/science/P5_OPERATIVE_ANCHOR_NOTE_V0.md",
@@ -434,8 +434,8 @@
   },
   {
    "relpath": "scripts/build_p5_release_closure_v4.py",
-   "sha256": "a25045e4be9f60c8fa93b0a7a2d4affd9d6bab8b010636d64950457cb84d40fa",
-   "size_bytes": 21268
+   "sha256": "eb1a0fa56973b064b4b26a06f54e3261f5c6ae905dce00b1b07cfb29d72b14e7",
+   "size_bytes": 21039
   },
   {
    "relpath": "scripts/build_p5_suite_receipt.py",
@@ -724,8 +724,8 @@
   },
   {
    "relpath": "tests/test_release_closure_v4.py",
-   "sha256": "4c195f993105deded711eeb2eb9b81ad35f61d011b51b4da9cbeb58de504ecd2",
-   "size_bytes": 20628
+   "sha256": "4b6c4196412416223aed53fb824873f1dbe865dd28e3e86f23c8fc561f9e7d26",
+   "size_bytes": 21095
   },
   {
    "relpath": "tests/test_release_closure_validator.py",
@@ -855,7 +855,7 @@
  ],
  "generated": "post-P5 audit-4 current-tree bind \u2014 frozen-snapshot vs current-tree closure vocabulary, receipt v2 manifest binding, index generation_head, planned-slot publication semantics",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "894d58ab1bd7892c7580a451e08dd9045f527a31",
+ "manifest_commit": "6243818d8d51d58eadb6734bd8bc727a695c0be3",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
