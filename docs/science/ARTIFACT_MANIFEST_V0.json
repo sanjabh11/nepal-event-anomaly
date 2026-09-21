@@ -1,6 +1,6 @@
 {
  "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
- "content_head": "94b0d3093a163644a290cd5b44bc5ed2e56b9520",
+ "content_head": "ad31019a1bec115ef811383a46bfaf8df2852b39",
  "files": [
   {
    "relpath": ".github/workflows/research-v0.yml",
@@ -499,8 +499,8 @@
   },
   {
    "relpath": "scripts/validate_release_closure.py",
-   "sha256": "974bc65ac57e2e6986fc715cd4854da942f918c60d656c56ff74ff857e72b06c",
-   "size_bytes": 27474
+   "sha256": "5a22ef13bf46cfd13c80cae9cc7797e60649ae025d70f86e41b1624c551269ad",
+   "size_bytes": 28078
   },
   {
    "relpath": "tests/fixtures/__init__.py",
@@ -850,7 +850,7 @@
  ],
  "generated": "post-P5 audit-3 repair bind (content 94e47ff) \u2014 closure v4 builder/validator, machine suite receipt, CLOSURE_PENDING index semantics, v5 replay envelopes, incident-surface 30 artifacts; owner gates unchanged",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "94b0d3093a163644a290cd5b44bc5ed2e56b9520",
+ "manifest_commit": "ad31019a1bec115ef811383a46bfaf8df2852b39",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
