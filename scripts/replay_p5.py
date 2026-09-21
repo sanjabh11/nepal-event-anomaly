@@ -19,6 +19,7 @@ import argparse
 import hashlib
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 DEFAULT_ROOT = Path(
@@ -62,16 +63,26 @@ def rebuild_ledger_entry(root: Path, relpath: str) -> dict:
 
 def replay(evidence_root: Path) -> dict:
     root = Path(evidence_root)
+    import uuid as _uuid
+    started = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     failures: list[str] = []
-    report: dict = {"evidence_root": str(root),
-                    "replay_scope": "artifact_integrity_replay",
-                    "model_reexecution": {
-                        "status": "NOT_RUN",
-                        "reason": "this replay validates persisted bytes and "
-                                  "does not invoke run_regimes; an independent "
-                                  "model_reexecuted run requires a separate "
-                                  "execution record",
-                    },
+    report: dict = {
+        "schema": "P5_REPLAY_REPORT_V5",
+        "activity_id": _uuid.uuid4().hex,
+        "started_utc": started,
+        "evidence_root_id": "daily_p5a2",
+        "execution_context": {
+            "host_evidence_root": str(root),
+            "note": "host paths are execution context only — evidence "
+                    "references are logical (root_id + relpath)"},
+        "replay_scope": "artifact_integrity_replay",
+        "model_reexecution": {
+            "status": "NOT_RUN",
+            "reason": "this replay validates persisted bytes and "
+                      "does not invoke run_regimes; an independent "
+                      "model_reexecuted run requires a separate "
+                      "execution record",
+        },
                     "checks": {}}
 
     # 1. every coverage-ledger entry rehashes to live bytes
@@ -360,6 +371,8 @@ def replay(evidence_root: Path) -> dict:
 
     report["status"] = "REPLAY_FAIL" if failures else "REPLAY_OK"
     report["failures"] = failures
+    report["completed_utc"] = datetime.now(timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ")
     return report
 
 

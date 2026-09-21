@@ -187,7 +187,16 @@ def _logical_assignment(path: Path, specs):
     return rid, relpath
 
 
-def _append_output_exclusion(exclusions, output, specs, label):
+def _append_output_exclusion(exclusions, output, specs, label,
+                             exists_at_validation=True, owner=None):
+    """Record a generator output as a typed exclusion.
+
+    ``exists_at_validation`` False marks the output as a planned
+    detached output: it does not exist yet and must be published later
+    by the coordinator under the post-publication validation protocol.
+    Planned exclusions carry a named owner and require the index's
+    final-verification state to be CLOSURE_PENDING, never CLOSED.
+    """
     if output is None:
         return
     assignment = _logical_assignment(output, specs)
@@ -197,11 +206,15 @@ def _append_output_exclusion(exclusions, output, specs, label):
     key = (rid, relpath)
     if any((e["root_id"], e["relpath"]) == key for e in exclusions):
         return
-    exclusions.append({
+    entry = {
         "root_id": rid,
         "relpath": relpath,
         "reason": f"{label} is an index-generation output, not evidence payload",
-    })
+        "state": "present" if exists_at_validation else "planned",
+    }
+    if owner is not None:
+        entry["owner"] = owner
+    exclusions.append(entry)
 
 
 def _supersedes_target(raw, specs, index_out):
@@ -323,10 +336,20 @@ def build_index(root_mappings, index_out, *, report_out=None,
         raise GenerationError("inventory failed: " + "; ".join(inventory_problems))
 
     exclusions = _load_exclusions(exclusions, specs)
-    _append_output_exclusion(exclusions, index_out, specs, "index output")
-    _append_output_exclusion(exclusions, report_out, specs, "report output")
+    # index_out and report_out are written by this generator run, so they
+    # exist by validation time.  A detached closure published later is a
+    # planned output owned by the coordinator.
+    _append_output_exclusion(exclusions, index_out, specs, "index output",
+                             exists_at_validation=True)
     _append_output_exclusion(
-        exclusions, detached_closure, specs, "detached release closure")
+        exclusions, report_out, specs, "report output",
+        exists_at_validation=(report_out is None
+                              or report_out.is_file()))
+    _append_output_exclusion(
+        exclusions, detached_closure, specs, "detached release closure",
+        exists_at_validation=(detached_closure is None
+                              or detached_closure.is_file()),
+        owner="coordinator")
     excluded_keys = {(e["root_id"], e["relpath"]) for e in exclusions}
     if len(excluded_keys) != len(exclusions):
         raise GenerationError("duplicate exclusion assignment")
@@ -425,8 +448,22 @@ def build_index(root_mappings, index_out, *, report_out=None,
     inventory_count = len(inventory) + planned_output_count
     included_count = len(files)
     excluded_count = len(exclusions)
+    # Typed planned outputs drive the prepublication state: when any
+    # excluded output does not yet exist on disk, the index records
+    # CLOSURE_PENDING — an honest prepublication state asserting only
+    # inventory coverage, never closure publication.
+    planned_absent = 0
+    for exclusion in exclusions:
+        if exclusion.get("state") != "planned":
+            continue
+        path = (specs[exclusion["root_id"]]["path_resolved"]
+                / exclusion["relpath"])
+        if not path.is_file():
+            planned_absent += 1
+    has_planned_absent = planned_absent > 0
+    final_state = "CLOSURE_PENDING" if has_planned_absent else "CLOSED"
     closure = {
-        "status": "CLOSED",
+        "status": final_state,
         "inventory_coverage": "PASS",
         "sidecar_validation": "PASS",
         "exclusions": "PASS",
@@ -435,7 +472,7 @@ def build_index(root_mappings, index_out, *, report_out=None,
         "no_self_reference": "PASS",
     }
     final_verification = {
-        "status": "CLOSED",
+        "status": final_state,
         "verified_utc": generated,
         "closure": closure,
         "counts": {

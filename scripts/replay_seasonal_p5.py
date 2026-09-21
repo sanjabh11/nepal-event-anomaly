@@ -32,6 +32,7 @@ import hashlib
 import json
 import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -60,9 +61,21 @@ def _sidecar_ok(p: Path) -> bool:
 
 
 def replay(lane_root: Path, daily_root: Path) -> dict:
+    import uuid as _uuid
     failures: list[str] = []
-    report = {"lane_root": str(lane_root),
-              "daily_root": str(daily_root), "checks": {}}
+    report = {
+        "schema": "P5_SEASONAL_REPLAY_REPORT_V5",
+        "activity_id": _uuid.uuid4().hex,
+        "started_utc": datetime.now(timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"),
+        "root_ids": {"daily": "daily_p5a2",
+                     "seasonal": "seasonal_v1_current"},
+        "execution_context": {
+            "host_daily_root": str(daily_root),
+            "host_lane_root": str(lane_root),
+            "note": "host paths are execution context only — "
+                    "evidence references are logical"},
+        "checks": {}}
     report["replay_scope"] = "artifact_integrity_replay"
     report["model_reexecution"] = {
         "status": "NOT_RUN",
@@ -318,6 +331,8 @@ def replay(lane_root: Path, daily_root: Path) -> dict:
 
     report["status"] = "REPLAY_FAIL" if failures else "REPLAY_OK"
     report["failures"] = failures
+    report["completed_utc"] = datetime.now(timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ")
     return report
 
 

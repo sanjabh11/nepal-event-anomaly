@@ -688,13 +688,21 @@ def _v2_validate_supersedes(doc, specs, index_resolved, problems):
 
 
 def _v2_validate_final_verification(doc, inventory_count, included_count,
-                                    excluded_count, problems):
+                                    excluded_count, problems, *,
+                                    has_planned=False,
+                                    has_planned_absent=False):
     final = doc.get("final_verification")
     if not isinstance(final, dict):
         problems.append("final_verification must be a structured object")
         return
-    if final.get("status") != "CLOSED":
-        problems.append("final_verification.status must be 'CLOSED'")
+    allowed = {"CLOSED"}
+    if has_planned:
+        allowed.add("CLOSURE_PENDING")
+    if has_planned_absent:
+        allowed = {"CLOSURE_PENDING"}
+    if final.get("status") not in allowed:
+        problems.append("final_verification.status must be one of "
+                        + ", ".join(sorted(allowed)))
     verified = final.get("verified_utc")
     if _check_generated_utc(verified):
         problems.append(
@@ -703,9 +711,10 @@ def _v2_validate_final_verification(doc, inventory_count, included_count,
     if not isinstance(closure, dict):
         problems.append("final_verification.closure must be an object")
     else:
-        if closure.get("status") != "CLOSED":
+        if closure.get("status") not in allowed:
             problems.append(
-                "final_verification.closure.status must be 'CLOSED'")
+                "final_verification.closure.status must be one of "
+                + ", ".join(sorted(allowed)))
         for field in (
                 "inventory_coverage", "sidecar_validation", "exclusions",
                 "duplicate_physical_assignment",
@@ -875,6 +884,9 @@ def _validate_v2_document(index_path, doc, root_map=None):
         exclusions = []
     excluded_keys = set()
     excluded_physical = {}
+    exclusion_states = {}
+    has_planned = False
+    has_planned_absent = False
     for i, exclusion in enumerate(exclusions):
         ctx = f"exclusions[{i}]"
         if not isinstance(exclusion, dict):
@@ -884,6 +896,17 @@ def _validate_v2_document(index_path, doc, root_map=None):
         reason = exclusion.get("reason")
         if not (isinstance(reason, str) and reason.strip()):
             problems.append(f"{ctx}.reason must be a non-empty string")
+        state = exclusion.get("state", "present")
+        if state not in ("planned", "present"):
+            problems.append(
+                f"{ctx}.state must be 'planned' or 'present' "
+                f"(got {state!r})")
+            state = "present"
+        owner = exclusion.get("owner")
+        if state == "planned" and not (isinstance(owner, str)
+                                       and owner.strip()):
+            problems.append(
+                f"{ctx}.owner is required for planned exclusions")
         if not isinstance(rid, str) or rid not in specs:
             problems.append(f"{ctx}.root_id {rid!r} is not declared")
             continue
@@ -893,10 +916,15 @@ def _validate_v2_document(index_path, doc, root_map=None):
         if key in excluded_keys:
             problems.append(f"{ctx}: duplicate exclusion {key!r}")
         excluded_keys.add(key)
+        exclusion_states[key] = state
+        if state == "planned":
+            has_planned = True
+            if key not in inventory:
+                has_planned_absent = True
         if key in listed_keys:
             problems.append(
                 f"{ctx}: payload is both included and explicitly excluded")
-        if key not in inventory:
+        if state == "present" and key not in inventory:
             problems.append(
                 f"{ctx}: exclusion is not an inventory payload {key!r}")
         if path is not None and path.name.endswith(SIDECAR_SUFFIX_V2):
@@ -921,14 +949,19 @@ def _validate_v2_document(index_path, doc, root_map=None):
         problems.append(
             "inventory coverage missing payloads: "
             + ", ".join(f"{rid}:{rel}" for rid, rel in missing))
-    extra = sorted((listed_keys | excluded_keys) - set(inventory))
+    planned_absent = {key for key, state in exclusion_states.items()
+                      if state == "planned" and key not in inventory}
+    extra = sorted((listed_keys | excluded_keys) - set(inventory)
+                   - planned_absent)
     if extra:
         problems.append(
             "inventory assignments not present on disk: "
             + ", ".join(f"{rid}:{rel}" for rid, rel in extra))
 
     _v2_validate_final_verification(
-        doc, len(inventory), len(files), len(exclusions), problems)
+        doc, len(inventory) + len(planned_absent), len(files),
+        len(exclusions), problems,
+        has_planned=has_planned, has_planned_absent=has_planned_absent)
     status = "INDEX_OK" if not problems else "INDEX_FAIL"
     return _v2_report(status, problems, files_checked, files_ok,
                       index_path, inventory_files=len(inventory),
