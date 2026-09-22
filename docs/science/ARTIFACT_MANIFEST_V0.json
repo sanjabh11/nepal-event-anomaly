@@ -977,7 +977,7 @@
   "claim_scan": "clean on all governed files",
   "collection_guard": "repo-wide collection == tests/ (3978 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
   "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
-  "full_suite_venv": "3972 passed, 6 skipped, 0 failed, 57 warnings (3978 collected) \u2014 successful binding is the machine-generated p5_suite_receipt_v9.json; v8 remains preserved as failed diagnostic evidence",
+  "full_suite_venv": "3972 passed, 6 skipped, 0 failed, 57 warnings (3978 collected) \u2014 successful binding is the machine-generated p5_suite_receipt_v10.json; v8 remains preserved as failed diagnostic evidence",
   "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
   "p5_a2_status_consistency": "local guard passed; CI guard configured \u2014 current CANDIDATE_ONLY / UNSUPERVISED_STRUCTURE_NOT_STABLE result, false authority flags, and release metadata aligned",
   "p5_a2_temporal_holdout": "110 passed, 1 skipped \u2014 temporal mapping, waiver, and documentation regression lane",
