@@ -53,17 +53,16 @@ Round-3 adds only release-integrity and preflight surfaces: an independent
 model-re-execution report validator, a clean-room exported-bundle verifier,
 an Arm C metadata-only dry-run tool, bounded seismic candidate inventory and
 re-execution interpretation notes, and their focused tests. The eight files
-are prepared against HEAD `c52464a`; focused verification is 18 passed and
-the source/document claim scans are clean.
+were integrated in content commit `fb10798`; focused verification was 18
+passed and the source/document claim scans were clean.
 
-The next content commit may include those eight files plus this control-plane
-update and the corresponding phase-ledger record. Before that commit, the
-ledger record must be syntactically and semantically validated. After the
-commit, the coordinator must serialize manifest rebind, machine suite
-receipt, exhaustive evidence index, release closure, incident-surface
-validation, replay/model-proof validation, claim scan, and final manifest and
-tree checks. No post-publication repository commit may be made without a new
-release successor.
+The first manifest rebind followed as `cace202`. Before any successor release
+publication, each phase-ledger correction must be syntactically and
+semantically validated. The coordinator must serialize manifest rebind,
+machine suite receipt, exhaustive evidence index, release closure,
+incident-surface validation, replay/model-proof validation, claim scan, and
+final manifest and tree checks. No post-publication repository commit may be
+made without a new release successor.
 
 Arm C remains `SCOPE_APPROVED_RETRIEVAL_DEFERRED`: only a metadata/size
 preflight is permitted at this stage, and the current preflight must remain
@@ -72,3 +71,19 @@ in a successor amendment. No CDS payload retrieval is authorized here.
 Seismic remains `NOT_REQUESTED`; ObsPy admission, multi-season expansion, and
 external proof remain separate owner/external gates. No authority flag,
 estimand, gate, null, embargo, basin mapping, or claim ceiling may change.
+
+## Round-3 receipt correction (2026-09-22)
+
+The first post-rebind machine receipt (`p5_suite_receipt_v8.json`) is retained
+as immutable diagnostic evidence. It ran the governed `.venv` suite at 3,978
+collected tests and recorded 3,971 passed, 6 skipped, 1 failed, and 57
+warnings. The sole failure was the release-control test that detected the
+manifest's historical `full_suite_venv` text still described the previous
+3,960-test census after `collection_guard` had been rebound to 3,978.
+
+This is a release-metadata inconsistency, not a scientific result or a reason
+to weaken a gate. The coordinator must preserve v8, record the incident in
+the phase ledger, update the manifest summary to the observed diagnostic
+result, rerun the full suite, then bind the exact successful result in a
+final receipt before generating the successor index and closure. No closure
+may consume v8 as a successful suite receipt.
