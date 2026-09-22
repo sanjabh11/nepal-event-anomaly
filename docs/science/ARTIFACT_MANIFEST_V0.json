@@ -1,7 +1,12 @@
 {
  "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
- "content_head": "54a5caa3ef09c47d78b51e5c0d4e86d2a7810a09",
+ "content_head": "92ce29a642504092ec5c46caccd04ed039e154d7",
  "files": [
+  {
+   "relpath": ".github/workflows/p5-verification.yml",
+   "sha256": "31c74d0109680be84d5e32c6bcbe5d1797adc78938f54d5868f9fccb526a230c",
+   "size_bytes": 1693
+  },
   {
    "relpath": ".github/workflows/research-v0.yml",
    "sha256": "71f13e50fdf9556fbe00d4c178908530e56f9dfdfbb7dac5ad99bcf0ba2c6375",
@@ -103,6 +108,11 @@
    "size_bytes": 19011
   },
   {
+   "relpath": "docs/science/P5_ARM_C_AMENDMENT_TEMPLATE_V0.md",
+   "sha256": "15d041cb4206dfa9c8ddc1d9f8ddba350204ecbab6c6b8a17864c10d238e1df9",
+   "size_bytes": 6595
+  },
+  {
    "relpath": "docs/science/P5_AUDIT3_REMEDIATION_PLAN_V0.md",
    "sha256": "2057c046d8cc2163c04cd4e44dc8b83b39b4bca96c6a842fae0f582abce9a61c",
    "size_bytes": 3878
@@ -118,14 +128,29 @@
    "size_bytes": 1702
   },
   {
+   "relpath": "docs/science/P5_OPTION3_EXECUTION_TEMPLATE_V0.md",
+   "sha256": "d9556bb4474266f0f34ed6a3e5716f5feae7e754ff88dfd5c6b27d9ebda252b8",
+   "size_bytes": 6371
+  },
+  {
    "relpath": "docs/science/P5_SCOPE_RECONCILIATION_V0.md",
    "sha256": "574b17cfce195438ebe57fc8d1b092deaca19dd72f1a24177f70298655001636",
    "size_bytes": 7009
   },
   {
+   "relpath": "docs/science/P5_STATISTICAL_POWER_NOTE_V0.md",
+   "sha256": "263cd29f9a5b84dc0deab86dd707a9e54d76ac851bceddc7643972284c1a52e4",
+   "size_bytes": 10045
+  },
+  {
    "relpath": "docs/science/PHASE4_DUAL_MANIFEST_DECISION_V0.md",
    "sha256": "f8c1a2ab69c7ef2aeb23bd1955070b3bf6d37331382676e1be3eaac0792f7abe",
    "size_bytes": 5471
+  },
+  {
+   "relpath": "docs/science/RELEASE_INTEGRITY_THREAT_MODEL_V0.md",
+   "sha256": "a5565668b1b658657e1870e38520c4384f6fffc1e443af361f4e4e15e523d63d",
+   "size_bytes": 9982
   },
   {
    "relpath": "docs/science/SEISMIC_SOURCE_QUALIFICATION_V0.md",
@@ -171,6 +196,11 @@
    "relpath": "docs/science/run_b/GLOF_POC_CONTRACT_V0.md",
    "sha256": "8d04de83d4861cc83a8935802fc5e8fbe929549bc5100298f4b43d5c5af7b457",
    "size_bytes": 7998
+  },
+  {
+   "relpath": "docs/science/run_b/REGIME_PROMOTION_PROTOCOL_V0.md",
+   "sha256": "6481fd7ff89bc0514c6646ac28e5e0ec285d10b63e80b2958d074a6b3025b826",
+   "size_bytes": 7073
   },
   {
    "relpath": "docs/science/run_b/REGIME_PROTOCOL_V0.md",
@@ -443,6 +473,11 @@
    "size_bytes": 10138
   },
   {
+   "relpath": "scripts/export_release_bundle.py",
+   "sha256": "827ab8846ed10c09b9c2bc859beb78869ee4debc0543d7462adbafac3e002a8e",
+   "size_bytes": 17047
+  },
+  {
    "relpath": "scripts/generate_evidence_index_v1.py",
    "sha256": "172e1def7e51e0283f17aa65d5d210b286a94d291c71fd52e5cbc8c4abf728bc",
    "size_bytes": 10783
@@ -468,6 +503,11 @@
    "size_bytes": 21926
   },
   {
+   "relpath": "scripts/reexecute_p5_regimes.py",
+   "sha256": "cb962e0c3e8fae401b341e0d6122ed2572289ddf4e5977868a1ee6c1694b436c",
+   "size_bytes": 29476
+  },
+  {
    "relpath": "scripts/replay_p5.py",
    "sha256": "57a494ca5c796712fbd850ed4fd675f2f2493beecd7c13a151fedb959df778b1",
    "size_bytes": 17856
@@ -486,6 +526,11 @@
    "relpath": "scripts/run_seasonal_p5.py",
    "sha256": "92ceabd5b8f751265c3127f117b5f2c3f93956275a45f0d9228779383c433cc6",
    "size_bytes": 21744
+  },
+  {
+   "relpath": "scripts/run_verification_ladder.py",
+   "sha256": "ea106ad51e096c88577c49c3dada60b023c39ca24ee20fcadbcbc104a3a7a7ef",
+   "size_bytes": 14485
   },
   {
    "relpath": "scripts/validate_evidence_index.py",
@@ -573,6 +618,11 @@
    "size_bytes": 16943
   },
   {
+   "relpath": "tests/test_export_release_bundle.py",
+   "sha256": "ed9823835d67970587f143e614c73bad2a1b7ddfe21cc20c4e59f4214c57c954",
+   "size_bytes": 6900
+  },
+  {
    "relpath": "tests/test_glof_poc_contract.py",
    "sha256": "a5278d436906e1324d66a6728e044b77aed399571662c7a4dd5ea60f6aa216ce",
    "size_bytes": 46365
@@ -626,6 +676,11 @@
    "relpath": "tests/test_p5_safe_io.py",
    "sha256": "d75707727258f4e780fe7c0fbdaffb8eb1a9417967de5e07e5da197cbc6250d5",
    "size_bytes": 907
+  },
+  {
+   "relpath": "tests/test_promotion_protocol_consistency.py",
+   "sha256": "2dac25a997276c0b72f3e53e5538db8374807bfb34811dea893b029d4899cc63",
+   "size_bytes": 3923
   },
   {
    "relpath": "tests/test_r10_promotion.py",
@@ -718,6 +773,11 @@
    "size_bytes": 17923
   },
   {
+   "relpath": "tests/test_reexecute_p5_regimes.py",
+   "sha256": "b8dabee3a55bffa0d01f67ace6d3ffce30e2510e4360ad2a524291105adb5291",
+   "size_bytes": 13445
+  },
+  {
    "relpath": "tests/test_regime_real_path.py",
    "sha256": "0f6b71f8964269c9bb072558a4c6f2992d8ecbab71e1f3f3aa06b2a6bd78f277",
    "size_bytes": 6746
@@ -731,6 +791,11 @@
    "relpath": "tests/test_release_closure_validator.py",
    "sha256": "483492d65d5078748d7241ef69dd6133a6b95b297cc30927829e7348872457f0",
    "size_bytes": 22934
+  },
+  {
+   "relpath": "tests/test_replay_never_reexecutes.py",
+   "sha256": "25ee84040f6b4c97cff0c3956edcc1429c9e58dbbd65654bf7e897ce3cd53fff",
+   "size_bytes": 3211
   },
   {
    "relpath": "tests/test_research_v0_adversarial.py",
@@ -851,11 +916,16 @@
    "relpath": "tests/test_temporal_holdout.py",
    "sha256": "06c9f25b27b8434e46d8f21e96f823c1e0769f9d97085a017791d3956f4578cc",
    "size_bytes": 14244
+  },
+  {
+   "relpath": "tests/test_verification_ladder.py",
+   "sha256": "d3c8c51e510ff9524f4a984efe0c283d86b37f0b88cf782852a14a1a17a22a3c",
+   "size_bytes": 5529
   }
  ],
  "generated": "post-P5 phase-B/C bind \u2014 model re-execution proof (MODEL_REEXECUTED both lanes, digest-exact), preregistered promotion protocol, clean-room export + verification-ladder harness, owner-scoped Arm C amendment (retrieval deferred)",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "54a5caa3ef09c47d78b51e5c0d4e86d2a7810a09",
+ "manifest_commit": "92ce29a642504092ec5c46caccd04ed039e154d7",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
