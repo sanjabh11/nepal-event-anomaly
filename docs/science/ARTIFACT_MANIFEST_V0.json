@@ -853,7 +853,7 @@
    "size_bytes": 14244
   }
  ],
- "generated": "post-P5 audit-4 current-tree bind \u2014 frozen-snapshot vs current-tree closure vocabulary, receipt v2 manifest binding, index generation_head, planned-slot publication semantics",
+ "generated": "post-P5 phase-B/C bind \u2014 model re-execution proof (MODEL_REEXECUTED both lanes, digest-exact), preregistered promotion protocol, clean-room export + verification-ladder harness, owner-scoped Arm C amendment (retrieval deferred)",
  "interpreter": ".venv/bin/python",
  "manifest_commit": "54a5caa3ef09c47d78b51e5c0d4e86d2a7810a09",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
@@ -865,9 +865,9 @@
  "test_results": {
   "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
   "claim_scan": "clean on all governed files",
-  "collection_guard": "repo-wide collection == tests/ (3933 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
+  "collection_guard": "repo-wide collection == tests/ (3960 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
   "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
-  "full_suite_venv": "3927 passed, 6 skipped, 0 failed, 57 warnings (3933 collected) \u2014 authoritative binding is the machine-generated p5_suite_receipt_v6.json produced on the final tree",
+  "full_suite_venv": "3954 passed, 6 skipped, 0 failed, 57 warnings (3960 collected) \u2014 authoritative binding is the machine-generated p5_suite_receipt_v7.json produced on the final tree",
   "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
   "p5_a2_status_consistency": "local guard passed; CI guard configured \u2014 current CANDIDATE_ONLY / UNSUPERVISED_STRUCTURE_NOT_STABLE result, false authority flags, and release metadata aligned",
   "p5_a2_temporal_holdout": "110 passed, 1 skipped \u2014 temporal mapping, waiver, and documentation regression lane",
@@ -877,7 +877,7 @@
   "p5_one_station_contract": "292 passed \u2014 V1 status vocabulary, v0 mapping completeness, authority-flag strictness, complete ten-digest execution chain, falsey-input rejection, event UTC/date/window/relation semantics, 24h window bound, BLOCKED/NOT_OPERATIONAL/RUN_ERROR bind nothing, bounded malformed-input errors, forbidden-term scan, window bounds, round-trips",
   "p5_seasonal_frame_adversarial": "11 passed \u2014 input-domain refusals (non-JJA labels, out-of-window dates, undeclared units/years, duplicate/non-consecutive coverage), honest-missingness ledger drops, real-frame clean-build regression",
   "p5_seasonal_lane": "45 passed \u2014 preflight refusals, parameter-count guard, negative-control statistics, frame-builder integrity, gate-observation semantics, artifact-bound Arm A verification, receipt authority, claim-vocabulary ceiling",
-  "p5_seasonal_replay": "REPLAY_OK, replay_scope artifact_integrity_replay \u2014 deterministic frame rebuild, envelope+freeze digests, producer floor, receipt bindings, gate-observation semantics, live Arm A artifact-chain re-verify, authority fields, negative-control refusal; model reexecution NOT_RUN",
+  "p5_seasonal_replay": "REPLAY_OK, replay_scope artifact_integrity_replay \u2014 deterministic frame rebuild, envelope+freeze digests, producer floor, receipt bindings, gate-observation semantics, live Arm A artifact-chain re-verify, authority fields, negative-control refusal; model reexecution now MODEL_REEXECUTED via p5_model_reexecution_report_v2.json (separate proof scope)",
   "promotion_matrix": "699 passed (r9 179 + r10 520)",
   "r10_promotion": "520 passed (505 R10 matrix + 15 R10.1 residual regressions)",
   "r11_2_provenance": "35 passed",
