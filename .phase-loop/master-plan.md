@@ -46,3 +46,29 @@ current tree as v9:
 Hard stops: v4–v6 bytes untouched; no acquisition; no dependency
 admission; owner gates and authority flags unchanged; “all gaps closed”
 remains prohibited.
+
+## Round-3 integration and next-gate decision (2026-09-22)
+
+Round-3 adds only release-integrity and preflight surfaces: an independent
+model-re-execution report validator, a clean-room exported-bundle verifier,
+an Arm C metadata-only dry-run tool, bounded seismic candidate inventory and
+re-execution interpretation notes, and their focused tests. The eight files
+are prepared against HEAD `c52464a`; focused verification is 18 passed and
+the source/document claim scans are clean.
+
+The next content commit may include those eight files plus this control-plane
+update and the corresponding phase-ledger record. Before that commit, the
+ledger record must be syntactically and semantically validated. After the
+commit, the coordinator must serialize manifest rebind, machine suite
+receipt, exhaustive evidence index, release closure, incident-surface
+validation, replay/model-proof validation, claim scan, and final manifest and
+tree checks. No post-publication repository commit may be made without a new
+release successor.
+
+Arm C remains `SCOPE_APPROVED_RETRIEVAL_DEFERRED`: only a metadata/size
+preflight is permitted at this stage, and the current preflight must remain
+blocked until the grid resolution and metadata source are explicitly bound
+in a successor amendment. No CDS payload retrieval is authorized here.
+Seismic remains `NOT_REQUESTED`; ObsPy admission, multi-season expansion, and
+external proof remain separate owner/external gates. No authority flag,
+estimand, gate, null, embargo, basin mapping, or claim ceiling may change.
