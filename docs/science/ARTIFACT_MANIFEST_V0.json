@@ -1,6 +1,6 @@
 {
  "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
- "content_head": "92ce29a642504092ec5c46caccd04ed039e154d7",
+ "content_head": "fb107987bf5ef79170721c5e9d1631681e28ff87",
  "files": [
   {
    "relpath": ".github/workflows/p5-verification.yml",
@@ -19,13 +19,13 @@
   },
   {
    "relpath": ".phase-loop/master-plan.md",
-   "sha256": "72fd731b7b507c57a4f6268817d87c73f4c2a99b880163dc4f1b63083f31e41e",
-   "size_bytes": 2003
+   "sha256": "75e5491857c4669cdbe3fb673c63b8788bd62f7f3c7018d86fb42a982d0012c4",
+   "size_bytes": 3547
   },
   {
    "relpath": ".phase-loop/phase-ledger.jsonl",
-   "sha256": "bea4cfb3f641f0b27fedcd844ce601c12dcf10b9f5b77bf45bd3ba465c9103f6",
-   "size_bytes": 14327
+   "sha256": "552671de1a0159364384130c8f8ed55f738c3b1e46f1a654143313170dc24ab6",
+   "size_bytes": 16738
   },
   {
    "relpath": "README.md",
@@ -123,6 +123,11 @@
    "size_bytes": 6493
   },
   {
+   "relpath": "docs/science/P5_MODEL_REEXECUTION_NOTE_V0.md",
+   "sha256": "9fe50c1bd6616c0949201857cf71f5d3f86361d51fdf72516b620266d19ac9fb",
+   "size_bytes": 4425
+  },
+  {
    "relpath": "docs/science/P5_OPERATIVE_ANCHOR_NOTE_V0.md",
    "sha256": "bb1dfd4c0079e749b524fde9b7298404e8f8f9b0fe92fc2bc09fc2ab5bcc4030",
    "size_bytes": 1702
@@ -136,6 +141,11 @@
    "relpath": "docs/science/P5_SCOPE_RECONCILIATION_V0.md",
    "sha256": "574b17cfce195438ebe57fc8d1b092deaca19dd72f1a24177f70298655001636",
    "size_bytes": 7009
+  },
+  {
+   "relpath": "docs/science/P5_SEISMIC_CANDIDATE_INVENTORY_V0.md",
+   "sha256": "b762066a063c721231606c19bbe948e55fed972c9c74c150f5b205d59b9f8e84",
+   "size_bytes": 6051
   },
   {
    "relpath": "docs/science/P5_STATISTICAL_POWER_NOTE_V0.md",
@@ -458,6 +468,11 @@
    "size_bytes": 6985
   },
   {
+   "relpath": "scripts/armc_cds_preflight.py",
+   "sha256": "e1d0a261dda79105e6790578c9c150063d06b69dbfcd94e0de1f24f20efb09fb",
+   "size_bytes": 17036
+  },
+  {
    "relpath": "scripts/build_p5_release_closure_v2.py",
    "sha256": "555837a0f61a1031406b1766d98dd9716b96d73c0d8db83d1e869ef35d066dca",
    "size_bytes": 11797
@@ -543,9 +558,19 @@
    "size_bytes": 4043
   },
   {
+   "relpath": "scripts/validate_reexecution_report.py",
+   "sha256": "239c9adbf8880bb3f9ed0723a726c4c761c37e284f8da0c680560edc9ef6b828",
+   "size_bytes": 16523
+  },
+  {
    "relpath": "scripts/validate_release_closure.py",
    "sha256": "b028f2e49751d63f557969abfd998b89553cc3bbba02ac828293227c5466cb48",
    "size_bytes": 37001
+  },
+  {
+   "relpath": "scripts/verify_exported_bundle.py",
+   "sha256": "81d660fb6b0b15fa5f76e797039641e7446c139cb31c936304069a7eb441fc05",
+   "size_bytes": 20165
   },
   {
    "relpath": "tests/fixtures/__init__.py",
@@ -571,6 +596,11 @@
    "relpath": "tests/fixtures/synthetic_exp_b4.py",
    "sha256": "486224a6ce0e48ecafaf967bb8bc010b0ceb12159ab2e175b6f627333e5ef0da",
    "size_bytes": 35269
+  },
+  {
+   "relpath": "tests/test_armc_cds_preflight.py",
+   "sha256": "a91b4055fc66946f6e22f2ab8432a4f9c86604f3a99b2c295bbdc926fb33be90",
+   "size_bytes": 4634
   },
   {
    "relpath": "tests/test_era5_anchor_intake.py",
@@ -918,14 +948,24 @@
    "size_bytes": 14244
   },
   {
+   "relpath": "tests/test_validate_reexecution_report.py",
+   "sha256": "667e4e4e2b13e679211578320d43d1011b9909385bb54f3b126c262fdd93a1b4",
+   "size_bytes": 5339
+  },
+  {
    "relpath": "tests/test_verification_ladder.py",
    "sha256": "d3c8c51e510ff9524f4a984efe0c283d86b37f0b88cf782852a14a1a17a22a3c",
    "size_bytes": 5529
+  },
+  {
+   "relpath": "tests/test_verify_exported_bundle.py",
+   "sha256": "7fd2ad1838ef153c371439c4354de1ecc67034b7c30a5b35915e32603de9cc8e",
+   "size_bytes": 4985
   }
  ],
  "generated": "post-P5 phase-B/C bind \u2014 model re-execution proof (MODEL_REEXECUTED both lanes, digest-exact), preregistered promotion protocol, clean-room export + verification-ladder harness, owner-scoped Arm C amendment (retrieval deferred)",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "92ce29a642504092ec5c46caccd04ed039e154d7",
+ "manifest_commit": "fb107987bf5ef79170721c5e9d1631681e28ff87",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -935,7 +975,7 @@
  "test_results": {
   "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
   "claim_scan": "clean on all governed files",
-  "collection_guard": "repo-wide collection == tests/ (3960 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
+  "collection_guard": "repo-wide collection == tests/ (3978 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
   "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
   "full_suite_venv": "3954 passed, 6 skipped, 0 failed, 57 warnings (3960 collected) \u2014 authoritative binding is the machine-generated p5_suite_receipt_v7.json produced on the final tree",
   "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
