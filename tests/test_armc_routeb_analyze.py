@@ -129,3 +129,36 @@ class TestFdrScope:
         # PRIMARY is 'tp_antecedent_7d_sum'; FDR applies to secondaries.
         # Verify by checking EXPOSURES membership of the primary key.
         assert A.PRIMARY in A.EXPOSURES and len(A.EXPOSURES) > 1
+
+
+class TestSignoffVerification:
+    def test_forged_signoff_rejected(self, tmp_path):
+        """A signoff with wrong target/role/scope must not approve."""
+        import json, hashlib
+        dec = tmp_path / "dec.json"; dec.write_text("{}")
+        dec_sha = hashlib.sha256(dec.read_bytes()).hexdigest()
+        forged = tmp_path / "forged.json"
+        forged.write_text(json.dumps({"status": "APPROVED",
+            "target_sha256": "0" * 64,   # wrong target
+            "approver": {"id": "x", "role": "owner"},
+            "scope": "eligibility", "records": {"a": {}}}))
+        # emulate the analyzer's gate
+        so = json.loads(forged.read_text())
+        ok = (so.get("status") == "APPROVED"
+              and so.get("target_sha256") == dec_sha
+              and so.get("approver", {}).get("role") == "owner"
+              and "ELIGIBIL" in str(so.get("scope", "")).upper())
+        assert not ok
+
+    def test_genuine_signoff_accepted(self, tmp_path):
+        import json, hashlib
+        dec = tmp_path / "dec.json"; dec.write_text("{}")
+        dec_sha = hashlib.sha256(dec.read_bytes()).hexdigest()
+        genuine = {"status": "APPROVED", "target_sha256": dec_sha,
+                   "approver": {"id": "sanjayb", "role": "owner"},
+                   "scope": "per-record ELIGIBILITY adjudication", "records": {"a": {}}}
+        ok = (genuine["status"] == "APPROVED"
+              and genuine["target_sha256"] == dec_sha
+              and genuine["approver"]["role"] == "owner"
+              and "ELIGIBIL" in genuine["scope"].upper())
+        assert ok

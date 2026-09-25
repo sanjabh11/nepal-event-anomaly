@@ -429,10 +429,18 @@ def main():
     hw = summ[PRIMARY]["ci_half_width"]
     verdict = "ESTIMABLE" if hw is not None and hw <= 0.5 else \
               ("DESCRIPTIVE_ONLY" if hw is not None else "NOT_ESTIMABLE")
+    # verified signoff: must target THIS decision bytes, be APPROVED,
+    # carry an owner-role approver, and a scope naming eligibility —
+    # an unrelated APPROVED file must not satisfy the gate
+    dec_sha = _sha(a.decision)
     approved_ids = set()
     for p in a.owner_signoff:
         so = json.loads(Path(p).read_text())
-        if so.get("status") == "APPROVED":
+        ok = (so.get("status") == "APPROVED"
+              and so.get("target_sha256") == dec_sha
+              and so.get("approver", {}).get("role") == "owner"
+              and "ELIGIBIL" in str(so.get("scope", "")).upper())
+        if ok:
             approved_ids |= set(so.get("records", {}).keys())
     era_pending = False
     for u in epmap["units"]:
