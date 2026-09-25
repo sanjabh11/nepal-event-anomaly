@@ -5,17 +5,18 @@
   "boundary_invariant": "tracked files == bound entries + recorded exclusions + the self-excluded manifest; enforced by the rebind scope audit, which fails closed on any unrecorded tracked file",
   "counts": {
     "agent_phase_ledger_not_indexed": 0,
+    "armc_lane_governed_by_p5_manifest_chain": 36,
     "bound_files": 161,
     "ci_workflow_outside_release_surface": 0,
     "data_payload_outside_science_scope": 5,
-    "exclusions": 72,
+    "exclusions": 108,
     "legacy_science_doc_pre_bound_surface": 0,
     "legacy_script_pre_bound_surface": 0,
     "legacy_v0_pre_regime_surface": 32,
     "legacy_v0_pre_regime_tests": 27,
     "pinned_input_script": 5,
     "root_level_record_outside_governed_surface": 3,
-    "tracked_files": 234
+    "tracked_files": 302
   },
   "exclusions": [
     {
@@ -377,6 +378,186 @@
       "category": "legacy_v0_pre_regime_tests",
       "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
       "relpath": "tests/test_nepal_anomaly.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "scripts/armc_adjudicate_autofill.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "scripts/armc_adjudicate_cli.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "scripts/armc_adjudicate_decision.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "scripts/armc_adjudication_intake.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "scripts/armc_cds_retrieve.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "scripts/armc_daily_frame.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "scripts/armc_daily_spell_stats.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "scripts/armc_earthmover_fix_coords.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "scripts/armc_frame_extend.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "scripts/armc_monthly_split.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "scripts/armc_observation_audit.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "scripts/armc_precision_audit.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "scripts/armc_readiness_audit_gen.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "scripts/armc_retrieve_driver.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "scripts/armc_retrieve_driver_earthmover.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "scripts/armc_retrieve_driver_earthmover_single.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "scripts/armc_retrieve_driver_earthmover_v17.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "scripts/armc_retrieve_driver_grouped.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "scripts/armc_retrieve_launch.sh"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "scripts/armc_routeb_analyze.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "scripts/armc_v17_request_plan.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "scripts/armc_v17_request_plan_v1.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "scripts/armc_v19_request_plan.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "scripts/run_armc_daily.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "scripts/run_armc_p5.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "scripts/verify_armc_retrieval.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "scripts/verify_armc_single_retrieval.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "tests/test_armc_adjudication.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "tests/test_armc_cds_retrieve.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "tests/test_armc_frame_extend.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "tests/test_armc_monthly_split.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "tests/test_armc_routeb_analyze.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "tests/test_armc_v17_plan.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "tests/test_armc_v17_request_plan_v1.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "tests/test_run_armc_p5.py"
+    },
+    {
+      "category": "armc_lane_governed_by_p5_manifest_chain",
+      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+      "relpath": "tests/test_verify_armc_retrieval.py"
     }
   ],
   "generated_utc": "2026-09-21T05:50:42Z",
