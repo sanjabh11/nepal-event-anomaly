@@ -239,6 +239,7 @@ def main():
     ap.add_argument("--decision", required=True)
     ap.add_argument("--protocol", required=True)
     ap.add_argument("--transform-contract", required=True)
+    ap.add_argument("--owner-signoff", action="append", default=[])
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     lanes = [Path(p) for p in a.lane_root]
@@ -428,12 +429,21 @@ def main():
     hw = summ[PRIMARY]["ci_half_width"]
     verdict = "ESTIMABLE" if hw is not None and hw <= 0.5 else \
               ("DESCRIPTIVE_ONLY" if hw is not None else "NOT_ESTIMABLE")
-    dec_status = dec.get("status", "")
-    era_pending = any(u.get("era") == "pre2001" for u in epmap["units"]) and \
-        dec_status != "ADJUDICATED"
+    approved_ids = set()
+    for p in a.owner_signoff:
+        so = json.loads(Path(p).read_text())
+        if so.get("status") == "APPROVED":
+            approved_ids |= set(so.get("records", {}).keys())
+    era_pending = False
+    for u in epmap["units"]:
+        if u.get("era") == "pre2001":
+            for mid in u["member_ids"]:
+                if f"icimod_hmaglofdb_v1_3_0:1.3.0:{mid}" not in approved_ids:
+                    era_pending = True
     out = {"schema": "P5_ROUTE_B_RESULT_V2",
            "supersedes": "armc_routeb_result_v0..v14 lineage (v0/v0b/v1 nonconforming; v2-v13 exploratory iterations)",
-           "cohort_approval": "ERA_EXTENSION_PENDING_OWNER_SIGNOFF" if era_pending else "APPROVED",
+           "cohort_approval": "ERA_EXTENSION_PENDING_OWNER_SIGNOFF" if era_pending else "APPROVED_ALL_STRATA",
+           "owner_signoffs": [_sha(p) for p in a.owner_signoff],
            "approval_note": ("pre-2001 stratum records are owner-approved rule-qualified "
                              "candidates pending explicit decision-v1 signoff; treat those "
                              "12 units as exploratory stratum until then" if era_pending else None),
