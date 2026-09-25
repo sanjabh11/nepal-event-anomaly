@@ -502,6 +502,41 @@ class TestSignoffSchema:
               "records": {"a": {}}}
         assert A.verify_signoff(v2, {"D" * 64}, "E" * 64) is False
 
+    @pytest.mark.parametrize("bad_tgt", [
+        {"x": 1}, ["x"], 42, None, True])
+    def test_v2_nonstr_target_rejected_not_raised(self, bad_tgt):
+        # unhashable/non-str targets must not raise TypeError on `in`
+        v2 = {"schema": "P5_OWNER_SIGNOFF_V2", "status": "APPROVED",
+              "target_sha256": bad_tgt, "episode_map_sha256": "E" * 64,
+              "approver": {"id": "sanjayb", "role": "owner"},
+              "approval_type": "ELIGIBILITY_ADJUDICATION",
+              "records": {"a": {}}}
+        assert A.verify_signoff(v2, {"D" * 64}, "E" * 64) is False
+
+    @pytest.mark.parametrize("field,val", [
+        ("signer", {"x": 1}), ("signer", ["x"]), ("signer", 42)])
+    def test_v0_nonstr_signer_rejected(self, field, val):
+        v0 = {"schema": "P5_OWNER_SIGNOFF_V0", "status": "APPROVED",
+              "role": "owner_approval", field: val,
+              "approved_artifact": {"sha256": "A" * 64}}
+        assert A.verify_signoff(v0, {"A" * 64}, None) is False
+
+    @pytest.mark.parametrize("bad_sha", [{"x": 1}, ["x"], 42, None])
+    def test_v0_nonstr_artifact_sha_rejected(self, bad_sha):
+        v0 = {"schema": "P5_OWNER_SIGNOFF_V0", "status": "APPROVED",
+              "role": "owner_approval", "signer": "sanjayb",
+              "approved_artifact": {"sha256": bad_sha}}
+        assert A.verify_signoff(v0, {"A" * 64}, None) is False
+
+    @pytest.mark.parametrize("bad_id", [{"x": 1}, ["x"], 42, None])
+    def test_v2_nonstr_approver_id_rejected(self, bad_id):
+        v2 = {"schema": "P5_OWNER_SIGNOFF_V2", "status": "APPROVED",
+              "target_sha256": "D" * 64, "episode_map_sha256": "E" * 64,
+              "approver": {"id": bad_id, "role": "owner"},
+              "approval_type": "ELIGIBILITY_ADJUDICATION",
+              "records": {"a": {}}}
+        assert A.verify_signoff(v2, {"D" * 64}, "E" * 64) is False
+
     def test_result_supersedes_lineage(self):
         s = A._result_supersedes("/x/armc_routeb_result_v31.json")
         assert "armc_routeb_result_v30" in s

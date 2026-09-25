@@ -185,20 +185,24 @@ def verify_signoff(so: dict, allowed_decision_shas: set,
     if schema == "P5_OWNER_SIGNOFF_V0":
         if so.get("role") != "owner_approval":
             return False
-        if so.get("signer") not in KNOWN_OWNERS:
+        signer = so.get("signer")
+        if not isinstance(signer, str) or signer not in KNOWN_OWNERS:
             return False
         aa = so.get("approved_artifact")
         if not isinstance(aa, dict):
             return False
-        return aa.get("sha256") in allowed_decision_shas
+        sha = aa.get("sha256")
+        return isinstance(sha, str) and sha in allowed_decision_shas
     if schema in {"P5_OWNER_SIGNOFF_V1", "P5_OWNER_SIGNOFF_V2"}:
         tgt = so.get("target_sha256")
-        if tgt not in allowed_decision_shas:
+        if not isinstance(tgt, str) or tgt not in allowed_decision_shas:
             return False
         ap = so.get("approver")
         if not isinstance(ap, dict):
             return False
-        if ap.get("role") != "owner" or ap.get("id") not in KNOWN_OWNERS:
+        if (ap.get("role") != "owner"
+                or not isinstance(ap.get("id"), str)
+                or ap["id"] not in KNOWN_OWNERS):
             return False
         if not episode_map_sha or so.get("episode_map_sha256") != episode_map_sha:
             return False  # episode-map binding is mandatory for v1/v2
