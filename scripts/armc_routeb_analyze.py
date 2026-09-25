@@ -104,20 +104,57 @@ def daily_frame(var_series: dict, sp_series: pd.Series, t_series):
     return frame
 
 
-def masked_theta(hourly_t, hourly_sp, hourly_t2m):
-    """theta500-thetasfc with per-hour cell-level terrain mask.
+def load_cell_hourly(lane_root: Path, vars_):
+    """var -> selection_id -> hourly DataFrame (rows=validity, cols=cells).
+    Same dedupe/conflict rules as the cell-mean loader."""
+    out = {v: {} for v in vars_}
+    conflicts = []
+    for var in vars_:
+        for f in sorted((lane_root / f"payload-v17_{var}/retrieval/payloads").glob("*.nc")):
+            sid = f.stem.replace("v17-", "").replace(f"-{var}", "")
+            ds = xr.open_dataset(f)
+            da = ds[var]
+            da = da.isel(pressure_level=0) if "pressure_level" in da.dims else da
+            vt = pd.DatetimeIndex(da["valid_time"].values, tz="UTC")
+            arr = np.asarray(da.values).reshape(len(vt), -1)
+            s = pd.DataFrame(arr, index=vt)
+            dup = s.index.duplicated(keep=False)
+            if dup.any():
+                for t, g in s[dup].groupby(s[dup].index):
+                    if g.stack().nunique() > g.shape[1]:
+                        conflicts.append({"var": var, "sel": sid, "time": str(t)})
+                s = s[~s.index.duplicated(keep="first")]
+            out[var][sid] = s
+    if conflicts:
+        raise ValueError(f"conflicting cell duplicates: {conflicts[:3]}")
+    return out
 
-    Approximation: hourly series are cell-means; masking uses sp<50000Pa
-    on the box mean. Cell-level masking requires unreduced arrays — see
-    valid_fraction note in output.
-    """
-    common = hourly_t.index.intersection(hourly_sp.index)\
-        .intersection(hourly_t2m.index)
-    t, sp, t2m = hourly_t.loc[common], hourly_sp.loc[common], hourly_t2m.loc[common]
+
+def merge_cell_series(cellmap, sel_ids):
+    s = pd.concat([cellmap[i] for i in sel_ids if i in cellmap]).sort_index()
+    dup = s.index.duplicated(keep=False)
+    if dup.any():
+        bad = [t for t, g in s[dup].groupby(s[dup].index)
+               if g.stack().nunique() > g.shape[1]]
+        if bad:
+            raise ValueError(f"conflicting cell validities: {[str(t) for t in bad[:3]]}")
+        s = s[~s.index.duplicated(keep="first")]
+    return s
+
+
+def masked_theta_cells(t_df, sp_df, t2m_df):
+    """TRUE per-cell terrain mask: a 500 hPa level is below ground where
+    that cell's sp < 50000 Pa. Returns (hourly box-mean deficit series,
+    hourly valid-cell fraction series)."""
+    common = t_df.index.intersection(sp_df.index).intersection(t2m_df.index)
+    t, sp, t2m = t_df.loc[common], sp_df.loc[common], t2m_df.loc[common]
     theta500 = t * (1000 / 500) ** KAPPA
     thetasfc = t2m * (1000 / (sp / 100)) ** KAPPA
-    deficit = (theta500 - thetasfc).where(sp >= 50000)  # valid where sfc ABOVE 500hPa
-    return deficit
+    deficit = theta500 - thetasfc
+    valid = sp >= 50000
+    frac = valid.sum(axis=1) / valid.shape[1]
+    box_mean = deficit.where(valid).mean(axis=1)
+    return box_mean, frac
 
 
 def detrend_years(days: pd.Series) -> pd.Series:
@@ -128,10 +165,13 @@ def detrend_years(days: pd.Series) -> pd.Series:
     return d - np.polyval(coef, yr - yr.mean())
 
 
-def ref_distribution(days: pd.Series, month: int, wash_dates, accum: bool):
+def ref_distribution(days: pd.Series, month: int, wash_dates, accum: bool,
+                     max_year=None):
     """Consecutive rolling 7-day windows ending inside `month`, minus
     windows whose 7-day span overlaps +-7d of any washout date."""
     days = days.dropna().sort_index()
+    if max_year is not None:
+        days = days[days.index.year <= max_year]
     idx = days.index
     is_daily = idx.to_series().diff().dt.days.fillna(1) == 1
     full = np.concatenate([[False] * 6, is_daily.rolling(6).min().values[6:].astype(bool)])
@@ -156,12 +196,15 @@ def antecedent(df: pd.DataFrame, var: str, event_date, accum: bool):
     return (days.loc[win].sum() if accum else days.loc[win].mean()), 7
 
 
-def build_unit_frame(hourly, sid_set):
+def build_unit_frame(hourly, sid_set, cellmap=None):
     vs = {v: merge_box_series(hourly[v], sid_set) for v in
           ["tp", "tcwv", "cape", "sf"]}
-    td = masked_theta(merge_box_series(hourly["t"], sid_set),
-                      merge_box_series(hourly["sp"], sid_set),
-                      merge_box_series(hourly["t2m"], sid_set))
+    if cellmap is None:
+        raise ValueError("cell-level arrays required for per-cell theta masking")
+    td, frac = masked_theta_cells(
+        merge_cell_series(cellmap["t"], sid_set),
+        merge_cell_series(cellmap["sp"], sid_set),
+        merge_cell_series(cellmap["t2m"], sid_set))
     vs["theta_deficit"] = td.resample("D").mean()
     df = {}
     for var, s in vs.items():
@@ -172,6 +215,10 @@ def build_unit_frame(hourly, sid_set):
     df["theta_deficit"] = vs["theta_deficit"]
     out = pd.DataFrame(df)
     out.index = out.index.tz_localize(None).normalize()
+    if frac is not None:
+        vfd = frac.resample("D").mean()
+        vfd.index = vfd.index.tz_localize(None).normalize()
+        out.attrs["theta_valid_fraction_daily"] = vfd
     return out
 
 
@@ -202,6 +249,10 @@ def main():
     for lane in lanes:
         for var, d in load_hourly(lane).items():
             hourly[var].update(d)
+    cellmap = {v: {} for v in ("t", "sp", "t2m")}
+    for lane in lanes:
+        for var, d in load_cell_hourly(lane, ("t", "sp", "t2m")).items():
+            cellmap[var].update(d)
 
     clim = {s["selection_id"]: s for i in invs for s in i["climatology_selections"]}
     spills = [s for i in invs for s in i["antecedent_spillover_selections"]]
@@ -247,7 +298,12 @@ def main():
                    "event_date": str(d.date()), "month": d.month,
                    "gorkha_window": bool(EQ_START <= d <= EQ_END),
                    "selection_id": sid}
-            df = build_unit_frame(hourly, sel_ids)
+            df = build_unit_frame(hourly, sel_ids, cellmap)
+            vf = df.attrs.get("theta_valid_fraction_daily")
+            if vf is not None:
+                vfw = vf.loc[pd.date_range(d - pd.Timedelta(days=10),
+                                           d - pd.Timedelta(days=4))]
+                row["theta_valid_fraction_window"] = float(vfw.mean()) if len(vfw) else None
             df_det = df.copy()
             for v in df.columns:
                 df_det[v] = detrend_years(df[v])
@@ -274,6 +330,12 @@ def main():
                         xs, cs = antecedent(df, v, d + pd.Timedelta(days=sh), kind == "sum")
                         if not np.isnan(xs):
                             row[f"{name}_{tag}"] = float((xs - ref.mean()) / ref.std())
+                    # true era-matched sensitivity for pre-2001 units:
+                    # reference restricted to <=2000
+                    if d.year < 2001:
+                        ref2 = ref_distribution(df[v], d.month, wash, kind == "sum", max_year=2000)
+                        if len(ref2) >= 100 and ref2.std() > 0:
+                            row[f"{name}_era_matched"] = float((x - ref2.mean()) / ref2.std())
             mres[mid] = row
             member_rows.append(row)
         # unit-level: earliest member primary, latest sensitivity
@@ -319,7 +381,7 @@ def main():
                       "n_anomalous_abs_z_gt1": int((z.abs() > 1).sum()),
                       "n_positive_z_gt1": int((z > 1).sum()),
                       "n_negative_z_lt_neg1": int((z < -1).sum())}
-        if pv is not None:
+        if pv is not None and name != PRIMARY:  # FDR over secondaries only
             pvals.append(pv); pnames.append(name)
         # unit-level sensitivity aggregates (primary-member rows only)
         for tag, lbl in (("detrended", "detrended"), ("unc_m3", "unc-3d"),
@@ -338,11 +400,19 @@ def main():
             if k in prim.columns:
                 sub = prim.dropna(subset=[name, k])
                 if len(sub):
+                    dd = sub[k] - sub[name]
+                    se_d = float(dd.std(ddof=1)) / np.sqrt(len(dd)) if len(dd) > 1 else None
                     paired[tag] = {"n": int(len(sub)),
                                    "primary_mean": round(float(sub[name].mean()), 3),
                                    "shifted_mean": round(float(sub[k].mean()), 3),
-                                   "mean_delta": round(float((sub[k] - sub[name]).mean()), 3)}
+                                   "mean_delta": round(float(dd.mean()), 3),
+                                   "se_delta": round(se_d, 3) if se_d else None}
         summ[name]["paired_same_event"] = paired
+        # era-matched sensitivity (pre-2001 units, reference <=2000)
+        if f"{name}_era_matched" in prim.columns:
+            zem = pd.to_numeric(prim[f"{name}_era_matched"], errors="coerce").dropna()
+            summ[name]["era_matched_n"] = int(len(zem))
+            summ[name]["era_matched_mean_z"] = round(float(zem.mean()), 3) if len(zem) else None
         # era-stratified breakdown (frozen v19 requirement)
         for era in ("post2000", "pre2001"):
             ze = pd.to_numeric(prim[prim["era"] == era][name], errors="coerce").dropna()

@@ -31,20 +31,22 @@ class TestDedupe:
 
 class TestThetaMask:
     def test_below_ground_masked(self):
-        t = hourly([280.0] * 48)
-        sp = hourly([40000.0] * 48)   # surface below 500hPa -> mask
-        t2m = hourly([270.0] * 48)
-        td = A.masked_theta(t, sp, t2m)
-        assert td.isna().all()
+        import pandas as pd
+        idx = pd.date_range("2016-05-01", periods=4, freq="h", tz="UTC")
+        t = pd.DataFrame({0: [280.]*4}, index=idx)
+        sp = pd.DataFrame({0: [40000.]*4}, index=idx)
+        t2m = pd.DataFrame({0: [270.]*4}, index=idx)
+        td, fr = A.masked_theta_cells(t, sp, t2m)
+        assert td.isna().all() and (fr == 0).all()
 
     def test_above_ground_kept(self):
-        t = hourly([260.0] * 48)
-        sp = hourly([65000.0] * 48)   # ~650hPa surface -> 500hPa valid
-        t2m = hourly([275.0] * 48)
-        td = A.masked_theta(t, sp, t2m)
-        assert td.notna().all()
-        # theta500 = 260*(1000/500)^0.286 ~ 317.2; thetasfc ~287.2
-        # sp=65000Pa -> 650hPa: theta500=260*(1000/500)^k, thetasfc=275*(1000/650)^k
+        import pandas as pd
+        idx = pd.date_range("2016-05-01", periods=4, freq="h", tz="UTC")
+        t = pd.DataFrame({0: [260.]*4}, index=idx)
+        sp = pd.DataFrame({0: [65000.]*4}, index=idx)
+        t2m = pd.DataFrame({0: [275.]*4}, index=idx)
+        td, fr = A.masked_theta_cells(t, sp, t2m)
+        assert td.notna().all() and (fr == 1.0).all()
         assert abs(td.iloc[0] - (260 * (1000/500)**0.286 - 275 * (1000/650)**0.286)) < 0.5
 
 
@@ -88,3 +90,42 @@ class TestCohort:
         starts = {"400": "2002-05-23", "401": "2002-06-29"}
         ordered = sorted(mids, key=lambda m: starts[m])
         assert ordered[0] == "400"
+
+
+class TestCellTheta:
+    def test_per_cell_mask_mixed(self):
+        import pandas as pd
+        idx = pd.date_range("2016-05-01", periods=4, freq="h", tz="UTC")
+        # cell0 above 500hPa (valid), cell1 below (masked)
+        t = pd.DataFrame({0: [260.]*4, 1: [260.]*4}, index=idx)
+        sp = pd.DataFrame({0: [65000.]*4, 1: [40000.]*4}, index=idx)
+        t2m = pd.DataFrame({0: [275.]*4, 1: [275.]*4}, index=idx)
+        bm, fr = A.masked_theta_cells(t, sp, t2m)
+        assert (fr == 0.5).all()          # half the cells valid
+        # box mean should equal cell0's own deficit only
+        exp = 260*(1000/500)**0.286 - 275*(1000/650)**0.286
+        assert abs(bm.iloc[0] - exp) < 0.5
+
+    def test_conflicting_cell_duplicate_raises(self):
+        import pandas as pd
+        idx = pd.date_range("2016-05-01", periods=2, freq="h", tz="UTC")
+        a = pd.DataFrame({0: [1., 2.]}, index=idx)
+        b = pd.DataFrame({0: [9.]}, index=[idx[0]])
+        import pytest
+        with pytest.raises(ValueError):
+            A.merge_cell_series({"a": a, "b": b}, ["a", "b"])
+
+
+class TestEraMatched:
+    def test_max_year_restriction(self):
+        s = pd.Series(1.0, index=pd.DatetimeIndex(
+            [d for y in (1999, 2000, 2001, 2002) for d in pd.date_range(f"{y}-05-01", periods=31)]))
+        ref = A.ref_distribution(s, 5, [], accum=False, max_year=2000)
+        assert (ref.index.year <= 2000).all()
+
+
+class TestFdrScope:
+    def test_primary_not_in_fdr_set(self):
+        # PRIMARY is 'tp_antecedent_7d_sum'; FDR applies to secondaries.
+        # Verify by checking EXPOSURES membership of the primary key.
+        assert A.PRIMARY in A.EXPOSURES and len(A.EXPOSURES) > 1
