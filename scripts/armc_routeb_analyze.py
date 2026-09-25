@@ -267,8 +267,10 @@ def main():
                         xdt = antecedent(df_det, v, d, kind == "sum")[0]
                         if not np.isnan(xdt):
                             row[f"{name}_detrended"] = float((xdt - ref_dt.mean()) / ref_dt.std())
-                    # frozen date-uncertainty sensitivity: +-7d window shift
-                    for sh, tag in ((-7, "shift_m7"), (7, "shift_p7")):
+                    # declared +-3d date-uncertainty sensitivity + post-hoc
+                    # +-7d temporal diagnostic (not an uncertainty test)
+                    for sh, tag in ((-3, "unc_m3"), (3, "unc_p3"),
+                                    (-7, "diag_m7"), (7, "diag_p7")):
                         xs, cs = antecedent(df, v, d + pd.Timedelta(days=sh), kind == "sum")
                         if not np.isnan(xs):
                             row[f"{name}_{tag}"] = float((xs - ref.mean()) / ref.std())
@@ -283,6 +285,10 @@ def main():
             up[name] = mres[mids[0]][name]
             if len(mids) > 1:
                 up[f"{name}_sens_latest"] = mres[mids[-1]][name]
+        for name in EXPOSURES:
+            for k, v2 in mres[mids[0]].items():
+                if k.startswith(f"{name}_"):
+                    up[k] = v2
         unit_rows.append(up)
 
     ut = pd.DataFrame(unit_rows)
@@ -315,6 +321,14 @@ def main():
                       "n_negative_z_lt_neg1": int((z < -1).sum())}
         if pv is not None:
             pvals.append(pv); pnames.append(name)
+        # unit-level sensitivity aggregates (primary-member rows only)
+        for tag, lbl in (("detrended", "detrended"), ("unc_m3", "unc-3d"),
+                         ("unc_p3", "unc+3d"), ("diag_m7", "diag-7d"),
+                         ("diag_p7", "diag+7d")):
+            zs = pd.to_numeric(prim[f"{name}_{tag}"], errors="coerce").dropna() \
+                if f"{name}_{tag}" in prim.columns else pd.Series(dtype=float)
+            summ[name][f"mean_z_{lbl}"] = round(float(zs.mean()), 3) if len(zs) else None
+            summ[name][f"n_{lbl}"] = int(len(zs))
         # era-stratified breakdown (frozen v19 requirement)
         for era in ("post2000", "pre2001"):
             ze = pd.to_numeric(prim[prim["era"] == era][name], errors="coerce").dropna()
