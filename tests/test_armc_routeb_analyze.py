@@ -319,39 +319,98 @@ class TestSignoffSchema:
         assert A._is_declared_predecessor(real, sup)
         assert A._is_declared_predecessor(real, "armc_event_adjudication_decision_v0")
 
-    def test_signoff_unknown_record_id_not_approved(self, tmp_path):
-        # a signoff cannot approve an id absent from its bound decision
-        dec = tmp_path / "dec.json"
-        dec.write_text(json.dumps({"events": [{
-            "event_id": "real:1",
-            "adjudication": {"disposition": "ELIGIBLE",
-                             "event_time_interval": {"start": "2000-01-01T00:00:00Z"}},
-            "local": {}, "source_fields": {"Lake_name": "X"}}]}))
-        so = tmp_path / "so.json"
-        so.write_text(json.dumps({
-            "schema": "P5_OWNER_SIGNOFF_V2", "status": "APPROVED",
-            "target_sha256": A._sha(dec), "approver": {"id": "sanjayb", "role": "owner"},
-            "approval_type": "ELIGIBILITY_ADJUDICATION",
-            "records": {"real:1": {}, "ghost:99": {}}}))
-        assert A.approved_record_ids([so], dec, [], None) == {"real:1"}
+    def _dec(self, tmp_path, events, name="dec.json"):
+        f = tmp_path / name
+        f.write_text(json.dumps({"events": events}))
+        return f
 
-    def test_signoff_ineligible_record_not_approved(self, tmp_path):
-        # a signoff cannot ratify a record the decision marked INELIGIBLE
-        dec = tmp_path / "dec.json"
-        dec.write_text(json.dumps({"events": [
-            {"event_id": "ok:1", "adjudication": {"disposition": "ELIGIBLE",
-                 "event_time_interval": {"start": "2000-01-01T00:00:00Z"}},
-             "local": {}, "source_fields": {}},
-            {"event_id": "bad:2", "adjudication": {"disposition": "INELIGIBLE",
-                 "event_time_interval": {"start": "2000-01-01T00:00:00Z"}},
-             "local": {}, "source_fields": {}}]}))
-        so = tmp_path / "so.json"
+    def _ev(self, rid, disp="ELIGIBLE", start="2000-01-01T00:00:00Z",
+            lake="X", lat=28.0, lon=85.0):
+        return {"event_id": rid,
+                "adjudication": {"disposition": disp,
+                                 "event_time_interval": {"start": start}},
+                "local": {"lat": lat, "lon": lon},
+                "source_fields": {"Lake_name": lake}}
+
+    def _v2(self, tmp_path, dec, records, name="so.json"):
+        so = tmp_path / name
         so.write_text(json.dumps({
             "schema": "P5_OWNER_SIGNOFF_V2", "status": "APPROVED",
-            "target_sha256": A._sha(dec), "approver": {"id": "sanjayb", "role": "owner"},
-            "approval_type": "ELIGIBILITY_ADJUDICATION",
-            "records": {"ok:1": {}, "bad:2": {}}}))
-        assert A.approved_record_ids([so], dec, [], None) == {"ok:1"}
+            "target_sha256": A._sha(dec), "episode_map_sha256": "E" * 64,
+            "approver": {"id": "sanjayb", "role": "owner"},
+            "approval_type": "ELIGIBILITY_ADJUDICATION", "records": records}))
+        return so
+
+    def test_signoff_unknown_record_id_voids_whole_signoff(self, tmp_path):
+        # all-or-nothing: one unknown id voids the entire per-record signoff
+        dec = self._dec(tmp_path, [self._ev("real:1")])
+        so = self._v2(tmp_path, dec, {"real:1": {}, "ghost:99": {}})
+        assert A.approved_record_ids([so], dec, [], "E" * 64) == set()
+
+    def test_signoff_ineligible_record_voids_whole_signoff(self, tmp_path):
+        # a signoff cannot ratify a record the decision marked INELIGIBLE
+        dec = self._dec(tmp_path, [self._ev("ok:1"),
+                                   self._ev("bad:2", disp="INELIGIBLE")])
+        so = self._v2(tmp_path, dec, {"ok:1": {}, "bad:2": {}})
+        assert A.approved_record_ids([so], dec, [], "E" * 64) == set()
+
+    def test_signoff_all_valid_records_approved(self, tmp_path):
+        dec = self._dec(tmp_path, [self._ev("a:1"), self._ev("a:2")])
+        so = self._v2(tmp_path, dec, {"a:1": {"date": "2000-01-01", "lake": "X"},
+                                      "a:2": {}})
+        assert A.approved_record_ids([so], dec, [], "E" * 64) == {"a:1", "a:2"}
+
+    @pytest.mark.parametrize("bad_date", ["1964", "1964-05", "not-a-date",
+                                          "2000-01-02", "2000-1-1"])
+    def test_signoff_bad_date_voids_signoff(self, tmp_path, bad_date):
+        # exact canonical YYYY-MM-DD match vs the decision's interval start
+        dec = self._dec(tmp_path, [self._ev("e:1")])
+        so = self._v2(tmp_path, dec, {"e:1": {"date": bad_date}})
+        assert A.approved_record_ids([so], dec, [], "E" * 64) == set()
+
+    def test_signoff_lake_mismatch_voids_signoff(self, tmp_path):
+        dec = self._dec(tmp_path, [self._ev("e:1", lake="Cirenma Co")])
+        so = self._v2(tmp_path, dec, {"e:1": {"lake": "Other Lake"}})
+        assert A.approved_record_ids([so], dec, [], "E" * 64) == set()
+
+    def test_v2_epmap_param_mandatory(self):
+        # direct verifier call without the map digest must fail
+        g = {"schema": "P5_OWNER_SIGNOFF_V2", "status": "APPROVED",
+             "target_sha256": "D" * 64, "episode_map_sha256": "E" * 64,
+             "approver": {"id": "sanjayb", "role": "owner"},
+             "approval_type": "ELIGIBILITY_ADJUDICATION", "records": {"a": {}}}
+        assert not A.verify_signoff(g, {"D" * 64}, None)
+        g2 = dict(g); g2["episode_map_sha256"] = ""
+        assert not A.verify_signoff(g2, {"D" * 64}, "E" * 64)
+
+    def test_perrecord_predecessor_continuity(self, tmp_path):
+        # per-record approval bound to a predecessor is revoked when the
+        # record's fields changed under supersession
+        old = self._dec(tmp_path, [self._ev("e:1", lat=28.0)], "old.json")
+        cur = self._dec(tmp_path, [self._ev("e:1", lat=29.0)], "cur.json")
+        so = self._v2(tmp_path, old, {"e:1": {}})
+        assert A.approved_record_ids([so], cur, [old], "E" * 64) == set()
+
+    def test_perrecord_predecessor_unchanged_fields_approved(self, tmp_path):
+        old = self._dec(tmp_path, [self._ev("e:1")], "old.json")
+        cur = self._dec(tmp_path, [self._ev("e:1")], "cur.json")
+        so = self._v2(tmp_path, old, {"e:1": {}})
+        assert A.approved_record_ids([so], cur, [old], "E" * 64) == {"e:1"}
+
+    def test_terminal_approval_status(self):
+        epmap = {"units": [
+            {"era": "post2000", "member_ids": [400, 401]},
+            {"era": "pre2001", "member_ids": [188, 190]}]}
+        full = {"icimod_hmaglofdb_v1_3_0:1.3.0:400",
+                "icimod_hmaglofdb_v1_3_0:1.3.0:401",
+                "icimod_hmaglofdb_v1_3_0:1.3.0:188",
+                "icimod_hmaglofdb_v1_3_0:1.3.0:190"}
+        assert A.cohort_approval_status(epmap, full) == "APPROVED_ALL_STRATA"
+        missing = full - {"icimod_hmaglofdb_v1_3_0:1.3.0:188"}
+        assert A.cohort_approval_status(epmap, missing) == "PENDING_STRATA:pre2001"
+        none = set()
+        assert A.cohort_approval_status(epmap, none) == \
+            "PENDING_STRATA:post2000,pre2001"
 
     def test_signoff_record_value_mismatch_not_approved(self, tmp_path):
         # provided date/lake must match the bound decision record

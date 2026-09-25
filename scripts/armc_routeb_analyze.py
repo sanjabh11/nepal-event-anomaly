@@ -24,7 +24,7 @@ recorded in armc_v18_remediation_note_v0.json:
 
 Claim ceiling: descriptive only. No event-risk odds. Ever.
 """
-import argparse, json, sys, hashlib, datetime
+import argparse, json, re, sys, hashlib, datetime
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -192,8 +192,8 @@ def verify_signoff(so: dict, allowed_decision_shas: set,
         ap = so.get("approver") or {}
         if ap.get("role") != "owner" or ap.get("id") not in KNOWN_OWNERS:
             return False
-        if episode_map_sha and so.get("episode_map_sha256") != episode_map_sha:
-            return False
+        if not episode_map_sha or so.get("episode_map_sha256") != episode_map_sha:
+            return False  # episode-map binding is mandatory for v1/v2
         if not isinstance(so.get("records"), dict) or not so["records"]:
             return False  # v1/v2 are per-record approvals — empty = no authority
         return (so.get("approval_type") == "ELIGIBILITY_ADJUDICATION"
@@ -243,23 +243,28 @@ def approved_record_ids(signoff_paths, decision_path, predecessor_paths,
             continue  # signoff binds a decision outside the verified chain
         tgt_events = {e["event_id"]: e
                       for e in json.loads(tgt_file.read_text())["events"]}
-        if "records" in so:  # v1/v2 per-record contract
+        if so.get("schema") in {"P5_OWNER_SIGNOFF_V1", "P5_OWNER_SIGNOFF_V2"}:
+            # v1/v2 per-record contract — ALL-OR-NOTHING: any record id
+            # absent from the bound decision, not ELIGIBLE there, or whose
+            # claimed date/lake mismatches voids the entire signoff.
             ids = set()
             for rid, rv in so["records"].items():
                 e = tgt_events.get(rid)
-                if e is None:
-                    continue  # cannot approve a record the decision lacks
-                adj = e.get("adjudication") or {}
-                if adj.get("disposition") != "ELIGIBLE":
-                    continue  # signoff ratifies eligible records, not overturns
-                rv = rv or {}
+                adj = (e or {}).get("adjudication") or {}
                 start = str((adj.get("event_time_interval") or {}).get("start", ""))
-                if rv.get("date") and not start.startswith(str(rv["date"])):
-                    continue  # claimed date must match the bound record
-                if rv.get("lake") and rv["lake"] != (
-                        e.get("source_fields") or {}).get("Lake_name"):
-                    continue  # claimed lake must match the bound record
+                rv = rv or {}
+                d = rv.get("date")
+                date_ok = (not d) or (re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(d))
+                                      is not None and start[:10] == str(d))
+                lake_ok = (not rv.get("lake")) or rv["lake"] == (
+                    (e or {}).get("source_fields") or {}).get("Lake_name")
+                if (e is None or adj.get("disposition") != "ELIGIBLE"
+                        or not date_ok or not lake_ok):
+                    ids = None
+                    break
                 ids.add(rid)
+            if ids is None:
+                continue  # malformed per-record signoff authorizes nothing
         else:  # v0 whole-decision approval
             ids = {eid for eid, e in tgt_events.items()
                    if (e.get("adjudication") or {}).get("disposition") == "ELIGIBLE"}
@@ -285,6 +290,19 @@ def approved_record_ids(signoff_paths, decision_path, predecessor_paths,
             if e["event_id"] in pred_approved and cur.get(e["event_id"]) != proj(e):
                 approved_ids.discard(e["event_id"])
     return approved_ids
+
+
+def cohort_approval_status(epmap, approved_ids):
+    """Terminal approval aggregation — every member of every unit must be
+    covered by a verified signoff; otherwise report the pending eras."""
+    pending = []
+    for u in epmap["units"]:
+        for mid in u["member_ids"]:
+            if f"icimod_hmaglofdb_v1_3_0:1.3.0:{mid}" not in approved_ids:
+                pending.append(u.get("era", "?"))
+                break
+    return ("PENDING_STRATA:" + ",".join(sorted(set(pending)))
+            if pending else "APPROVED_ALL_STRATA")
 
 
 def detrend_years(days: pd.Series) -> pd.Series:
@@ -576,17 +594,11 @@ def main():
     approved_ids = approved_record_ids(
         [Path(p) for p in a.owner_signoff], Path(a.decision),
         declared_preds, ep_sha)
-    strata_pending = []
-    for u in epmap["units"]:
-        for mid in u["member_ids"]:
-            if f"icimod_hmaglofdb_v1_3_0:1.3.0:{mid}" not in approved_ids:
-                strata_pending.append(u.get("era", "?"))
-                break
-    era_pending = bool(strata_pending)
+    cohort_status = cohort_approval_status(epmap, approved_ids)
+    era_pending = cohort_status != "APPROVED_ALL_STRATA"
     out = {"schema": "P5_ROUTE_B_RESULT_V2",
            "supersedes": "armc_routeb_result_v0..v14 lineage (v0/v0b/v1 nonconforming; v2-v13 exploratory iterations)",
-           "cohort_approval": ("PENDING_STRATA:" + ",".join(sorted(set(strata_pending)))
-                               if era_pending else "APPROVED_ALL_STRATA"),
+           "cohort_approval": cohort_status,
            "owner_signoffs": [_sha(p) for p in a.owner_signoff],
            "approval_note": ("pre-2001 stratum records are owner-approved rule-qualified "
                              "candidates pending explicit decision-v1 signoff; treat those "
