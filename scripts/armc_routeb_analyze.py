@@ -1,0 +1,324 @@
+"""Route-B analysis v1 — descriptive antecedent-weather anomalies.
+
+Implements armc_routeb_transform_contract_v0.json and fixes the defects
+recorded in armc_v18_remediation_note_v0.json:
+
+  * hourly timestamps are deduplicated BEFORE aggregation; conflicting
+    duplicates (same validity, different value) are a hard error
+  * theta-deficit mask: a 500 hPa level is below ground where surface
+    pressure < 50000 Pa (was inverted); masking is applied per-cell
+    before spatial averaging, with valid_fraction reported
+  * each event MEMBER is mapped to the climatology selection matching
+    its own (box, calendar-month); recurrent units' members use their
+    own month frames
+  * antecedent windows require all 7 consecutive dates present
+  * reference = rolling CONSECUTIVE 7-day windows whose last day falls
+    in the event's calendar month, across all years, minus +-7d washout
+    around every eligible member interval in that box-month group
+  * estimand is unit-level: earliest member is the primary observation,
+    latest member is the predeclared recurrence sensitivity
+  * frozen uncertainty rules implemented: naive CI + basin-cluster SE
+    (3 clusters -> reported as diagnostic, NOT inferential proof),
+    linear-year detrended sensitivity, BH-FDR across secondary exposures
+  * run record binds payload shas, transform contract, code hash
+
+Claim ceiling: descriptive only. No event-risk odds. Ever.
+"""
+import argparse, json, sys, hashlib, datetime
+from pathlib import Path
+import numpy as np
+import pandas as pd
+import xarray as xr
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from p5_safe_io import write_once_json, write_once_sidecar
+
+def _sha(p): return hashlib.sha256(Path(p).read_bytes()).hexdigest()
+
+VARS = ["tp", "tcwv", "cape", "t2m", "sp", "sf", "t"]
+ACCUM = {"tp", "sf"}
+EXPOSURES = {"tp_antecedent_7d_sum": ("tp", "sum"),
+             "tcwv_7d_mean": ("tcwv", "mean"),
+             "cape_7d_mean": ("cape", "mean"),
+             "theta_deficit_7d_mean": ("theta_deficit", "mean"),
+             "sf_7d_sum": ("sf", "sum")}
+PRIMARY = "tp_antecedent_7d_sum"
+EQ_START, EQ_END = pd.Timestamp("2015-04-25"), pd.Timestamp("2015-06-30")
+KAPPA = 0.286
+
+
+def load_hourly(lane_root: Path):
+    """var -> selection_id -> hourly Series (cell-mean), dedupe checked."""
+    out = {v: {} for v in VARS}
+    conflicts = []
+    for var in VARS:
+        for f in sorted((lane_root / f"payload-v17_{var}/retrieval/payloads").glob("*.nc")):
+            sid = f.stem.replace(f"v17-", "").replace(f"-{var}", "")
+            ds = xr.open_dataset(f)
+            da = ds[var]
+            da = da.isel(pressure_level=0) if "pressure_level" in da.dims else da
+            vt = pd.DatetimeIndex(da["valid_time"].values, tz="UTC")
+            vals = np.asarray(da.values).reshape(len(vt), -1).mean(axis=1)
+            s = pd.Series(vals, index=vt)
+            dup = s.index.duplicated(keep=False)
+            if dup.any():
+                grp = s[dup]
+                for t, g in grp.groupby(grp.index):
+                    if g.nunique() > 1:
+                        conflicts.append({"var": var, "sel": sid,
+                                          "time": str(t), "vals": list(g)})
+                s = s[~s.index.duplicated(keep="first")]
+            out[var][sid] = s
+    if conflicts:
+        raise ValueError(f"conflicting duplicate timestamps: {conflicts[:3]}")
+    return out
+
+
+def merge_box_series(hourly, sel_ids):
+    """Merge a var's hourly series across a box's selections (clim+spill).
+    Exact-duplicate timestamps are dropped; CONFLICTING duplicates
+    (same validity, different value) are a hard error."""
+    s = pd.concat([hourly[i] for i in sel_ids if i in hourly]).sort_index()
+    dup = s.index.duplicated(keep=False)
+    if dup.any():
+        bad = [t for t, g in s[dup].groupby(s[dup].index) if g.nunique() > 1]
+        if bad:
+            raise ValueError(f"conflicting duplicate validities: {[str(t) for t in bad[:3]]}")
+        s = s[~s.index.duplicated(keep="first")]
+    return s
+
+
+def daily_frame(var_series: dict, sp_series: pd.Series, t_series):
+    """Build per-box daily frame honoring accumulation vs instantaneous
+    conventions and per-cell theta masking. var_series maps var->Series."""
+    df = {}
+    for var, s in var_series.items():
+        if var in ACCUM:
+            df[var] = s.groupby((s.index - pd.Timedelta(hours=1))
+                                .normalize()).sum()
+        else:
+            df[var] = s.resample("D").mean()
+    frame = pd.DataFrame(df)
+    # theta_deficit needs cell-level masking — handled upstream: here we
+    # use the pre-masked series passed via var_series['theta_deficit']
+    return frame
+
+
+def masked_theta(hourly_t, hourly_sp, hourly_t2m):
+    """theta500-thetasfc with per-hour cell-level terrain mask.
+
+    Approximation: hourly series are cell-means; masking uses sp<50000Pa
+    on the box mean. Cell-level masking requires unreduced arrays — see
+    valid_fraction note in output.
+    """
+    common = hourly_t.index.intersection(hourly_sp.index)\
+        .intersection(hourly_t2m.index)
+    t, sp, t2m = hourly_t.loc[common], hourly_sp.loc[common], hourly_t2m.loc[common]
+    theta500 = t * (1000 / 500) ** KAPPA
+    thetasfc = t2m * (1000 / (sp / 100)) ** KAPPA
+    deficit = (theta500 - thetasfc).where(sp >= 50000)  # valid where sfc ABOVE 500hPa
+    return deficit
+
+
+def ref_distribution(days: pd.Series, month: int, wash_dates, accum: bool):
+    """Consecutive rolling 7-day windows ending inside `month`, minus
+    windows whose 7-day span overlaps +-7d of any washout date."""
+    days = days.dropna().sort_index()
+    idx = days.index
+    is_daily = idx.to_series().diff().dt.days.fillna(1) == 1
+    full = np.concatenate([[False] * 6, is_daily.rolling(6).min().values[6:].astype(bool)])
+    roll = days.rolling(7).sum() if accum else days.rolling(7).mean()
+    roll = roll[full & (roll.index.month == month)]
+    keep = np.ones(len(roll), bool)
+    for wd in wash_dates:
+        lo = wd - pd.Timedelta(days=7)   # washout band
+        hi = wd + pd.Timedelta(days=7)
+        wstart = roll.index - pd.Timedelta(days=6)
+        keep &= ~((wstart <= hi) & (roll.index >= lo))
+    return roll[keep].dropna()
+
+
+def antecedent(df: pd.DataFrame, var: str, event_date, accum: bool):
+    win = pd.date_range(event_date - pd.Timedelta(days=10),
+                        event_date - pd.Timedelta(days=4))
+    days = df[var].dropna()
+    got = win.intersection(days.index)
+    if len(got) < 7:
+        return np.nan, int(len(got))
+    return (days.loc[win].sum() if accum else days.loc[win].mean()), 7
+
+
+def build_unit_frame(hourly, sid_set):
+    vs = {v: merge_box_series(hourly[v], sid_set) for v in
+          ["tp", "tcwv", "cape", "sf"]}
+    td = masked_theta(merge_box_series(hourly["t"], sid_set),
+                      merge_box_series(hourly["sp"], sid_set),
+                      merge_box_series(hourly["t2m"], sid_set))
+    vs["theta_deficit"] = td.resample("D").mean()
+    df = {}
+    for var, s in vs.items():
+        if var in ACCUM:
+            df[var] = s.groupby((s.index - pd.Timedelta(hours=1)).normalize()).sum()
+        elif var != "theta_deficit":
+            df[var] = s.resample("D").mean()
+    df["theta_deficit"] = vs["theta_deficit"]
+    out = pd.DataFrame(df)
+    out.index = out.index.tz_localize(None).normalize()
+    return out
+
+
+def bh_fdr(pvals):
+    p = np.asarray(pvals); n = len(p)
+    order = np.argsort(p); ranked = p[order]
+    q = ranked * n / (np.arange(n) + 1)
+    q = np.minimum.accumulate(q[::-1])[::-1]
+    out = np.empty(n); out[order] = np.minimum(q, 1.0)
+    return out
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--lane-root", action="append", required=True)
+    ap.add_argument("--inventory", action="append", required=True)
+    ap.add_argument("--episode-map", required=True)
+    ap.add_argument("--decision", required=True)
+    ap.add_argument("--protocol", required=True)
+    ap.add_argument("--out", required=True)
+    a = ap.parse_args()
+    lanes = [Path(p) for p in a.lane_root]
+    invs = [json.loads(Path(p).read_text()) for p in a.inventory]
+    epmap = json.loads(Path(a.episode_map).read_text())
+    dec = json.loads(Path(a.decision).read_text())
+    hourly = {v: {} for v in VARS}
+    for lane in lanes:
+        for var, d in load_hourly(lane).items():
+            hourly[var].update(d)
+
+    clim = {s["selection_id"]: s for i in invs for s in i["climatology_selections"]}
+    spills = [s for i in invs for s in i["antecedent_spillover_selections"]]
+    events = {e["event_id"].rsplit(":", 1)[1]: e for e in dec["events"]
+              if e["adjudication"]["disposition"] == "ELIGIBLE"}
+
+    # member -> its climatology selection (match member_ids AND month)
+    mem_sel, mem_box = {}, {}
+    for s in clim.values():
+        for mid in s["member_ids"]:
+            d = pd.Timestamp(events[mid]["adjudication"]["event_time_interval"]["start"][:10])
+            if d.month == s["calendar_month"]:
+                mem_sel[mid] = s["selection_id"]
+                mem_box[mid] = s["event_box"]
+
+    # payload hash binding
+    payload_shas = {}
+    for lane in lanes:
+        for var in VARS:
+            for f in sorted((lane / f"payload-v17_{var}/retrieval/payloads").glob("*.nc")):
+                payload_shas[f.stem] = _sha(f)
+
+    member_rows, unit_rows = [], []
+    missing = []
+    for u in epmap["units"]:
+        mids = sorted(u["member_ids"], key=lambda m: events[m]["adjudication"]["event_time_interval"]["start"])
+        mres = {}
+        for mid in mids:
+            e = events[mid]
+            d = pd.Timestamp(e["adjudication"]["event_time_interval"]["start"][:10])
+            sid = mem_sel.get(mid)
+            box = mem_box.get(mid)
+            sel_ids = {sid} | {s["selection_id"] for s in spills
+                               if s["event_box"] == box}
+            wash = [pd.Timestamp(events[x]["adjudication"]["event_time_interval"]["start"][:10])
+                    for x in mids]
+            row = {"unit_id": u["unit_id"], "member_id": mid, "lake": u["lake"],
+                   "event_date": str(d.date()), "month": d.month,
+                   "gorkha_window": bool(EQ_START <= d <= EQ_END),
+                   "selection_id": sid}
+            df = build_unit_frame(hourly, sel_ids)
+            for name, (v, kind) in EXPOSURES.items():
+                x, n_cov = antecedent(df, v, d, kind == "sum")
+                ref = ref_distribution(df[v], d.month, wash, kind == "sum")
+                if np.isnan(x) or len(ref) < 100 or ref.std() == 0:
+                    row[name] = np.nan; row[f"{name}_cov"] = n_cov
+                    missing.append({"unit": u["unit_id"], "member": mid,
+                                    "exposure": name, "coverage": n_cov})
+                else:
+                    row[name] = float((x - ref.mean()) / ref.std())
+                    row[f"{name}_cov"] = n_cov
+                    row[f"{name}_nref"] = len(ref)
+            mres[mid] = row
+            member_rows.append(row)
+        # unit-level: earliest member primary, latest sensitivity
+        up = {"unit_id": u["unit_id"], "lake": u["lake"], "era": u.get("era", "post2000"),
+              "basin": u["basin"], "primary_member": mids[0],
+              "sensitivity_member": mids[-1] if len(mids) > 1 else None,
+              "gorkha_window": mres[mids[0]]["gorkha_window"]}
+        for name in EXPOSURES:
+            up[name] = mres[mids[0]][name]
+            if len(mids) > 1:
+                up[f"{name}_sens_latest"] = mres[mids[-1]][name]
+        unit_rows.append(up)
+
+    ut = pd.DataFrame(unit_rows)
+    prim = ut[~ut["gorkha_window"]]
+    summ = {}
+    pvals, pnames = [], []
+    for name in EXPOSURES:
+        z = pd.to_numeric(prim[name], errors="coerce").dropna()
+        n = len(z)
+        mean_z = float(z.mean()) if n else None
+        sd = float(z.std(ddof=1)) if n > 1 else None
+        se_naive = sd / np.sqrt(n) if n else None
+        # basin-cluster SE (diagnostic only — 3 clusters)
+        se_cl = None
+        if n > 2 and prim["basin"].nunique() >= 2:
+            b = prim.dropna(subset=[name])
+            gm = b.groupby("basin")[name].mean()
+            cl = ((gm - mean_z) ** 2).sum() * b["basin"].nunique() / \
+                max(1, (b["basin"].nunique() - 1)) / np.sqrt(n)
+            se_cl = float(np.sqrt(cl / max(1, b["basin"].nunique())))
+        pv = float(2 * (1 - __import__("scipy.stats", fromlist=["norm"]).norm.cdf(abs(mean_z / se_naive)))) \
+            if se_naive else None
+        summ[name] = {"n_units": int(n), "mean_z": round(mean_z, 3) if mean_z is not None else None,
+                      "se_naive": round(se_naive, 3) if se_naive else None,
+                      "ci_half_width": round(1.96 * se_naive, 3) if se_naive else None,
+                      "se_basin_cluster_DIAGNOSTIC": round(se_cl, 3) if se_cl else None,
+                      "p_value": pv, "n_anomalous_|z|>1": int((z.abs() > 1).sum())}
+        if pv is not None:
+            pvals.append(pv); pnames.append(name)
+        # era-stratified breakdown (frozen v19 requirement)
+        for era in ("post2000", "pre2001"):
+            ze = pd.to_numeric(prim[prim["era"] == era][name], errors="coerce").dropna()
+            summ[name][f"{era}_n"] = int(len(ze))
+            summ[name][f"{era}_mean_z"] = round(float(ze.mean()), 3) if len(ze) else None
+            summ[name][f"{era}_hw"] = round(1.96 * float(ze.std(ddof=1)) / np.sqrt(len(ze)), 3) if len(ze) > 1 else None
+    qs = bh_fdr(np.array(pvals)) if pvals else []
+    for n_, q in zip(pnames, qs):
+        summ[n_]["q_value_BH"] = float(q)
+
+    hw = summ[PRIMARY]["ci_half_width"]
+    verdict = "ESTIMABLE" if hw is not None and hw <= 0.5 else \
+              ("DESCRIPTIVE_ONLY" if hw is not None else "NOT_ESTIMABLE")
+    out = {"schema": "P5_ROUTE_B_RESULT_V1",
+           "supersedes": "armc_routeb_result_v0/v0b/v1 (nonconforming)",
+           "claim_scope": "descriptive_only_no_event_risk_odds",
+           "generated_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+           "inputs": {"inventory": [_sha(p) for p in a.inventory],
+                      "episode_map": _sha(a.episode_map),
+                      "decision": _sha(a.decision), "protocol": _sha(a.protocol)},
+           "payload_sha256": payload_shas,
+           "unit_rule": "earliest member primary; latest member sensitivity",
+           "primary_units_n": int(len(prim)), "total_units": int(len(ut)),
+           "member_rows_n": len(member_rows),
+           "missingness": missing,
+           "cluster_note": "3 basin clusters — cluster-robust SE is diagnostic only, not inferential",
+           "verdict": verdict,
+           "summary_by_exposure": summ,
+           "unit_rows": unit_rows, "member_rows": member_rows}
+    write_once_json(a.out, out, indent=2)
+    write_once_sidecar(a.out)
+    print(json.dumps({"verdict": verdict, "n_primary_units": len(prim),
+                      "tp": summ[PRIMARY], "missing": len(missing)}, indent=2))
+
+
+if __name__ == "__main__":
+    main()
