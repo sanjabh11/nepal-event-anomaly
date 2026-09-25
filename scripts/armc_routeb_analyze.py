@@ -366,14 +366,14 @@ def main():
         mean_z = float(z.mean()) if n else None
         sd = float(z.std(ddof=1)) if n > 1 else None
         se_naive = sd / np.sqrt(n) if n else None
-        # basin-cluster SE (diagnostic only — 3 clusters)
+        # basin-cluster SE (diagnostic only — few clusters):
+        # Var(mean) ~ (1/G) * (1/(G-1)) * sum_g (ybar_g - ybar)^2
         se_cl = None
         if n > 2 and prim["basin"].nunique() >= 2:
             b = prim.dropna(subset=[name])
+            G = b["basin"].nunique()
             gm = b.groupby("basin")[name].mean()
-            cl = ((gm - mean_z) ** 2).sum() * b["basin"].nunique() / \
-                max(1, (b["basin"].nunique() - 1)) / np.sqrt(n)
-            se_cl = float(np.sqrt(cl / max(1, b["basin"].nunique())))
+            se_cl = float(np.sqrt(((gm - mean_z) ** 2).sum() / (G * (G - 1))))
         pv = float(2 * (1 - __import__("scipy.stats", fromlist=["norm"]).norm.cdf(abs(mean_z / se_naive)))) \
             if se_naive else None
         summ[name] = {"n_units": int(n), "mean_z": round(mean_z, 3) if mean_z is not None else None,
