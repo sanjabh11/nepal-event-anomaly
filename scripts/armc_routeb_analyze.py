@@ -330,6 +330,8 @@ def main():
                         xs, cs = antecedent(df, v, d + pd.Timedelta(days=sh), kind == "sum")
                         if not np.isnan(xs):
                             row[f"{name}_{tag}"] = float((xs - ref.mean()) / ref.std())
+                        else:
+                            row[f"{name}_{tag}_miss"] = f"coverage={cs}<7"
                     # true era-matched sensitivity for pre-2001 units:
                     # reference restricted to <=2000
                     if d.year < 2001:
@@ -430,6 +432,10 @@ def main():
            "supersedes": "armc_routeb_result_v0/v0b/v1 (nonconforming)",
            "claim_scope": "descriptive_only_no_event_risk_odds",
            "generated_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+           "run_provenance": {"code_file": _sha(__file__),
+                      "argv": sys.argv,
+                      "python": sys.version.split()[0],
+                      "platform": __import__("platform").platform()},
            "inputs": {"inventory": [_sha(p) for p in a.inventory],
                       "episode_map": _sha(a.episode_map),
                       "decision": _sha(a.decision), "protocol": _sha(a.protocol),
