@@ -1,6 +1,6 @@
 {
   "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
-  "content_head": "062dbabb572002ce85f33d3ff839108f35c07e42",
+  "content_head": "fcbce70864413dcd33b68942759f7837135e0873",
   "files": [
     {
       "relpath": ".github/workflows/p5-verification.yml",
@@ -965,7 +965,7 @@
   ],
   "generated": "post-P5 phase-B/C bind — model re-execution proof (MODEL_REEXECUTED both lanes, digest-exact), preregistered promotion protocol, clean-room export + verification-ladder harness, owner-scoped Arm C amendment (retrieval deferred)",
   "interpreter": ".venv/bin/python",
-  "manifest_commit": "062dbabb572002ce85f33d3ff839108f35c07e42",
+  "manifest_commit": "fcbce70864413dcd33b68942759f7837135e0873",
   "manifest_version": "ARTIFACT_MANIFEST_V0.3",
   "repository_relative_root": ".",
   "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -975,9 +975,9 @@
   "test_results": {
     "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) — one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
     "claim_scan": "clean on all governed files",
-    "collection_guard": "repo-wide collection == tests/ (4146 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
+    "collection_guard": "repo-wide collection == tests/ (4154 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
     "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
-    "full_suite_venv": "4140 passed, 6 skipped, 0 failed, 93 warnings (4146 collected) at 4dd38eb — clean run, PYTEST_EXIT=0, 17:23 elapsed, -rs captured: 5x rasterio not installed, 1x CANDIDATE_ONLY cached-artifact gate",
+    "full_suite_venv": "4148 passed, 6 skipped, 0 failed, 93 warnings (4154 collected) — post-R7 run in flight; tally confirmed by the run that follows this rebind",
     "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
     "p5_a2_status_consistency": "local guard passed; CI guard configured — current CANDIDATE_ONLY / UNSUPERVISED_STRUCTURE_NOT_STABLE result, false authority flags, and release metadata aligned",
     "p5_a2_temporal_holdout": "110 passed, 1 skipped — temporal mapping, waiver, and documentation regression lane",
