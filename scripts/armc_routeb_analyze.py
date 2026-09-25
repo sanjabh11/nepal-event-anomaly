@@ -194,9 +194,18 @@ def verify_signoff(so: dict, allowed_decision_shas: set,
             return False
         if episode_map_sha and so.get("episode_map_sha256") != episode_map_sha:
             return False
+        if not isinstance(so.get("records"), dict) or not so["records"]:
+            return False  # v1/v2 are per-record approvals — empty = no authority
         return (so.get("approval_type") == "ELIGIBILITY_ADJUDICATION"
                 or so.get("scope") == CANONICAL_V1_SCOPE)
     return False  # unknown schema — fail closed
+
+
+def _is_declared_predecessor(path, supersedes_value):
+    """A predecessor file is trusted only if its name is EXACTLY the
+    decision's declared `supersedes` value (full filename or stem)."""
+    p = Path(path)
+    return p.name == supersedes_value or p.stem == supersedes_value
 
 
 def approved_record_ids(signoff_paths, decision_path, predecessor_paths,
@@ -206,12 +215,14 @@ def approved_record_ids(signoff_paths, decision_path, predecessor_paths,
     Trust rules:
     - allowed decision digests = bound decision bytes + EXPLICIT
       predecessor files only (never a sha a signoff merely names)
-    - v1-style signoffs approve their `records` keys
+    - v1/v2-style signoffs approve their `records` keys, but only ids that
+      exist in the signoff's bound decision file AND are ELIGIBLE there;
+      provided per-record date/lake values must match the decision record
     - v0-style signoffs approve ALL ELIGIBLE records of their bound
       decision file
-    - predecessor-approved records are revoked if their fields differ
-      in the current decision (supersession must not silently alter
-      approved records)
+    - predecessor-approved records (whole-decision OR per-record) are
+      revoked if their fields differ in the current decision
+      (supersession must not silently alter approved records)
     """
     dec_sha = _sha(decision_path)
     dec = json.loads(decision_path.read_text())
@@ -225,27 +236,47 @@ def approved_record_ids(signoff_paths, decision_path, predecessor_paths,
         so = json.loads(Path(p).read_text())
         if not verify_signoff(so, set(dec_files), episode_map_sha):
             continue
-        if so.get("records"):
-            approved_ids |= set(so["records"].keys())
-        else:
-            tgt = (so.get("approved_artifact") or {}).get("sha256")
-            if tgt in dec_files:
-                dd = json.loads(dec_files[tgt].read_text())
-                ids = {e["event_id"] for e in dd["events"]
-                       if e["adjudication"]["disposition"] == "ELIGIBLE"}
-                approved_ids |= ids
-                if tgt != dec_sha:  # predecessor-sourced ids need continuity
-                    pred_approved |= ids
+        tgt = (so.get("target_sha256")
+               or (so.get("approved_artifact") or {}).get("sha256"))
+        tgt_file = dec_files.get(tgt)
+        if tgt_file is None:
+            continue  # signoff binds a decision outside the verified chain
+        tgt_events = {e["event_id"]: e
+                      for e in json.loads(tgt_file.read_text())["events"]}
+        if "records" in so:  # v1/v2 per-record contract
+            ids = set()
+            for rid, rv in so["records"].items():
+                e = tgt_events.get(rid)
+                if e is None:
+                    continue  # cannot approve a record the decision lacks
+                adj = e.get("adjudication") or {}
+                if adj.get("disposition") != "ELIGIBLE":
+                    continue  # signoff ratifies eligible records, not overturns
+                rv = rv or {}
+                start = str((adj.get("event_time_interval") or {}).get("start", ""))
+                if rv.get("date") and not start.startswith(str(rv["date"])):
+                    continue  # claimed date must match the bound record
+                if rv.get("lake") and rv["lake"] != (
+                        e.get("source_fields") or {}).get("Lake_name"):
+                    continue  # claimed lake must match the bound record
+                ids.add(rid)
+        else:  # v0 whole-decision approval
+            ids = {eid for eid, e in tgt_events.items()
+                   if (e.get("adjudication") or {}).get("disposition") == "ELIGIBLE"}
+        approved_ids |= ids
+        if tgt != dec_sha:  # predecessor-sourced ids need continuity
+            pred_approved |= ids
     # full eligibility-relevant continuity across supersession — event id,
     # disposition, BOTH interval endpoints, precision, coords, basin, lake,
     # cascade group — any change revokes predecessor approval
-    proj = lambda e: (e["adjudication"]["disposition"],
-                      e["adjudication"]["event_time_interval"]["start"],
-                      e["adjudication"]["event_time_interval"].get("end"),
-                      e["local"].get("precision"), e["local"]["lat"],
-                      e["local"]["lon"], e["local"].get("basin_group"),
-                      e["local"].get("cascade_group_id"),
-                      (e.get("source_fields") or {}).get("Lake_name"))
+    def proj(e):
+        adj = e.get("adjudication") or {}
+        iv = adj.get("event_time_interval") or {}
+        loc = e.get("local") or {}
+        return (adj.get("disposition"), iv.get("start"), iv.get("end"),
+                loc.get("precision"), loc.get("lat"), loc.get("lon"),
+                loc.get("basin_group"), loc.get("cascade_group_id"),
+                (e.get("source_fields") or {}).get("Lake_name"))
     cur = {e["event_id"]: proj(e) for e in dec["events"]}
     for tgt, f in dec_files.items():
         if tgt == dec_sha:
@@ -541,7 +572,7 @@ def main():
     dec_obj = json.loads(Path(a.decision).read_text())
     sup = str(dec_obj.get("supersedes", ""))
     declared_preds = [Path(p) for p in a.decision_predecessor
-                      if Path(p).name == sup or Path(p).stem == sup]
+                      if _is_declared_predecessor(p, sup)]
     approved_ids = approved_record_ids(
         [Path(p) for p in a.owner_signoff], Path(a.decision),
         declared_preds, ep_sha)

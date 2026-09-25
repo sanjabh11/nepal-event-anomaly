@@ -1,5 +1,6 @@
 """Behavior tests for armc_routeb_analyze — regression-locks the
 defects Codex found in the v18 execution."""
+import json
 import numpy as np
 import pandas as pd
 import pytest
@@ -224,7 +225,7 @@ class TestSignoffNegations:
     G = {"schema": "P5_OWNER_SIGNOFF_V1", "status": "APPROVED",
          "target_sha256": "D" * 64, "episode_map_sha256": "E" * 64,
          "approver": {"id": "sanjayb", "role": "owner"},
-         "scope": A.CANONICAL_V1_SCOPE, "records": {}}
+         "scope": A.CANONICAL_V1_SCOPE, "records": {"a": {}}}
 
     def test_negated_role_rejected(self):
         g = dict(self.G); g["approver"] = {"id": "x", "role": "not-owner"}
@@ -260,7 +261,7 @@ class TestSignoffSchema:
     G = {"schema": "P5_OWNER_SIGNOFF_V2", "status": "APPROVED",
          "target_sha256": "D" * 64, "episode_map_sha256": "E" * 64,
          "approver": {"id": "sanjayb", "role": "owner"},
-         "approval_type": "ELIGIBILITY_ADJUDICATION", "records": {}}
+         "approval_type": "ELIGIBILITY_ADJUDICATION", "records": {"a": {}}}
 
     def test_typed_full_accept(self):
         assert A.verify_signoff(dict(self.G), {"D" * 64}, "E" * 64)
@@ -309,4 +310,70 @@ class TestSignoffSchema:
 
     def test_fuzzy_predecessor_name_rejected(self, tmp_path):
         # predecessor filename must match declared supersedes EXACTLY
-        pass  # covered via approved_record_ids: stray-sha test + field-change
+        sup = "armc_event_adjudication_decision_v0.json"
+        decoy = tmp_path / "armc_event_adjudication_decision_v0_decoy.json"
+        assert not A._is_declared_predecessor(decoy, sup)
+        near = tmp_path / "armc_event_adjudication_decision_v0x.json"
+        assert not A._is_declared_predecessor(near, sup)
+        real = tmp_path / "armc_event_adjudication_decision_v0.json"
+        assert A._is_declared_predecessor(real, sup)
+        assert A._is_declared_predecessor(real, "armc_event_adjudication_decision_v0")
+
+    def test_signoff_unknown_record_id_not_approved(self, tmp_path):
+        # a signoff cannot approve an id absent from its bound decision
+        dec = tmp_path / "dec.json"
+        dec.write_text(json.dumps({"events": [{
+            "event_id": "real:1",
+            "adjudication": {"disposition": "ELIGIBLE",
+                             "event_time_interval": {"start": "2000-01-01T00:00:00Z"}},
+            "local": {}, "source_fields": {"Lake_name": "X"}}]}))
+        so = tmp_path / "so.json"
+        so.write_text(json.dumps({
+            "schema": "P5_OWNER_SIGNOFF_V2", "status": "APPROVED",
+            "target_sha256": A._sha(dec), "approver": {"id": "sanjayb", "role": "owner"},
+            "approval_type": "ELIGIBILITY_ADJUDICATION",
+            "records": {"real:1": {}, "ghost:99": {}}}))
+        assert A.approved_record_ids([so], dec, [], None) == {"real:1"}
+
+    def test_signoff_ineligible_record_not_approved(self, tmp_path):
+        # a signoff cannot ratify a record the decision marked INELIGIBLE
+        dec = tmp_path / "dec.json"
+        dec.write_text(json.dumps({"events": [
+            {"event_id": "ok:1", "adjudication": {"disposition": "ELIGIBLE",
+                 "event_time_interval": {"start": "2000-01-01T00:00:00Z"}},
+             "local": {}, "source_fields": {}},
+            {"event_id": "bad:2", "adjudication": {"disposition": "INELIGIBLE",
+                 "event_time_interval": {"start": "2000-01-01T00:00:00Z"}},
+             "local": {}, "source_fields": {}}]}))
+        so = tmp_path / "so.json"
+        so.write_text(json.dumps({
+            "schema": "P5_OWNER_SIGNOFF_V2", "status": "APPROVED",
+            "target_sha256": A._sha(dec), "approver": {"id": "sanjayb", "role": "owner"},
+            "approval_type": "ELIGIBILITY_ADJUDICATION",
+            "records": {"ok:1": {}, "bad:2": {}}}))
+        assert A.approved_record_ids([so], dec, [], None) == {"ok:1"}
+
+    def test_signoff_record_value_mismatch_not_approved(self, tmp_path):
+        # provided date/lake must match the bound decision record
+        dec = tmp_path / "dec.json"
+        dec.write_text(json.dumps({"events": [{
+            "event_id": "e:1",
+            "adjudication": {"disposition": "ELIGIBLE",
+                             "event_time_interval": {"start": "1964-05-17T00:00:00Z"}},
+            "local": {}, "source_fields": {"Lake_name": "Cirenma Co"}}]}))
+        so = tmp_path / "so.json"
+        so.write_text(json.dumps({
+            "schema": "P5_OWNER_SIGNOFF_V2", "status": "APPROVED",
+            "target_sha256": A._sha(dec), "approver": {"id": "sanjayb", "role": "owner"},
+            "approval_type": "ELIGIBILITY_ADJUDICATION",
+            "records": {"e:1": {"date": "1964-05-18", "lake": "Cirenma Co"},
+                        }}))
+        assert A.approved_record_ids([so], dec, [], None) == set()
+
+    def test_empty_records_signoff_rejected(self, tmp_path):
+        # v2 contract is per-record — an empty records map is malformed
+        so = {"schema": "P5_OWNER_SIGNOFF_V2", "status": "APPROVED",
+              "target_sha256": "D" * 64, "episode_map_sha256": "E" * 64,
+              "approver": {"id": "sanjayb", "role": "owner"},
+              "approval_type": "ELIGIBILITY_ADJUDICATION", "records": {}}
+        assert not A.verify_signoff(so, {"D" * 64}, "E" * 64)
