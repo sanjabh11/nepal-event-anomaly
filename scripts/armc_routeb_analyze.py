@@ -300,7 +300,10 @@ def main():
                       "se_naive": round(se_naive, 3) if se_naive else None,
                       "ci_half_width": round(1.96 * se_naive, 3) if se_naive else None,
                       "se_basin_cluster_DIAGNOSTIC": round(se_cl, 3) if se_cl else None,
-                      "p_value": pv, "n_anomalous_|z|>1": int((z.abs() > 1).sum())}
+                      "p_value": pv,
+                      "n_anomalous_abs_z_gt1": int((z.abs() > 1).sum()),
+                      "n_positive_z_gt1": int((z > 1).sum()),
+                      "n_negative_z_lt_neg1": int((z < -1).sum())}
         if pv is not None:
             pvals.append(pv); pnames.append(name)
         # era-stratified breakdown (frozen v19 requirement)
