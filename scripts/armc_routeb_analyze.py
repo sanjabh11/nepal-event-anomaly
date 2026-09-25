@@ -236,17 +236,21 @@ def main():
             box = mem_box.get(mid)
             sel_ids = {sid} | {s["selection_id"] for s in spills
                                if s["event_box"] == box}
+            # washout = ALL eligible member intervals sharing this
+            # box-month climatology group (frozen rule), not just the
+            # unit's own members — otherwise a sibling recurrence's
+            # anomalous window contaminates the reference
+            group_mids = clim[sid]["member_ids"]
             wash = [pd.Timestamp(events[x]["adjudication"]["event_time_interval"]["start"][:10])
-                    for x in mids]
+                    for x in group_mids]
             row = {"unit_id": u["unit_id"], "member_id": mid, "lake": u["lake"],
                    "event_date": str(d.date()), "month": d.month,
                    "gorkha_window": bool(EQ_START <= d <= EQ_END),
                    "selection_id": sid}
             df = build_unit_frame(hourly, sel_ids)
             df_det = df.copy()
-            for v in ["tcwv", "cape", "theta_deficit"]:
-                if v in df_det:
-                    df_det[v] = detrend_years(df[v])
+            for v in df.columns:
+                df_det[v] = detrend_years(df[v])
             for name, (v, kind) in EXPOSURES.items():
                 x, n_cov = antecedent(df, v, d, kind == "sum")
                 ref = ref_distribution(df[v], d.month, wash, kind == "sum")
