@@ -24,7 +24,7 @@ recorded in armc_v18_remediation_note_v0.json:
 
 Claim ceiling: descriptive only. No event-risk odds. Ever.
 """
-import argparse, json, re, sys, hashlib, datetime
+import argparse, json, re, subprocess, sys, hashlib, datetime
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -158,6 +158,17 @@ def masked_theta_cells(t_df, sp_df, t2m_df):
 
 
 KNOWN_OWNERS = {"sanjayb"}
+#: Explicit authority ceiling — every flag is exactly False by
+#: construction (same fail-closed pattern as the seismic lane receipt).
+#: Absence of a flag is NOT proof of false; the field must be present.
+AUTHORITY_CEILING = {
+    "forecast_authorized": False,
+    "warning_authorized": False,
+    "detector_authorized": False,
+    "event_risk_odds_authorized": False,
+    "causal_claim_authorized": False,
+    "operational_use_authorized": False,
+}
 # exact canonical legacy scope string (bound in signoff v1); anything else
 # must use the typed approval_type field — free text is not authority
 CANONICAL_V1_SCOPE = ("per-record ELIGIBILITY adjudication for the 12 "
@@ -314,6 +325,18 @@ def approved_record_ids(signoff_paths, decision_path, predecessor_paths,
     return direct_approved | pred_approved
 
 
+def _deps_digest():
+    """SHA-256 of the interpreter's `pip freeze` output — a coarse
+    dependency-environment digest for build provenance (SLSA-style)."""
+    try:
+        out = subprocess.check_output(
+            [sys.executable, "-m", "pip", "freeze"],
+            stderr=subprocess.DEVNULL, timeout=60)
+        return hashlib.sha256(out).hexdigest()
+    except Exception:
+        return None
+
+
 def _result_supersedes(out_path):
     """Result-to-result lineage: derive the immediate predecessor version
     from the --out filename (vN -> vN-1), plus the historical note."""
@@ -322,6 +345,18 @@ def _result_supersedes(out_path):
     return (f"immediate predecessor {prev}; historical lineage "
             "v0..v14 (v0/v0b/v1 nonconforming; v2-v14 exploratory "
             "iterations)")
+
+
+def _result_predecessor(out_path):
+    """Digest-bind the immediate predecessor result file when it exists
+    in the output directory — lineage is hash-bound, not just named."""
+    m = re.search(r"_v(\d+)", Path(out_path).stem)
+    if not m:
+        return {"file": None, "sha256": None}
+    prev = Path(out_path).parent / \
+        f"armc_routeb_result_v{int(m.group(1)) - 1}.json"
+    return {"file": prev.name,
+            "sha256": _sha(prev) if prev.is_file() else None}
 
 
 def cohort_approval_status(epmap, approved_ids):
@@ -630,6 +665,8 @@ def main():
     era_pending = cohort_status != "APPROVED_ALL_STRATA"
     out = {"schema": "P5_ROUTE_B_RESULT_V2",
            "supersedes": _result_supersedes(a.out),
+           "result_predecessor": _result_predecessor(a.out),
+           "authority": dict(AUTHORITY_CEILING),
            "cohort_approval": cohort_status,
            "owner_signoffs": [_sha(p) for p in a.owner_signoff],
            "approval_note": ("pre-2001 stratum records are owner-approved rule-qualified "
@@ -640,7 +677,8 @@ def main():
            "run_provenance": {"code_file": _sha(__file__),
                       "argv": sys.argv,
                       "python": sys.version.split()[0],
-                      "platform": __import__("platform").platform()},
+                      "platform": __import__("platform").platform(),
+                      "deps_sha256": _deps_digest()},
            "inputs": {"inventory": [_sha(p) for p in a.inventory],
                       "episode_map": _sha(a.episode_map),
                       "decision": _sha(a.decision),

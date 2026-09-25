@@ -537,6 +537,24 @@ class TestSignoffSchema:
               "records": {"a": {}}}
         assert A.verify_signoff(v2, {"D" * 64}, "E" * 64) is False
 
+    def test_authority_ceiling_all_false(self):
+        # every flag present and exactly False — absence is not proof
+        assert len(A.AUTHORITY_CEILING) >= 5
+        assert all(v is False for v in A.AUTHORITY_CEILING.values())
+
+    def test_result_predecessor_digest_binding(self, tmp_path):
+        prev = tmp_path / "armc_routeb_result_v5.json"
+        prev.write_text("{}")
+        p = A._result_predecessor(tmp_path / "armc_routeb_result_v6.json")
+        assert p["file"] == "armc_routeb_result_v5.json"
+        assert p["sha256"] == A._sha(prev)
+        # absent predecessor file -> sha None (still named)
+        p2 = A._result_predecessor(tmp_path / "armc_routeb_result_v7.json")
+        assert p2["file"] == "armc_routeb_result_v6.json"
+        assert p2["sha256"] is None
+        p3 = A._result_predecessor(tmp_path / "noversion.json")
+        assert p3 == {"file": None, "sha256": None}
+
     def test_result_supersedes_lineage(self):
         s = A._result_supersedes("/x/armc_routeb_result_v31.json")
         assert "armc_routeb_result_v30" in s
