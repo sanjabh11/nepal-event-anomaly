@@ -219,6 +219,8 @@ def approved_record_ids(signoff_paths, decision_path, predecessor_paths,
     for p in predecessor_paths:
         dec_files[_sha(p)] = p
     approved_ids = set()
+    pred_approved = set()  # ids approved via predecessor decisions —
+                           # these need the supersession-continuity check
     for p in signoff_paths:
         so = json.loads(Path(p).read_text())
         if not verify_signoff(so, set(dec_files), episode_map_sha):
@@ -229,8 +231,11 @@ def approved_record_ids(signoff_paths, decision_path, predecessor_paths,
             tgt = (so.get("approved_artifact") or {}).get("sha256")
             if tgt in dec_files:
                 dd = json.loads(dec_files[tgt].read_text())
-                approved_ids |= {e["event_id"] for e in dd["events"]
-                                 if e["adjudication"]["disposition"] == "ELIGIBLE"}
+                ids = {e["event_id"] for e in dd["events"]
+                       if e["adjudication"]["disposition"] == "ELIGIBLE"}
+                approved_ids |= ids
+                if tgt != dec_sha:  # predecessor-sourced ids need continuity
+                    pred_approved |= ids
     # full eligibility-relevant continuity across supersession — event id,
     # disposition, BOTH interval endpoints, precision, coords, basin, lake,
     # cascade group — any change revokes predecessor approval
@@ -246,7 +251,7 @@ def approved_record_ids(signoff_paths, decision_path, predecessor_paths,
         if tgt == dec_sha:
             continue
         for e in json.loads(f.read_text())["events"]:
-            if e["event_id"] in approved_ids and cur.get(e["event_id"]) != proj(e):
+            if e["event_id"] in pred_approved and cur.get(e["event_id"]) != proj(e):
                 approved_ids.discard(e["event_id"])
     return approved_ids
 
