@@ -441,6 +441,46 @@ class TestSignoffSchema:
         so = self._v2(tmp_path, old, {"e:1": {}})
         assert A.approved_record_ids([so], cur, [old], "E" * 64) == {"e:1"}
 
+    def test_current_approval_survives_predecessor_revocation(self, tmp_path):
+        # R6-A: an id approved by BOTH a current-decision signoff and a
+        # predecessor signoff keeps its CURRENT approval even when the
+        # predecessor record's fields changed under supersession
+        old = self._dec(tmp_path, [self._ev("e:1")], "old.json")
+        cur = self._dec(tmp_path, [self._ev("e:1", lat=29.0)], "cur.json")
+        so_old = self._v2(tmp_path, old, {"e:1": {}}, "so_old.json")
+        so_cur = self._v2(tmp_path, cur, {"e:1": {}}, "so_cur.json")
+        got = A.approved_record_ids([so_old, so_cur], cur, [old], "E" * 64)
+        assert got == {"e:1"}
+
+    def test_predecessor_only_approval_revoked_on_change(self, tmp_path):
+        # without a current signoff the same changed predecessor record
+        # is revoked — direct/inherited separation must not leak
+        old = self._dec(tmp_path, [self._ev("e:1")], "old.json")
+        cur = self._dec(tmp_path, [self._ev("e:1", lat=29.0)], "cur.json")
+        so = self._v2(tmp_path, old, {"e:1": {}})
+        assert A.approved_record_ids([so], cur, [old], "E" * 64) == set()
+
+    @pytest.mark.parametrize("key,val", [
+        ("date", False), ("date", 0), ("date", ""),
+        ("date", "2000-1-1"), ("date", "2000-01-02"),
+        ("date", None), ("date", ["2000-01-01"]),
+        ("lake", False), ("lake", 0), ("lake", ""),
+        ("lake", None), ("lake", "Other Lake")])
+    def test_falsey_or_bad_optional_fields_void(self, tmp_path, key, val):
+        # R6-B: optional means KEY ABSENT — a present date/lake must be
+        # a non-empty string exactly matching the bound record; falsey
+        # or malformed present values void the whole signoff
+        dec = self._dec(tmp_path, [self._ev("e:1")])
+        so = self._v2(tmp_path, dec, {"e:1": {key: val}})
+        assert A.approved_record_ids([so], dec, [], "E" * 64) == set()
+
+    def test_absent_optional_fields_valid(self, tmp_path):
+        # {} and partial records without date/lake keys remain valid
+        dec = self._dec(tmp_path, [self._ev("e:1"), self._ev("e:2")])
+        so = self._v2(tmp_path, dec, {"e:1": {}, "e:2": {"note": "x"}})
+        got = A.approved_record_ids([so], dec, [], "E" * 64)
+        assert got == {"e:1", "e:2"}
+
     def test_terminal_approval_status(self):
         epmap = {"units": [
             {"era": "post2000", "member_ids": [400, 401]},

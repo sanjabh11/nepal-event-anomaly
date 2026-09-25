@@ -229,8 +229,9 @@ def approved_record_ids(signoff_paths, decision_path, predecessor_paths,
     dec_files = {dec_sha: decision_path}
     for p in predecessor_paths:
         dec_files[_sha(p)] = p
-    approved_ids = set()
-    pred_approved = set()  # ids approved via predecessor decisions —
+    direct_approved = set()  # ids approved by signoffs bound to the
+                             # CURRENT decision — immune to predecessor drift
+    pred_approved = set()    # ids approved via predecessor decisions —
                            # these need the supersession-continuity check
     for p in signoff_paths:
         so = json.loads(Path(p).read_text())
@@ -252,16 +253,22 @@ def approved_record_ids(signoff_paths, decision_path, predecessor_paths,
                 e = tgt_events.get(rid)
                 adj = (e or {}).get("adjudication") or {}
                 start = str((adj.get("event_time_interval") or {}).get("start", ""))
-                if not isinstance(rv, dict):
-                    ids = None
-                    break  # non-mapping record value — malformed, void signoff
-                d = rv.get("date")
-                date_ok = (not d) or (re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(d))
-                                      is not None and start[:10] == str(d))
-                lake_ok = (not rv.get("lake")) or rv["lake"] == (
-                    (e or {}).get("source_fields") or {}).get("Lake_name")
-                if (e is None or adj.get("disposition") != "ELIGIBLE"
-                        or not date_ok or not lake_ok):
+                ok = (e is not None
+                      and adj.get("disposition") == "ELIGIBLE"
+                      and isinstance(rv, dict))
+                if ok and "date" in rv:
+                    # present => must be a canonical YYYY-MM-DD string
+                    # matching the bound record's interval-start date
+                    d = rv["date"]
+                    ok = (isinstance(d, str)
+                          and re.fullmatch(r"\d{4}-\d{2}-\d{2}", d)
+                          is not None and d == start[:10])
+                if ok and "lake" in rv:
+                    # present => non-empty string equal to the bound lake
+                    lk = rv["lake"]
+                    ok = (isinstance(lk, str) and bool(lk) and lk == (
+                        e.get("source_fields") or {}).get("Lake_name"))
+                if not ok:
                     ids = None
                     break
                 ids.add(rid)
@@ -270,8 +277,9 @@ def approved_record_ids(signoff_paths, decision_path, predecessor_paths,
         else:  # v0 whole-decision approval
             ids = {eid for eid, e in tgt_events.items()
                    if (e.get("adjudication") or {}).get("disposition") == "ELIGIBLE"}
-        approved_ids |= ids
-        if tgt != dec_sha:  # predecessor-sourced ids need continuity
+        if tgt == dec_sha:
+            direct_approved |= ids
+        else:  # predecessor-sourced ids need continuity
             pred_approved |= ids
     # full eligibility-relevant continuity across supersession — event id,
     # disposition, BOTH interval endpoints, precision, coords, basin, lake,
@@ -290,8 +298,8 @@ def approved_record_ids(signoff_paths, decision_path, predecessor_paths,
             continue
         for e in json.loads(f.read_text())["events"]:
             if e["event_id"] in pred_approved and cur.get(e["event_id"]) != proj(e):
-                approved_ids.discard(e["event_id"])
-    return approved_ids
+                pred_approved.discard(e["event_id"])  # revoke INHERITED only
+    return direct_approved | pred_approved
 
 
 def cohort_approval_status(epmap, approved_ids):
