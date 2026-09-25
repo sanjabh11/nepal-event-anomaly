@@ -283,3 +283,8 @@ class TestSignoffSchema:
     def test_typed_pending_rejected(self):
         g = dict(self.G); g["status"] = "PENDING"
         assert not A.verify_signoff(g, {"D" * 64}, "E" * 64)
+
+    def test_typed_same_id_wrong_role_rejected(self):
+        # isolate the ROLE check: correct signer id, wrong role
+        g = dict(TestSignoffSchema.G); g["approver"] = {"id": "sanjayb", "role": "agent"}
+        assert not A.verify_signoff(g, {"D" * 64}, "E" * 64)
