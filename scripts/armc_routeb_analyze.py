@@ -329,6 +329,20 @@ def main():
                 if f"{name}_{tag}" in prim.columns else pd.Series(dtype=float)
             summ[name][f"mean_z_{lbl}"] = round(float(zs.mean()), 3) if len(zs) else None
             summ[name][f"n_{lbl}"] = int(len(zs))
+        # paired same-event sensitivity: only units where BOTH shifted
+        # windows and the primary are non-NaN — never compare means
+        # across different event sets
+        paired = {}
+        for tag in ("unc_m3", "unc_p3", "diag_m7", "diag_p7"):
+            k = f"{name}_{tag}"
+            if k in prim.columns:
+                sub = prim.dropna(subset=[name, k])
+                if len(sub):
+                    paired[tag] = {"n": int(len(sub)),
+                                   "primary_mean": round(float(sub[name].mean()), 3),
+                                   "shifted_mean": round(float(sub[k].mean()), 3),
+                                   "mean_delta": round(float((sub[k] - sub[name]).mean()), 3)}
+        summ[name]["paired_same_event"] = paired
         # era-stratified breakdown (frozen v19 requirement)
         for era in ("post2000", "pre2001"):
             ze = pd.to_numeric(prim[prim["era"] == era][name], errors="coerce").dropna()
