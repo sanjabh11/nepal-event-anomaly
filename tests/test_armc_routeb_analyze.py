@@ -132,33 +132,33 @@ class TestFdrScope:
 
 
 class TestSignoffVerification:
-    def test_forged_signoff_rejected(self, tmp_path):
-        """A signoff with wrong target/role/scope must not approve."""
-        import json, hashlib
-        dec = tmp_path / "dec.json"; dec.write_text("{}")
-        dec_sha = hashlib.sha256(dec.read_bytes()).hexdigest()
-        forged = tmp_path / "forged.json"
-        forged.write_text(json.dumps({"status": "APPROVED",
-            "target_sha256": "0" * 64,   # wrong target
-            "approver": {"id": "x", "role": "owner"},
-            "scope": "eligibility", "records": {"a": {}}}))
-        # emulate the analyzer's gate
-        so = json.loads(forged.read_text())
-        ok = (so.get("status") == "APPROVED"
-              and so.get("target_sha256") == dec_sha
-              and so.get("approver", {}).get("role") == "owner"
-              and "ELIGIBIL" in str(so.get("scope", "")).upper())
-        assert not ok
+    """Exercise the PRODUCTION gate verify_signoff — no local re-implementation."""
+    G = {"status": "APPROVED", "target_sha256": "D" * 64,
+         "episode_map_sha256": "E" * 64,
+         "approver": {"id": "sanjayb", "role": "owner"},
+         "scope": "per-record ELIGIBILITY adjudication", "records": {"a": {}}}
 
-    def test_genuine_signoff_accepted(self, tmp_path):
-        import json, hashlib
-        dec = tmp_path / "dec.json"; dec.write_text("{}")
-        dec_sha = hashlib.sha256(dec.read_bytes()).hexdigest()
-        genuine = {"status": "APPROVED", "target_sha256": dec_sha,
-                   "approver": {"id": "sanjayb", "role": "owner"},
-                   "scope": "per-record ELIGIBILITY adjudication", "records": {"a": {}}}
-        ok = (genuine["status"] == "APPROVED"
-              and genuine["target_sha256"] == dec_sha
-              and genuine["approver"]["role"] == "owner"
-              and "ELIGIBIL" in genuine["scope"].upper())
-        assert ok
+    def test_genuine_accepted(self):
+        assert A.verify_signoff(dict(self.G), "D" * 64, "E" * 64)
+
+    def test_wrong_decision_target_rejected(self):
+        assert not A.verify_signoff(dict(self.G), "F" * 64, "E" * 64)
+
+    def test_wrong_episode_map_rejected(self):
+        assert not A.verify_signoff(dict(self.G), "D" * 64, "F" * 64)
+
+    def test_missing_episode_map_field_rejected(self):
+        g = dict(self.G); g.pop("episode_map_sha256")
+        assert not A.verify_signoff(g, "D" * 64, "E" * 64)
+
+    def test_non_owner_rejected(self):
+        g = dict(self.G); g["approver"] = {"id": "x", "role": "agent"}
+        assert not A.verify_signoff(g, "D" * 64, "E" * 64)
+
+    def test_wrong_scope_rejected(self):
+        g = dict(self.G); g["scope"] = "retrieval scope only"
+        assert not A.verify_signoff(g, "D" * 64, "E" * 64)
+
+    def test_not_approved_rejected(self):
+        g = dict(self.G); g["status"] = "PENDING"
+        assert not A.verify_signoff(g, "D" * 64, "E" * 64)

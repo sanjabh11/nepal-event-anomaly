@@ -157,6 +157,18 @@ def masked_theta_cells(t_df, sp_df, t2m_df):
     return box_mean, frac
 
 
+def verify_signoff(so: dict, decision_sha: str, episode_map_sha: str) -> bool:
+    """Production signoff gate — a signoff approves strata only if it
+    (a) is APPROVED, (b) targets THIS decision file's digest,
+    (c) targets THIS episode map's digest, (d) has an owner-role
+    approver, (e) scopes itself to eligibility adjudication."""
+    return (so.get("status") == "APPROVED"
+            and so.get("target_sha256") == decision_sha
+            and so.get("episode_map_sha256") == episode_map_sha
+            and so.get("approver", {}).get("role") == "owner"
+            and "ELIGIBIL" in str(so.get("scope", "")).upper())
+
+
 def detrend_years(days: pd.Series) -> pd.Series:
     """Remove a linear year trend (frozen detrended sensitivity)."""
     d = days.dropna().sort_index()
@@ -429,18 +441,15 @@ def main():
     hw = summ[PRIMARY]["ci_half_width"]
     verdict = "ESTIMABLE" if hw is not None and hw <= 0.5 else \
               ("DESCRIPTIVE_ONLY" if hw is not None else "NOT_ESTIMABLE")
-    # verified signoff: must target THIS decision bytes, be APPROVED,
-    # carry an owner-role approver, and a scope naming eligibility —
-    # an unrelated APPROVED file must not satisfy the gate
+    # verified signoff: must target THIS decision bytes AND episode map,
+    # be APPROVED, carry an owner-role approver, and scope naming
+    # eligibility — an unrelated APPROVED file must not satisfy the gate
     dec_sha = _sha(a.decision)
+    ep_sha = _sha(a.episode_map)
     approved_ids = set()
     for p in a.owner_signoff:
         so = json.loads(Path(p).read_text())
-        ok = (so.get("status") == "APPROVED"
-              and so.get("target_sha256") == dec_sha
-              and so.get("approver", {}).get("role") == "owner"
-              and "ELIGIBIL" in str(so.get("scope", "")).upper())
-        if ok:
+        if verify_signoff(so, dec_sha, ep_sha):
             approved_ids |= set(so.get("records", {}).keys())
     era_pending = False
     for u in epmap["units"]:
