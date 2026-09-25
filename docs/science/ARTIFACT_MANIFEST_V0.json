@@ -977,7 +977,7 @@
     "claim_scan": "clean on all governed files",
     "collection_guard": "repo-wide collection == tests/ (4170 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
     "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
-    "full_suite_venv": "4164 passed, 6 skipped, 0 failed, 93 warnings (4170 collected) — post-R7b run in flight at content d856876; tally confirmed by the run that follows this rebind",
+    "full_suite_venv": "4164 passed, 6 skipped, 0 failed, 93 warnings (4170 collected) at 124287f — clean run, PYTEST_EXIT=0, 18:32 elapsed, -rs captured: 5x rasterio not installed, 1x CANDIDATE_ONLY cached-artifact gate",
     "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
     "p5_a2_status_consistency": "local guard passed; CI guard configured — current CANDIDATE_ONLY / UNSUPERVISED_STRUCTURE_NOT_STABLE result, false authority flags, and release metadata aligned",
     "p5_a2_temporal_holdout": "110 passed, 1 skipped — temporal mapping, waiver, and documentation regression lane",
