@@ -139,26 +139,36 @@ class TestSignoffVerification:
          "scope": "per-record ELIGIBILITY adjudication", "records": {"a": {}}}
 
     def test_genuine_accepted(self):
-        assert A.verify_signoff(dict(self.G), "D" * 64, "E" * 64)
+        assert A.verify_signoff(dict(self.G), {"D" * 64}, "E" * 64)
 
     def test_wrong_decision_target_rejected(self):
-        assert not A.verify_signoff(dict(self.G), "F" * 64, "E" * 64)
+        assert not A.verify_signoff(dict(self.G), {"F" * 64}, "E" * 64)
 
     def test_wrong_episode_map_rejected(self):
-        assert not A.verify_signoff(dict(self.G), "D" * 64, "F" * 64)
+        assert not A.verify_signoff(dict(self.G), {"D" * 64}, "F" * 64)
 
     def test_missing_episode_map_field_rejected(self):
         g = dict(self.G); g.pop("episode_map_sha256")
-        assert not A.verify_signoff(g, "D" * 64, "E" * 64)
+        assert not A.verify_signoff(g, {"D" * 64}, "E" * 64)
 
     def test_non_owner_rejected(self):
         g = dict(self.G); g["approver"] = {"id": "x", "role": "agent"}
-        assert not A.verify_signoff(g, "D" * 64, "E" * 64)
+        assert not A.verify_signoff(g, {"D" * 64}, "E" * 64)
 
     def test_wrong_scope_rejected(self):
         g = dict(self.G); g["scope"] = "retrieval scope only"
-        assert not A.verify_signoff(g, "D" * 64, "E" * 64)
+        assert not A.verify_signoff(g, {"D" * 64}, "E" * 64)
 
     def test_not_approved_rejected(self):
         g = dict(self.G); g["status"] = "PENDING"
-        assert not A.verify_signoff(g, "D" * 64, "E" * 64)
+        assert not A.verify_signoff(g, {"D" * 64}, "E" * 64)
+
+    def test_v0_style_accepted(self):
+        v0 = {"status": "APPROVED", "role": "owner_approval", "signer": "sanjayb",
+              "approved_artifact": {"file": "decision_v0.json", "sha256": "A" * 64}}
+        assert A.verify_signoff(v0, {"A" * 64}, None)
+
+    def test_v0_style_wrong_target_rejected(self):
+        v0 = {"status": "APPROVED", "role": "owner_approval",
+              "approved_artifact": {"sha256": "A" * 64}}
+        assert not A.verify_signoff(v0, {"B" * 64}, None)

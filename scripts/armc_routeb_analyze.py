@@ -157,16 +157,29 @@ def masked_theta_cells(t_df, sp_df, t2m_df):
     return box_mean, frac
 
 
-def verify_signoff(so: dict, decision_sha: str, episode_map_sha: str) -> bool:
+def verify_signoff(so: dict, allowed_decision_shas: set,
+                   episode_map_sha: str | None = None) -> bool:
     """Production signoff gate — a signoff approves strata only if it
-    (a) is APPROVED, (b) targets THIS decision file's digest,
-    (c) targets THIS episode map's digest, (d) has an owner-role
-    approver, (e) scopes itself to eligibility adjudication."""
-    return (so.get("status") == "APPROVED"
-            and so.get("target_sha256") == decision_sha
-            and so.get("episode_map_sha256") == episode_map_sha
-            and so.get("approver", {}).get("role") == "owner"
-            and "ELIGIBIL" in str(so.get("scope", "")).upper())
+    (a) is APPROVED, (b) binds a decision file whose sha is in the
+    allowed set (v0-style approved_artifact.sha256 or v1-style
+    target_sha256), (c) has an owner-role approver/signer, and for
+    v1-style also (d) binds this episode map and (e) scopes to
+    eligibility adjudication."""
+    if so.get("status") != "APPROVED":
+        return False
+    tgt = so.get("target_sha256") or \
+        (so.get("approved_artifact") or {}).get("sha256")
+    if tgt not in allowed_decision_shas:
+        return False
+    role = (so.get("approver") or {}).get("role") or so.get("role") or ""
+    if "owner" not in role:
+        return False
+    if so.get("target_sha256"):  # v1-style: stricter
+        if episode_map_sha and so.get("episode_map_sha256") != episode_map_sha:
+            return False
+        if "ELIGIBIL" not in str(so.get("scope", "")).upper():
+            return False
+    return True
 
 
 def detrend_years(days: pd.Series) -> pd.Series:
@@ -446,20 +459,40 @@ def main():
     # eligibility — an unrelated APPROVED file must not satisfy the gate
     dec_sha = _sha(a.decision)
     ep_sha = _sha(a.episode_map)
-    approved_ids = set()
+    # allowed decision targets: v1 + any sealed predecessors the signoffs bind
+    allowed_shas = {dec_sha}
     for p in a.owner_signoff:
         so = json.loads(Path(p).read_text())
-        if verify_signoff(so, dec_sha, ep_sha):
-            approved_ids |= set(so.get("records", {}).keys())
-    era_pending = False
+        tgt = so.get("target_sha256") or (so.get("approved_artifact") or {}).get("sha256")
+        if tgt:
+            allowed_shas.add(tgt)
+    approved_ids = set()
+    approved_whole_decisions = set()
+    for p in a.owner_signoff:
+        so = json.loads(Path(p).read_text())
+        if verify_signoff(so, allowed_shas, ep_sha):
+            if so.get("records"):
+                approved_ids |= set(so["records"].keys())
+            else:  # v0-style: approves ALL eligible records of its target decision
+                tgt = (so.get("approved_artifact") or {}).get("sha256")
+                decp = next((f for f in (Path(a.decision).parent).glob("armc_event_adjudication_decision_v*.json")
+                             if _sha(f) == tgt), None)
+                if decp:
+                    dd = json.loads(decp.read_text())
+                    approved_ids |= {e["event_id"] for e in dd["events"]
+                                     if e["adjudication"]["disposition"] == "ELIGIBLE"}
+                    approved_whole_decisions.add(tgt)
+    strata_pending = []
     for u in epmap["units"]:
-        if u.get("era") == "pre2001":
-            for mid in u["member_ids"]:
-                if f"icimod_hmaglofdb_v1_3_0:1.3.0:{mid}" not in approved_ids:
-                    era_pending = True
+        for mid in u["member_ids"]:
+            if f"icimod_hmaglofdb_v1_3_0:1.3.0:{mid}" not in approved_ids:
+                strata_pending.append(u.get("era", "?"))
+                break
+    era_pending = bool(strata_pending)
     out = {"schema": "P5_ROUTE_B_RESULT_V2",
            "supersedes": "armc_routeb_result_v0..v14 lineage (v0/v0b/v1 nonconforming; v2-v13 exploratory iterations)",
-           "cohort_approval": "ERA_EXTENSION_PENDING_OWNER_SIGNOFF" if era_pending else "APPROVED_ALL_STRATA",
+           "cohort_approval": ("PENDING_STRATA:" + ",".join(sorted(set(strata_pending)))
+                               if era_pending else "APPROVED_ALL_STRATA"),
            "owner_signoffs": [_sha(p) for p in a.owner_signoff],
            "approval_note": ("pre-2001 stratum records are owner-approved rule-qualified "
                              "candidates pending explicit decision-v1 signoff; treat those "
