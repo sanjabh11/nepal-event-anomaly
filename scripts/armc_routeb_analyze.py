@@ -167,6 +167,8 @@ def verify_signoff(so: dict, allowed_decision_shas: set,
     eligibility adjudication."""
     if so.get("status") != "APPROVED":
         return False
+    if not str(so.get("schema", "")).startswith("P5_OWNER_SIGNOFF"):
+        return False
     tgt = so.get("target_sha256") or \
         (so.get("approved_artifact") or {}).get("sha256")
     if tgt not in allowed_decision_shas:

@@ -133,8 +133,8 @@ class TestFdrScope:
 
 class TestSignoffVerification:
     """Exercise the PRODUCTION gate verify_signoff — no local re-implementation."""
-    G = {"status": "APPROVED", "target_sha256": "D" * 64,
-         "episode_map_sha256": "E" * 64,
+    G = {"schema": "P5_OWNER_SIGNOFF_V1", "status": "APPROVED",
+         "target_sha256": "D" * 64, "episode_map_sha256": "E" * 64,
          "approver": {"id": "sanjayb", "role": "owner"},
          "scope": "per-record ELIGIBILITY adjudication", "records": {"a": {}}}
 
@@ -164,12 +164,14 @@ class TestSignoffVerification:
         assert not A.verify_signoff(g, {"D" * 64}, "E" * 64)
 
     def test_v0_style_accepted(self):
-        v0 = {"status": "APPROVED", "role": "owner_approval", "signer": "sanjayb",
+        v0 = {"schema": "P5_OWNER_SIGNOFF_V0", "status": "APPROVED",
+              "role": "owner_approval", "signer": "sanjayb",
               "approved_artifact": {"file": "decision_v0.json", "sha256": "A" * 64}}
         assert A.verify_signoff(v0, {"A" * 64}, None)
 
     def test_v0_style_wrong_target_rejected(self):
-        v0 = {"status": "APPROVED", "role": "owner_approval",
+        v0 = {"schema": "P5_OWNER_SIGNOFF_V0", "status": "APPROVED",
+              "role": "owner_approval",
               "approved_artifact": {"sha256": "A" * 64}}
         assert not A.verify_signoff(v0, {"B" * 64}, None)
 
@@ -189,7 +191,8 @@ class TestApprovalCoverage:
     def _v0so(self, tmp_path, tgt_path):
         import json, hashlib
         so = tmp_path / "so.json"
-        so.write_text(json.dumps({"status": "APPROVED", "role": "owner_approval",
+        so.write_text(json.dumps({"schema": "P5_OWNER_SIGNOFF_V0",
+            "status": "APPROVED", "role": "owner_approval",
             "signer": "s", "approved_artifact": {"sha256":
             hashlib.sha256(tgt_path.read_bytes()).hexdigest()}}))
         return so
@@ -218,8 +221,8 @@ class TestApprovalCoverage:
 
 class TestSignoffNegations:
     """Codex's negated-value adversarial cases."""
-    G = {"status": "APPROVED", "target_sha256": "D" * 64,
-         "episode_map_sha256": "E" * 64,
+    G = {"schema": "P5_OWNER_SIGNOFF_V1", "status": "APPROVED",
+         "target_sha256": "D" * 64, "episode_map_sha256": "E" * 64,
          "approver": {"id": "x", "role": "owner"},
          "scope": "per-record ELIGIBILITY adjudication", "records": {}}
 
@@ -252,3 +255,31 @@ class TestSignoffNegations:
         g = dict(TestSignoffNegations.G); g["approval_type"] = "ELIGIBILITY_ADJUDICATION"
         g["scope"] = "anything"  # typed field is load-bearing, scope ignored
         assert A.verify_signoff(g, {"D" * 64}, "E" * 64)
+
+class TestSignoffSchema:
+    """approval_type must not bypass schema/role/target checks."""
+    G = {"schema": "P5_OWNER_SIGNOFF_V2", "status": "APPROVED",
+         "target_sha256": "D" * 64, "episode_map_sha256": "E" * 64,
+         "approver": {"id": "sanjayb", "role": "owner"},
+         "approval_type": "ELIGIBILITY_ADJUDICATION", "records": {}}
+
+    def test_typed_full_accept(self):
+        assert A.verify_signoff(dict(self.G), {"D" * 64}, "E" * 64)
+
+    def test_typed_wrong_schema_rejected(self):
+        g = dict(self.G); g["schema"] = "ANY_JSON"
+        assert not A.verify_signoff(g, {"D" * 64}, "E" * 64)
+
+    def test_typed_fake_approver_rejected(self):
+        g = dict(self.G); g["approver"] = {"id": "mallory", "role": "agent"}
+        assert not A.verify_signoff(g, {"D" * 64}, "E" * 64)
+
+    def test_typed_wrong_target_rejected(self):
+        assert not A.verify_signoff(dict(self.G), {"F" * 64}, "E" * 64)
+
+    def test_typed_wrong_epmap_rejected(self):
+        assert not A.verify_signoff(dict(self.G), {"D" * 64}, "F" * 64)
+
+    def test_typed_pending_rejected(self):
+        g = dict(self.G); g["status"] = "PENDING"
+        assert not A.verify_signoff(g, {"D" * 64}, "E" * 64)
