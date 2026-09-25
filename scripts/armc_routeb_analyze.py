@@ -172,14 +172,23 @@ def verify_signoff(so: dict, allowed_decision_shas: set,
     if tgt not in allowed_decision_shas:
         return False
     role = (so.get("approver") or {}).get("role") or so.get("role") or ""
-    if role not in {"owner", "owner_approval"}:  # exact — 'not-owner' must fail
+    if role not in {"owner", "owner_approval"}:  # exact — 'not-owner' fails
         return False
-    if so.get("target_sha256"):  # v1-style: stricter
+    if so.get("target_sha256"):  # v1/v2-style: stricter
         if episode_map_sha and so.get("episode_map_sha256") != episode_map_sha:
             return False
+        # structured field wins; legacy free-text scope must satisfy all:
+        # contiguous 'ELIGIBIL* ADJUDIC*' phrase, no negation prefix, and any
+        # RETRIEVAL mention must come AFTER (distinction note, not the scope)
+        if so.get("approval_type") == "ELIGIBILITY_ADJUDICATION":
+            return True
         sc = str(so.get("scope", "")).upper()
-        # must claim eligibility adjudication; negations rejected
-        if not ("ELIGIBIL" in sc and "ADJUDIC" in sc and "NOT" not in sc):
+        import re
+        if not re.search(r"ELIGIBIL\w*\s+ADJUDIC", sc):
+            return False
+        if re.search(r"\b(NOT|NON|UN|INELIGIBIL)", sc[:sc.index("ELIGIBIL")]):
+            return False
+        if "RETRIEVAL" in sc and sc.index("RETRIEVAL") < sc.index("ELIGIBIL"):
             return False
     return True
 

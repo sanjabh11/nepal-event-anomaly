@@ -239,3 +239,16 @@ class TestSignoffNegations:
         g = dict(self.G); g["scope"] = ("per-record ELIGIBILITY adjudication "
             "(DISTINCT from v19 retrieval-scope approval)")
         assert A.verify_signoff(g, {"D" * 64}, "E" * 64)
+
+    def test_non_eligibility_prefix_rejected(self):
+        g = dict(TestSignoffNegations.G); g["scope"] = "NON-ELIGIBILITY adjudication"
+        assert not A.verify_signoff(g, {"D" * 64}, "E" * 64)
+
+    def test_retrieval_first_mixed_scope_rejected(self):
+        g = dict(TestSignoffNegations.G); g["scope"] = "retrieval plus eligibility adjudication"
+        assert not A.verify_signoff(g, {"D" * 64}, "E" * 64)
+
+    def test_typed_approval_type_accepted(self):
+        g = dict(TestSignoffNegations.G); g["approval_type"] = "ELIGIBILITY_ADJUDICATION"
+        g["scope"] = "anything"  # typed field is load-bearing, scope ignored
+        assert A.verify_signoff(g, {"D" * 64}, "E" * 64)
