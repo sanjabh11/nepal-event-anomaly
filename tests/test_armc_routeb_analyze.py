@@ -481,6 +481,35 @@ class TestSignoffSchema:
         got = A.approved_record_ids([so], dec, [], "E" * 64)
         assert got == {"e:1", "e:2"}
 
+    @pytest.mark.parametrize("bad", [
+        [], "not-object", None, 42, True])
+    def test_nondict_signoff_rejected_not_raised(self, bad):
+        assert A.verify_signoff(bad, {"D" * 64}, "E" * 64) is False
+
+    def test_v0_nondict_approved_artifact_rejected(self):
+        v0 = {"schema": "P5_OWNER_SIGNOFF_V0", "status": "APPROVED",
+              "role": "owner_approval", "signer": "sanjayb",
+              "approved_artifact": "bad-string"}
+        assert A.verify_signoff(v0, {"A" * 64}, None) is False
+        v0["approved_artifact"] = ["list"]
+        assert A.verify_signoff(v0, {"A" * 64}, None) is False
+
+    def test_v2_nondict_approver_rejected(self):
+        v2 = {"schema": "P5_OWNER_SIGNOFF_V2", "status": "APPROVED",
+              "target_sha256": "D" * 64, "episode_map_sha256": "E" * 64,
+              "approver": "not-a-dict",
+              "approval_type": "ELIGIBILITY_ADJUDICATION",
+              "records": {"a": {}}}
+        assert A.verify_signoff(v2, {"D" * 64}, "E" * 64) is False
+
+    def test_result_supersedes_lineage(self):
+        s = A._result_supersedes("/x/armc_routeb_result_v31.json")
+        assert "armc_routeb_result_v30" in s
+        s0 = A._result_supersedes("/x/armc_routeb_result_v1.json")
+        assert "armc_routeb_result_v0" in s0
+        su = A._result_supersedes("/x/no_version.json")
+        assert "unknown" in su
+
     def test_terminal_approval_status(self):
         epmap = {"units": [
             {"era": "post2000", "member_ids": [400, 401]},

@@ -174,7 +174,11 @@ def verify_signoff(so: dict, allowed_decision_shas: set,
     v1/v2-style: exact schema, approver.id in KNOWN_OWNERS with role 'owner',
               target_sha256 + episode_map_sha256 bound, and EITHER typed
               approval_type == 'ELIGIBILITY_ADJUDICATION' OR the exact
-              canonical scope string. No substring/regex semantics."""
+              canonical scope string. No substring/regex semantics.
+    Malformed inputs (non-mapping signoff, non-mapping approver/
+    approved_artifact) return False — never raise."""
+    if not isinstance(so, dict):
+        return False
     if so.get("status") != "APPROVED":
         return False
     schema = so.get("schema")
@@ -183,13 +187,17 @@ def verify_signoff(so: dict, allowed_decision_shas: set,
             return False
         if so.get("signer") not in KNOWN_OWNERS:
             return False
-        tgt = (so.get("approved_artifact") or {}).get("sha256")
-        return tgt in allowed_decision_shas
+        aa = so.get("approved_artifact")
+        if not isinstance(aa, dict):
+            return False
+        return aa.get("sha256") in allowed_decision_shas
     if schema in {"P5_OWNER_SIGNOFF_V1", "P5_OWNER_SIGNOFF_V2"}:
         tgt = so.get("target_sha256")
         if tgt not in allowed_decision_shas:
             return False
-        ap = so.get("approver") or {}
+        ap = so.get("approver")
+        if not isinstance(ap, dict):
+            return False
         if ap.get("role") != "owner" or ap.get("id") not in KNOWN_OWNERS:
             return False
         if not episode_map_sha or so.get("episode_map_sha256") != episode_map_sha:
@@ -300,6 +308,16 @@ def approved_record_ids(signoff_paths, decision_path, predecessor_paths,
             if e["event_id"] in pred_approved and cur.get(e["event_id"]) != proj(e):
                 pred_approved.discard(e["event_id"])  # revoke INHERITED only
     return direct_approved | pred_approved
+
+
+def _result_supersedes(out_path):
+    """Result-to-result lineage: derive the immediate predecessor version
+    from the --out filename (vN -> vN-1), plus the historical note."""
+    m = re.search(r"_v(\d+)", Path(out_path).stem)
+    prev = f"armc_routeb_result_v{int(m.group(1)) - 1}" if m else "unknown"
+    return (f"immediate predecessor {prev}; historical lineage "
+            "v0..v14 (v0/v0b/v1 nonconforming; v2-v14 exploratory "
+            "iterations)")
 
 
 def cohort_approval_status(epmap, approved_ids):
@@ -607,7 +625,7 @@ def main():
     cohort_status = cohort_approval_status(epmap, approved_ids)
     era_pending = cohort_status != "APPROVED_ALL_STRATA"
     out = {"schema": "P5_ROUTE_B_RESULT_V2",
-           "supersedes": "armc_routeb_result_v0..v14 lineage (v0/v0b/v1 nonconforming; v2-v13 exploratory iterations)",
+           "supersedes": _result_supersedes(a.out),
            "cohort_approval": cohort_status,
            "owner_signoffs": [_sha(p) for p in a.owner_signoff],
            "approval_note": ("pre-2001 stratum records are owner-approved rule-qualified "
