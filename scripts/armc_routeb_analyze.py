@@ -120,6 +120,14 @@ def masked_theta(hourly_t, hourly_sp, hourly_t2m):
     return deficit
 
 
+def detrend_years(days: pd.Series) -> pd.Series:
+    """Remove a linear year trend (frozen detrended sensitivity)."""
+    d = days.dropna().sort_index()
+    yr = np.asarray(d.index.year, dtype=float)
+    coef = np.polyfit(yr - yr.mean(), d.values, 1)
+    return d - np.polyval(coef, yr - yr.mean())
+
+
 def ref_distribution(days: pd.Series, month: int, wash_dates, accum: bool):
     """Consecutive rolling 7-day windows ending inside `month`, minus
     windows whose 7-day span overlaps +-7d of any washout date."""
@@ -183,6 +191,7 @@ def main():
     ap.add_argument("--episode-map", required=True)
     ap.add_argument("--decision", required=True)
     ap.add_argument("--protocol", required=True)
+    ap.add_argument("--transform-contract", required=True)
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     lanes = [Path(p) for p in a.lane_root]
@@ -234,9 +243,14 @@ def main():
                    "gorkha_window": bool(EQ_START <= d <= EQ_END),
                    "selection_id": sid}
             df = build_unit_frame(hourly, sel_ids)
+            df_det = df.copy()
+            for v in ["tcwv", "cape", "theta_deficit"]:
+                if v in df_det:
+                    df_det[v] = detrend_years(df[v])
             for name, (v, kind) in EXPOSURES.items():
                 x, n_cov = antecedent(df, v, d, kind == "sum")
                 ref = ref_distribution(df[v], d.month, wash, kind == "sum")
+                ref_dt = ref_distribution(df_det[v], d.month, wash, kind == "sum")
                 if np.isnan(x) or len(ref) < 100 or ref.std() == 0:
                     row[name] = np.nan; row[f"{name}_cov"] = n_cov
                     missing.append({"unit": u["unit_id"], "member": mid,
@@ -245,6 +259,10 @@ def main():
                     row[name] = float((x - ref.mean()) / ref.std())
                     row[f"{name}_cov"] = n_cov
                     row[f"{name}_nref"] = len(ref)
+                    if len(ref_dt) >= 100 and ref_dt.std() > 0:
+                        xdt = antecedent(df_det, v, d, kind == "sum")[0]
+                        if not np.isnan(xdt):
+                            row[f"{name}_detrended"] = float((xdt - ref_dt.mean()) / ref_dt.std())
             mres[mid] = row
             member_rows.append(row)
         # unit-level: earliest member primary, latest sensitivity
@@ -304,7 +322,8 @@ def main():
            "generated_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
            "inputs": {"inventory": [_sha(p) for p in a.inventory],
                       "episode_map": _sha(a.episode_map),
-                      "decision": _sha(a.decision), "protocol": _sha(a.protocol)},
+                      "decision": _sha(a.decision), "protocol": _sha(a.protocol),
+                      "transform_contract": _sha(a.transform_contract)},
            "payload_sha256": payload_shas,
            "unit_rule": "earliest member primary; latest member sensitivity",
            "primary_units_n": int(len(prim)), "total_units": int(len(ut)),
