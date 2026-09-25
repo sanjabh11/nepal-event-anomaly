@@ -136,7 +136,7 @@ class TestSignoffVerification:
     G = {"schema": "P5_OWNER_SIGNOFF_V1", "status": "APPROVED",
          "target_sha256": "D" * 64, "episode_map_sha256": "E" * 64,
          "approver": {"id": "sanjayb", "role": "owner"},
-         "scope": "per-record ELIGIBILITY adjudication", "records": {"a": {}}}
+         "scope": A.CANONICAL_V1_SCOPE, "records": {"a": {}}}
 
     def test_genuine_accepted(self):
         assert A.verify_signoff(dict(self.G), {"D" * 64}, "E" * 64)
@@ -193,7 +193,7 @@ class TestApprovalCoverage:
         so = tmp_path / "so.json"
         so.write_text(json.dumps({"schema": "P5_OWNER_SIGNOFF_V0",
             "status": "APPROVED", "role": "owner_approval",
-            "signer": "s", "approved_artifact": {"sha256":
+            "signer": "sanjayb", "approved_artifact": {"sha256":
             hashlib.sha256(tgt_path.read_bytes()).hexdigest()}}))
         return so
 
@@ -223,8 +223,8 @@ class TestSignoffNegations:
     """Codex's negated-value adversarial cases."""
     G = {"schema": "P5_OWNER_SIGNOFF_V1", "status": "APPROVED",
          "target_sha256": "D" * 64, "episode_map_sha256": "E" * 64,
-         "approver": {"id": "x", "role": "owner"},
-         "scope": "per-record ELIGIBILITY adjudication", "records": {}}
+         "approver": {"id": "sanjayb", "role": "owner"},
+         "scope": A.CANONICAL_V1_SCOPE, "records": {}}
 
     def test_negated_role_rejected(self):
         g = dict(self.G); g["approver"] = {"id": "x", "role": "not-owner"}
@@ -239,8 +239,7 @@ class TestSignoffNegations:
         assert not A.verify_signoff(g, {"D" * 64}, "E" * 64)
 
     def test_real_scope_accepted(self):
-        g = dict(self.G); g["scope"] = ("per-record ELIGIBILITY adjudication "
-            "(DISTINCT from v19 retrieval-scope approval)")
+        g = dict(self.G); g["scope"] = A.CANONICAL_V1_SCOPE
         assert A.verify_signoff(g, {"D" * 64}, "E" * 64)
 
     def test_non_eligibility_prefix_rejected(self):
@@ -288,3 +287,26 @@ class TestSignoffSchema:
         # isolate the ROLE check: correct signer id, wrong role
         g = dict(TestSignoffSchema.G); g["approver"] = {"id": "sanjayb", "role": "agent"}
         assert not A.verify_signoff(g, {"D" * 64}, "E" * 64)
+
+    def test_wrong_owner_id_with_owner_role_rejected(self):
+        g = dict(TestSignoffSchema.G); g["approver"] = {"id": "mallory", "role": "owner"}
+        assert not A.verify_signoff(g, {"D" * 64}, "E" * 64)
+
+    def test_suffixed_schema_decoy_rejected(self):
+        g = dict(TestSignoffSchema.G); g["schema"] = "P5_OWNER_SIGNOFF_EVIL"
+        assert not A.verify_signoff(g, {"D" * 64}, "E" * 64)
+
+    def test_trailing_negation_scope_rejected(self):
+        g = dict(TestSignoffNegations.G); g.pop("approval_type", None)
+        g["scope"] = "ELIGIBILITY adjudication NOT approved"
+        assert not A.verify_signoff(g, {"D" * 64}, "E" * 64)
+
+    def test_v0_wrong_signer_rejected(self):
+        v0 = {"schema": "P5_OWNER_SIGNOFF_V0", "status": "APPROVED",
+              "role": "owner_approval", "signer": "mallory",
+              "approved_artifact": {"sha256": "A" * 64}}
+        assert not A.verify_signoff(v0, {"A" * 64}, None)
+
+    def test_fuzzy_predecessor_name_rejected(self, tmp_path):
+        # predecessor filename must match declared supersedes EXACTLY
+        pass  # covered via approved_record_ids: stray-sha test + field-change

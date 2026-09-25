@@ -157,42 +157,46 @@ def masked_theta_cells(t_df, sp_df, t2m_df):
     return box_mean, frac
 
 
+KNOWN_OWNERS = {"sanjayb"}
+# exact canonical legacy scope string (bound in signoff v1); anything else
+# must use the typed approval_type field — free text is not authority
+CANONICAL_V1_SCOPE = ("per-record ELIGIBILITY adjudication for the 12 "
+                      "era-extension records (DISTINCT from v19 "
+                      "retrieval-scope approval)")
+
+
 def verify_signoff(so: dict, allowed_decision_shas: set,
                    episode_map_sha: str | None = None) -> bool:
-    """Production signoff gate — a signoff approves strata only if it
-    (a) is APPROVED, (b) binds a decision file whose sha is in the
-    allowed set (v0-style approved_artifact.sha256 or v1-style
-    target_sha256), (c) has an owner-role approver/signer, and for
-    v1-style also (d) binds this episode map and (e) scopes to
-    eligibility adjudication."""
+    """Production signoff gate — schema-exact, identity-bound, fail-closed.
+
+    v0-style: exact schema, role 'owner_approval', signer in KNOWN_OWNERS,
+              approved_artifact.sha256 in allowed chain.
+    v1/v2-style: exact schema, approver.id in KNOWN_OWNERS with role 'owner',
+              target_sha256 + episode_map_sha256 bound, and EITHER typed
+              approval_type == 'ELIGIBILITY_ADJUDICATION' OR the exact
+              canonical scope string. No substring/regex semantics."""
     if so.get("status") != "APPROVED":
         return False
-    if not str(so.get("schema", "")).startswith("P5_OWNER_SIGNOFF"):
-        return False
-    tgt = so.get("target_sha256") or \
-        (so.get("approved_artifact") or {}).get("sha256")
-    if tgt not in allowed_decision_shas:
-        return False
-    role = (so.get("approver") or {}).get("role") or so.get("role") or ""
-    if role not in {"owner", "owner_approval"}:  # exact — 'not-owner' fails
-        return False
-    if so.get("target_sha256"):  # v1/v2-style: stricter
+    schema = so.get("schema")
+    if schema == "P5_OWNER_SIGNOFF_V0":
+        if so.get("role") != "owner_approval":
+            return False
+        if so.get("signer") not in KNOWN_OWNERS:
+            return False
+        tgt = (so.get("approved_artifact") or {}).get("sha256")
+        return tgt in allowed_decision_shas
+    if schema in {"P5_OWNER_SIGNOFF_V1", "P5_OWNER_SIGNOFF_V2"}:
+        tgt = so.get("target_sha256")
+        if tgt not in allowed_decision_shas:
+            return False
+        ap = so.get("approver") or {}
+        if ap.get("role") != "owner" or ap.get("id") not in KNOWN_OWNERS:
+            return False
         if episode_map_sha and so.get("episode_map_sha256") != episode_map_sha:
             return False
-        # structured field wins; legacy free-text scope must satisfy all:
-        # contiguous 'ELIGIBIL* ADJUDIC*' phrase, no negation prefix, and any
-        # RETRIEVAL mention must come AFTER (distinction note, not the scope)
-        if so.get("approval_type") == "ELIGIBILITY_ADJUDICATION":
-            return True
-        sc = str(so.get("scope", "")).upper()
-        import re
-        if not re.search(r"ELIGIBIL\w*\s+ADJUDIC", sc):
-            return False
-        if re.search(r"\b(NOT|NON|UN|INELIGIBIL)", sc[:sc.index("ELIGIBIL")]):
-            return False
-        if "RETRIEVAL" in sc and sc.index("RETRIEVAL") < sc.index("ELIGIBIL"):
-            return False
-    return True
+        return (so.get("approval_type") == "ELIGIBILITY_ADJUDICATION"
+                or so.get("scope") == CANONICAL_V1_SCOPE)
+    return False  # unknown schema — fail closed
 
 
 def approved_record_ids(signoff_paths, decision_path, predecessor_paths,
@@ -227,19 +231,23 @@ def approved_record_ids(signoff_paths, decision_path, predecessor_paths,
                 dd = json.loads(dec_files[tgt].read_text())
                 approved_ids |= {e["event_id"] for e in dd["events"]
                                  if e["adjudication"]["disposition"] == "ELIGIBLE"}
-    # unchanged-field check across supersession
-    cur = {e["event_id"]: (e["adjudication"]["event_time_interval"]["start"],
-                           e["local"]["lat"], e["local"]["lon"])
-           for e in dec["events"]}
+    # full eligibility-relevant continuity across supersession — event id,
+    # disposition, BOTH interval endpoints, precision, coords, basin, lake,
+    # cascade group — any change revokes predecessor approval
+    proj = lambda e: (e["adjudication"]["disposition"],
+                      e["adjudication"]["event_time_interval"]["start"],
+                      e["adjudication"]["event_time_interval"].get("end"),
+                      e["local"].get("precision"), e["local"]["lat"],
+                      e["local"]["lon"], e["local"].get("basin_group"),
+                      e["local"].get("cascade_group_id"),
+                      (e.get("source_fields") or {}).get("Lake_name"))
+    cur = {e["event_id"]: proj(e) for e in dec["events"]}
     for tgt, f in dec_files.items():
         if tgt == dec_sha:
             continue
         for e in json.loads(f.read_text())["events"]:
-            eid = e["event_id"]
-            old = (e["adjudication"]["event_time_interval"]["start"],
-                   e["local"]["lat"], e["local"]["lon"])
-            if eid in approved_ids and cur.get(eid) != old:
-                approved_ids.discard(eid)
+            if e["event_id"] in approved_ids and cur.get(e["event_id"]) != proj(e):
+                approved_ids.discard(e["event_id"])
     return approved_ids
 
 
@@ -524,13 +532,11 @@ def main():
     dec_sha = _sha(a.decision)
     ep_sha = _sha(a.episode_map)
     # predecessor chain must be the decision's own declared supersession —
-    # not just any file passed on the command line
+    # EXACT filename match, not substring
     dec_obj = json.loads(Path(a.decision).read_text())
     sup = str(dec_obj.get("supersedes", ""))
-    declared_preds = []
-    for p in a.decision_predecessor:
-        if Path(p).stem in sup or Path(p).name in sup:
-            declared_preds.append(Path(p))
+    declared_preds = [Path(p) for p in a.decision_predecessor
+                      if Path(p).name == sup or Path(p).stem == sup]
     approved_ids = approved_record_ids(
         [Path(p) for p in a.owner_signoff], Path(a.decision),
         declared_preds, ep_sha)
