@@ -428,8 +428,15 @@ def main():
     hw = summ[PRIMARY]["ci_half_width"]
     verdict = "ESTIMABLE" if hw is not None and hw <= 0.5 else \
               ("DESCRIPTIVE_ONLY" if hw is not None else "NOT_ESTIMABLE")
-    out = {"schema": "P5_ROUTE_B_RESULT_V1",
-           "supersedes": "armc_routeb_result_v0/v0b/v1 (nonconforming)",
+    dec_status = dec.get("status", "")
+    era_pending = any(u.get("era") == "pre2001" for u in epmap["units"]) and \
+        dec_status != "ADJUDICATED"
+    out = {"schema": "P5_ROUTE_B_RESULT_V2",
+           "supersedes": "armc_routeb_result_v0..v14 lineage (v0/v0b/v1 nonconforming; v2-v13 exploratory iterations)",
+           "cohort_approval": "ERA_EXTENSION_PENDING_OWNER_SIGNOFF" if era_pending else "APPROVED",
+           "approval_note": ("pre-2001 stratum records are owner-approved rule-qualified "
+                             "candidates pending explicit decision-v1 signoff; treat those "
+                             "12 units as exploratory stratum until then" if era_pending else None),
            "claim_scope": "descriptive_only_no_event_risk_odds",
            "generated_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
            "run_provenance": {"code_file": _sha(__file__),
