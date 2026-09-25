@@ -267,6 +267,11 @@ def main():
                         xdt = antecedent(df_det, v, d, kind == "sum")[0]
                         if not np.isnan(xdt):
                             row[f"{name}_detrended"] = float((xdt - ref_dt.mean()) / ref_dt.std())
+                    # frozen date-uncertainty sensitivity: +-7d window shift
+                    for sh, tag in ((-7, "shift_m7"), (7, "shift_p7")):
+                        xs, cs = antecedent(df, v, d + pd.Timedelta(days=sh), kind == "sum")
+                        if not np.isnan(xs):
+                            row[f"{name}_{tag}"] = float((xs - ref.mean()) / ref.std())
             mres[mid] = row
             member_rows.append(row)
         # unit-level: earliest member primary, latest sensitivity
