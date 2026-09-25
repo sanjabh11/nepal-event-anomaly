@@ -172,3 +172,46 @@ class TestSignoffVerification:
         v0 = {"status": "APPROVED", "role": "owner_approval",
               "approved_artifact": {"sha256": "A" * 64}}
         assert not A.verify_signoff(v0, {"B" * 64}, None)
+
+
+class TestApprovalCoverage:
+    """approved_record_ids — fail-closed coverage incl. supersession checks."""
+    EV = "icimod_hmaglofdb_v1_3_0:1.3.0:5"
+
+    def _dec(self, tmp_path, name, lat=28.0):
+        import json
+        d = {"events": [{"event_id": self.EV,
+             "adjudication": {"disposition": "ELIGIBLE",
+                "event_time_interval": {"start": "2002-05-20T00:00:00Z"}},
+             "local": {"lat": lat, "lon": 84.0}}]}
+        p = tmp_path / name; p.write_text(json.dumps(d)); return p
+
+    def _v0so(self, tmp_path, tgt_path):
+        import json, hashlib
+        so = tmp_path / "so.json"
+        so.write_text(json.dumps({"status": "APPROVED", "role": "owner_approval",
+            "signer": "s", "approved_artifact": {"sha256":
+            hashlib.sha256(tgt_path.read_bytes()).hexdigest()}}))
+        return so
+
+    def test_whole_decision_approval(self, tmp_path):
+        d0 = self._dec(tmp_path, "d0.json"); d1 = self._dec(tmp_path, "d1.json")
+        so = self._v0so(tmp_path, d0)
+        ids = A.approved_record_ids([so], d1, [d0], "E" * 64)
+        assert self.EV in ids
+
+    def test_stale_v0_not_in_chain_rejected(self, tmp_path):
+        # signoff targets a decision file that is NOT an explicit predecessor
+        d1 = self._dec(tmp_path, "d1.json")
+        stray = self._dec(tmp_path, "stray.json", lat=29.9)  # different bytes -> different sha
+        so = self._v0so(tmp_path, stray)
+        ids = A.approved_record_ids([so], d1, [], "E" * 64)
+        assert self.EV not in ids
+
+    def test_field_change_revokes_approval(self, tmp_path):
+        # predecessor approved lat=28; current decision moved it to 28.5
+        d0 = self._dec(tmp_path, "d0.json", lat=28.0)
+        d1 = self._dec(tmp_path, "d1.json", lat=28.5)
+        so = self._v0so(tmp_path, d0)
+        ids = A.approved_record_ids([so], d1, [d0], "E" * 64)
+        assert self.EV not in ids

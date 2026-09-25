@@ -182,6 +182,54 @@ def verify_signoff(so: dict, allowed_decision_shas: set,
     return True
 
 
+def approved_record_ids(signoff_paths, decision_path, predecessor_paths,
+                        episode_map_sha):
+    """Verified, fail-closed approval coverage.
+
+    Trust rules:
+    - allowed decision digests = bound decision bytes + EXPLICIT
+      predecessor files only (never a sha a signoff merely names)
+    - v1-style signoffs approve their `records` keys
+    - v0-style signoffs approve ALL ELIGIBLE records of their bound
+      decision file
+    - predecessor-approved records are revoked if their fields differ
+      in the current decision (supersession must not silently alter
+      approved records)
+    """
+    dec_sha = _sha(decision_path)
+    dec = json.loads(decision_path.read_text())
+    dec_files = {dec_sha: decision_path}
+    for p in predecessor_paths:
+        dec_files[_sha(p)] = p
+    approved_ids = set()
+    for p in signoff_paths:
+        so = json.loads(Path(p).read_text())
+        if not verify_signoff(so, set(dec_files), episode_map_sha):
+            continue
+        if so.get("records"):
+            approved_ids |= set(so["records"].keys())
+        else:
+            tgt = (so.get("approved_artifact") or {}).get("sha256")
+            if tgt in dec_files:
+                dd = json.loads(dec_files[tgt].read_text())
+                approved_ids |= {e["event_id"] for e in dd["events"]
+                                 if e["adjudication"]["disposition"] == "ELIGIBLE"}
+    # unchanged-field check across supersession
+    cur = {e["event_id"]: (e["adjudication"]["event_time_interval"]["start"],
+                           e["local"]["lat"], e["local"]["lon"])
+           for e in dec["events"]}
+    for tgt, f in dec_files.items():
+        if tgt == dec_sha:
+            continue
+        for e in json.loads(f.read_text())["events"]:
+            eid = e["event_id"]
+            old = (e["adjudication"]["event_time_interval"]["start"],
+                   e["local"]["lat"], e["local"]["lon"])
+            if eid in approved_ids and cur.get(eid) != old:
+                approved_ids.discard(eid)
+    return approved_ids
+
+
 def detrend_years(days: pd.Series) -> pd.Series:
     """Remove a linear year trend (frozen detrended sensitivity)."""
     d = days.dropna().sort_index()
@@ -265,6 +313,9 @@ def main():
     ap.add_argument("--protocol", required=True)
     ap.add_argument("--transform-contract", required=True)
     ap.add_argument("--owner-signoff", action="append", default=[])
+    ap.add_argument("--decision-predecessor", action="append", default=[],
+                    help="explicit sealed predecessor decision files; "
+                         "signoff targets are trusted ONLY against these bytes")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     lanes = [Path(p) for p in a.lane_root]
@@ -459,29 +510,9 @@ def main():
     # eligibility — an unrelated APPROVED file must not satisfy the gate
     dec_sha = _sha(a.decision)
     ep_sha = _sha(a.episode_map)
-    # allowed decision targets: v1 + any sealed predecessors the signoffs bind
-    allowed_shas = {dec_sha}
-    for p in a.owner_signoff:
-        so = json.loads(Path(p).read_text())
-        tgt = so.get("target_sha256") or (so.get("approved_artifact") or {}).get("sha256")
-        if tgt:
-            allowed_shas.add(tgt)
-    approved_ids = set()
-    approved_whole_decisions = set()
-    for p in a.owner_signoff:
-        so = json.loads(Path(p).read_text())
-        if verify_signoff(so, allowed_shas, ep_sha):
-            if so.get("records"):
-                approved_ids |= set(so["records"].keys())
-            else:  # v0-style: approves ALL eligible records of its target decision
-                tgt = (so.get("approved_artifact") or {}).get("sha256")
-                decp = next((f for f in (Path(a.decision).parent).glob("armc_event_adjudication_decision_v*.json")
-                             if _sha(f) == tgt), None)
-                if decp:
-                    dd = json.loads(decp.read_text())
-                    approved_ids |= {e["event_id"] for e in dd["events"]
-                                     if e["adjudication"]["disposition"] == "ELIGIBLE"}
-                    approved_whole_decisions.add(tgt)
+    approved_ids = approved_record_ids(
+        [Path(p) for p in a.owner_signoff], Path(a.decision),
+        [Path(p) for p in a.decision_predecessor], ep_sha)
     strata_pending = []
     for u in epmap["units"]:
         for mid in u["member_ids"]:
