@@ -215,3 +215,27 @@ class TestApprovalCoverage:
         so = self._v0so(tmp_path, d0)
         ids = A.approved_record_ids([so], d1, [d0], "E" * 64)
         assert self.EV not in ids
+
+class TestSignoffNegations:
+    """Codex's negated-value adversarial cases."""
+    G = {"status": "APPROVED", "target_sha256": "D" * 64,
+         "episode_map_sha256": "E" * 64,
+         "approver": {"id": "x", "role": "owner"},
+         "scope": "per-record ELIGIBILITY adjudication", "records": {}}
+
+    def test_negated_role_rejected(self):
+        g = dict(self.G); g["approver"] = {"id": "x", "role": "not-owner"}
+        assert not A.verify_signoff(g, {"D" * 64}, "E" * 64)
+
+    def test_negated_scope_rejected(self):
+        g = dict(self.G); g["scope"] = "NOT ELIGIBILITY adjudication"
+        assert not A.verify_signoff(g, {"D" * 64}, "E" * 64)
+
+    def test_retrieval_only_scope_rejected(self):
+        g = dict(self.G); g["scope"] = "v19 retrieval scope approval"
+        assert not A.verify_signoff(g, {"D" * 64}, "E" * 64)
+
+    def test_real_scope_accepted(self):
+        g = dict(self.G); g["scope"] = ("per-record ELIGIBILITY adjudication "
+            "(DISTINCT from v19 retrieval-scope approval)")
+        assert A.verify_signoff(g, {"D" * 64}, "E" * 64)

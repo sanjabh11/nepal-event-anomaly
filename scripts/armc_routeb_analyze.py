@@ -172,12 +172,14 @@ def verify_signoff(so: dict, allowed_decision_shas: set,
     if tgt not in allowed_decision_shas:
         return False
     role = (so.get("approver") or {}).get("role") or so.get("role") or ""
-    if "owner" not in role:
+    if role not in {"owner", "owner_approval"}:  # exact — 'not-owner' must fail
         return False
     if so.get("target_sha256"):  # v1-style: stricter
         if episode_map_sha and so.get("episode_map_sha256") != episode_map_sha:
             return False
-        if "ELIGIBIL" not in str(so.get("scope", "")).upper():
+        sc = str(so.get("scope", "")).upper()
+        # must claim eligibility adjudication; negations rejected
+        if not ("ELIGIBIL" in sc and "ADJUDIC" in sc and "NOT" not in sc):
             return False
     return True
 
@@ -510,9 +512,17 @@ def main():
     # eligibility — an unrelated APPROVED file must not satisfy the gate
     dec_sha = _sha(a.decision)
     ep_sha = _sha(a.episode_map)
+    # predecessor chain must be the decision's own declared supersession —
+    # not just any file passed on the command line
+    dec_obj = json.loads(Path(a.decision).read_text())
+    sup = str(dec_obj.get("supersedes", ""))
+    declared_preds = []
+    for p in a.decision_predecessor:
+        if Path(p).stem in sup or Path(p).name in sup:
+            declared_preds.append(Path(p))
     approved_ids = approved_record_ids(
         [Path(p) for p in a.owner_signoff], Path(a.decision),
-        [Path(p) for p in a.decision_predecessor], ep_sha)
+        declared_preds, ep_sha)
     strata_pending = []
     for u in epmap["units"]:
         for mid in u["member_ids"]:
@@ -536,7 +546,9 @@ def main():
                       "platform": __import__("platform").platform()},
            "inputs": {"inventory": [_sha(p) for p in a.inventory],
                       "episode_map": _sha(a.episode_map),
-                      "decision": _sha(a.decision), "protocol": _sha(a.protocol),
+                      "decision": _sha(a.decision),
+                      "decision_predecessors": [_sha(p) for p in a.decision_predecessor],
+                      "protocol": _sha(a.protocol),
                       "transform_contract": _sha(a.transform_contract)},
            "payload_sha256": payload_shas,
            "unit_rule": "earliest member primary; latest member sensitivity",
