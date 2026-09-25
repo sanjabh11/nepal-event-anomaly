@@ -977,7 +977,7 @@
     "claim_scan": "clean on all governed files",
     "collection_guard": "repo-wide collection == tests/ (4116 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
     "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
-    "full_suite_venv": "4109 passed, 6 skipped, 1 failed, 93 warnings (4116 collected) at content feb9731 — the single failure was this manifest's own stale collection_guard (3978 recorded vs 4116 live), corrected by this rebind; post-rebind clean suite run pending",
+    "full_suite_venv": "4110 passed, 6 skipped, 0 failed, 93 warnings (4116 collected) at f8330cb post-rebind — clean run, PYTEST_EXIT=0, 18:13 elapsed; supersedes the feb9731 run (4109/6/1) whose sole failure was this manifest's stale collection_guard",
     "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
     "p5_a2_status_consistency": "local guard passed; CI guard configured — current CANDIDATE_ONLY / UNSUPERVISED_STRUCTURE_NOT_STABLE result, false authority flags, and release metadata aligned",
     "p5_a2_temporal_holdout": "110 passed, 1 skipped — temporal mapping, waiver, and documentation regression lane",
