@@ -252,7 +252,9 @@ def approved_record_ids(signoff_paths, decision_path, predecessor_paths,
                 e = tgt_events.get(rid)
                 adj = (e or {}).get("adjudication") or {}
                 start = str((adj.get("event_time_interval") or {}).get("start", ""))
-                rv = rv or {}
+                if not isinstance(rv, dict):
+                    ids = None
+                    break  # non-mapping record value — malformed, void signoff
                 d = rv.get("date")
                 date_ok = (not d) or (re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(d))
                                       is not None and start[:10] == str(d))

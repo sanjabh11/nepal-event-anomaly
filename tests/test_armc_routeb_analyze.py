@@ -325,11 +325,14 @@ class TestSignoffSchema:
         return f
 
     def _ev(self, rid, disp="ELIGIBLE", start="2000-01-01T00:00:00Z",
-            lake="X", lat=28.0, lon=85.0):
+            end="2000-01-02T00:00:00Z", precision="day", lake="X",
+            lat=28.0, lon=85.0, basin="b1", cascade="c1"):
         return {"event_id": rid,
                 "adjudication": {"disposition": disp,
-                                 "event_time_interval": {"start": start}},
-                "local": {"lat": lat, "lon": lon},
+                                 "event_time_interval": {"start": start,
+                                                         "end": end}},
+                "local": {"precision": precision, "lat": lat, "lon": lon,
+                          "basin_group": basin, "cascade_group_id": cascade},
                 "source_fields": {"Lake_name": lake}}
 
     def _v2(self, tmp_path, dec, records, name="so.json"):
@@ -390,6 +393,47 @@ class TestSignoffSchema:
         cur = self._dec(tmp_path, [self._ev("e:1", lat=29.0)], "cur.json")
         so = self._v2(tmp_path, old, {"e:1": {}})
         assert A.approved_record_ids([so], cur, [old], "E" * 64) == set()
+
+    @pytest.mark.parametrize("field", [
+        "disposition", "start", "end", "precision", "lat", "lon",
+        "basin", "cascade", "lake"])
+    def test_continuity_each_projected_field(self, tmp_path, field):
+        # one change per projected field must each revoke the approval
+        import copy
+        base = self._ev("e:1")
+        mod = copy.deepcopy(base)
+        if field == "disposition":
+            mod["adjudication"]["disposition"] = "INELIGIBLE"
+        elif field == "start":
+            mod["adjudication"]["event_time_interval"]["start"] = \
+                "2001-01-01T00:00:00Z"
+        elif field == "end":
+            mod["adjudication"]["event_time_interval"]["end"] = \
+                "2001-01-03T00:00:00Z"
+        elif field == "precision":
+            mod["local"]["precision"] = "month"
+        elif field == "lat":
+            mod["local"]["lat"] = 29.0
+        elif field == "lon":
+            mod["local"]["lon"] = 86.0
+        elif field == "basin":
+            mod["local"]["basin_group"] = "other"
+        elif field == "cascade":
+            mod["local"]["cascade_group_id"] = "other"
+        elif field == "lake":
+            mod["source_fields"]["Lake_name"] = "Other Lake"
+        old = self._dec(tmp_path, [base], "old.json")
+        cur = self._dec(tmp_path, [mod], "cur.json")
+        so = self._v2(tmp_path, old, {"e:1": {}})
+        assert A.approved_record_ids([so], cur, [old], "E" * 64) == set(), field
+
+    @pytest.mark.parametrize("bad_rv", [None, False, 0, "", [], "x"])
+    def test_signoff_nonobject_record_value_voids(self, tmp_path, bad_rv):
+        # falsey/malformed non-mapping record values must fail closed,
+        # not be coerced to {} (no claims)
+        dec = self._dec(tmp_path, [self._ev("e:1")])
+        so = self._v2(tmp_path, dec, {"e:1": bad_rv})
+        assert A.approved_record_ids([so], dec, [], "E" * 64) == set()
 
     def test_perrecord_predecessor_unchanged_fields_approved(self, tmp_path):
         old = self._dec(tmp_path, [self._ev("e:1")], "old.json")
