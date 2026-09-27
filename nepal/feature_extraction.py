@@ -388,7 +388,7 @@ def compute_thermal_indices(df: pd.DataFrame, model_elev_m: float) -> pd.DataFra
                 "boundary_partial_days": int(partial.sum()),
             }
         else:
-            daily_df[col] = s.resample("D").sum()
+            daily_df[col] = s.resample("D").sum(min_count=1)
             accum_semantics[acc] = {
                 "type": "hourly_increments",
                 "aggregation": "daily sum",

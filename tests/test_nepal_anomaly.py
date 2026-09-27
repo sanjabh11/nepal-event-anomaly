@@ -403,7 +403,7 @@ class TestGapFixes:
 class TestResearchInputIntegrity:
     @pytest.mark.parametrize("variable", ["tp", "sf"])
     @pytest.mark.parametrize("frequency,periods", [("D", 2), ("h", 48)])
-    def test_missing_accumulations_remain_missing(
+    def test_missing_accumulations_fail_closed(
         self, variable: str, frequency: str, periods: int
     ) -> None:
         from feature_extraction import compute_thermal_indices
@@ -413,8 +413,10 @@ class TestResearchInputIntegrity:
             index=pd.date_range("2020-07-01", periods=periods, freq=frequency),
         )
         original = frame.copy(deep=True)
-        result = compute_thermal_indices(frame, 4322)
-        assert result[f"{variable}_daily"].isna().all()
+        # Hardened contract: an unobserved accumulation column must raise —
+        # never silently emit NaN or a fabricated 0.0 daily total.
+        with pytest.raises(ValueError, match="Incomplete daily features"):
+            compute_thermal_indices(frame, 4322)
         pd.testing.assert_frame_equal(frame, original)
 
     @pytest.mark.parametrize("variable", ["tp", "sf"])
