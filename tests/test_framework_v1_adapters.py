@@ -469,6 +469,8 @@ def test_current_reconciled_handoff_stays_blocked_until_semantic_b_inputs_exist(
     from pathlib import Path
     root = Path(__file__).resolve().parents[1] / "data" / \
         "framework_inputs_v1_reconciled"
+    if not root.is_dir():
+        pytest.skip("reconciled-inputs lane is untracked; absent on CI")
     bundle = load_b_input_bundle(root)
     assert bundle.status == "BLOCKED"
     assert bundle.verification is not None

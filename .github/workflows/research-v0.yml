@@ -98,10 +98,9 @@ jobs:
           # ENV-01: the supported line is pinned — CI runs the same
           # Python family as the verified local environment and
           # installs the locked dependency set, never floating
-          # latest.  rasterio==1.5.1 entered the lock at the main
-          # merge (post-ENV-01): on CI the 5 rasterio-gated tests now
-          # execute; in the operator venv (no rasterio) they remain
-          # disclosed skips.
+          # latest.  rasterio is intentionally absent from the lock:
+          # the 5 rasterio-dependent tests are disclosed skips, not
+          # silently-missing gates.
           python-version: "3.14"
 
       - name: Install test runner and pinned deps
@@ -255,9 +254,9 @@ jobs:
         # nepal/framework_v1 package read-only; the package itself is
         # protected by the frozen-boundary diff guards above, so these
         # tests can only ever run against unchanged frozen bytes.  The
-        # 5 rasterio-gated tests execute here (rasterio==1.5.1 is in
-        # the lock since the main merge); they skip only where the
-        # dependency is absent.
+        # 5 rasterio-gated tests skip here (rasterio is intentionally
+        # outside the supported lock — ENV-01); -rs keeps skip reasons
+        # visible.
         run: |
           PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
             python -B -m pytest tests/test_framework_v1_*.py -q -rs
@@ -381,11 +380,11 @@ jobs:
   # the canonical contract suite (the root conftest's
   # collect_ignore=["data"] keeps it out of repository-wide
   # collection).  Several of its tests import rasterio, which is
-  # installed from the lock — but the suite itself is absent on a
-  # clean CI checkout (the reconciled dir is gitignored), so this job
-  # is informational only:
-  # continue-on-error is mandatory, and data/ is never modified.
-  # When the directory is absent the job reports and exits green.
+  # quarantined — deliberately outside the supported dependency lock
+  # (ENV-01) — so this job is informational only:
+  # continue-on-error is mandatory, rasterio is NOT installed, and
+  # data/ is never modified.  When the symlink target is absent the
+  # job reports and exits green.
   reconciled-geospatial-optional:
     continue-on-error: true
     runs-on: ubuntu-latest

@@ -641,7 +641,8 @@ def test_strict_screen_cli_rejects_inline_components(tmp_path):
 
 def test_contract_cli_verification_remains_available(capsys):
     assert main(["contract", "--verify",
-                 "--repo-root", "/Users/sanjayb/nepal-event-anomaly"]) == 0
+                 "--repo-root",
+                 str(Path(__file__).resolve().parents[1])]) == 0
     assert "contract_sha256" in capsys.readouterr().out
 
 
