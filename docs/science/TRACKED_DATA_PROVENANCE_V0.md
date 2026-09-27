@@ -1,28 +1,40 @@
 # Tracked Data Artifact Provenance — V0
 
-**Status:** PROVENANCE_REVIEW_RECORD — recorded 2026-09-27.
+**Status:** PROVENANCE_REVIEW_RECORD — recorded 2026-09-27; containment
+executed 2026-09-27 (see §0).
 **Boundary:** research-only repository; this record authorizes nothing.
+
+## 0. Containment executed
+
+On 2026-09-27 the five payload paths below were removed from **all
+reachable git history** via `git filter-repo --invert-paths` (a
+clean-history rewrite; every commit hash changed). A pre-rewrite backup
+bundle is retained offline. Post-rewrite verification: zero reachable
+objects reference the five paths; `git ls-files data/` is empty. The
+rewrite was recorded in
+`docs/science/MANIFEST_SCOPE_EXCLUSIONS_V0.json` under
+`scrubbed_from_public_history`, and permanent ignore rules now block
+re-tracking. **Caveat:** copies may persist in GitHub forks, caches,
+or prior clones — that residual exposure cannot be contained by a
+rewrite and is disclosed rather than claimed resolved.
+
+This record is retained as the external provenance of record: source,
+version, SHA-256, terms, and attribution for bytes that are **no
+longer in the repository**. The per-artifact entries below preserve
+their original `git ls-files`-verified digests from before the scrub.
 
 ## 1. Purpose and scope
 
 This record documents the source, governing terms, attribution
-obligation, and sensitivity of every data payload byte-range currently
-tracked in the public repository under `data/`. It is a provenance and
-terms review record only. It authorizes nothing: no acquisition, no
-redistribution decision, and no scientific claim follows from it.
+obligation, and sensitivity of the five third-party data payload
+artifacts that were tracked in the public repository under `data/`
+before the containment scrub. It is a provenance and terms review
+record only. It authorizes nothing: no acquisition, no redistribution
+decision, and no scientific claim follows from it.
 
-All five artifacts below are recorded in
-`docs/science/MANIFEST_SCOPE_EXCLUSIONS_V0.json` under category
-`data_payload_outside_science_scope` ("input/market data payload
-outside the governed science-artifact scope; never a released evidence
-artifact"). That exclusion marks them as *not released evidence*; it
-does **not** make them private. They remain public tracked bytes — the
-repository is pushed to `origin` (`sanjabh11/nepal-event-anomaly`) —
-and therefore require the source/terms review recorded here.
-
-Tracked inventory confirmed by `git ls-files data/` (five entries,
-exactly the artifacts below). SHA-256 values were verified against the
-on-disk files where readable; they match the recorded digests.
+SHA-256 values below were verified against the on-disk files before
+the scrub; they remain the canonical digests of the bytes that were
+exposed and subsequently removed.
 
 ## 2. Tracked-vs-gitignored misalignment
 
@@ -281,15 +293,16 @@ Enumerated; none is decided by this record.
   `reanalysis-era5-land` for the .nc — noting the corrected
   `snow_depth_water_equivalent` variable), or explicitly accept
   attribution-governed retention under the provider terms cited.
-- **(b) Untrack going forward.** Decide whether to
-  `git rm --cached` the five paths (moving them to operator-local disk
-  under the existing ignore rules, adding rules for the two paths with
-  none — `data/era5_download_log.txt`, `data/nisar_catalog_ledger.json`
-  — if untracking is chosen) or to keep them tracked with the terms
-  noted here.
-- **(c) No history rewrite without explicit owner decision.** The
-  bytes remain in commit history and on `origin` regardless of (b);
-  removing them requires a rewrite decision this record does not make.
+- **(b) Untrack going forward.** ~~Decide whether to
+  `git rm --cached` the five paths~~ **Superseded by §0:** the
+  clean-history rewrite removed all five paths from every reachable
+  commit; permanent `.gitignore` rules now block re-tracking.
+- **(c) History rewrite.** ~~The bytes remain in commit history and on
+  `origin` regardless of (b); removing them requires a rewrite decision
+  this record does not make.~~ **Executed per §0** under explicit owner
+  decision — all historical copies were stripped; residual copies on
+  `origin` prior to the force-update and in external forks/caches are
+  disclosed, not claimed resolved.
 - **(d) Standing rule.** No NEW third-party payload bytes may be
   committed to this repository until the candidate artifact is cleared
   through the review recorded here (source, terms, attribution,
@@ -314,7 +327,8 @@ Enumerated; none is decided by this record.
 
 ## Appendix — verification commands used
 
-- `git ls-files data/` — tracked inventory (five paths, none more).
+- `git ls-files data/` — tracked inventory (five paths pre-scrub;
+  empty post-scrub, verified).
 - `git check-ignore --no-index -v <path>` — ignore-rule matching per
   §2.
 - `git log --follow --format='%h %ad %s' --date=short -- <path>` and

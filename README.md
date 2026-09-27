@@ -354,20 +354,31 @@ The India feasibility machinery (`scripts/india_*.py`,
   India adjudicated cohort). No row-level payloads are ingested.
 - `docs/science/INDIA_EVIDENCE_REGISTER_V0.json` makes evidence
   resolvable: citations are attribution until they resolve to a
-  `BYTES_VERIFIED` register record whose temporal coverage contains the
-  claimed interval. Reviewer ids are attribution, not signoff.
+  `BYTES_VERIFIED` register record whose pinned digest matches
+  resolvable bytes (on-disk or an immutable retrieval receipt) and
+  whose declared temporal and spatial coverage contains the claim.
+  Reviewer ids are attribution, not signoff.
+- The crosswalk retains every catalog row (`TARGET_COUNTRY` /
+  `TRANSBOUNDARY` / `UNKNOWN_COUNTRY` / `OUTSIDE`); no row disappears
+  on a country-label match. Shared episode ids must agree on date,
+  lake, territory, mechanism, and location — else `EPISODE_CONFLICT`
+  fails closed.
 - The feasibility report fails closed unless every input passes its
   validator and matches its `.sha256` sidecar; episode denominators
-  count distinct episode ids, lake denominators count canonical lakes,
-  and `FULL` observation completeness requires validated year-by-year
-  coverage of the declared at-risk interval.
+  count distinct episode ids, lake denominators count canonical
+  India-only lakes, `FULL` completeness requires validated year
+  coverage plus an `observation_method` declaration, and `--verify`
+  recomputes the whole report against stored artifacts.
 - Territory is adjudicated as `IN_COUNTRY`/`OUTSIDE`/`UNCERTAIN`
   against a declared boundary source/version/CRS — coordinates alone
   never classify territory.
 - `docs/science/TRACKED_DATA_PROVENANCE_V0.md` records the
-  provenance/terms review of every tracked data payload; the project
-  license is recorded in `docs/science/PROJECT_LICENSE_DECISION_V0.md`
-  (MIT for project work only — third-party data excluded).
+  provenance/terms of five third-party data payloads that were once
+  tracked and have been **scrubbed from all reachable git history**
+  (clean-history rewrite, 2026-09-27; external digests retained; fork/
+  cache residue disclosed). The project license is recorded in
+  `docs/science/PROJECT_LICENSE_DECISION_V0.md` (MIT for project work
+  only — third-party data excluded).
 
 Fresh local suite at the current head is recorded in the dated machine
 receipts `docs/science/SUITE_RECEIPT_20260927_FINAL.json` (verified

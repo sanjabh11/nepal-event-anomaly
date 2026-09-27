@@ -22,31 +22,6 @@
    "relpath": "FRAMEWORK_V1_CURRENT_STATUS.md"
   },
   {
-   "category": "data_payload_outside_science_scope",
-   "reason": "input/market data payload outside the governed science-artifact scope; never a released evidence artifact; provenance/terms review recorded in TRACKED_DATA_PROVENANCE_V0.md",
-   "relpath": "data/dem_n28e085.tif"
-  },
-  {
-   "category": "data_payload_outside_science_scope",
-   "reason": "input/market data payload outside the governed science-artifact scope; never a released evidence artifact; provenance/terms review recorded in TRACKED_DATA_PROVENANCE_V0.md",
-   "relpath": "data/download_ledger.json"
-  },
-  {
-   "category": "data_payload_outside_science_scope",
-   "reason": "input/market data payload outside the governed science-artifact scope; never a released evidence artifact; provenance/terms review recorded in TRACKED_DATA_PROVENANCE_V0.md",
-   "relpath": "data/era5_download_log.txt"
-  },
-  {
-   "category": "data_payload_outside_science_scope",
-   "reason": "input/market data payload outside the governed science-artifact scope; never a released evidence artifact; provenance/terms review recorded in TRACKED_DATA_PROVENANCE_V0.md",
-   "relpath": "data/nisar_catalog_ledger.json"
-  },
-  {
-   "category": "data_payload_outside_science_scope",
-   "reason": "input/market data payload outside the governed science-artifact scope; never a released evidence artifact; provenance/terms review recorded in TRACKED_DATA_PROVENANCE_V0.md",
-   "relpath": "data/temp/era5_land_2001_06.nc"
-  },
-  {
    "category": "legacy_v0_pre_regime_surface",
    "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
    "relpath": "nepal/anomaly_detector.py"
@@ -912,5 +887,20 @@
   ".gitignore",
   "README.md",
   "conftest.py"
+ ],
+ "scrubbed_from_public_history": [
+  {
+   "executed_utc": "2026-09-27",
+   "method": "git filter-repo --invert-paths on the five payload paths (all history, all refs)",
+   "paths": [
+    "data/dem_n28e085.tif",
+    "data/temp/era5_land_2001_06.nc",
+    "data/download_ledger.json",
+    "data/era5_download_log.txt",
+    "data/nisar_catalog_ledger.json"
+   ],
+   "provenance": "docs/science/TRACKED_DATA_PROVENANCE_V0.md",
+   "note": "Bytes scrubbed from all reachable history; external provenance (source, version, SHA-256, terms) retained in the provenance record."
+  }
  ]
 }
