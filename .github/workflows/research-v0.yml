@@ -98,9 +98,10 @@ jobs:
           # ENV-01: the supported line is pinned — CI runs the same
           # Python family as the verified local environment and
           # installs the locked dependency set, never floating
-          # latest.  rasterio is intentionally absent from the lock:
-          # the 5 rasterio-dependent tests are disclosed skips, not
-          # silently-missing gates.
+          # latest.  rasterio==1.5.1 entered the lock at the main
+          # merge (post-ENV-01): on CI the 5 rasterio-gated tests now
+          # execute; in the operator venv (no rasterio) they remain
+          # disclosed skips.
           python-version: "3.14"
 
       - name: Install test runner and pinned deps
@@ -189,10 +190,9 @@ jobs:
             -q -rs
 
       - name: P5 io-contract tests
-        # P5-15: -rs surfaces skip reasons in the CI log — skips (the
-        # 5 rasterio-gated environmental gates elsewhere in the suite
-        # and any optional-API gates here) must stay visible, not
-        # pass silently.
+        # P5-15: -rs surfaces skip reasons in the CI log — skips (any
+        # optional-dependency or optional-API gates) must stay visible,
+        # not pass silently.
         run: |
           PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
             python -B -m pytest tests/test_p5_io_contract.py -q -rs
@@ -255,9 +255,9 @@ jobs:
         # nepal/framework_v1 package read-only; the package itself is
         # protected by the frozen-boundary diff guards above, so these
         # tests can only ever run against unchanged frozen bytes.  The
-        # 5 rasterio-gated tests skip here (rasterio is intentionally
-        # outside the supported lock — ENV-01); -rs keeps skip reasons
-        # visible.
+        # 5 rasterio-gated tests execute here (rasterio==1.5.1 is in
+        # the lock since the main merge); they skip only where the
+        # dependency is absent.
         run: |
           PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
             python -B -m pytest tests/test_framework_v1_*.py -q -rs
@@ -348,11 +348,11 @@ jobs:
           match = re.search(r'\((\d+) nodes?\)', guard)
           assert match, guard
           suite = manifest['test_results']['full_suite_venv']
-          assert '3387 passed' in suite
+          assert '4214 passed' in suite
           assert '6 skipped' in suite
           assert '0 failed' in suite
-          assert '3393 collected' in suite
-          assert int(match.group(1)) == 3393
+          assert '4220 collected' in suite
+          assert int(match.group(1)) == 4220
           assert manifest['manifest_commit'] == manifest['content_head']
           print('P5-A2 status consistency: PASS')
           print('P5-A2 posture: CANDIDATE_ONLY / UNSUPERVISED_STRUCTURE_NOT_STABLE')
@@ -381,11 +381,11 @@ jobs:
   # the canonical contract suite (the root conftest's
   # collect_ignore=["data"] keeps it out of repository-wide
   # collection).  Several of its tests import rasterio, which is
-  # quarantined — deliberately outside the supported dependency lock
-  # (ENV-01) — so this job is informational only:
-  # continue-on-error is mandatory, rasterio is NOT installed, and
-  # data/ is never modified.  When the symlink target is absent the
-  # job reports and exits green.
+  # installed from the lock — but the suite itself is absent on a
+  # clean CI checkout (the reconciled dir is gitignored), so this job
+  # is informational only:
+  # continue-on-error is mandatory, and data/ is never modified.
+  # When the directory is absent the job reports and exits green.
   reconciled-geospatial-optional:
     continue-on-error: true
     runs-on: ubuntu-latest
