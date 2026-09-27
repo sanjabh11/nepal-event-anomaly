@@ -1,6 +1,6 @@
 {
  "baseline_head": "54aa612f7d478082716dfe5d0bca7d92d62d493b",
- "content_head": "f3f9e4b9d770d95e0157c44d7917d30c93f951f8",
+ "content_head": "d28e009f4352eeb085ef212226e4550d54e2afb2",
  "files": [
   {
    "relpath": ".github/workflows/p5-verification.yml",
@@ -34,8 +34,8 @@
   },
   {
    "relpath": "README.md",
-   "sha256": "397bc223f18f54d9ccf868cdc1b862dc5e8780bfa175162361c993f4a51d6d8b",
-   "size_bytes": 21238
+   "sha256": "10166e54a213fdb959126d3f8d8b90208ee5da48a27bf49813e0fb1e3d62a69d",
+   "size_bytes": 21519
   },
   {
    "relpath": "conftest.py",
@@ -523,6 +523,11 @@
    "size_bytes": 17036
   },
   {
+   "relpath": "scripts/build_india_release_closure.py",
+   "sha256": "bf92f811fd0369441777d73db1a5ef589bc514d9a479e4475718fc10386a1e08",
+   "size_bytes": 7727
+  },
+  {
    "relpath": "scripts/build_p5_release_closure_v2.py",
    "sha256": "555837a0f61a1031406b1766d98dd9716b96d73c0d8db83d1e869ef35d066dca",
    "size_bytes": 11797
@@ -766,6 +771,11 @@
    "relpath": "tests/test_india_phase0.py",
    "sha256": "1f61284a2e5740eb5979bd85c9ed62ac7f3b9fc26e276655e31e5f29fcf2460d",
    "size_bytes": 29979
+  },
+  {
+   "relpath": "tests/test_india_release_closure.py",
+   "sha256": "45dd635ed78faae8bab73f2d19b2218a341c476840fb5dd36a0279f11c019c4d",
+   "size_bytes": 1561
   },
   {
    "relpath": "tests/test_india_source_registry.py",
@@ -1070,7 +1080,7 @@
  ],
  "generated": "post-P5 phase-B/C bind \u2014 model re-execution proof (MODEL_REEXECUTED both lanes, digest-exact), preregistered promotion protocol, clean-room export + verification-ladder harness, owner-scoped Arm C amendment (retrieval deferred)",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "f3f9e4b9d770d95e0157c44d7917d30c93f951f8",
+ "manifest_commit": "d28e009f4352eeb085ef212226e4550d54e2afb2",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -1080,7 +1090,7 @@
  "test_results": {
   "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
   "claim_scan": "clean on all governed files",
-  "collection_guard": "repo-wide collection == tests/ (4301 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
+  "collection_guard": "repo-wide collection == tests/ (4303 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
   "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
   "full_suite_venv": "4298 passed, 2 skipped, 0 failed, 101 warnings (4300 collected) on pinned .venv (Python 3.14.7) \u2014 post-clean-history-rewrite suite with round-2 India hardening; machine receipt docs/science/SUITE_RECEIPT_20260927_R2.json; skips: 1x CANDIDATE_ONLY cached-artifact gate, 1x no published v4+ release closure",
   "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
