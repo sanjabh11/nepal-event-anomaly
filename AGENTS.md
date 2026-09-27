@@ -9,7 +9,7 @@
 
 ## Environment
 - Python: `integration/.venv/bin/python` (system python lacks xarray). Always pass `-B`.
-- This `integration/` directory is a git worktree on branch `codex/full-framework-v1-20260912-144802` of `/Users/sanjayb/nepal-event-anomaly`. Scripts/tests were committed 2026-09-27 by owner decision; `.venv/` stays gitignored. Whether to merge into `main` remains an open owner decision — do not merge or push without approval.
+- This `integration/` directory is a git worktree on branch `codex/full-framework-v1-20260912-144802` of `/Users/sanjayb/nepal-event-anomaly`. Scripts/tests were committed 2026-09-27 by owner decision; `.venv/` stays gitignored. The branch was merged into `main` (2026-09-27, owner decision) and pushed to `origin` (`sanjabh11/nepal-event-anomaly`).
 
 ## Evidence roots
 - Route-B / ARMC: `/Users/sanjayb/nepal-event-anomaly-evidence/p5-armc-pressure-levels-2026-09-22` (v17-lane, v19-lane, retrieval/)
