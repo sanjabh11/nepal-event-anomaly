@@ -56,7 +56,7 @@ def _git(*args: str) -> str:
 
 def build(repo_root: Path, receipt_path: Path, release_head: str,
           tested_content_head: str, allowed_diff: list[str],
-          remote_inventory: dict) -> dict:
+          remote_inventory: dict, supersedes: str | None = None) -> dict:
     manifest = repo_root / "docs/science/ARTIFACT_MANIFEST_V0.json"
     exclusions = repo_root / "docs/science/MANIFEST_SCOPE_EXCLUSIONS_V0.json"
     return {
@@ -80,6 +80,7 @@ def build(repo_root: Path, receipt_path: Path, release_head: str,
                       "git rev-list --objects --all == 0 payload refs",
         },
         "remote_ref_inventory": remote_inventory,
+        "supersedes": supersedes,
         "disclosures": [
             "GitHub forks, caches, and prior clones may retain the "
             "scrubbed payload bytes; the rewrite cannot retract them.",
@@ -151,13 +152,15 @@ def main() -> int:
     parser.add_argument("--allowed-diff", nargs="*", default=[])
     parser.add_argument("--remote-inventory", type=Path,
                         help="JSON file with remote head/tag inventory")
+    parser.add_argument("--supersedes",
+                        help="closure filename this document supersedes")
     args = parser.parse_args()
     if args.mode == "build":
         inventory = json.loads(args.remote_inventory.read_text()) \
             if args.remote_inventory else {}
         doc = build(REPO, args.receipt, args.release_head,
                     args.tested_content_head, args.allowed_diff,
-                    inventory)
+                    inventory, args.supersedes)
         args.closure.parent.mkdir(parents=True, exist_ok=True)
         import sys
         sys.path.insert(0, str(REPO / "scripts"))
