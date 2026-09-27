@@ -1,6 +1,6 @@
 {
  "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
- "content_head": "f3f5512a492868e3e488b8ac5485b5646ac74d96",
+ "content_head": "b4fe1aa275cd48c99f7bbb0ac8713d2751358825",
  "files": [
   {
    "relpath": ".github/workflows/p5-verification.yml",
@@ -564,8 +564,8 @@
   },
   {
    "relpath": "scripts/india_feasibility_report.py",
-   "sha256": "47f8156a96a932538c08c1a394172a10791fbe706d8186dba271300ed8f9fafd",
-   "size_bytes": 21422
+   "sha256": "1ee4d032c2db55c5a3d50e228452ec42b4f3fa9f7e2dfbd2fa1710657779def3",
+   "size_bytes": 21291
   },
   {
    "relpath": "scripts/india_inventory_metadata.py",
@@ -1065,7 +1065,7 @@
  ],
  "generated": "post-P5 phase-B/C bind \u2014 model re-execution proof (MODEL_REEXECUTED both lanes, digest-exact), preregistered promotion protocol, clean-room export + verification-ladder harness, owner-scoped Arm C amendment (retrieval deferred)",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "f3f5512a492868e3e488b8ac5485b5646ac74d96",
+ "manifest_commit": "b4fe1aa275cd48c99f7bbb0ac8713d2751358825",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
