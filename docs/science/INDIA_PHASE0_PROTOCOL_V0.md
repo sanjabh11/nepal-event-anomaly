@@ -19,6 +19,8 @@ added together or substituted for one another.
 
 The local-only machinery consists of:
 
+- `docs/science/INDIA_INVENTORY_METADATA_V0.json`, pinning official NRSC and
+  CWC inventory metadata without retaining inventory payload bytes;
 - `scripts/india_event_crosswalk.py`, producing
   `INDIA_EVENT_CROSSWALK_V0`;
 - `scripts/india_lake_frame.py`, producing `INDIA_LAKE_FRAME_V0`; and
@@ -30,6 +32,12 @@ exclusive-create JSON plus a sidecar. Existing source rows remain intact.
 Every output carries an explicit all-false authority object covering bulk
 acquisition, weather, satellite, seismic, forecast, warning, detector, odds,
 causal, and operational authority.
+
+The metadata registry is a source-reference boundary, not a lake frame: its
+reported counts cannot be used as event, independent-episode, monitored-site,
+or verified-non-event denominators. Row-level inventory ingestion requires a
+separate approved source crosswalk and remains outside this Phase-0 metadata
+step.
 
 ## Event crosswalk rules
 
