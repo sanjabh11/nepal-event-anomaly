@@ -1,6 +1,6 @@
 {
  "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
- "content_head": "fa961d24aa8b7c354ded4f5424563ac372f34b27",
+ "content_head": "6ae56b223a03ea8e4b794406924f6ff8796e5ae6",
  "files": [
   {
    "relpath": ".github/workflows/p5-verification.yml",
@@ -56,6 +56,11 @@
    "relpath": "docs/science/HAZARD_EVENT_INVENTORY_DECISION_MATRIX_V0.md",
    "sha256": "557fd307be079f699897ffae707cee2f86f43eb27549ab106573b6c8242ebdd3",
    "size_bytes": 11403
+  },
+  {
+   "relpath": "docs/science/INDIA_INVENTORY_METADATA_V0.json",
+   "sha256": "f9a79dca22be3677f118ecf2aacc4a42053aafcb8c3b27f8f7fdd1d0add02fde",
+   "size_bytes": 3759
   },
   {
    "relpath": "docs/science/INDIA_PHASE0_PROTOCOL_V0.md",
@@ -528,6 +533,11 @@
    "size_bytes": 11800
   },
   {
+   "relpath": "scripts/india_inventory_metadata.py",
+   "sha256": "e4c2797415f5b94e023ee7355e2d7f73d13ce4849955dabadfd9894a95b13537",
+   "size_bytes": 5993
+  },
+  {
    "relpath": "scripts/india_lake_frame.py",
    "sha256": "5673a23b77484fc19a196ee24cbab437690453242219babce62367b2a151486d",
    "size_bytes": 14287
@@ -696,6 +706,11 @@
    "relpath": "tests/test_incident_surface.py",
    "sha256": "1c38deadd4bb282617a0d4067476ff11d7dc6cf34cd53dc9ab2287c6151e1470",
    "size_bytes": 5074
+  },
+  {
+   "relpath": "tests/test_india_inventory_metadata.py",
+   "sha256": "f5894e59c809b7e10f39ab7ad4d907520655ad4c8bf10b05426502540ab260a4",
+   "size_bytes": 2264
   },
   {
    "relpath": "tests/test_india_phase0.py",
@@ -1000,7 +1015,7 @@
  ],
  "generated": "post-P5 phase-B/C bind \u2014 model re-execution proof (MODEL_REEXECUTED both lanes, digest-exact), preregistered promotion protocol, clean-room export + verification-ladder harness, owner-scoped Arm C amendment (retrieval deferred)",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "fa961d24aa8b7c354ded4f5424563ac372f34b27",
+ "manifest_commit": "6ae56b223a03ea8e4b794406924f6ff8796e5ae6",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -1010,7 +1025,7 @@
  "test_results": {
   "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
   "claim_scan": "clean on all governed files",
-  "collection_guard": "repo-wide collection == tests/ (4235 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
+  "collection_guard": "repo-wide collection == tests/ (4242 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
   "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
   "full_suite_venv": "4214 passed, 6 skipped, 0 failed, 93 warnings (4220 collected) at 2ef72a7 \u2014 merged main suite, PYTEST_EXIT=0 modulo the REL-01 drift detector that this record itself resolves (prior run measured 4213 passed + that 1 self-referential failure), -rs captured: 5x rasterio not installed in operator venv, 1x CANDIDATE_ONLY cached-artifact gate",
   "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
