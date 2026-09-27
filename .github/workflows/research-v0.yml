@@ -347,11 +347,11 @@ jobs:
           match = re.search(r'\((\d+) nodes?\)', guard)
           assert match, guard
           suite = manifest['test_results']['full_suite_venv']
-          assert '4214 passed' in suite
+          assert '4236 passed' in suite
           assert '6 skipped' in suite
           assert '0 failed' in suite
-          assert '4220 collected' in suite
-          assert int(match.group(1)) == 4220
+          assert '4242 collected' in suite
+          assert int(match.group(1)) == 4242
           assert manifest['manifest_commit'] == manifest['content_head']
           print('P5-A2 status consistency: PASS')
           print('P5-A2 posture: CANDIDATE_ONLY / UNSUPERVISED_STRUCTURE_NOT_STABLE')

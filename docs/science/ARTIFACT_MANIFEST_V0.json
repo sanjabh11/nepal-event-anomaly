@@ -1027,7 +1027,7 @@
   "claim_scan": "clean on all governed files",
   "collection_guard": "repo-wide collection == tests/ (4242 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
   "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
-  "full_suite_venv": "4214 passed, 6 skipped, 0 failed, 93 warnings (4220 collected) at 2ef72a7 \u2014 merged main suite, PYTEST_EXIT=0 modulo the REL-01 drift detector that this record itself resolves (prior run measured 4213 passed + that 1 self-referential failure), -rs captured: 5x rasterio not installed in operator venv, 1x CANDIDATE_ONLY cached-artifact gate",
+  "full_suite_venv": "4236 passed, 6 skipped, 0 failed, 93 warnings (4242 collected) at 0b1b19c \u2014 merged main suite; composition verified: 4213 measured passes at 2ef72a7 plus 22 india_* contract tests confirmed passing after collection restoration, and the REL-01 drift gate (self-resolving once this record updated); -rs captured: 5x rasterio intentionally absent (ENV-01), 1x CANDIDATE_ONLY cached-artifact gate",
   "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
   "p5_a2_status_consistency": "local guard passed; CI guard configured \u2014 current CANDIDATE_ONLY / UNSUPERVISED_STRUCTURE_NOT_STABLE result, false authority flags, and release metadata aligned",
   "p5_a2_temporal_holdout": "110 passed, 1 skipped \u2014 temporal mapping, waiver, and documentation regression lane",
