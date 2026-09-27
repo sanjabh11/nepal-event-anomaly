@@ -1,6 +1,6 @@
 {
  "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
- "content_head": "bb122e1df330bdcff9ed890ac722a6ac6a09585a",
+ "content_head": "50b500f2a52af719551d76ce41b0b489af8cc795",
  "files": [
   {
    "relpath": ".github/workflows/p5-verification.yml",
@@ -9,8 +9,8 @@
   },
   {
    "relpath": ".github/workflows/research-v0.yml",
-   "sha256": "f6e047f80d8e76f99ec4853ff4c9d77d94f7b0b705ef109f0ecd89bc26980a97",
-   "size_bytes": 17952
+   "sha256": "7796ea36fbe935f7ef1682e0a02d0ec537b389c2150239f42700ed9d79b28c25",
+   "size_bytes": 19447
   },
   {
    "relpath": ".gitignore",
@@ -28,9 +28,14 @@
    "size_bytes": 18820
   },
   {
+   "relpath": "LICENSE",
+   "sha256": "819a622f070aa45586c4408827f7793e21e5f4ca4cf146fbc584b519c998ef51",
+   "size_bytes": 1525
+  },
+  {
    "relpath": "README.md",
-   "sha256": "80eee2d14f9ea5ac514459af64af6a5c5f5883007acfce0109578c1834ccb261",
-   "size_bytes": 18392
+   "sha256": "8359f8a55affc7498d0190c19e2d598716e085d9674f61da89b7dc9361038a0d",
+   "size_bytes": 20295
   },
   {
    "relpath": "conftest.py",
@@ -58,14 +63,29 @@
    "size_bytes": 11403
   },
   {
+   "relpath": "docs/science/INDIA_EVIDENCE_REGISTER_V0.json",
+   "sha256": "3994f1ac30d3ea45bf512bdf61458c173ba2c861441e4bc5b207ca740b461383",
+   "size_bytes": 4638
+  },
+  {
    "relpath": "docs/science/INDIA_INVENTORY_METADATA_V0.json",
    "sha256": "f9a79dca22be3677f118ecf2aacc4a42053aafcb8c3b27f8f7fdd1d0add02fde",
    "size_bytes": 3759
   },
   {
+   "relpath": "docs/science/INDIA_INVENTORY_REGISTRY_V1.json",
+   "sha256": "77f7201df1319331cc2a53b6dc3b8c3d10b4f0251231ab7ae4e6903c48ef612e",
+   "size_bytes": 7271
+  },
+  {
    "relpath": "docs/science/INDIA_PHASE0_PROTOCOL_V0.md",
    "sha256": "7741aea26a6860b3c913cd3eba44e96f489c00f828c9384905336c9bc73322dd",
    "size_bytes": 3758
+  },
+  {
+   "relpath": "docs/science/INDIA_PHASE0_PROTOCOL_V1.md",
+   "sha256": "6526e4f3a584be954c54c8236fba0df2e65b1377795ba72ef76e9bd868537505",
+   "size_bytes": 6292
   },
   {
    "relpath": "docs/science/INFORMATION_CUTOFF_TARGET_POLICY_V0.md",
@@ -168,6 +188,11 @@
    "size_bytes": 5471
   },
   {
+   "relpath": "docs/science/PROJECT_LICENSE_DECISION_V0.md",
+   "sha256": "b6955388432756829cb13d45f75ef6ce94828fbab67218c8ac7fefd7b30272d2",
+   "size_bytes": 1932
+  },
+  {
    "relpath": "docs/science/RELEASE_INTEGRITY_THREAT_MODEL_V0.md",
    "sha256": "a5565668b1b658657e1870e38520c4384f6fffc1e443af361f4e4e15e523d63d",
    "size_bytes": 9982
@@ -186,6 +211,11 @@
    "relpath": "docs/science/STATUS_SCOPE_RECONCILIATION_NOTE_20260915.md",
    "sha256": "21af5dd057fb3febae408a525ab1263c897c225d711fa8409e9726f84e7a16f6",
    "size_bytes": 3722
+  },
+  {
+   "relpath": "docs/science/TRACKED_DATA_PROVENANCE_V0.md",
+   "sha256": "2794f5ffd1acc5bde99e06a56036da00905baae5dd7c88d972ba60bae1fed069",
+   "size_bytes": 17414
   },
   {
    "relpath": "docs/science/run_a/HYBRID_ROUTE_RECONCILIATION_V0.md",
@@ -519,18 +549,23 @@
   },
   {
    "relpath": "scripts/india_event_adjudication.py",
-   "sha256": "3e9d3628c53e8eddea0172b1e568ddd84b74e366be6c1f9242c06f03d64ba906",
-   "size_bytes": 9998
+   "sha256": "2d30e541f87994781841a3dfb575fbb63a3be32e45b3de3a2c09a04817442be6",
+   "size_bytes": 12623
   },
   {
    "relpath": "scripts/india_event_crosswalk.py",
-   "sha256": "7559e9c513df5a2d930b193228f31d2e894b4758e292581b2c247a4dc133914d",
-   "size_bytes": 13256
+   "sha256": "a014f780416a0abaadd9c09f8ce96a53ac5adf7ccabfdea4594bdd90362d84b7",
+   "size_bytes": 15734
+  },
+  {
+   "relpath": "scripts/india_evidence_register.py",
+   "sha256": "f2ae4258e63448177bc1100187c4fa8ea42c39952d82a4933d3efde5a7ac4008",
+   "size_bytes": 8869
   },
   {
    "relpath": "scripts/india_feasibility_report.py",
-   "sha256": "6ae39f77b03b8a9764d1240641670a2f99c970c67ffa3cf8ec86a5ec172bc77a",
-   "size_bytes": 11800
+   "sha256": "e1463c2e6b2de86682632e1d6c363c4d63b753633d1d44b5e9b2839f56d27402",
+   "size_bytes": 19312
   },
   {
    "relpath": "scripts/india_inventory_metadata.py",
@@ -539,8 +574,13 @@
   },
   {
    "relpath": "scripts/india_lake_frame.py",
-   "sha256": "5673a23b77484fc19a196ee24cbab437690453242219babce62367b2a151486d",
-   "size_bytes": 14287
+   "sha256": "162c6ab6ed37401267dd6c1affdc092c7d8bc8985b29af5b7c0268c37b963914",
+   "size_bytes": 16760
+  },
+  {
+   "relpath": "scripts/india_source_registry.py",
+   "sha256": "fa43a3e20e8583dd4e08567b4051a2a892fc597cf45b1b520262e2fdf2723194",
+   "size_bytes": 7819
   },
   {
    "relpath": "scripts/materialize_evidence_sidecars.py",
@@ -708,14 +748,24 @@
    "size_bytes": 5074
   },
   {
+   "relpath": "tests/test_india_evidence_register.py",
+   "sha256": "cf2eeb6784a5c0d8213f4337a12c829cd664ed177b52c71ada306aa44b6d164e",
+   "size_bytes": 3981
+  },
+  {
    "relpath": "tests/test_india_inventory_metadata.py",
    "sha256": "f5894e59c809b7e10f39ab7ad4d907520655ad4c8bf10b05426502540ab260a4",
    "size_bytes": 2264
   },
   {
    "relpath": "tests/test_india_phase0.py",
-   "sha256": "146daf68bd9e7e16a555e983b76594c2afe4431fae9acb8ddd9bee5518ec968a",
-   "size_bytes": 14117
+   "sha256": "5efa790f2e077df3536bf4dd8df1a629c9599ed217265b33aeb14b24ced5f8a4",
+   "size_bytes": 22291
+  },
+  {
+   "relpath": "tests/test_india_source_registry.py",
+   "sha256": "2689d802572e41c5802fd723de4936d3dc9dae1952b26685cffc8f769e681640",
+   "size_bytes": 3464
   },
   {
    "relpath": "tests/test_materialize_evidence_sidecars.py",
@@ -1015,7 +1065,7 @@
  ],
  "generated": "post-P5 phase-B/C bind \u2014 model re-execution proof (MODEL_REEXECUTED both lanes, digest-exact), preregistered promotion protocol, clean-room export + verification-ladder harness, owner-scoped Arm C amendment (retrieval deferred)",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "bb122e1df330bdcff9ed890ac722a6ac6a09585a",
+ "manifest_commit": "50b500f2a52af719551d76ce41b0b489af8cc795",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -1025,7 +1075,7 @@
  "test_results": {
   "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
   "claim_scan": "clean on all governed files",
-  "collection_guard": "repo-wide collection == tests/ (4242 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
+  "collection_guard": "repo-wide collection == tests/ (4281 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
   "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
   "full_suite_venv": "4236 passed, 6 skipped, 0 failed, 93 warnings (4242 collected) at 0b1b19c \u2014 merged main suite; composition verified: 4213 measured passes at 2ef72a7 plus 22 india_* contract tests confirmed passing after collection restoration, and the REL-01 drift gate (self-resolving once this record updated); -rs captured: 5x rasterio intentionally absent (ENV-01), 1x CANDIDATE_ONLY cached-artifact gate",
   "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
