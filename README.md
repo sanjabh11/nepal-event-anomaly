@@ -369,7 +369,12 @@ The India feasibility machinery (`scripts/india_*.py`,
   license is recorded in `docs/science/PROJECT_LICENSE_DECISION_V0.md`
   (MIT for project work only — third-party data excluded).
 
-Fresh local suite at the current head is recorded in the dated receipt
-`docs/science/SUITE_RECEIPT_20260927.json`. Suite counts are bound to
-machine-generated receipts only; the manifest's earlier recorded totals
-are preserved as dated history, not overwritten.
+Fresh local suite at the current head is recorded in the dated machine
+receipts `docs/science/SUITE_RECEIPT_20260927_FINAL.json` (verified
+green state: 4,281 passed, 1 skipped, 0 failed, 4,282 collected) and
+`docs/science/SUITE_RECEIPT_20260927.json` (the transitional run whose
+single failure was the REL-01 stale-record consistency gate catching
+the pre-update census — self-resolving, documented as dated evidence).
+Suite counts are bound to machine-generated receipts only; the
+manifest's earlier recorded totals are preserved as dated history, not
+overwritten.
