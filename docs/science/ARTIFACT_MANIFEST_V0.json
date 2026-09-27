@@ -1,6 +1,6 @@
 {
  "baseline_head": "54aa612f7d478082716dfe5d0bca7d92d62d493b",
- "content_head": "d28e009f4352eeb085ef212226e4550d54e2afb2",
+ "content_head": "e7d68b6a9d3f2cf83ba9b2cd36a683ff3fccf3d8",
  "files": [
   {
    "relpath": ".github/workflows/p5-verification.yml",
@@ -101,6 +101,11 @@
    "relpath": "docs/science/MISSION_SCOPE_OVERLAY_V0.md",
    "sha256": "3aab8965c2391e87ab2d768dcbb4c6ef6ef2c3ad9c20a27e201e8c73e8d27fb9",
    "size_bytes": 5758
+  },
+  {
+   "relpath": "docs/science/NEPAL_SCIENCE_GATE_CHECKLIST_V0.json",
+   "sha256": "e880f9381d7aff47574e9528010c57e9ddbfaf8d293daa46366cf719a5847c4e",
+   "size_bytes": 4247
   },
   {
    "relpath": "docs/science/OPEN_DISTRIBUTION_NOTE_V0.md",
@@ -1080,7 +1085,7 @@
  ],
  "generated": "post-P5 phase-B/C bind \u2014 model re-execution proof (MODEL_REEXECUTED both lanes, digest-exact), preregistered promotion protocol, clean-room export + verification-ladder harness, owner-scoped Arm C amendment (retrieval deferred)",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "d28e009f4352eeb085ef212226e4550d54e2afb2",
+ "manifest_commit": "e7d68b6a9d3f2cf83ba9b2cd36a683ff3fccf3d8",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
