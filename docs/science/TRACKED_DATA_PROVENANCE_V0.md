@@ -23,6 +23,12 @@ version, SHA-256, terms, and attribution for bytes that are **no
 longer in the repository**. The per-artifact entries below preserve
 their original `git ls-files`-verified digests from before the scrub.
 
+**Commit-hash translation.** The rewrite changed every commit id.
+References in this record are pre-rewrite ids; post-rewrite equivalents
+(from `.git/filter-repo/commit-map`): `36d6bf9`→`15101fc`,
+`0f0c8a4`→`999fe31`, `9b880cb`→`8b26e76`, `51dd2e1`→`19e37de`,
+`e9b2bef`→`10a73cb`, `67c815a`→`662a8ce`.
+
 ## 1. Purpose and scope
 
 This record documents the source, governing terms, attribution
