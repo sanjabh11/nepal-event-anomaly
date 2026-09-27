@@ -880,6 +880,26 @@
    "relpath": "docs/science/SUITE_RECEIPT_20260927_R3.json.sha256",
    "category": "dated_run_receipt",
    "reason": "integrity sidecar for the dated suite receipt"
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20260928_R1.json",
+   "category": "dated_run_receipt",
+   "reason": "immutable failed pre-retry suite receipt; retained as evidence of the stale manifest collection-count failure"
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20260928_R1.json.sha256",
+   "category": "dated_run_receipt",
+   "reason": "integrity sidecar for the failed pre-retry suite receipt"
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20260928_R2.json",
+   "category": "dated_run_receipt",
+   "reason": "successful full-suite receipt binding the exact tested manifest commit; closure-authoritative result"
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20260928_R2.json.sha256",
+   "category": "dated_run_receipt",
+   "reason": "integrity sidecar for the successful full-suite receipt"
   }
  ],
  "generated_utc": "2026-09-21T05:50:42Z",
