@@ -1,0 +1,108 @@
+{
+  "schema": "NEPAL_SCIENCE_GATE_CHECKLIST_V0",
+  "version": 0,
+  "claim_scope": "research_only_no_operational_authorization",
+  "authority": {
+    "bulk_acquisition_authorized": false,
+    "weather_download_authorized": false,
+    "satellite_bulk_authorized": false,
+    "seismic_waveform_authorized": false,
+    "forecast_authorized": false,
+    "warning_authorized": false,
+    "detector_authorized": false,
+    "odds_authorized": false,
+    "causal_authorized": false,
+    "operational_authorized": false
+  },
+  "purpose": "Machine-readable gate list carrying the Nepal pipeline's governance lessons into the India extension. Every gate is status NOT_READY_UNTIL_PHASE0: India may not progress to the gate's activity until the prerequisite is verified.",
+  "gates": [
+    {
+      "id": "GATE_PIPELINE_ORDER",
+      "lesson": "Source -> timing -> target -> event package -> controls -> holdout -> analysis order",
+      "status": "NOT_READY_UNTIL_PHASE0",
+      "prerequisite": "India adjudicated cohort exists",
+      "applies_when": "now and before any India amendment"
+    },
+    {
+      "id": "GATE_BYTE_BOUND_PROVENANCE",
+      "lesson": "Byte-bound sources, sidecars, manifests, clean-room verification",
+      "status": "NOT_READY_UNTIL_PHASE0",
+      "prerequisite": "current release hardening",
+      "applies_when": "always"
+    },
+    {
+      "id": "GATE_NO_BULK_BEFORE_BOUNDED",
+      "lesson": "No bulk acquisition before a bounded gate",
+      "status": "NOT_READY_UNTIL_PHASE0",
+      "prerequisite": "all India phases",
+      "applies_when": "always"
+    },
+    {
+      "id": "GATE_PRESERVE_NEGATIVE",
+      "lesson": "Preserve negative and indeterminate outcomes",
+      "status": "NOT_READY_UNTIL_PHASE0",
+      "prerequisite": "any analysis",
+      "applies_when": "always"
+    },
+    {
+      "id": "GATE_CLAIM_SEPARATION",
+      "lesson": "Separate descriptive, association, forecast, warning, and operational claims",
+      "status": "NOT_READY_UNTIL_PHASE0",
+      "prerequisite": "all phases",
+      "applies_when": "always"
+    },
+    {
+      "id": "GATE_HUMAN_ADJUDICATION",
+      "lesson": "Human adjudication for event identity, mechanism, territory, recurrence",
+      "status": "NOT_READY_UNTIL_PHASE0",
+      "prerequisite": "before any weather analysis",
+      "applies_when": "adjudication gate in India protocol"
+    },
+    {
+      "id": "GATE_LEAKAGE_AUDIT",
+      "lesson": "FMX/value-level leakage audit",
+      "status": "NOT_READY_UNTIL_PHASE0",
+      "prerequisite": "before any India weather canary",
+      "applies_when": "not yet executed"
+    },
+    {
+      "id": "GATE_CONTROLS_PACKAGE",
+      "lesson": "Controls/opportunity/holdout package",
+      "status": "NOT_READY_UNTIL_PHASE0",
+      "prerequisite": "after event/lake reconciliation, before modeling",
+      "applies_when": "not yet available"
+    },
+    {
+      "id": "GATE_TEMPORAL_GEOGRAPHIC_HOLDOUT",
+      "lesson": "Temporal and geographic holdouts / leave-one-out",
+      "status": "NOT_READY_UNTIL_PHASE0",
+      "prerequisite": "before any India regime or association fit",
+      "applies_when": "not yet applicable"
+    },
+    {
+      "id": "GATE_STABILITY_NULLS",
+      "lesson": "Deterministic scaling, label-invariant stability, nulls, sensitivity checks",
+      "status": "NOT_READY_UNTIL_PHASE0",
+      "prerequisite": "India science protocol, before fitting",
+      "applies_when": "not yet applicable"
+    },
+    {
+      "id": "GATE_FORECAST_VINTAGES",
+      "lesson": "Archived issue-time forecast vintages",
+      "status": "NOT_READY_UNTIL_PHASE0",
+      "prerequisite": "required only for any future forecast claim",
+      "applies_when": "not applicable to Phase 0"
+    },
+    {
+      "id": "GATE_NO_NEPAL_PRIOR_TRANSFER",
+      "lesson": "Nepal result values, K settings, regime labels, or the +0.317 anomaly must not transfer",
+      "status": "NOT_READY_UNTIL_PHASE0",
+      "prerequisite": "never use as India priors or success criteria",
+      "applies_when": "correctly not transferred"
+    }
+  ],
+  "notes": [
+    "Downstream scientific safeguards are intentionally deferred until India has a real adjudicated cohort.",
+    "This checklist authorizes nothing; it records gates that must open in sequence."
+  ]
+}
