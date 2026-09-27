@@ -16,12 +16,15 @@ AMENDMENT = Path("/Users/sanjayb/nepal-event-anomaly-evidence/p5-glof-2026-09-19
 MAPPING_PATH = EVIDENCE / "armc_event_episode_mapping_v0.json"
 PROTOCOL_PATH = EVIDENCE / "armc_v17_protocol_v0.json"
 DECISION_PATH = EVIDENCE / "armc_event_adjudication_decision_v0.json"
-if not MAPPING_PATH.is_file():
-    pytest.skip("operator-local ARMC evidence lane absent (CI checkout)",
-                allow_module_level=True)
-MAPPING = json.loads(MAPPING_PATH.read_text())
-PROTOCOL = json.loads(PROTOCOL_PATH.read_text())
-DECISION = json.loads(DECISION_PATH.read_text())
+if MAPPING_PATH.is_file():
+    MAPPING = json.loads(MAPPING_PATH.read_text())
+    PROTOCOL = json.loads(PROTOCOL_PATH.read_text())
+    DECISION = json.loads(DECISION_PATH.read_text())
+else:
+    MAPPING = PROTOCOL = DECISION = None
+pytestmark = pytest.mark.skipif(
+    MAPPING is None,
+    reason="operator-local ARMC evidence lane absent (CI checkout)")
 
 
 def build(mapping=MAPPING, protocol=PROTOCOL, decision=DECISION):

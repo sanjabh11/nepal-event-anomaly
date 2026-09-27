@@ -7,11 +7,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import armc_v17_request_plan as rp
 
 EVID = Path("/Users/sanjayb/nepal-event-anomaly-evidence/p5-armc-pressure-levels-2026-09-22/retrieval")
-if not (EVID / "armc_event_episode_mapping_v0.json").is_file():
-    pytest.skip("operator-local ARMC evidence lane absent (CI checkout)",
-                allow_module_level=True)
-MAP = json.loads((EVID / "armc_event_episode_mapping_v0.json").read_text())
-PLAN = json.loads((EVID / "armc_v17_request_plan_v0.json").read_text())
+if (EVID / "armc_event_episode_mapping_v0.json").is_file():
+    MAP = json.loads((EVID / "armc_event_episode_mapping_v0.json").read_text())
+    PLAN = json.loads((EVID / "armc_v17_request_plan_v0.json").read_text())
+else:
+    MAP = PLAN = None
+pytestmark = pytest.mark.skipif(
+    MAP is None,
+    reason="operator-local ARMC evidence lane absent (CI checkout)")
 
 def test_request_count():
     assert len(PLAN["requests"]) == 14 * 14  # 14 units x (10 single + 4 pressure)
