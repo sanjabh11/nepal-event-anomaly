@@ -1,0 +1,437 @@
+{
+  "note": "Metadata-only query via CDSE STAC API. No imagery downloaded. No authentication required for search.",
+  "query_parameters": {
+    "bbox": [
+      85.28,
+      28.02,
+      85.78,
+      28.56
+    ],
+    "cloud_cover_lt": 20,
+    "collections": [
+      "sentinel-2-l2a"
+    ],
+    "datetime": "2024-11-01T00:00:00Z/2025-03-31T23:59:59Z"
+  },
+  "query_url": "https://stac.dataspace.copernicus.eu/v1/search",
+  "scene_count": 52,
+  "scenes": [
+    {
+      "cloud_cover": 0.059523,
+      "datetime": "2025-03-29T04:52:31.024Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2A_MSIL2A_20250329T045231_N0511_R076_T45RUM_20250329T100559",
+      "platform": "sentinel-2a",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(bee422fc-568b-43cb-9bef-90d91f416231)/$value"
+    },
+    {
+      "cloud_cover": 1.726685,
+      "datetime": "2025-03-27T04:47:21.025Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2C_MSIL2A_20250327T044721_N0511_R076_T45RUM_20250327T094313",
+      "platform": "sentinel-2c",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(6d6cf761-23a3-4fad-8364-b83f6072216e)/$value"
+    },
+    {
+      "cloud_cover": 0.039806,
+      "datetime": "2025-03-25T04:56:59.024Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2B_MSIL2A_20250325T045659_N0511_R119_T45RUM_20250325T074633",
+      "platform": "sentinel-2b",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(a98e403a-4635-40c8-924b-9943e3bfb920)/$value"
+    },
+    {
+      "cloud_cover": 12.648879,
+      "datetime": "2025-03-20T04:57:21.025Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2C_MSIL2A_20250320T045721_N0511_R119_T45RUM_20250320T103315",
+      "platform": "sentinel-2c",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(6654486b-2871-4432-9a24-3e24cc7a0a00)/$value"
+    },
+    {
+      "cloud_cover": 13.32,
+      "datetime": "2025-03-15T04:56:59.024Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2B_MSIL2A_20250315T045659_N0511_R119_T45RUM_20250315T083847",
+      "platform": "sentinel-2b",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(c327924c-c11a-4ad9-878f-9888aa5f5c81)/$value"
+    },
+    {
+      "cloud_cover": 13.75,
+      "datetime": "2025-03-15T04:56:59.024Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2B_MSIL2A_20250315T045659_N0511_R119_T45RUM_20250315T075700",
+      "platform": "sentinel-2b",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(6bae0c0b-109b-4b9d-b154-f71f46dd96ea)/$value"
+    },
+    {
+      "cloud_cover": 1.59,
+      "datetime": "2025-03-05T04:56:59.024Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2B_MSIL2A_20250305T045659_N0511_R119_T45RUM_20250305T071002",
+      "platform": "sentinel-2b",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(0ce8f7e1-9019-4378-a057-d606b5d10be5)/$value"
+    },
+    {
+      "cloud_cover": 0.18,
+      "datetime": "2025-03-02T04:46:59.024Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2B_MSIL2A_20250302T044659_N0511_R076_T45RUM_20250302T065927",
+      "platform": "sentinel-2b",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(45220c87-10de-4119-84fd-5aee91465ce3)/$value"
+    },
+    {
+      "cloud_cover": 0.811794,
+      "datetime": "2025-02-25T04:48:21.025Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2C_MSIL2A_20250225T044821_N0511_R076_T45RUM_20250225T094112",
+      "platform": "sentinel-2c",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(47f1bb21-9724-4b44-a2ad-d89104554150)/$value"
+    },
+    {
+      "cloud_cover": 11.55,
+      "datetime": "2025-02-13T04:58:29.024Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2B_MSIL2A_20250213T045829_N0511_R119_T45RUM_20250213T070437",
+      "platform": "sentinel-2b",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(5ce19062-86e6-4e07-acfb-341dfc831815)/$value"
+    },
+    {
+      "cloud_cover": 12.15,
+      "datetime": "2025-02-10T04:48:39.024Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2B_MSIL2A_20250210T044839_N0511_R076_T45RUM_20250210T065139",
+      "platform": "sentinel-2b",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(7abaac54-acd2-4430-929b-32ac8f729e65)/$value"
+    },
+    {
+      "cloud_cover": 0.100205,
+      "datetime": "2025-02-08T05:00:11.024Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2C_MSIL2A_20250208T050011_N0511_R119_T45RUM_20250208T081913",
+      "platform": "sentinel-2c",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(7e00850e-5a11-492c-b92c-a38221d959da)/$value"
+    },
+    {
+      "cloud_cover": 8.586346,
+      "datetime": "2025-02-05T04:50:31.025Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2C_MSIL2A_20250205T045031_N0511_R076_T45RUM_20250205T082811",
+      "platform": "sentinel-2c",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(fd2085c9-e757-4f6d-8945-7035550d5df7)/$value"
+    },
+    {
+      "cloud_cover": 0.02279,
+      "datetime": "2025-02-03T04:59:29.024Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2B_MSIL2A_20250203T045929_N0511_R119_T45RUM_20250203T070148",
+      "platform": "sentinel-2b",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(77c2b4f7-98bc-476d-8017-eb011110044b)/$value"
+    },
+    {
+      "cloud_cover": 0.04,
+      "datetime": "2025-01-31T04:49:39.024Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2B_MSIL2A_20250131T044939_N0511_R076_T45RUM_20250131T082914",
+      "platform": "sentinel-2b",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(9716df6d-c028-4d1b-96fa-6cf4586b3d75)/$value"
+    },
+    {
+      "cloud_cover": 11.919257,
+      "datetime": "2025-01-29T05:01:11.025Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2C_MSIL2A_20250129T050111_N0511_R119_T45RUM_20250129T082711",
+      "platform": "sentinel-2c",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(0add44aa-3c11-4a65-b082-dd2862a2179d)/$value"
+    },
+    {
+      "cloud_cover": 0.28,
+      "datetime": "2025-01-26T04:51:21.025Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2C_MSIL2A_20250126T045121_N0511_R076_T45RUM_20250126T083910",
+      "platform": "sentinel-2c",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(1a465e2d-efc0-47ed-8dda-752f82401717)/$value"
+    },
+    {
+      "cloud_cover": 0.04,
+      "datetime": "2025-01-24T05:00:19.024Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2B_MSIL2A_20250124T050019_N0511_R119_T45RUM_20250124T073137",
+      "platform": "sentinel-2b",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(5b2bf829-413e-442c-90d2-0d200fc9ec1f)/$value"
+    },
+    {
+      "cloud_cover": 0.08,
+      "datetime": "2025-01-21T04:50:19.024Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2B_MSIL2A_20250121T045019_N0511_R076_T45RUM_20250121T084038",
+      "platform": "sentinel-2b",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(e99cd724-6e16-4a3f-95ef-6adc94cc776e)/$value"
+    },
+    {
+      "cloud_cover": 0.02,
+      "datetime": "2025-01-19T05:01:21.024Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2A_MSIL2A_20250119T050121_N0511_R119_T45RUM_20250119T091953",
+      "platform": "sentinel-2a",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(1268067c-1777-41d4-9d69-3a2f27fb36a3)/$value"
+    },
+    {
+      "cloud_cover": 0.03,
+      "datetime": "2025-01-14T05:00:49.024Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2B_MSIL2A_20250114T050049_N0511_R119_T45RUM_20250114T074207",
+      "platform": "sentinel-2b",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(856f6f50-78f3-441e-bbc9-f87b48808088)/$value"
+    },
+    {
+      "cloud_cover": 0.12,
+      "datetime": "2025-01-11T04:50:59.024Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2B_MSIL2A_20250111T045059_N0511_R076_T45RUM_20250111T065421",
+      "platform": "sentinel-2b",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(03cb7588-fe57-4235-b7aa-b0a835c899ec)/$value"
+    },
+    {
+      "cloud_cover": 8.78,
+      "datetime": "2025-01-06T04:52:01.024Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2A_MSIL2A_20250106T045201_N0511_R076_T45RUM_20250106T074400",
+      "platform": "sentinel-2a",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(82138717-d333-497b-ae7e-6af6666d73d3)/$value"
+    },
+    {
+      "cloud_cover": 0.06,
+      "datetime": "2025-01-04T05:01:19.024Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2B_MSIL2A_20250104T050119_N0511_R119_T45RUM_20250104T131944",
+      "platform": "sentinel-2b",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(70eccb0e-15ff-4c1f-90a3-f07e32e6611f)/$value"
+    },
+    {
+      "cloud_cover": 0.04,
+      "datetime": "2025-01-01T04:51:19.024Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2B_MSIL2A_20250101T045119_N0511_R076_T45RUM_20250101T070100",
+      "platform": "sentinel-2b",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(33c4f4ce-7409-4c63-85a2-31421d4a86a2)/$value"
+    },
+    {
+      "cloud_cover": 0.08,
+      "datetime": "2024-12-30T05:02:21.024000Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2A_MSIL2A_20241230T050221_N0511_R119_T45RUM_20241230T073650",
+      "platform": "sentinel-2a",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(76905c9e-11f9-4cc6-a1c2-7624f9e39af7)/$value"
+    },
+    {
+      "cloud_cover": 0.92,
+      "datetime": "2024-12-27T04:52:21.024000Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2A_MSIL2A_20241227T045221_N0511_R076_T45RUM_20241227T083652",
+      "platform": "sentinel-2a",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(b8188cae-551f-496d-b1fd-34c8071906e2)/$value"
+    },
+    {
+      "cloud_cover": 0.19,
+      "datetime": "2024-12-22T04:51:29.024000Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2B_MSIL2A_20241222T045129_N0511_R076_T45RUM_20241222T082708",
+      "platform": "sentinel-2b",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(2a9d494c-e903-426d-aa22-bf8dc660903a)/$value"
+    },
+    {
+      "cloud_cover": 0.02,
+      "datetime": "2024-12-20T05:02:21.024000Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2A_MSIL2A_20241220T050221_N0511_R119_T45RUM_20241220T081558",
+      "platform": "sentinel-2a",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(fd1bfae2-778b-4d47-bc0f-04a15251ed4d)/$value"
+    },
+    {
+      "cloud_cover": 4.09,
+      "datetime": "2024-12-17T04:52:41.025000Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2C_MSIL2A_20241217T045241_N9905_R076_T45RUM_20241217T093209",
+      "platform": "sentinel-2c",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(5f76a9a5-a3ce-4a92-bfd8-9423f4c98c52)/$value"
+    },
+    {
+      "cloud_cover": 4.05,
+      "datetime": "2024-12-17T04:52:41.025000Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2C_MSIL2A_20241217T045241_N0511_R076_T45RUM_20260409T135151",
+      "platform": "sentinel-2c",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(c90e2c24-a2a8-46ac-a087-896c243444b9)/$value"
+    },
+    {
+      "cloud_cover": 3.94,
+      "datetime": "2024-12-17T04:52:21.024000Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2A_MSIL2A_20241217T045221_N0511_R076_T45RUM_20241217T073547",
+      "platform": "sentinel-2a",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(6e54d47e-de82-4881-bf00-7c2fe8592b23)/$value"
+    },
+    {
+      "cloud_cover": 0.01,
+      "datetime": "2024-12-15T05:01:29.024000Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2B_MSIL2A_20241215T050129_N0511_R119_T45RUM_20241215T070856",
+      "platform": "sentinel-2b",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(9c09f3ab-657a-4a99-a875-a3667909b89c)/$value"
+    },
+    {
+      "cloud_cover": 0.09,
+      "datetime": "2024-12-12T04:51:19.024000Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2B_MSIL2A_20241212T045119_N0511_R076_T45RUM_20241212T074420",
+      "platform": "sentinel-2b",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(8bb2e56d-d541-4a8d-b5cd-f1122bc79f36)/$value"
+    },
+    {
+      "cloud_cover": 0.95,
+      "datetime": "2024-12-10T05:02:41.025000Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2C_MSIL2A_20241210T050241_N9905_R119_T45RUM_20241210T085312",
+      "platform": "sentinel-2c",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(952d1982-83f2-47ba-8458-22c79c88bfef)/$value"
+    },
+    {
+      "cloud_cover": 0.95,
+      "datetime": "2024-12-10T05:02:41.025000Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2C_MSIL2A_20241210T050241_N0511_R119_T45RUM_20260519T142335",
+      "platform": "sentinel-2c",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(ee9f793e-984c-4322-8c78-1e57e6506e27)/$value"
+    },
+    {
+      "cloud_cover": 0.91,
+      "datetime": "2024-12-10T05:02:11.024000Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2A_MSIL2A_20241210T050211_N0511_R119_T45RUM_20241210T081801",
+      "platform": "sentinel-2a",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(ec96e97a-f059-46a3-8076-d1ebeda2c4d2)/$value"
+    },
+    {
+      "cloud_cover": 0.45,
+      "datetime": "2024-12-07T04:52:31.025000Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2C_MSIL2A_20241207T045231_N0511_R076_T45RUM_20260529T024410",
+      "platform": "sentinel-2c",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(a75742a3-f39f-4bac-ac38-f7e0e2ca6999)/$value"
+    },
+    {
+      "cloud_cover": 0.45,
+      "datetime": "2024-12-07T04:52:01.024000Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2A_MSIL2A_20241207T045201_N0511_R076_T45RUM_20241207T073551",
+      "platform": "sentinel-2a",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(385d5e6a-3277-47af-b5a8-bd2e02ad1607)/$value"
+    },
+    {
+      "cloud_cover": 0.03,
+      "datetime": "2024-12-02T04:51:39.024000Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2B_MSIL2A_20241202T045139_N0511_R076_T45RUM_20241202T065819",
+      "platform": "sentinel-2b",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(8879faf2-32c7-4311-a2ce-c0034c3ec2a4)/$value"
+    },
+    {
+      "cloud_cover": 0.27,
+      "datetime": "2024-11-30T05:01:51.024000Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2A_MSIL2A_20241130T050151_N0511_R119_T45RUM_20241130T080847",
+      "platform": "sentinel-2a",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(a3d9eea2-7078-41d5-a32e-06edff9584a4)/$value"
+    },
+    {
+      "cloud_cover": 7.16,
+      "datetime": "2024-11-27T04:59:11.025000Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2C_MSIL2A_20241127T045911_N0511_R076_T45RUM_20260617T063929",
+      "platform": "sentinel-2c",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(a0ed212a-333b-48d5-89b2-b5932bbfac33)/$value"
+    },
+    {
+      "cloud_cover": 7.07,
+      "datetime": "2024-11-27T04:51:31.024000Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2A_MSIL2A_20241127T045131_N0511_R076_T45RUM_20241127T080251",
+      "platform": "sentinel-2a",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(0c649d0e-030f-4f7f-a21e-fda5a20cba96)/$value"
+    },
+    {
+      "cloud_cover": 0.83,
+      "datetime": "2024-11-25T05:00:39.024000Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2B_MSIL2A_20241125T050039_N0511_R119_T45RUM_20241125T073147",
+      "platform": "sentinel-2b",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(fc0d002d-2a37-44de-b910-83e4ae6943f5)/$value"
+    },
+    {
+      "cloud_cover": 7.18,
+      "datetime": "2024-11-20T05:01:11.024000Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2A_MSIL2A_20241120T050111_N0511_R119_T45RUM_20241120T082053",
+      "platform": "sentinel-2a",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(2f932dcf-ad7b-437d-b649-15e93695ce3a)/$value"
+    },
+    {
+      "cloud_cover": 0.42,
+      "datetime": "2024-11-17T04:59:11.025000Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2C_MSIL2A_20241117T045911_N0511_R076_T45RUM_20260626T192923",
+      "platform": "sentinel-2c",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(0938db80-5957-4d7c-ab4f-73b81f93f792)/$value"
+    },
+    {
+      "cloud_cover": 0.31,
+      "datetime": "2024-11-17T04:51:01.024000Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2A_MSIL2A_20241117T045101_N0511_R076_T45RUM_20241117T085951",
+      "platform": "sentinel-2a",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(c20e2c21-db85-48d5-8f9f-5d6c855239f8)/$value"
+    },
+    {
+      "cloud_cover": 0.22,
+      "datetime": "2024-11-15T04:59:59.024000Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2B_MSIL2A_20241115T045959_N0511_R119_T45RUM_20241115T160526",
+      "platform": "sentinel-2b",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(841191eb-dcf1-4aa3-bd01-68be9a456b0e)/$value"
+    },
+    {
+      "cloud_cover": 11.26,
+      "datetime": "2024-11-12T04:49:29.024000Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2B_MSIL2A_20241112T044929_N0511_R076_T45RUM_20241112T070650",
+      "platform": "sentinel-2b",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(61ad1911-846e-4f5c-8687-adaaf8f179ae)/$value"
+    },
+    {
+      "cloud_cover": 2.5,
+      "datetime": "2024-11-07T04:59:11.025000Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2C_MSIL2A_20241107T045911_N0511_R076_T45RUM_20260704T090659",
+      "platform": "sentinel-2c",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(39bfb01a-6e55-4e06-9cb4-6b4fd8a7e663)/$value"
+    },
+    {
+      "cloud_cover": 2.3,
+      "datetime": "2024-11-07T04:50:11.024000Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2A_MSIL2A_20241107T045011_N0511_R076_T45RUM_20241107T152346",
+      "platform": "sentinel-2a",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(2842a6f4-b429-4f1d-a3d8-a5bba5afabbd)/$value"
+    },
+    {
+      "cloud_cover": 18.27,
+      "datetime": "2024-11-02T04:48:49.024000Z",
+      "grid_code": "MGRS-45RUM",
+      "id": "S2B_MSIL2A_20241102T044849_N0511_R076_T45RUM_20241102T071432",
+      "platform": "sentinel-2b",
+      "thumbnail_href": "https://datahub.creodias.eu/odata/v1/Assets(7ca7d33d-ff7e-4471-9296-85c266efe08c)/$value"
+    }
+  ],
+  "schema_version": "2.0.0-reconciled"
+}

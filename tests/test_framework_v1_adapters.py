@@ -8,9 +8,11 @@ import pytest
 
 from nepal.framework_v1 import contract as C
 from nepal.framework_v1.adapters import (
+    BInputBundle,
     TargetGrid,
     _load_b_observability,
     build_b_screen,
+    build_b_screen_from_bundle,
     load_b_input_bundle,
     load_verified_b_input_bundle,
     per_unit_winter_observability,
@@ -20,14 +22,15 @@ from nepal.framework_v1.adapters import (
     validate_target_array,
 )
 from nepal.framework_v1.controls import ControlsConfig, create_controls_lock
+from nepal.framework_v1.input_manifest import InputManifestVerification
 from nepal.framework_v1.provenance import bind_gate_artifact, verify_artifact_envelope
 
 
 def _verified_manifest():
-    return {
-        "ok": True,
-        "can_run_primary": True,
-        "checks": {
+    return InputManifestVerification(
+        ok=True,
+        can_run_primary=True,
+        checks={
             "manifest_sha256": "a" * 64,
             "self_hash_verified": True,
             "contract_bound": True,
@@ -35,8 +38,7 @@ def _verified_manifest():
             "framework_contract_runtime_bound": True,
             "canonical_manifest_authorized": True,
             "raw_slc_scan": "PASS",
-        },
-    }
+        })
 
 
 def _verified_a_gate():
@@ -200,6 +202,33 @@ class TestPerUnitObservability:
 
 
 class TestStrictBAssembly:
+    def test_bundle_b_rejects_direct_a_gate_without_outer_envelope(self):
+        bundle = BInputBundle(
+            C.PHASE_STATUS_LOAD_READY,
+            _verified_manifest(),
+        )
+        result = build_b_screen_from_bundle(
+            bundle,
+            controls_lock=create_controls_lock(
+                ControlsConfig(expected_winter_pairs=1)),
+            a_gate_artifact=_verified_a_gate(),
+        )
+        assert result["status"] == "BLOCKED"
+        assert any("outer artifact envelope is required" in error
+                   for error in result["errors"])
+
+    def test_direct_b_rejects_forged_manifest_mapping(self):
+        result = build_b_screen(
+            {}, {}, {},
+            controls_lock=create_controls_lock(
+                ControlsConfig(expected_winter_pairs=1)),
+            a_gate_artifact=_verified_a_gate(),
+            manifest_verification=_verified_manifest().to_dict(),
+        )
+        assert result["status"] == "BLOCKED"
+        assert any("typed input manifest verification" in error
+                   for error in result["errors"])
+
     def test_caller_gate_boolean_cannot_authorize_b_without_a_artifact(self):
         result = build_b_screen(
             {}, {}, {},
@@ -222,6 +251,49 @@ class TestStrictBAssembly:
         assert result["status"] == "BLOCKED"
         assert any("manifest verification" in error
                    for error in result["errors"])
+
+    def test_direct_b_assembly_enforces_component_value_domains(self):
+        shape = (300, 300)
+        terrain = {name: np.ones(shape, dtype=float)
+                   for name in C.ACTIVE_TERRAIN_COMPONENTS}
+        exposure = {name: np.ones(shape, dtype=float)
+                    for name in C.ACTIVE_EXPOSURE_COMPONENTS}
+        exposure["built_up"][0, 0] = -1.0
+        result = build_b_screen(
+            terrain, exposure, {},
+            controls_lock=create_controls_lock(
+                ControlsConfig(expected_winter_pairs=1)),
+            a_gate_artifact=_verified_a_gate(),
+            manifest_verification=_verified_manifest(),
+        )
+        assert result["status"] == "BLOCKED"
+        assert any("built-up surface" in error for error in result["errors"])
+        assert result["blocked_reasons"] == result["errors"]
+
+    def test_direct_b_rejects_infinity_and_non_numeric_arrays(self):
+        infinity_result = build_b_screen(
+            {"slope": np.full((300, 300), np.inf)},
+            {}, {},
+            controls_lock=create_controls_lock(
+                ControlsConfig(expected_winter_pairs=1)),
+            a_gate_artifact=_verified_a_gate(),
+            manifest_verification=_verified_manifest(),
+        )
+        assert infinity_result["status"] == "BLOCKED"
+        assert any("infinite" in error.lower()
+                   for error in infinity_result["errors"])
+
+        non_numeric_result = build_b_screen(
+            {"slope": np.asarray([["not-a-number"]], dtype=object)},
+            {}, {},
+            controls_lock=create_controls_lock(
+                ControlsConfig(expected_winter_pairs=1)),
+            a_gate_artifact=_verified_a_gate(),
+            manifest_verification=_verified_manifest(),
+        )
+        assert non_numeric_result["status"] == "BLOCKED"
+        assert any("numeric" in error.lower()
+                   for error in non_numeric_result["errors"])
 
     def test_missing_optional_population_is_reported_not_imputed(self):
         shape = (300, 300)
@@ -281,8 +353,10 @@ class TestStrictBAssembly:
         assert result["gate_passed"] is False
         assert checkpoint.exists()
         assert checkpoint.read_text().find('"status":"TIMEOUT"') >= 0
+        checkpoint_payload = json.loads(checkpoint.read_text(encoding="utf-8"))
+        assert verify_artifact_envelope(checkpoint_payload) == (True, [])
 
-    def test_b_screen_with_complete_map_has_explicit_gate(self):
+    def test_b_screen_with_complete_map_has_explicit_gate(self, tmp_path):
         shape = (300, 300)
         terrain = {name: np.ones(shape, dtype=float)
                    for name in C.TERRAIN_COMPONENTS}
@@ -303,6 +377,7 @@ class TestStrictBAssembly:
             a_gate_artifact=_verified_a_gate(),
             manifest_verification=_verified_manifest(),
             sidecar_grids={"thermal": np.zeros(shape)},
+            checkpoint_path=tmp_path / "b_checkpoint.json",
         )
         assert result["gate"]["gate_id"] == "B_TO_C"
         assert result["gate"]["checks"][
@@ -311,6 +386,10 @@ class TestStrictBAssembly:
         assert result["status"] == C.PHASE_STATUS_SCREEN_RANKED
         assert result["phase_status"] == C.PHASE_STATUS_B_TO_C_READY
         assert verify_artifact_envelope(result) == (True, [])
+        checkpoint = json.loads(
+            (tmp_path / "b_checkpoint.json").read_text(encoding="utf-8"))
+        assert verify_artifact_envelope(checkpoint) == (True, [])
+        assert checkpoint["result_artifact_sha256"] == result["artifact_sha256"]
 
 
 def test_b_input_loader_is_read_only_and_fail_closed_without_manifest(tmp_path):
@@ -332,6 +411,58 @@ def test_verified_b_loader_requires_both_explicit_contract_hashes(tmp_path):
     )
     assert bundle.status == "BLOCKED"
     assert any("explicit" in error for error in bundle.errors)
+
+
+def test_verified_b_loader_rejects_stale_runtime_framework_hash(tmp_path):
+    bundle = load_verified_b_input_bundle(
+        tmp_path,
+        expected_contract_sha256="a" * 64,
+        expected_framework_contract_sha256="0" * 64,
+    )
+    assert bundle.status == "BLOCKED"
+    assert any("runtime framework contract" in error.lower()
+               for error in bundle.errors)
+
+
+def test_verified_b_loader_requires_trusted_manifest_file_anchor(tmp_path):
+    bundle = load_verified_b_input_bundle(
+        tmp_path,
+        expected_contract_sha256="a" * 64,
+        expected_framework_contract_sha256=C.contract_hash(),
+    )
+    assert bundle.status == "BLOCKED"
+    assert any("trusted_manifest_file_sha256" in error
+               for error in bundle.errors)
+
+
+def test_verified_b_loader_rejects_manifest_file_anchor_mismatch(tmp_path):
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    bundle = load_verified_b_input_bundle(
+        tmp_path,
+        manifest_path=manifest_path,
+        trusted_manifest_file_sha256="f" * 64,
+        candidate_generation_id="GEN-TEST",
+        expected_contract_sha256="a" * 64,
+        expected_framework_contract_sha256=C.contract_hash(),
+    )
+    assert bundle.status == "BLOCKED"
+    assert any("file anchor" in error or "trusted" in error
+               for error in bundle.errors)
+
+
+def test_verified_b_loader_rejects_mapping_with_file_anchor(tmp_path):
+    bundle = load_verified_b_input_bundle(
+        tmp_path, {"schema_version": "x"},
+        manifest_path=tmp_path / "manifest.json",
+        trusted_manifest_file_sha256="e" * 64,
+        candidate_generation_id="GEN-TEST",
+        expected_contract_sha256="a" * 64,
+        expected_framework_contract_sha256=C.contract_hash(),
+    )
+    assert bundle.status == "BLOCKED"
+    assert any("detached mapping" in error or "mapping" in error
+               for error in bundle.errors)
 
 
 def test_current_reconciled_handoff_stays_blocked_until_semantic_b_inputs_exist():

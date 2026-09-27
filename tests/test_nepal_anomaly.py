@@ -400,5 +400,99 @@ class TestGapFixes:
         assert abs(np.sin(angle_180) - np.sin(angle_neg180)) < 1e-10
 
 
+class TestResearchInputIntegrity:
+    @pytest.mark.parametrize("variable", ["tp", "sf"])
+    @pytest.mark.parametrize("frequency,periods", [("D", 2), ("h", 48)])
+    def test_missing_accumulations_remain_missing(
+        self, variable: str, frequency: str, periods: int
+    ) -> None:
+        from feature_extraction import compute_thermal_indices
+
+        frame = pd.DataFrame(
+            {"t2m": 2.0, variable: np.nan},
+            index=pd.date_range("2020-07-01", periods=periods, freq=frequency),
+        )
+        original = frame.copy(deep=True)
+        result = compute_thermal_indices(frame, 4322)
+        assert result[f"{variable}_daily"].isna().all()
+        pd.testing.assert_frame_equal(frame, original)
+
+    @pytest.mark.parametrize("variable", ["tp", "sf"])
+    def test_observed_daily_zero_and_total_are_preserved(self, variable: str) -> None:
+        from feature_extraction import compute_thermal_indices
+
+        frame = pd.DataFrame(
+            {"t2m": 2.0, variable: [0.0, 3.0]},
+            index=pd.date_range("2020-07-01", periods=2),
+        )
+        result = compute_thermal_indices(frame, 4322)
+        assert result[f"{variable}_daily"].tolist() == [0.0, 3.0]
+
+    @pytest.mark.parametrize(
+        "case",
+        ["five_days", "duplicate", "gap", "nan", "infinity", "text",
+         "no_features", "missing_feature", "non_midnight", "short_bounds"],
+    )
+    def test_invalid_gmm_window_is_not_scored(self, case: str) -> None:
+        from unittest.mock import Mock
+        from gmm_false_positive import compute_7day_occupancy
+
+        start = pd.Timestamp("2020-07-01")
+        end = start + pd.Timedelta(days=6)
+        index = pd.date_range(start, periods=7)
+        values = [1.0] * 7
+        features = ["temperature"]
+        if case == "five_days":
+            index, values = index[:5], values[:5]
+        elif case == "duplicate":
+            index = pd.DatetimeIndex([*index[:6], index[5]])
+        elif case == "gap":
+            index = pd.DatetimeIndex([*index[:6], index[-1] + pd.Timedelta(days=1)])
+            end += pd.Timedelta(days=1)
+        elif case == "nan":
+            values[3] = np.nan
+        elif case == "infinity":
+            values[3] = np.inf
+        elif case == "text":
+            values[3] = "invalid"
+        elif case == "no_features":
+            features = []
+        elif case == "missing_feature":
+            features = ["absent"]
+        elif case == "non_midnight":
+            start += pd.Timedelta(hours=12)
+            end += pd.Timedelta(hours=12)
+            index += pd.Timedelta(hours=12)
+        elif case == "short_bounds":
+            end -= pd.Timedelta(days=1)
+        frame = pd.DataFrame({"temperature": values}, index=index)
+        model = Mock(n_components=2)
+        model.predict.side_effect = lambda rows: np.zeros(len(rows), dtype=int)
+        assert compute_7day_occupancy(frame, model, features, start, end) is None
+        model.predict.assert_not_called()
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_complete_gmm_window_has_normalized_occupancy(self, reverse: bool) -> None:
+        from unittest.mock import Mock
+        from gmm_false_positive import compute_7day_occupancy
+
+        start = pd.Timestamp("2020-07-01")
+        frame = pd.DataFrame(
+            {"temperature": np.arange(9, dtype=float)},
+            index=pd.date_range(start - pd.Timedelta(days=1), periods=9),
+        )
+        if reverse:
+            frame = frame.iloc[::-1]
+        original = frame.copy(deep=True)
+        model = Mock(n_components=2)
+        model.predict.return_value = np.array([0, 0, 0, 1, 1, 1, 1])
+        result = compute_7day_occupancy(
+            frame, model, ["temperature"], start, start + pd.Timedelta(days=6)
+        )
+        np.testing.assert_allclose(result, [3 / 7, 4 / 7])
+        np.testing.assert_array_equal(model.predict.call_args.args[0][:, 0], np.arange(1, 8))
+        pd.testing.assert_frame_equal(frame, original)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -1,0 +1,425 @@
+{
+  "query_time": "2026-09-10T13:38:02.762564",
+  "source_point": [
+    28.28858,
+    85.52701
+  ],
+  "search_period": [
+    "2025-07-30T00:00:00Z",
+    "2026-08-26T02:52:00Z"
+  ],
+  "event_time": "2026-08-26T02:52:00Z",
+  "collections_queried": {
+    "nisar_gunw_provisional": {
+      "collection_id": "C2854335566-ASF",
+      "total_granules": 9,
+      "pre_event": 7,
+      "post_event": 2
+    },
+    "nisar_goff_provisional": {
+      "collection_id": "C2854341702-ASF",
+      "total_granules": 9,
+      "pre_event": 7,
+      "post_event": 2
+    },
+    "nisar_gunw_beta": {
+      "collection_id": "C2850261892-ASF",
+      "total_granules": 6,
+      "pre_event": 6,
+      "post_event": 0
+    },
+    "nisar_goff_beta": {
+      "collection_id": "C2850263910-ASF",
+      "total_granules": 8,
+      "pre_event": 8,
+      "post_event": 0
+    }
+  },
+  "pre_event_granules": [
+    {
+      "granule_ur": "",
+      "producer_granule_id": "NISAR_L2_PR_GUNW_023_098_A_016_024_4000_SH_20260620T233921_20260620T233956_20260702T233920_20260702T233955_P05023_N_F_J_001",
+      "collection": "C2854335566-ASF",
+      "acquisition_start": "2026-06-20T23:39:21.000Z",
+      "acquisition_end": "2026-07-02T23:39:55.999Z",
+      "catalog_updated": "2026-08-12T05:00:34.429Z",
+      "size_mb": 0,
+      "collection_name": "nisar_gunw_provisional",
+      "publication_latency_hours": 965.3,
+      "warning_lead_hours": 333.9
+    },
+    {
+      "granule_ur": "",
+      "producer_granule_id": "NISAR_L2_PR_GUNW_024_048_D_074_025_2000_SH_20260629T125814_20260629T125849_20260711T125814_20260711T125848_P05023_N_F_J_001",
+      "collection": "C2854335566-ASF",
+      "acquisition_start": "2026-06-29T12:58:14.000Z",
+      "acquisition_end": "2026-07-11T12:58:48.999Z",
+      "catalog_updated": "2026-08-12T23:22:35.168Z",
+      "size_mb": 0,
+      "collection_name": "nisar_gunw_provisional",
+      "publication_latency_hours": 778.4,
+      "warning_lead_hours": 315.5
+    },
+    {
+      "granule_ur": "",
+      "producer_granule_id": "NISAR_L2_PR_GUNW_024_098_A_016_025_4000_SH_20260702T233920_20260702T233955_20260714T233920_20260714T233954_P05023_F_F_J_001",
+      "collection": "C2854335566-ASF",
+      "acquisition_start": "2026-07-02T23:39:20.000Z",
+      "acquisition_end": "2026-07-14T23:39:54.999Z",
+      "catalog_updated": "2026-08-12T17:35:29.891Z",
+      "size_mb": 0,
+      "collection_name": "nisar_gunw_provisional",
+      "publication_latency_hours": 689.9,
+      "warning_lead_hours": 321.3
+    },
+    {
+      "granule_ur": "",
+      "producer_granule_id": "NISAR_L2_PR_GUNW_025_048_D_074_026_2000_SH_20260711T125814_20260711T125848_20260723T125813_20260723T125848_P05023_N_F_J_001",
+      "collection": "C2854335566-ASF",
+      "acquisition_start": "2026-07-11T12:58:14.000Z",
+      "acquisition_end": "2026-07-23T12:58:48.999Z",
+      "catalog_updated": "2026-08-13T20:44:13.835Z",
+      "size_mb": 0,
+      "collection_name": "nisar_gunw_provisional",
+      "publication_latency_hours": 511.8,
+      "warning_lead_hours": 294.1
+    },
+    {
+      "granule_ur": "",
+      "producer_granule_id": "NISAR_L2_PR_GUNW_025_098_A_016_026_4000_SH_20260714T233920_20260714T233954_20260726T233919_20260726T233954_P05023_N_F_J_001",
+      "collection": "C2854335566-ASF",
+      "acquisition_start": "2026-07-14T23:39:20.000Z",
+      "acquisition_end": "2026-07-26T23:39:54.999Z",
+      "catalog_updated": "2026-08-13T13:52:04.650Z",
+      "size_mb": 0,
+      "collection_name": "nisar_gunw_provisional",
+      "publication_latency_hours": 422.2,
+      "warning_lead_hours": 301.0
+    },
+    {
+      "granule_ur": "",
+      "producer_granule_id": "NISAR_L2_PR_GUNW_026_048_D_074_028_4000_SH_20260723T125813_20260723T125848_20260816T125812_20260816T125846_P05023_N_F_J_001",
+      "collection": "C2854335566-ASF",
+      "acquisition_start": "2026-07-23T12:58:13.000Z",
+      "acquisition_end": "2026-08-16T12:58:46.999Z",
+      "catalog_updated": "2026-08-21T22:26:20.852Z",
+      "size_mb": 0,
+      "collection_name": "nisar_gunw_provisional",
+      "publication_latency_hours": 129.5,
+      "warning_lead_hours": 100.4
+    },
+    {
+      "granule_ur": "",
+      "producer_granule_id": "NISAR_L2_PR_GUNW_026_098_A_016_028_4000_SH_20260726T233919_20260726T233954_20260819T233918_20260819T233953_P05023_N_F_J_001",
+      "collection": "C2854335566-ASF",
+      "acquisition_start": "2026-07-26T23:39:19.000Z",
+      "acquisition_end": "2026-08-19T23:39:53.999Z",
+      "catalog_updated": "2026-08-25T01:07:36.399Z",
+      "size_mb": 0,
+      "collection_name": "nisar_gunw_provisional",
+      "publication_latency_hours": 121.5,
+      "warning_lead_hours": 25.7,
+      "latency_trap": "WARNING: publication less than 3 days before event"
+    },
+    {
+      "granule_ur": "",
+      "producer_granule_id": "NISAR_L2_PR_GOFF_023_098_A_016_024_4000_SH_20260620T233921_20260620T233956_20260702T233920_20260702T233955_P05023_N_F_J_001",
+      "collection": "C2854341702-ASF",
+      "acquisition_start": "2026-06-20T23:39:21.000Z",
+      "acquisition_end": "2026-07-02T23:39:55.999Z",
+      "catalog_updated": "2026-07-15T16:07:07.506Z",
+      "size_mb": 0,
+      "collection_name": "nisar_goff_provisional",
+      "publication_latency_hours": 304.5,
+      "warning_lead_hours": 994.7
+    },
+    {
+      "granule_ur": "",
+      "producer_granule_id": "NISAR_L2_PR_GOFF_024_048_D_074_025_2000_SH_20260629T125814_20260629T125849_20260711T125814_20260711T125848_P05023_N_F_J_001",
+      "collection": "C2854341702-ASF",
+      "acquisition_start": "2026-06-29T12:58:14.000Z",
+      "acquisition_end": "2026-07-11T12:58:48.999Z",
+      "catalog_updated": "2026-08-13T18:35:17.362Z",
+      "size_mb": 0,
+      "collection_name": "nisar_goff_provisional",
+      "publication_latency_hours": 797.6,
+      "warning_lead_hours": 296.3
+    },
+    {
+      "granule_ur": "",
+      "producer_granule_id": "NISAR_L2_PR_GOFF_024_098_A_016_025_4000_SH_20260702T233920_20260702T233955_20260714T233920_20260714T233954_P05023_F_F_J_001",
+      "collection": "C2854341702-ASF",
+      "acquisition_start": "2026-07-02T23:39:20.000Z",
+      "acquisition_end": "2026-07-14T23:39:54.999Z",
+      "catalog_updated": "2026-08-13T03:40:04.536Z",
+      "size_mb": 0,
+      "collection_name": "nisar_goff_provisional",
+      "publication_latency_hours": 700.0,
+      "warning_lead_hours": 311.2
+    },
+    {
+      "granule_ur": "",
+      "producer_granule_id": "NISAR_L2_PR_GOFF_025_048_D_074_026_2000_SH_20260711T125814_20260711T125848_20260723T125813_20260723T125848_P05023_N_F_J_001",
+      "collection": "C2854341702-ASF",
+      "acquisition_start": "2026-07-11T12:58:14.000Z",
+      "acquisition_end": "2026-07-23T12:58:48.999Z",
+      "catalog_updated": "2026-08-17T06:31:03.779Z",
+      "size_mb": 0,
+      "collection_name": "nisar_goff_provisional",
+      "publication_latency_hours": 593.5,
+      "warning_lead_hours": 212.3
+    },
+    {
+      "granule_ur": "",
+      "producer_granule_id": "NISAR_L2_PR_GOFF_025_098_A_016_026_4000_SH_20260714T233920_20260714T233954_20260726T233919_20260726T233954_P05023_N_F_J_001",
+      "collection": "C2854341702-ASF",
+      "acquisition_start": "2026-07-14T23:39:20.000Z",
+      "acquisition_end": "2026-07-26T23:39:54.999Z",
+      "catalog_updated": "2026-08-16T02:36:53.920Z",
+      "size_mb": 0,
+      "collection_name": "nisar_goff_provisional",
+      "publication_latency_hours": 482.9,
+      "warning_lead_hours": 240.3
+    },
+    {
+      "granule_ur": "",
+      "producer_granule_id": "NISAR_L2_PR_GOFF_026_048_D_074_028_4000_SH_20260723T125813_20260723T125848_20260816T125812_20260816T125846_P05023_N_F_J_001",
+      "collection": "C2854341702-ASF",
+      "acquisition_start": "2026-07-23T12:58:13.000Z",
+      "acquisition_end": "2026-08-16T12:58:46.999Z",
+      "catalog_updated": "2026-08-21T19:52:18.317Z",
+      "size_mb": 0,
+      "collection_name": "nisar_goff_provisional",
+      "publication_latency_hours": 126.9,
+      "warning_lead_hours": 103.0
+    },
+    {
+      "granule_ur": "",
+      "producer_granule_id": "NISAR_L2_PR_GOFF_026_098_A_016_028_4000_SH_20260726T233919_20260726T233954_20260819T233918_20260819T233953_P05023_N_F_J_001",
+      "collection": "C2854341702-ASF",
+      "acquisition_start": "2026-07-26T23:39:19.000Z",
+      "acquisition_end": "2026-08-19T23:39:53.999Z",
+      "catalog_updated": "2026-08-24T14:21:06.461Z",
+      "size_mb": 0,
+      "collection_name": "nisar_goff_provisional",
+      "publication_latency_hours": 110.7,
+      "warning_lead_hours": 36.5,
+      "latency_trap": "WARNING: publication less than 3 days before event"
+    },
+    {
+      "granule_ur": "",
+      "producer_granule_id": "NISAR_L2_PR_GUNW_006_048_D_074_007_2000_SH_20251125T125813_20251125T125848_20251207T125814_20251207T125849_X05010_N_F_J_001",
+      "collection": "C2850261892-ASF",
+      "acquisition_start": "2025-11-25T12:58:13.000Z",
+      "acquisition_end": "2025-12-07T12:58:49.999Z",
+      "catalog_updated": "2026-02-28T09:26:54.264Z",
+      "size_mb": 0,
+      "collection_name": "nisar_gunw_beta",
+      "publication_latency_hours": 1988.5,
+      "warning_lead_hours": 4289.4
+    },
+    {
+      "granule_ur": "",
+      "producer_granule_id": "NISAR_L2_PR_GUNW_006_098_A_016_007_4000_SH_20251128T233919_20251128T233954_20251210T233920_20251210T233955_X05010_N_F_J_001",
+      "collection": "C2850261892-ASF",
+      "acquisition_start": "2025-11-28T23:39:19.000Z",
+      "acquisition_end": "2025-12-10T23:39:55.999Z",
+      "catalog_updated": "2026-02-28T09:19:39.640Z",
+      "size_mb": 0,
+      "collection_name": "nisar_gunw_beta",
+      "publication_latency_hours": 1905.7,
+      "warning_lead_hours": 4289.5
+    },
+    {
+      "granule_ur": "",
+      "producer_granule_id": "NISAR_L2_PR_GUNW_007_048_D_074_008_2000_SH_20251207T125814_20251207T125849_20251219T125815_20251219T125849_X05010_N_F_J_001",
+      "collection": "C2850261892-ASF",
+      "acquisition_start": "2025-12-07T12:58:14.000Z",
+      "acquisition_end": "2025-12-19T12:58:49.999Z",
+      "catalog_updated": "2026-02-28T10:01:40.436Z",
+      "size_mb": 0,
+      "collection_name": "nisar_gunw_beta",
+      "publication_latency_hours": 1701.0,
+      "warning_lead_hours": 4288.8
+    },
+    {
+      "granule_ur": "",
+      "producer_granule_id": "NISAR_L2_PR_GUNW_007_098_A_016_008_4000_SH_20251210T233920_20251210T233955_20251222T233921_20251222T233955_X05010_N_F_J_001",
+      "collection": "C2850261892-ASF",
+      "acquisition_start": "2025-12-10T23:39:20.000Z",
+      "acquisition_end": "2025-12-22T23:39:55.999Z",
+      "catalog_updated": "2026-02-28T10:03:44.211Z",
+      "size_mb": 0,
+      "collection_name": "nisar_gunw_beta",
+      "publication_latency_hours": 1618.4,
+      "warning_lead_hours": 4288.8
+    },
+    {
+      "granule_ur": "",
+      "producer_granule_id": "NISAR_L2_PR_GUNW_008_098_A_016_009_4000_SH_20251222T233921_20251222T233955_20260103T233921_20260103T233956_X05010_N_F_J_001",
+      "collection": "C2850261892-ASF",
+      "acquisition_start": "2025-12-22T23:39:21.000Z",
+      "acquisition_end": "2026-01-03T23:39:56.999Z",
+      "catalog_updated": "2026-02-28T10:51:32.302Z",
+      "size_mb": 0,
+      "collection_name": "nisar_gunw_beta",
+      "publication_latency_hours": 1331.2,
+      "warning_lead_hours": 4288.0
+    },
+    {
+      "granule_ur": "",
+      "producer_granule_id": "NISAR_L2_PR_GUNW_009_098_A_016_010_4000_SH_20260103T233921_20260103T233956_20260115T233922_20260115T233956_X05010_N_F_J_001",
+      "collection": "C2850261892-ASF",
+      "acquisition_start": "2026-01-03T23:39:21.000Z",
+      "acquisition_end": "2026-01-15T23:39:56.999Z",
+      "catalog_updated": "2026-02-28T11:31:39.918Z",
+      "size_mb": 0,
+      "collection_name": "nisar_gunw_beta",
+      "publication_latency_hours": 1043.9,
+      "warning_lead_hours": 4287.3
+    },
+    {
+      "granule_ur": "",
+      "producer_granule_id": "NISAR_L2_PR_GOFF_006_048_D_074_007_2000_SH_20251125T125813_20251125T125848_20251207T125814_20251207T125849_X05010_N_F_J_001",
+      "collection": "C2850263910-ASF",
+      "acquisition_start": "2025-11-25T12:58:13.000Z",
+      "acquisition_end": "2025-12-07T12:58:49.999Z",
+      "catalog_updated": "2026-02-28T09:28:31.513Z",
+      "size_mb": 0,
+      "collection_name": "nisar_goff_beta",
+      "publication_latency_hours": 1988.5,
+      "warning_lead_hours": 4289.4
+    },
+    {
+      "granule_ur": "",
+      "producer_granule_id": "NISAR_L2_PR_GOFF_006_098_A_016_007_4000_SH_20251128T233919_20251128T233954_20251210T233920_20251210T233955_X05010_N_F_J_001",
+      "collection": "C2850263910-ASF",
+      "acquisition_start": "2025-11-28T23:39:19.000Z",
+      "acquisition_end": "2025-12-10T23:39:55.999Z",
+      "catalog_updated": "2026-02-28T09:27:30.299Z",
+      "size_mb": 0,
+      "collection_name": "nisar_goff_beta",
+      "publication_latency_hours": 1905.8,
+      "warning_lead_hours": 4289.4
+    },
+    {
+      "granule_ur": "",
+      "producer_granule_id": "NISAR_L2_PR_GOFF_007_048_D_074_008_2000_SH_20251207T125814_20251207T125849_20251219T125815_20251219T125849_X05010_N_F_J_001",
+      "collection": "C2850263910-ASF",
+      "acquisition_start": "2025-12-07T12:58:14.000Z",
+      "acquisition_end": "2025-12-19T12:58:49.999Z",
+      "catalog_updated": "2026-02-28T10:11:25.896Z",
+      "size_mb": 0,
+      "collection_name": "nisar_goff_beta",
+      "publication_latency_hours": 1701.2,
+      "warning_lead_hours": 4288.7
+    },
+    {
+      "granule_ur": "",
+      "producer_granule_id": "NISAR_L2_PR_GOFF_007_098_A_016_008_4000_SH_20251210T233920_20251210T233955_20251222T233921_20251222T233955_X05010_N_F_J_001",
+      "collection": "C2850263910-ASF",
+      "acquisition_start": "2025-12-10T23:39:20.000Z",
+      "acquisition_end": "2025-12-22T23:39:55.999Z",
+      "catalog_updated": "2026-02-28T10:14:21.915Z",
+      "size_mb": 0,
+      "collection_name": "nisar_goff_beta",
+      "publication_latency_hours": 1618.6,
+      "warning_lead_hours": 4288.6
+    },
+    {
+      "granule_ur": "",
+      "producer_granule_id": "NISAR_L2_PR_GOFF_008_048_D_074_009_2000_QD_20251219T125815_20251219T125849_20251231T125815_20251231T125850_X05010_N_F_J_001",
+      "collection": "C2850263910-ASF",
+      "acquisition_start": "2025-12-19T12:58:15.000Z",
+      "acquisition_end": "2025-12-31T12:58:50.999Z",
+      "catalog_updated": "2026-02-28T11:01:23.105Z",
+      "size_mb": 0,
+      "collection_name": "nisar_goff_beta",
+      "publication_latency_hours": 1414.0,
+      "warning_lead_hours": 4287.8
+    },
+    {
+      "granule_ur": "",
+      "producer_granule_id": "NISAR_L2_PR_GOFF_008_098_A_016_009_4000_SH_20251222T233921_20251222T233955_20260103T233921_20260103T233956_X05010_N_F_J_001",
+      "collection": "C2850263910-ASF",
+      "acquisition_start": "2025-12-22T23:39:21.000Z",
+      "acquisition_end": "2026-01-03T23:39:56.999Z",
+      "catalog_updated": "2026-02-28T11:04:44.663Z",
+      "size_mb": 0,
+      "collection_name": "nisar_goff_beta",
+      "publication_latency_hours": 1331.4,
+      "warning_lead_hours": 4287.8
+    },
+    {
+      "granule_ur": "",
+      "producer_granule_id": "NISAR_L2_PR_GOFF_009_048_D_074_010_2000_QD_20251231T125815_20251231T125850_20260112T125816_20260112T125850_X05010_N_F_J_001",
+      "collection": "C2850263910-ASF",
+      "acquisition_start": "2025-12-31T12:58:15.000Z",
+      "acquisition_end": "2026-01-12T12:58:50.999Z",
+      "catalog_updated": "2026-02-28T11:49:39.845Z",
+      "size_mb": 0,
+      "collection_name": "nisar_goff_beta",
+      "publication_latency_hours": 1126.8,
+      "warning_lead_hours": 4287.0
+    },
+    {
+      "granule_ur": "",
+      "producer_granule_id": "NISAR_L2_PR_GOFF_009_098_A_016_010_4000_SH_20260103T233921_20260103T233956_20260115T233922_20260115T233956_X05010_N_F_J_001",
+      "collection": "C2850263910-ASF",
+      "acquisition_start": "2026-01-03T23:39:21.000Z",
+      "acquisition_end": "2026-01-15T23:39:56.999Z",
+      "catalog_updated": "2026-02-28T11:46:27.285Z",
+      "size_mb": 0,
+      "collection_name": "nisar_goff_beta",
+      "publication_latency_hours": 1044.1,
+      "warning_lead_hours": 4287.1
+    }
+  ],
+  "post_event_granules": [
+    {
+      "granule_ur": "",
+      "producer_granule_id": "NISAR_L2_PR_GUNW_028_048_D_074_029_2000_SH_20260816T125812_20260816T125846_20260828T125812_20260828T125846_P05023_N_F_J_001",
+      "collection": "C2854335566-ASF",
+      "acquisition_start": "2026-08-16T12:58:12.000Z",
+      "acquisition_end": "2026-08-28T12:58:46.999Z",
+      "catalog_updated": "2026-08-30T06:16:28.017Z",
+      "size_mb": 0,
+      "collection_name": "nisar_gunw_provisional"
+    },
+    {
+      "granule_ur": "",
+      "producer_granule_id": "NISAR_L2_PR_GUNW_028_098_A_016_029_4000_SH_20260819T233918_20260819T233953_20260831T233918_20260831T233952_P05023_N_F_J_001",
+      "collection": "C2854335566-ASF",
+      "acquisition_start": "2026-08-19T23:39:18.000Z",
+      "acquisition_end": "2026-08-31T23:39:52.999Z",
+      "catalog_updated": "2026-09-02T15:15:18.304Z",
+      "size_mb": 0,
+      "collection_name": "nisar_gunw_provisional"
+    },
+    {
+      "granule_ur": "",
+      "producer_granule_id": "NISAR_L2_PR_GOFF_028_048_D_074_029_2000_SH_20260816T125812_20260816T125846_20260828T125812_20260828T125846_P05023_N_F_J_001",
+      "collection": "C2854341702-ASF",
+      "acquisition_start": "2026-08-16T12:58:12.000Z",
+      "acquisition_end": "2026-08-28T12:58:46.999Z",
+      "catalog_updated": "2026-08-30T04:52:58.737Z",
+      "size_mb": 0,
+      "collection_name": "nisar_goff_provisional"
+    },
+    {
+      "granule_ur": "",
+      "producer_granule_id": "NISAR_L2_PR_GOFF_028_098_A_016_029_4000_SH_20260819T233918_20260819T233953_20260831T233918_20260831T233952_P05023_N_F_J_001",
+      "collection": "C2854341702-ASF",
+      "acquisition_start": "2026-08-19T23:39:18.000Z",
+      "acquisition_end": "2026-08-31T23:39:52.999Z",
+      "catalog_updated": "2026-09-03T00:29:52.368Z",
+      "size_mb": 0,
+      "collection_name": "nisar_goff_provisional"
+    }
+  ],
+  "publication_latency_findings": {
+    "astra_finding": "The 26 Jul \u2192 19 Aug GUNW pair was inserted into catalog on 25 Aug \u2014 only ~26 hours before event",
+    "implication": "Acquisition date alone overstates warning time. Must use publication time for any lead-time claim.",
+    "recommendation": "Record both acquisition and publication timestamps. Any warning assessment must use publication cutoff."
+  }
+}

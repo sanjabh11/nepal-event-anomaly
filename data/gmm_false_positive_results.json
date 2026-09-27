@@ -1,0 +1,73 @@
+{
+  "best_k": 5,
+  "bic_scores": {
+    "1": 108251.03642953925,
+    "2": 89610.13558122521,
+    "3": 85214.23795898446,
+    "4": 80624.6542057774,
+    "5": 78113.24038171911
+  },
+  "baseline_occupancy": [
+    0.23391304347826086,
+    0.1865217391304348,
+    0.11782608695652173,
+    0.25,
+    0.2117391304347826
+  ],
+  "n_windows": 2150,
+  "js_mean": 0.4758195470057989,
+  "js_std": 0.10463686949251068,
+  "js_percentiles": {
+    "50": 0.488293122490667,
+    "90": 0.6167622441821304,
+    "95": 0.6422102255245983,
+    "99": 0.7105659521088439
+  },
+  "event_js": 0.6167622441821304,
+  "event_percentile": 87.72093023255813,
+  "event_rank": 264,
+  "false_positive_rates": {
+    "0.1": {
+      "threshold": 0.1,
+      "false_positives": 2150,
+      "fpr": 1.0,
+      "event_detected": true
+    },
+    "0.2": {
+      "threshold": 0.2,
+      "false_positives": 2150,
+      "fpr": 1.0,
+      "event_detected": true
+    },
+    "0.3": {
+      "threshold": 0.3,
+      "false_positives": 2006,
+      "fpr": 0.9330232558139535,
+      "event_detected": true
+    },
+    "0.4": {
+      "threshold": 0.4,
+      "false_positives": 1617,
+      "fpr": 0.752093023255814,
+      "event_detected": true
+    },
+    "0.5": {
+      "threshold": 0.5,
+      "false_positives": 860,
+      "fpr": 0.4,
+      "event_detected": true
+    },
+    "0.6": {
+      "threshold": 0.6,
+      "false_positives": 294,
+      "fpr": 0.13674418604651162,
+      "event_detected": true
+    },
+    "0.6168": {
+      "threshold": 0.6168,
+      "false_positives": 146,
+      "fpr": 0.06790697674418604,
+      "event_detected": false
+    }
+  }
+}

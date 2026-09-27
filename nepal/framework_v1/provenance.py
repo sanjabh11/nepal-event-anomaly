@@ -142,6 +142,58 @@ def verify_artifact_envelope(payload: Mapping[str, Any], *,
     return True, []
 
 
+def verify_gate_input(
+    payload: Any,
+    *,
+    expected_gate_id: str,
+    require_outer_envelope: bool = False,
+) -> tuple[bool, Optional[Mapping[str, Any]], Optional[Mapping[str, Any]], list[str]]:
+    """Verify a direct gate or an authenticated envelope containing one.
+
+    Phase A was originally materialized as a direct ``gate_artifact`` while
+    the full pipeline may materialize an outer artifact envelope with the
+    gate under ``gate``.  Consumers must accept both representations during
+    the migration, but an outer representation is never accepted merely
+    because its nested gate hash is valid: the complete outer envelope is
+    verified as well.  ``require_outer_envelope`` is used by result stages
+    such as B and E that must bind provenance and summaries in addition to
+    their nested gate.
+    """
+    if not isinstance(payload, Mapping):
+        return False, None, None, ["gate input must be a mapping"]
+
+    nested = payload.get("gate")
+    is_outer = isinstance(nested, Mapping)
+    inner: Mapping[str, Any] = nested if is_outer else payload
+    problems: list[str] = []
+
+    if is_outer:
+        outer_ok, outer_errors = verify_artifact_envelope(payload)
+        if not outer_ok:
+            problems.extend("outer envelope: " + error for error in outer_errors)
+    elif require_outer_envelope:
+        problems.append("outer artifact envelope is required")
+
+    inner_ok, inner_errors = verify_gate_artifact(
+        inner, expected_gate_id=expected_gate_id)
+    problems.extend(inner_errors)
+    outer_ok = is_outer and not any(
+        error.startswith("outer envelope:") for error in problems)
+    if not is_outer and not require_outer_envelope:
+        outer_ok = True
+    return outer_ok and inner_ok and not problems, inner, (
+        payload if is_outer else None), problems
+
+
+def gate_input_artifact_sha256(payload: Mapping[str, Any]) -> Optional[str]:
+    """Return the authenticated identity for a direct gate or outer envelope."""
+    if isinstance(payload.get("gate"), Mapping):
+        value = payload.get("artifact_sha256")
+    else:
+        value = payload.get("gate_artifact_sha256")
+    return value if isinstance(value, str) else None
+
+
 def _atomic_write_bytes(path: str | Path, data: bytes) -> None:
     """Write bytes atomically and durably within the destination directory."""
     p = Path(path)
@@ -238,8 +290,11 @@ def build_manifest(files: Mapping[str, "str | bytes | Path"],
         "manifest_type": manifest_type,
         "files": entries,
     }
+    # The self-hash domain is canonical JSON with only the self-hash field
+    # omitted.  This is the same domain used by verify_manifest and prevents a
+    # freshly generated manifest from being unverifiable by construction.
     manifest["manifest_sha256"] = sha256_canonical(
-        {k: v for k, v in manifest.items()})
+        {k: v for k, v in manifest.items() if k != "manifest_sha256"})
     return manifest
 
 

@@ -1,0 +1,79 @@
+{
+  "query_url": "https://cmr.earthdata.nasa.gov/search/granules.json?short_name=SENTINEL-1A_SLC&bounding_box=85.3%2C28.0%2C85.8%2C28.6&temporal=2026-01-01%2C2026-08-26&page_size=10",
+  "query_time": "2026-09-11T08:23:29.994770+00:00",
+  "bounding_box": "85.3,28.0,85.8,28.6",
+  "temporal": "2026-01-01,2026-08-26",
+  "granule_count": 10,
+  "granules": [
+    {
+      "id": "G3941846967-ASF",
+      "title": "S1A_IW_SLC__1SDV_20260101T001927_20260101T001954_062566_07D76A_F696-SLC",
+      "time_start": "2026-01-01T00:19:27.213Z",
+      "time_end": "2026-01-01T00:19:54.174Z",
+      "collection": ""
+    },
+    {
+      "id": "G3948183303-ASF",
+      "title": "S1A_IW_SLC__1SDV_20260105T122220_20260105T122248_062632_07D9F5_4F4F-SLC",
+      "time_start": "2026-01-05T12:22:20.293Z",
+      "time_end": "2026-01-05T12:22:48.205Z",
+      "collection": ""
+    },
+    {
+      "id": "G3951097837-ASF",
+      "title": "S1A_IW_SLC__1SDV_20260108T001119_20260108T001146_062668_07DB61_9A3D-SLC",
+      "time_start": "2026-01-08T00:11:19.270Z",
+      "time_end": "2026-01-08T00:11:46.233Z",
+      "collection": ""
+    },
+    {
+      "id": "G3959882968-ASF",
+      "title": "S1A_IW_SLC__1SDV_20260113T001926_20260113T001953_062741_07DE26_E9A0-SLC",
+      "time_start": "2026-01-13T00:19:26.185Z",
+      "time_end": "2026-01-13T00:19:53.146Z",
+      "collection": ""
+    },
+    {
+      "id": "G3968305633-ASF",
+      "title": "S1A_IW_SLC__1SDV_20260117T122219_20260117T122247_062807_07E0AD_A51D-SLC",
+      "time_start": "2026-01-17T12:22:19.265Z",
+      "time_end": "2026-01-17T12:22:47.180Z",
+      "collection": ""
+    },
+    {
+      "id": "G3972144251-ASF",
+      "title": "S1A_IW_SLC__1SDV_20260120T001118_20260120T001145_062843_07E222_1B6A-SLC",
+      "time_start": "2026-01-20T00:11:18.203Z",
+      "time_end": "2026-01-20T00:11:45.174Z",
+      "collection": ""
+    },
+    {
+      "id": "G3980288220-ASF",
+      "title": "S1A_IW_SLC__1SDV_20260125T001924_20260125T001951_062916_07E47D_7255-SLC",
+      "time_start": "2026-01-25T00:19:24.817Z",
+      "time_end": "2026-01-25T00:19:51.778Z",
+      "collection": ""
+    },
+    {
+      "id": "G3987722912-ASF",
+      "title": "S1A_IW_SLC__1SDV_20260129T122218_20260129T122246_062982_07E6FE_1277-SLC",
+      "time_start": "2026-01-29T12:22:18.738Z",
+      "time_end": "2026-01-29T12:22:46.651Z",
+      "collection": ""
+    },
+    {
+      "id": "G4002353873-ASF",
+      "title": "S1A_IW_SLC__1SDV_20260206T001924_20260206T001951_063091_07EB16_8E9C-SLC",
+      "time_start": "2026-02-06T00:19:24.412Z",
+      "time_end": "2026-02-06T00:19:51.378Z",
+      "collection": ""
+    },
+    {
+      "id": "G4015922745-ASF",
+      "title": "S1A_IW_SLC__1SDV_20260210T122217_20260210T122245_063157_07ED85_95F5-SLC",
+      "time_start": "2026-02-10T12:22:17.910Z",
+      "time_end": "2026-02-10T12:22:45.826Z",
+      "collection": ""
+    }
+  ]
+}

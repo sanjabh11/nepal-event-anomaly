@@ -1,0 +1,122 @@
+{
+  "run_id": "run-20260912-2a8757b",
+  "created_at_utc": "2026-09-12T06:54:41Z",
+  "coordinator": {
+    "agent_identity": "Devin Desktop / SWE-2 High",
+    "plan_document": "/Users/sanjayb/avalanche-insight-hub-t2a/docs/Post_PoC/Multi_agent/nepal-event-multi_plan.md",
+    "plan_document_role": "campaign coordinator and architect"
+  },
+  "authoritative_root": "/Users/sanjayb/nepal-event-anomaly",
+  "paths": {
+    "live_handoff_root": "/Users/sanjayb/nepal-event-anomaly/data/framework_inputs_v1_reconciled",
+    "candidate_root": "/Users/sanjayb/nepal-event-anomaly/data/framework_inputs_v1_reconciled_candidates/run-20260912-2a8757b",
+    "run_root": "/Users/sanjayb/nepal-event-anomaly/.phase-loop/parallel_runs/run-20260912-2a8757b",
+    "code_worktree": "/Users/sanjayb/nepal-event-anomaly-worktrees/run-20260912-2a8757b-code",
+    "final_run_output": "/Users/sanjayb/nepal-event-anomaly/data/framework_v1_runs/run-20260912-2a8757b"
+  },
+  "git": {
+    "head": "8eeeccc60231a3aa2e55c14ce790fda3fea32bcd",
+    "head_subject": "feat(framework): add narrow integrity PoC and tamper benchmark",
+    "head_committed_at": "2026-09-12T14:23:53+05:30",
+    "head_history": "2a8757b (fail-closed gates, 11:42) -> 8eeeccc (integrity PoC, 14:23); PoC commit is additive-only (cli.py +71, integrity_poc.py +1619 new, test +336 new), independently verified: 11 PoC tests pass, contract runtime hash unchanged 7748b089, dirty state preserved",
+    "worktree_dirty": true,
+    "status_entries": 37,
+    "unstaged_diff_sha256": "5798d7fe99dc5feaf524fdac92e63c4c8f9c80eb9edb9a4ef4fa8e099a750586",
+    "staged_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "diff_check_clean": true,
+    "tracked_files": 49,
+    "policy": "pre-existing user/data changes must be preserved; never reset, clean, broadly stage, or overwrite"
+  },
+  "disk": {
+    "filesystem": "/dev/disk3s5",
+    "avail_kib": 4887436,
+    "avail_gib": 4.66,
+    "capacity_pct": 98,
+    "floor_gib": 5.0,
+    "temp_floor_gib": 8.0,
+    "guard": "PASS",
+    "guard_rule": "stop if free space < 5 GiB persistent or < 2x projected temporary footprint",
+    "guard_history": "was FAIL at 4.66 GiB (06:54Z); user freed space, now ~17.75 GiB (09:02Z); D1 hold released"
+  },
+  "contracts": {
+    "data_contract_source": {
+      "path": "nepal/feature_contract.py",
+      "sha256": "240a3615f89cdd9c49b6833623084d4dbdd5b5f85c5b50e1fe4ea7c84513ec0a"
+    },
+    "framework_contract_source": {
+      "path": "nepal/framework_v1/contract.py",
+      "sha256": "ab4583c4f664315f012a5983d8e2bd23c9ea6e323966401ece32b420a9da25ca",
+      "last_commit": "2a8757b (2026-09-12T11:42:01+05:30)"
+    },
+    "framework_contract_runtime_sha256": {
+      "value": "7748b089b8bf29a705090e0ba7751a5f8ecd15ad51272bfd090c54ce0e1b6c69",
+      "via": ".venv/bin/python -B -m nepal.framework_v1.cli contract --verify --repo-root /Users/sanjayb/nepal-event-anomaly"
+    },
+    "reconciled_vendored_contract": {
+      "path": "data/framework_inputs_v1_reconciled/scripts/contract.py",
+      "sha256": "1e3507806ba6c7a6cbb04fc136cc6c5c30ad58c59424fc963a6fac0cfa8345be"
+    },
+    "preregistration_sha256": "0e7ce3c2e347a955f7495d719bb9232465ac9c25a5266656865800dbc963da7c",
+    "requirements_sha256": "0d51aae6073653f4f982012d4525c2df8071f8cedb9d3eb584edd67d556db2b3",
+    "naming_ambiguity": "handoff_gate_result.json key 'contract_sha256'=240a3615 is the DATA contract file hash; framework CLI key 'contract_sha256'=7748b089 is the FRAMEWORK runtime hash. Do not conflate."
+  },
+  "handoff_root": {
+    "manifest_path": "data/framework_inputs_v1_reconciled/manifest.json",
+    "manifest_file_sha256": "a20762d5cb9fce1ac2cafb9b8dcf3d24dea1c0c6dbffe4fa01ee509d802cad71",
+    "manifest_artifact_entries": 36,
+    "status_counts": { "READY": 29, "UNAVAILABLE": 6, "INCOMPLETE": 1 },
+    "size_bytes_approx": 919000000,
+    "symlinks_found": 0,
+    "raw_slc_scan": "PASS",
+    "stale_handoff_gate": {
+      "generated_at": "2026-09-11T17:42:08.866633+00:00",
+      "status": "READY",
+      "manifest_sha256": "28bebc8039f693f3a10f470a1ae498e9567f232c3557925b52cdd4ebbe6ceac5",
+      "framework_contract_sha256": "ecda408e95979bc4625b7f39e757372da78898448e8f7d748564e0fefb8f8c17",
+      "staleness_reason": "generated before HEAD 2a8757b which changed framework contract; runtime hash now 7748b089"
+    }
+  },
+  "frozen_guards": {
+    "preregistration.md": "0e7ce3c2e347a955f7495d719bb9232465ac9c25a5266656865800dbc963da7c",
+    "data/gmm_false_positive_results.json": "fb711617194d41ed4f9b109f72c07558c22d247b6266b4dbb59f211a76cfd2bc",
+    "data/locked_jja_events.json": "536125c44033cd6852e82c4718cca2a9138ca0f369e2cecf84de4c215af427eb",
+    "data/features_nepal_jja_2001_2026.csv": "444f2ac0904757d67e68a0c8cbec8544a355a0a16c42ed7ffa86c2556a338041"
+  },
+  "legacy_watcher": {
+    "path": ".phase-loop/watcher/",
+    "process_running": false,
+    "note": "prior two-lane monitor (Codex/GLM2) is dead; logs retained; its lane boundaries are superseded by this run's leases"
+  },
+  "leases": {
+    "D1": "leases/D1.lease.json",
+    "C1": "leases/C1.lease.json",
+    "Q1": "leases/Q1.lease.json"
+  },
+  "baseline_status": "BASELINE_READY",
+  "blockers": [],
+  "resolved_blockers": [
+    {
+      "id": "DISK_GUARD",
+      "severity": "hard",
+      "detail": "was 4.66 GiB < 5.0 GiB floor at baseline; user freed space to ~17.75 GiB; D1 hold released",
+      "affected_lanes": ["D1"],
+      "unaffected_lanes": ["C1", "Q1"],
+      "resolved_at_utc": "2026-09-12T09:02:00Z"
+    }
+  ],
+  "replan_request": {
+    "needed": false,
+    "decision": "Option B approved by user: launch disk-light lanes C1+Q1 now, hold D1 until disk >= 5 GiB free",
+    "decided_by": "user",
+    "decided_at_utc": "2026-09-12T07:00:00Z",
+    "deviation_from_plan": "plan says STOP on disk guard; user authorized partial Wave 1 for lanes unaffected by the disk floor"
+  },
+  "wave1_authorization": {
+    "D1": "AUTHORIZED",
+    "C1": "AUTHORIZED",
+    "Q1": "AUTHORIZED"
+  },
+  "wave1_pending": ["D1", "C1", "Q1"],
+  "sequential_chain": ["G0", "G1", "G2", "A", "B", "B_GATE", "E", "F", "G8"],
+  "reviewers_pending": ["R1 conformance/provenance", "R2 scientific proof-boundary", "R3 performance/test"]
+}

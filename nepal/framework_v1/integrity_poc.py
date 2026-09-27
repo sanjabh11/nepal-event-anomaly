@@ -1009,7 +1009,7 @@ def _baseline_snapshot(repo_root: Path, free_bytes: int) -> dict[str, Any]:
             errors.append(f"{label} source hash failed: {exc}")
             return None
 
-    data_source = repo_root / "nepal" / "feature_contract.py"
+    data_source = repo_root / input_manifest_module.AUTHORITATIVE_DATA_CONTRACT_PATH
     framework_source = repo_root / "nepal" / "framework_v1" / "contract.py"
     preregistration = repo_root / "preregistration.md"
     return {
@@ -1309,9 +1309,18 @@ def _run_full_b_boundary(config: IntegrityPocConfig,
     if not (config.run_b_loader_boundary and config.source_manifest is not None):
         return
     from .adapters import load_verified_b_input_bundle
-    current_manifest = _load_json(config.source_manifest)
+    declared_generation = None
+    try:
+        declared_generation = json.loads(
+            Path(config.source_manifest).read_text(
+                encoding="utf-8")).get("candidate_generation_id")
+    except (OSError, ValueError, AttributeError):
+        declared_generation = None
     boundary = load_verified_b_input_bundle(
-        config.real_root, current_manifest,
+        config.real_root,
+        manifest_path=config.source_manifest,
+        trusted_manifest_file_sha256=sha256_file(config.source_manifest),
+        candidate_generation_id=declared_generation,
         expected_contract_sha256=config.expected_data_contract_sha256,
         expected_framework_contract_sha256=config.expected_framework_contract_sha256,
         repo_root=config.repo_root,

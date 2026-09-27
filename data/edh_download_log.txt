@@ -1,0 +1,7 @@
+[2026-09-10T14:36:33.597713] ============================================================
+[2026-09-10T14:36:33.598041] Phase 1 (Accelerated): ERA5-Land via DestinE EDH Zarr
+[2026-09-10T14:36:33.598105] ============================================================
+[2026-09-10T14:36:33.598163] EDH PAT found in environment variable
+[2026-09-10T14:36:33.598212] Opening EDH Zarr store...
+[2026-09-10T14:36:33.598251] URL: https://edh:***@data.earthdatahub.destine.eu/era5/reanalysis-era5-land-no-antartica-v0.zarr
+[2026-09-10T14:36:34.958498] ERROR opening EDH store: 426, message='', url='https://data.earthdatahub.destine.eu/era5/reanalysis-era5-land-no-antartica-v0.zarr/.zmetadata'

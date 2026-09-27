@@ -1,0 +1,11 @@
+{
+  "coverage_limitations": [
+    "CNKI/CAS/Tibet Bureau search not performed - no Chinese-language access",
+    "Mechanism labels are from source database, not independently adjudicated",
+    "GLM2 does not adjudicate mechanism eligibility for B ranking"
+  ],
+  "description": "Adjudication evidence for event mechanism classification. GLM2 records evidence only; does not adjudicate.",
+  "events": [],
+  "generated_at": "2026-09-11T11:17:03.367882+00:00",
+  "schema_version": "2.0.0-reconciled"
+}

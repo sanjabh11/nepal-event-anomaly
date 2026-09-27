@@ -1,0 +1,37 @@
+{
+  "lease_id": "run-20260912-2a8757b/Q1",
+  "agent": "Q1",
+  "model_label": "GLM-5.2",
+  "role": "independent read-only verifier",
+  "status": "READY_TO_DISPATCH",
+  "exclusive_write_paths": [
+    "/Users/sanjayb/nepal-event-anomaly/.phase-loop/parallel_runs/run-20260912-2a8757b/packets/Q1",
+    "/Users/sanjayb/nepal-event-anomaly/.phase-loop/parallel_runs/run-20260912-2a8757b/reviews/Q1"
+  ],
+  "read_only_everywhere_else": true,
+  "forbidden_actions": [
+    "modify code, manifests, data roots, preregistration, or gate booleans",
+    "duplicate bulk downloads",
+    "credential-consuming calls beyond small metadata probes"
+  ],
+  "verify_targets": [
+    "root and base HEAD identity",
+    "dirty-state preservation",
+    "manifest artifact counts (36: 29 READY / 6 UNAVAILABLE / 1 INCOMPLETE)",
+    "canonical vs pretty hash behavior",
+    "artifact existence and SHA-256",
+    "raster domains, nodata rules, target grid",
+    "GHSL m2 semantics",
+    "S1 nested map and [0,1] fractions",
+    "S2 scene lineage",
+    "OSM/WorldPop registration",
+    "waiver correctness",
+    "contract hash naming ambiguity (data 240a3615 vs framework-runtime 7748b089 vs stale gate ecda408e)",
+    "stale documentation",
+    "raw-SLC boundary",
+    "B ranked-versus-gated status"
+  ],
+  "return_states": ["REVIEW_PASS", "REVIEW_BLOCKED", "REVIEW_INCOMPLETE"],
+  "issued_at_utc": "2026-09-12T06:54:41Z",
+  "ttl_note": "valid until coordinator revokes or run closes"
+}

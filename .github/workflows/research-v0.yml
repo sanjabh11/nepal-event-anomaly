@@ -1,0 +1,416 @@
+# Research-v0 contract checks — additive CI for the research-only
+# namespace.  This workflow validates contracts and boundaries only;
+# it performs no data intake, downloads, clustering, or execution.
+name: research-v0-contracts
+
+on:
+  push:
+    paths:
+      - "nepal/research_v0/**"
+      - "nepal/science_v0/**"
+      - "nepal/experiment_v0/**"
+      - "nepal/seismic_sidecar/**"
+      - "nepal/era5_download.py"
+      - "nepal/era5_hybrid_fetch.py"
+      - "nepal/run_ledger_repair.py"
+      - "nepal/feature_extraction.py"
+      - "nepal/gmm_descriptive.py"
+      - "tests/test_research_v0_*.py"
+      - "tests/test_science_v0_*.py"
+      - "tests/test_experiment_v0_*.py"
+      - "tests/test_science_experiment_e2e.py"
+      - "tests/fixtures/**"
+      - "tests/test_p5_io_contract.py"
+      - "tests/test_round5_hardening.py"
+      - "tests/test_run_a_reconciliation.py"
+      - "tests/test_r6_*.py"
+      - "tests/test_r7_hardening.py"
+      - "tests/test_r7_*.py"
+      - "tests/test_r8_*.py"
+      - "tests/test_r9_*.py"
+      - "tests/test_r10_*.py"
+      - "tests/test_glof_poc_contract.py"
+      - "tests/test_r11_2_provenance.py"
+      - "tests/test_r11_3_provenance.py"
+      - "tests/test_p5_glof_intake.py"
+      - "tests/test_real_fmx_audit.py"
+      - "tests/test_glof_poc_real_path.py"
+      - "tests/test_regime_real_path.py"
+      - "tests/test_r11_5_release_closure.py"
+      - "tests/test_r11_9_steim_seam.py"
+      - "tests/test_seismic_*.py"
+      - "tests/test_framework_v1_*.py"
+      - "conftest.py"
+      - "requirements.txt"
+      - "docs/science/**"
+      - ".github/workflows/research-v0.yml"
+  pull_request:
+    paths:
+      - "nepal/research_v0/**"
+      - "nepal/science_v0/**"
+      - "nepal/experiment_v0/**"
+      - "nepal/seismic_sidecar/**"
+      - "nepal/era5_download.py"
+      - "nepal/era5_hybrid_fetch.py"
+      - "nepal/run_ledger_repair.py"
+      - "nepal/feature_extraction.py"
+      - "nepal/gmm_descriptive.py"
+      - "tests/test_research_v0_*.py"
+      - "tests/test_science_v0_*.py"
+      - "tests/test_experiment_v0_*.py"
+      - "tests/test_science_experiment_e2e.py"
+      - "tests/fixtures/**"
+      - "tests/test_p5_io_contract.py"
+      - "tests/test_round5_hardening.py"
+      - "tests/test_run_a_reconciliation.py"
+      - "tests/test_r6_*.py"
+      - "tests/test_r7_hardening.py"
+      - "tests/test_r7_*.py"
+      - "tests/test_r8_*.py"
+      - "tests/test_r9_*.py"
+      - "tests/test_r10_*.py"
+      - "tests/test_glof_poc_contract.py"
+      - "tests/test_r11_2_provenance.py"
+      - "tests/test_r11_3_provenance.py"
+      - "tests/test_p5_glof_intake.py"
+      - "tests/test_real_fmx_audit.py"
+      - "tests/test_glof_poc_real_path.py"
+      - "tests/test_regime_real_path.py"
+      - "tests/test_r11_5_release_closure.py"
+      - "tests/test_r11_9_steim_seam.py"
+      - "tests/test_seismic_*.py"
+      - "tests/test_framework_v1_*.py"
+      - "conftest.py"
+      - "requirements.txt"
+      - "docs/science/**"
+      - ".github/workflows/research-v0.yml"
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          # ENV-01: the supported line is pinned — CI runs the same
+          # Python family as the verified local environment and
+          # installs the locked dependency set, never floating
+          # latest.  rasterio is intentionally absent from the lock:
+          # the 5 rasterio-dependent tests are disclosed skips, not
+          # silently-missing gates.
+          python-version: "3.14"
+
+      - name: Install test runner and pinned deps
+        run: >
+          python -m pip install -r requirements.txt
+          && python -m pip install pytest
+
+      - name: Frozen-boundary diff check (pull_request)
+        if: github.event_name == 'pull_request'
+        run: |
+          set -e
+          git fetch --depth=2 origin ${{ github.base_ref }}
+          changed=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" -- \
+            nepal/framework_v1/ preregistration.md pinned/ data/ || true)
+          if [ -n "$changed" ]; then
+            echo "Frozen paths modified: $changed"; exit 1
+          fi
+          echo "frozen-path diff empty"
+
+      - name: Frozen-boundary diff check (push)
+        if: github.event_name == 'push'
+        run: |
+          set -e
+          before="${{ github.event.before }}"
+          # All-zero before-SHA means branch creation — fail closed on
+          # the fixed baseline instead (P0-03).
+          if [ "$before" = "0000000000000000000000000000000000000000" ]; then
+            before="5ef43c292ce41a93c9adec55185973caa7045285"
+          fi
+          changed=$(git diff --name-only "${before}..HEAD" -- \
+            nepal/framework_v1/ preregistration.md pinned/ data/ || true)
+          if [ -n "$changed" ]; then
+            echo "Frozen paths modified: $changed"; exit 1
+          fi
+          echo "frozen-path diff empty"
+
+      - name: Frozen-boundary check vs fixed baseline
+        run: |
+          set -e
+          changed=$(git diff --name-only \
+            5ef43c292ce41a93c9adec55185973caa7045285..HEAD -- \
+            nepal/framework_v1/ preregistration.md pinned/ data/ || true)
+          if [ -n "$changed" ]; then
+            echo "Frozen paths differ from baseline: $changed"; exit 1
+          fi
+          echo "frozen paths identical to fixed baseline"
+
+      - name: Canonical collection guard
+        # CI-01 (R10): canonical collection is tests/ and tests/
+        # only.  The repo-root conftest pins
+        # collect_ignore = ["data"] so a bare `pytest` can never
+        # follow the IGNORED data/framework_inputs_v1_reconciled
+        # symlink into operator-local evidence storage.  This step
+        # proves both directions: tests/ collection is non-empty,
+        # and repository-wide collection equals it exactly.
+        run: |
+          set -e
+          canonical=$(PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
+            python -B -m pytest tests/ --collect-only -q | tail -1)
+          repowide=$(PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
+            python -B -m pytest . --collect-only -q | tail -1)
+          echo "tests/ collection:   $canonical"
+          echo "repo-wide collection: $repowide"
+          [ "$canonical" = "$repowide" ] || {
+            echo "repo-wide collection diverged from tests/ — " \
+              "a non-canonical path is being collected"; exit 1; }
+
+      - name: Research contract tests
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
+            python -B -m pytest tests/test_research_v0_*.py -q -rs
+
+      - name: Science/experiment v0 contract tests
+        # CI-01: covers the science_v0 + experiment_v0 lanes — regimes,
+        # adapters, association, vintages, evaluation, audit, replay,
+        # and the science-experiment e2e.  Contract-layer only:
+        # synthetic fixtures, no real-data intake.
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
+            python -B -m pytest \
+            tests/test_science_v0_*.py \
+            tests/test_experiment_v0_*.py \
+            tests/test_science_experiment_e2e.py \
+            -q -rs
+
+      - name: P5 io-contract tests
+        # P5-15: -rs surfaces skip reasons in the CI log — skips (the
+        # 5 rasterio-gated environmental gates elsewhere in the suite
+        # and any optional-API gates here) must stay visible, not
+        # pass silently.
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
+            python -B -m pytest tests/test_p5_io_contract.py -q -rs
+
+      - name: Round-N hardening + Run-A reconciliation tests
+        # CI-01 (rounds 6-10, NEW-CI-01): these manifest-governed lanes
+        # were carried by the manifest but never executed in this
+        # workflow.  The tests/test_r[6789]_*.py + tests/test_r10_*.py
+        # globs cover current and future round-N hardening lanes (r6,
+        # r7 incl. test_r7_hardening.py, r8, r9, r10); nullglob keeps
+        # an empty match from failing the step, while any matched file
+        # must pass.
+        run: |
+          set -e
+          PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
+            python -B -m pytest \
+            tests/test_round5_hardening.py \
+            tests/test_run_a_reconciliation.py \
+            -q -rs
+          shopt -s nullglob
+          rn=(tests/test_r[6789]_*.py tests/test_r10_*.py)
+          if [ ${#rn[@]} -gt 0 ]; then
+            PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
+              python -B -m pytest "${rn[@]}" -q -rs
+          else
+            echo "no tests/test_r[6789]_*.py/test_r10_*.py files present yet"
+          fi
+
+      - name: Round-11 GLOF PoC contract tests
+        # R11.1-CI: the byte-bound intake + descriptive-runner
+        # contract lane — carried by the manifest, so it must run
+        # here like every other governed lane.
+        run: >
+          PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=.
+          python -B -m pytest tests/test_glof_poc_contract.py
+          tests/test_r11_2_provenance.py
+          tests/test_r11_3_provenance.py
+          tests/test_p5_glof_intake.py
+          tests/test_real_fmx_audit.py
+          tests/test_glof_poc_real_path.py
+          tests/test_regime_real_path.py
+          tests/test_r11_5_release_closure.py -q -rs
+      # R11.7 seismic sidecar: contract, feature, observability,
+      # runner, and shared-boundary regressions — the seismic
+      # class must never leak into forecast/association lanes.
+      - name: Seismic sidecar lanes
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
+            python -B -m pytest \
+            tests/test_seismic_sidecar_contract.py \
+            tests/test_seismic_sidecar_features.py \
+            tests/test_seismic_sidecar_observability.py \
+            tests/test_seismic_sidecar_runner.py \
+            tests/test_seismic_shared_regression.py \
+            tests/test_research_v0_seismic_addendum.py \
+            tests/test_r11_9_steim_seam.py -q -rs
+
+      - name: Frozen framework_v1 contract tests
+        # tests/test_framework_v1_*.py exercise the frozen
+        # nepal/framework_v1 package read-only; the package itself is
+        # protected by the frozen-boundary diff guards above, so these
+        # tests can only ever run against unchanged frozen bytes.  The
+        # 5 rasterio-gated tests skip here (rasterio is intentionally
+        # outside the supported lock — ENV-01); -rs keeps skip reasons
+        # visible.
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
+            python -B -m pytest tests/test_framework_v1_*.py -q -rs
+
+      - name: ERA5 download dry-run gate
+        run: python -B nepal/era5_download.py --dry-run
+
+      - name: ERA5 NetCDF backend smoke gate
+        run: python -B nepal/era5_download.py --smoke
+
+      - name: Claim lint over governed artifacts
+        run: |
+          set -e
+          # claim-scan accepts files or directories (recursive,
+          # deterministic) — local and CI file selection are identical.
+          PYTHONPATH=. python -B -m nepal.research_v0.cli claim-scan docs/science
+          PYTHONPATH=. python -B -m nepal.research_v0.cli claim-scan README.md
+          for f in .github/workflows/*.yml; do
+            PYTHONPATH=. python -B -m nepal.research_v0.cli claim-scan "$f"
+          done
+
+      - name: Manifest byte verification
+        run: |
+          PYTHONPATH=. python -B -m nepal.research_v0.cli \
+            verify-manifest docs/science/ARTIFACT_MANIFEST_V0.json
+
+      - name: Manifest-commit identity guard (manifest_commit == content_head)
+        # R11.5 release proof: the manifest must name the FINAL content
+        # commit it binds — never a stale round's value, never the
+        # manifest-only rebind commit itself (P0_BASELINE_LEDGER:
+        # "content_head and manifest_commit name the final content commit").
+        run: |
+          set -e
+          PYTHONPATH=. python -B -c '
+          import json
+          m = json.load(open("docs/science/ARTIFACT_MANIFEST_V0.json"))
+          assert m["manifest_commit"] == m["content_head"], (
+              "stale manifest_commit: "
+              + m["manifest_commit"]
+              + " != content_head " + m["content_head"])
+          print("manifest_commit == content_head:",
+                m["manifest_commit"])
+          '
+
+      - name: P5-A2 current-result consistency guard
+        # The temporal result is a deliberately negative scientific
+        # outcome.  Keep the repeated release surfaces aligned without
+        # reopening the hardened validators or treating documentation as
+        # scientific evidence.  Historical sections are allowed to retain
+        # their dated counts; this guard checks only the current P5-A2
+        # report, ledger section, README section, and manifest metadata.
+        run: |
+          set -e
+          PYTHONPATH=. python -B - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+
+          root = Path('.')
+          report = (root / 'docs/science/P5_A2_TEMPORAL_REGIME_RESULT_V0.md').read_text()
+          readme = (root / 'README.md').read_text()
+          ledger = (root / 'docs/science/P0_BASELINE_LEDGER.md').read_text()
+          register = (root / 'docs/science/GAP_REGISTER_V0.md').read_text()
+          manifest = json.loads(
+              (root / 'docs/science/ARTIFACT_MANIFEST_V0.json').read_text())
+
+          assert '**Status:** `CANDIDATE_ONLY`' in report
+          assert '`UNSUPERVISED_STRUCTURE_NOT_STABLE`' in report
+          for flag in ('promotion_eligible=false',
+                       'warning_path_authorized=false',
+                       'production_authorized=false'):
+              assert flag in report, flag
+          for phrase in ('Event labels remain `UNADJUDICATED`',
+                         'controls are `CENSORED_OR_AMBIGUOUS`'):
+              assert phrase in report, phrase
+          assert 'fourth-group amendment' in report
+          assert 'dormant' in report
+          for doc, marker in (
+              (readme, '### P5-A2 temporal amendment (current state'),
+              (ledger, '## P5-A2 temporal-amendment execution'),
+              (register, '## P5-A2 closure round'),
+          ):
+              assert marker in doc, marker
+              current = doc[doc.index(marker):]
+              assert 'CANDIDATE_ONLY' in current
+              assert 'UNSUPERVISED_STRUCTURE_NOT_STABLE' in current
+          guard = manifest['test_results']['collection_guard']
+          match = re.search(r'\((\d+) nodes?\)', guard)
+          assert match, guard
+          suite = manifest['test_results']['full_suite_venv']
+          assert '3387 passed' in suite
+          assert '6 skipped' in suite
+          assert '0 failed' in suite
+          assert '3393 collected' in suite
+          assert int(match.group(1)) == 3393
+          assert manifest['manifest_commit'] == manifest['content_head']
+          print('P5-A2 status consistency: PASS')
+          print('P5-A2 posture: CANDIDATE_ONLY / UNSUPERVISED_STRUCTURE_NOT_STABLE')
+          print('P5-A2 authority flags: all false')
+          PY
+
+      - name: Disk reserve guard
+        run: |
+          avail=$(df -k . | awk 'NR==2 {print $4}')
+          if [ "$avail" -lt 8388608 ]; then
+            echo "disk reserve below 8 GiB"; exit 1
+          fi
+          echo "disk reserve ok: ${avail} KiB free"
+
+      - name: Disk reserve check (8 GiB)
+        run: |
+          avail_kb=$(df -k . | awk 'NR==2 {print $4}')
+          avail_gib=$((avail_kb / 1024 / 1024))
+          echo "free: ${avail_gib} GiB"
+          [ "$avail_gib" -ge 8 ]
+
+  # OPTIONAL — reconciled-input geospatial verification lane.
+  # CI-01 (R10): data/framework_inputs_v1_reconciled is an IGNORED
+  # symlink into operator-local evidence storage; it is absent on a
+  # clean CI checkout, and its tests_reconciled/ suite is NOT part of
+  # the canonical contract suite (the root conftest's
+  # collect_ignore=["data"] keeps it out of repository-wide
+  # collection).  Several of its tests import rasterio, which is
+  # quarantined — deliberately outside the supported dependency lock
+  # (ENV-01) — so this job is informational only:
+  # continue-on-error is mandatory, rasterio is NOT installed, and
+  # data/ is never modified.  When the symlink target is absent the
+  # job reports and exits green.
+  reconciled-geospatial-optional:
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install test runner and pinned deps
+        run: >
+          python -m pip install -r requirements.txt
+          && python -m pip install pytest
+
+      - name: Reconciled-input geospatial tests (optional)
+        # rasterio-dependent tests fail on import here — that is the
+        # disclosed quarantine, not a contract failure.
+        run: |
+          if [ ! -d data/framework_inputs_v1_reconciled ]; then
+            echo "reconciled-input evidence absent on this checkout " \
+              "(gitignored operator symlink) — nothing to run"
+            exit 0
+          fi
+          PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
+            python -B -m pytest \
+            "data/framework_inputs_v1_reconciled/tests_reconciled/" \
+            -q -rs

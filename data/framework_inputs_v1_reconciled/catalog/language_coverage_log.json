@@ -1,0 +1,21 @@
+{
+  "access_status": {
+    "chinese": "no_access",
+    "english": "full",
+    "german": "no_access",
+    "russian": "no_access"
+  },
+  "coverage_limitation": "Only English-language sources searched. Chinese (CNKI/CAS/Tibet Bureau) and Russian sources not covered.",
+  "generated_at": "2026-09-11T11:17:03.367882+00:00",
+  "languages_covered": [
+    "en"
+  ],
+  "languages_not_covered": [
+    "zh",
+    "ru",
+    "de",
+    "fr",
+    "it"
+  ],
+  "schema_version": "2.0.0-reconciled"
+}

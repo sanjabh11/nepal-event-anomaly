@@ -1,0 +1,54 @@
+=== WATCHER CYCLE 6 — 2026-09-11T12:07:43Z ===
+
+--- CHECK 1: Frozen Artifact Hash Integrity ---
+  OK   data/features_nepal_jja_2001_2026.csv
+  OK   data/gmm_false_positive_results.json
+  OK   data/locked_jja_events.json
+  OK   preregistration.md
+  RESULT: ALL FROZEN ARTIFACTS INTACT
+
+--- CHECK 2: Codex Lane Isolation (no writes to data/framework_inputs_v1/) ---
+  OK   No recent Codex writes to GLM2 data scope
+
+--- CHECK 3: GLM2 Lane Isolation (no writes to nepal/ or tests/) ---
+  WARN Recent modifications in nepal/ or tests/ (may be Codex lane):
+    /Users/sanjayb/nepal-event-anomaly/nepal/framework_v1/screen.py
+    /Users/sanjayb/nepal-event-anomaly/nepal/framework_v1/__init__.py
+    /Users/sanjayb/nepal-event-anomaly/nepal/framework_v1/cli.py
+    /Users/sanjayb/nepal-event-anomaly/nepal/framework_v1/input_manifest.py
+    /Users/sanjayb/nepal-event-anomaly/nepal/framework_v1/adapters.py
+    /Users/sanjayb/nepal-event-anomaly/tests/test_framework_v1_input_manifest.py
+    /Users/sanjayb/nepal-event-anomaly/tests/test_framework_v1_adapters.py
+    /Users/sanjayb/nepal-event-anomaly/tests/test_framework_v1_cli.py
+    /Users/sanjayb/nepal-event-anomaly/tests/test_framework_v1_screen.py
+
+--- CHECK 4: Disk Space ---
+  Disk available: 8.1Gi (96% used)
+  data/ size: 1.7G
+  framework_inputs_v1/ size: 854M
+  WARN Disk usage above 95%
+
+--- CHECK 5: Test Suite (framework_v1) ---
+  190 passed, 1 warning in 0.59s
+
+--- CHECK 6: Manifest Status ---
+  Artifacts: 23
+    INCOMPLETE: 1
+    PROVISIONAL: 1
+    READY: 14
+    UNAVAILABLE: 7
+  Manifest hash: a8b9cf2b120345dfa31b47a54abef900
+
+--- CHECK 7: Recent File Modifications (last 10 min) ---
+  /Users/sanjayb/nepal-event-anomaly/.pytest_cache/v/cache/nodeids
+  /Users/sanjayb/nepal-event-anomaly/nepal/framework_v1/screen.py
+  /Users/sanjayb/nepal-event-anomaly/nepal/framework_v1/__init__.py
+  /Users/sanjayb/nepal-event-anomaly/nepal/framework_v1/cli.py
+  /Users/sanjayb/nepal-event-anomaly/nepal/framework_v1/input_manifest.py
+  /Users/sanjayb/nepal-event-anomaly/nepal/framework_v1/adapters.py
+  /Users/sanjayb/nepal-event-anomaly/tests/test_framework_v1_input_manifest.py
+  /Users/sanjayb/nepal-event-anomaly/tests/test_framework_v1_adapters.py
+  /Users/sanjayb/nepal-event-anomaly/tests/test_framework_v1_cli.py
+  /Users/sanjayb/nepal-event-anomaly/tests/test_framework_v1_screen.py
+
+=== CYCLE 6 COMPLETE ===

@@ -1,0 +1,92 @@
+{
+  "pre_event_anomalies": 0,
+  "pre_event_n_days": 7,
+  "min_anomaly_score": 0.2155,
+  "pre_event_scores": [
+    {
+      "date": "2026-08-19 00:00:00",
+      "score": 0.2553,
+      "is_anomaly": false
+    },
+    {
+      "date": "2026-08-20 00:00:00",
+      "score": 0.2577,
+      "is_anomaly": false
+    },
+    {
+      "date": "2026-08-21 00:00:00",
+      "score": 0.2363,
+      "is_anomaly": false
+    },
+    {
+      "date": "2026-08-22 00:00:00",
+      "score": 0.2555,
+      "is_anomaly": false
+    },
+    {
+      "date": "2026-08-23 00:00:00",
+      "score": 0.2351,
+      "is_anomaly": false
+    },
+    {
+      "date": "2026-08-24 00:00:00",
+      "score": 0.2155,
+      "is_anomaly": false
+    },
+    {
+      "date": "2026-08-25 00:00:00",
+      "score": 0.2301,
+      "is_anomaly": false
+    }
+  ],
+  "negative_controls": {
+    "2021": {
+      "n_days": 92,
+      "n_anomalies": 0,
+      "anomaly_rate": 0.0,
+      "min_score": 0.0409
+    },
+    "2022": {
+      "n_days": 92,
+      "n_anomalies": 0,
+      "anomaly_rate": 0.0,
+      "min_score": 0.0755
+    },
+    "2023": {
+      "n_days": 92,
+      "n_anomalies": 4,
+      "anomaly_rate": 0.0435,
+      "min_score": -0.069
+    },
+    "2024": {
+      "n_days": 92,
+      "n_anomalies": 0,
+      "anomaly_rate": 0.0,
+      "min_score": 0.0527
+    },
+    "2025": {
+      "n_days": 92,
+      "n_anomalies": 8,
+      "anomaly_rate": 0.087,
+      "min_score": -0.0379
+    }
+  },
+  "model_params": {
+    "n_estimators": 200,
+    "contamination": 0.01,
+    "random_state": 42
+  },
+  "features_used": [
+    "t2m_daily",
+    "d2m_daily",
+    "tp_daily",
+    "sf_daily",
+    "wind_speed_daily",
+    "wind_dir_sin",
+    "wind_dir_cos",
+    "rh_daily",
+    "pdd_7day",
+    "pdd_daily",
+    "freezing_height_m"
+  ]
+}

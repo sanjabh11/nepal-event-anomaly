@@ -16,8 +16,9 @@ import json
 import math
 import re
 from dataclasses import dataclass, field
+from fnmatch import fnmatchcase
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Optional
+from typing import Any, Callable, Iterable, Mapping, Optional
 
 from . import contract as C
 from .provenance import (canonical_json, check_no_raw_slc_tree,
@@ -38,6 +39,37 @@ REQUIRED_ARTIFACT_FIELDS = frozenset({
     "publication_or_validity_date", "processing", "language_access_status",
 })
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+def _stat_identity(path: Path) -> tuple[str, int, int, int, int, int]:
+    """Return a path-specific identity suitable for an in-call digest cache."""
+    stat = path.stat()
+    return (str(path), int(stat.st_dev), int(stat.st_ino), int(stat.st_size),
+            int(stat.st_mtime_ns), int(stat.st_ctime_ns))
+
+
+def _cached_file_digest(path: str | Path,
+                        cache: dict[tuple[str, int, int, int, int, int], str]) -> str:
+    """Hash once per stable path identity within one manifest verification.
+
+    The cache is intentionally supplied by one verifier invocation, never
+    stored globally or persisted.  Existing path authorization happens before
+    this helper is called.  A post-hash stat change prevents caching a digest
+    for a file that was being rewritten while it was read.
+    """
+    resolved = Path(path).resolve(strict=True)
+    before = _stat_identity(resolved)
+    cached = cache.get(before)
+    if cached is not None:
+        return cached
+    digest = sha256_file(resolved)
+    try:
+        after = _stat_identity(resolved)
+    except OSError:
+        return digest
+    if after == before:
+        cache[before] = digest
+    return digest
 
 AUTHORITATIVE_DATA_CONTRACT_PATH = "nepal/feature_" + "contract.py"
 AUTHORITATIVE_FRAMEWORK_CONTRACT_PATH = "nepal/framework_v1/contract.py"
@@ -348,9 +380,39 @@ def _validate_b_manifest_declarations(manifest: Mapping[str, Any]) -> list[str]:
             if not isinstance(size, int) or isinstance(size, bool) or size < 0:
                 problems.append(
                     f"B package_inventory[{index}] bytes is required")
+    policy = manifest.get("package_inventory_policy")
+    if not isinstance(policy, Mapping):
+        problems.append("B manifest package_inventory_policy must be an object")
+    else:
+        excluded = policy.get("excluded")
+        if (not isinstance(excluded, list) or not excluded or
+                not all(isinstance(pattern, str) and pattern
+                        for pattern in excluded)):
+            problems.append(
+                "B manifest package_inventory_policy.excluded must be a non-empty "
+                "list of strings")
     waivers = manifest.get("waivers")
     if not isinstance(waivers, list):
         problems.append("B manifest waivers must be an explicit list")
+    else:
+        required_ids = set(PHASE_REQUIRED_ARTIFACT_IDS["B"])
+        blocking_statuses = {
+            "INCOMPLETE", "INVALID", "PROVISIONAL", "UNAVAILABLE",
+            "UNAVAILABLE_OR_INCOMPLETE",
+        }
+        for index, waiver in enumerate(waivers):
+            if not isinstance(waiver, Mapping):
+                problems.append(f"B manifest waiver[{index}] must be an object")
+                continue
+            artifact_id = waiver.get("artifact_id")
+            if artifact_id not in required_ids:
+                continue
+            status = str(waiver.get("status", "")).upper()
+            boundary = _phase_text(waiver.get("claim_boundary")).lower()
+            if status in blocking_statuses or "must not authorize strict b" in boundary:
+                problems.append(
+                    f"B manifest waiver[{index}] blocks strict B for required "
+                    f"artifact {artifact_id!r}")
     return problems
 
 
@@ -368,7 +430,9 @@ def _find_authoritative_repo_root(handoff_root: Path,
 
 def _validate_contract_source_bindings(
         manifest: Mapping[str, Any], handoff_root: Path,
-        repo_root: Optional[str | Path]) -> tuple[list[str], dict[str, Any]]:
+        repo_root: Optional[str | Path],
+        *, digest_file: Optional[Callable[[str | Path], str]] = None,
+        ) -> tuple[list[str], dict[str, Any]]:
     """Compare manifest source commitments with the actual authoritative files."""
     resolved_root = _find_authoritative_repo_root(handoff_root, repo_root)
     diagnostics: dict[str, Any] = {
@@ -379,6 +443,7 @@ def _validate_contract_source_bindings(
         return ["B manifest authoritative contract source root could not be resolved"], diagnostics
 
     problems: list[str] = []
+    digest = digest_file or sha256_file
     for path_key, hash_key in (
             ("data_contract_source_path", "data_contract_source_sha256"),
             ("framework_contract_source_path", "framework_contract_source_sha256")):
@@ -399,7 +464,7 @@ def _validate_contract_source_bindings(
         if not source.is_file():
             problems.append(f"B manifest source file is missing: {relative}")
             continue
-        actual = sha256_file(source)
+        actual = digest(source)
         diagnostics["bindings"][path_key] = {
             "relative_path": relative,
             "declared_sha256": declared,
@@ -413,12 +478,33 @@ def _validate_contract_source_bindings(
 
 
 def _validate_package_inventory_files(root: Path,
-                                      manifest: Mapping[str, Any]) -> list[str]:
-    """Verify every locally packaged extra is safe, present, and hash-bound."""
+                                      manifest: Mapping[str, Any],
+                                      *,
+                                      digest_file: Optional[Callable[[str | Path], str]] = None,
+                                      ) -> list[str]:
+    """Verify the complete locally packaged inventory is safe and hash-bound."""
     problems: list[str] = []
+    digest_fn = digest_file or sha256_file
     inventory = manifest.get("package_inventory")
     if not isinstance(inventory, list):
         return problems
+    policy = manifest.get("package_inventory_policy")
+    excluded = (policy.get("excluded") if isinstance(policy, Mapping)
+                else None)
+    if (not isinstance(excluded, list) or not excluded or
+            not all(isinstance(pattern, str) and pattern for pattern in excluded)):
+        return problems
+
+    def is_excluded(relative: str) -> bool:
+        for pattern in excluded:
+            if fnmatchcase(relative, pattern):
+                return True
+            # Treat a leading **/ as recursive, including files at the root.
+            # This matches the package policy's intended glob semantics.
+            if pattern.startswith("**/") and fnmatchcase(relative, pattern[3:]):
+                return True
+        return False
+
     seen_paths: set[str] = set()
     for index, entry in enumerate(inventory):
         if not isinstance(entry, Mapping):
@@ -429,6 +515,9 @@ def _validate_package_inventory_files(root: Path,
                 f"B package_inventory[{index}] has unsafe relative_path")
             continue
         rel_text = relative.as_posix()
+        if is_excluded(rel_text):
+            problems.append(
+                f"B package_inventory[{index}] lists an excluded path: {rel_text}")
         if rel_text in seen_paths:
             problems.append(
                 f"B package_inventory[{index}] duplicates relative_path: {rel_text}")
@@ -445,11 +534,39 @@ def _validate_package_inventory_files(root: Path,
         if resolved.stat().st_size != entry.get("bytes"):
             problems.append(
                 f"B package_inventory[{index}] byte count mismatch: {relative.as_posix()}")
-        digest = entry.get("sha256")
-        if isinstance(digest, str) and SHA256_RE.fullmatch(digest):
-            if sha256_file(resolved) != digest:
+        declared_digest = entry.get("sha256")
+        if isinstance(declared_digest, str) and SHA256_RE.fullmatch(declared_digest):
+            if digest_fn(resolved) != declared_digest:
                 problems.append(
                     f"B package_inventory[{index}] checksum mismatch: {relative.as_posix()}")
+
+    actual_paths: set[str] = set()
+    try:
+        filesystem_entries = sorted(root.rglob("*"),
+                                    key=lambda path: path.as_posix())
+    except OSError as exc:
+        problems.append(f"B package inventory scan failed: {exc}")
+        filesystem_entries = []
+    for path in filesystem_entries:
+        try:
+            relative = path.relative_to(root).as_posix()
+        except ValueError:
+            continue
+        if path.is_symlink():
+            problems.append(
+                f"B package inventory contains a symlink: {relative}")
+            continue
+        if path.is_dir():
+            continue
+        if not path.is_file():
+            problems.append(
+                f"B package inventory contains a non-regular path: {relative}")
+            continue
+        if not is_excluded(relative):
+            actual_paths.add(relative)
+    for relative in sorted(actual_paths - seen_paths):
+        problems.append(
+            f"B package inventory does not declare file: {relative}")
     return problems
 
 
@@ -519,6 +636,10 @@ def validate_phase_artifact(artifact: Mapping[str, Any], phase: str) -> list[str
             f"{artifact_id}: required phase {phase_name} artifact status is "
             f"{artifact.get('status')!r}, not READY")
         return problems
+    if artifact.get("incomplete_reason") not in (None, ""):
+        problems.append(
+            f"{artifact_id}: READY artifact has incomplete_reason; it cannot "
+            "be consumed by a strict phase")
 
     processing = _phase_text(artifact.get("processing")).lower()
     for marker in _READY_PROCESSING_MARKERS:
@@ -546,8 +667,11 @@ def validate_phase_artifact(artifact: Mapping[str, Any], phase: str) -> list[str
     return problems
 
 
-def validate_artifact_bundle(root: str | Path,
-                            artifact: Mapping[str, Any]) -> list[str]:
+def _validate_artifact_bundle(root: str | Path,
+                              artifact: Mapping[str, Any],
+                              *,
+                              digest_file: Optional[Callable[[str | Path], str]] = None,
+                              ) -> list[str]:
     """Verify a registered vector artifact and all consumed sidecars.
 
     The primary ``sha256``/``bytes`` fields identify the main path.  A vector
@@ -562,6 +686,7 @@ def validate_artifact_bundle(root: str | Path,
     if artifact.get("kind") != "vector":
         return []
     root_path = Path(root)
+    digest_fn = digest_file or sha256_file
     entries = artifact.get("bundle_files")
     if not isinstance(entries, list) or not entries:
         return [f"{artifact.get('artifact_id')}: vector bundle_files are required"]
@@ -604,7 +729,7 @@ def validate_artifact_bundle(root: str | Path,
         if isinstance(size, int) and resolved.stat().st_size != size:
             problems.append(f"{artifact.get('artifact_id')}: vector bundle byte count mismatch {rel_text}")
         if isinstance(digest, str) and SHA256_RE.fullmatch(digest):
-            actual = sha256_file(resolved)
+            actual = digest_fn(resolved)
             if actual != digest:
                 problems.append(f"{artifact.get('artifact_id')}: vector bundle checksum mismatch {rel_text}")
 
@@ -628,6 +753,12 @@ def validate_artifact_bundle(root: str | Path,
                 f"{artifact.get('artifact_id')}: vector bundle missing structural sidecars: "
                 + ", ".join(missing))
     return problems
+
+
+def validate_artifact_bundle(root: str | Path,
+                            artifact: Mapping[str, Any]) -> list[str]:
+    """Verify a vector bundle using a standalone, non-shared digest cache."""
+    return _validate_artifact_bundle(root, artifact)
 
 
 @dataclass(frozen=True)
@@ -662,6 +793,11 @@ def verify_input_manifest(
     *,
     expected_contract_sha256: Optional[str] = None,
     expected_framework_contract_sha256: Optional[str] = None,
+    trusted_manifest_sha256: Optional[str] = None,
+    trusted_manifest_file_sha256: Optional[str] = None,
+    manifest_file_path: Optional[str | Path] = None,
+    require_manifest_file_anchor: bool = False,
+    expected_candidate_generation_id: Optional[str] = None,
     required_artifact_ids: Optional[Iterable[str]] = None,
     required_role: Optional[str] = None,
     primary_roles: Iterable[str] = PRIMARY_ROLES,
@@ -676,6 +812,9 @@ def verify_input_manifest(
     ``expected_framework_contract_sha256`` binds the framework semantic
     contract separately.  The two domains must not be silently substituted for
     one another before a primary run.
+
+    ``expected_candidate_generation_id`` binds the manifest's declared
+    candidate generation to the strict execution context.
     """
     errors: list[str] = []
     warnings: list[str] = []
@@ -684,6 +823,11 @@ def verify_input_manifest(
     nonready: list[str] = []
     checks: dict[str, Any] = {}
     root_path = Path(root)
+    digest_cache: dict[tuple[str, int, int, int, int, int], str] = {}
+
+    def _digest_file(path: str | Path) -> str:
+        return _cached_file_digest(path, digest_cache)
+
     phase_name = str(phase).upper() if phase is not None else None
     phase_contract_errors: list[str] = []
     if phase_name is not None and phase_name not in _PHASE_ARTIFACT_CONTRACTS:
@@ -706,7 +850,23 @@ def verify_input_manifest(
     if not root_exists:
         errors.append(f"manifest root is not an existing directory: {root_path}")
 
+    declared_generation_id = manifest.get("candidate_generation_id")
+    if isinstance(declared_generation_id, str) and declared_generation_id:
+        checks["candidate_generation_id"] = declared_generation_id
+    if expected_candidate_generation_id is not None:
+        if not isinstance(expected_candidate_generation_id, str) or \
+                not expected_candidate_generation_id:
+            errors.append(
+                "expected_candidate_generation_id must be a non-empty "
+                "string when supplied")
+        elif declared_generation_id != expected_candidate_generation_id:
+            errors.append(
+                "candidate generation mismatch: manifest declares "
+                f"{declared_generation_id!r}; strict execution requires "
+                f"{expected_candidate_generation_id!r}")
+
     stored_hash = manifest.get("manifest_sha256")
+    canonical_hash_value: Optional[str] = None
     self_hash_verified = False
     if require_self_hash and not isinstance(stored_hash, str):
         errors.append("manifest_sha256 is required")
@@ -717,6 +877,7 @@ def verify_input_manifest(
             expected_hash = None
             errors.append(f"manifest contains non-canonical JSON values: {exc}")
         if expected_hash is not None:
+            canonical_hash_value = expected_hash
             checks["manifest_sha256"] = expected_hash
             if stored_hash == expected_hash:
                 checks["manifest_hash_encoding"] = "canonical_json"
@@ -738,6 +899,79 @@ def verify_input_manifest(
     checks["canonical_manifest_authorized"] = bool(
         self_hash_verified and
         checks.get("manifest_hash_encoding") == "canonical_json")
+
+    trusted_anchor_valid = (
+        isinstance(trusted_manifest_sha256, str) and
+        bool(SHA256_RE.fullmatch(trusted_manifest_sha256)))
+    if trusted_manifest_sha256 is not None and not trusted_anchor_valid:
+        errors.append(
+            "trusted_manifest_sha256 must be a lowercase 64-character SHA-256")
+    trusted_anchor_bound = bool(
+        trusted_anchor_valid and canonical_hash_value is not None and
+        canonical_hash_value == trusted_manifest_sha256)
+    if trusted_anchor_valid and not trusted_anchor_bound:
+        errors.append(
+            "canonical manifest hash does not match the trusted manifest anchor")
+    checks["trusted_manifest_anchor_bound"] = trusted_anchor_bound
+    checks["trusted_manifest_sha256_supplied"] = trusted_manifest_sha256 is not None
+
+    # Distinct from the canonical-payload anchor above: the file anchor binds
+    # the on-disk manifest bytes, so a caller cannot satisfy strict mode by
+    # self-hashing a detached mapping.
+    file_anchor_valid = (
+        isinstance(trusted_manifest_file_sha256, str) and
+        bool(SHA256_RE.fullmatch(trusted_manifest_file_sha256)))
+    if trusted_manifest_file_sha256 is not None and not file_anchor_valid:
+        errors.append(
+            "trusted_manifest_file_sha256 must be a lowercase 64-character SHA-256")
+    manifest_file_bound = False
+    actual_file_sha256: Optional[str] = None
+    if trusted_manifest_file_sha256 is not None:
+        if manifest_file_path is None:
+            errors.append(
+                "trusted_manifest_file_sha256 requires manifest_file_path so the "
+                "verifier can re-hash the manifest bytes from disk")
+        else:
+            manifest_file = Path(manifest_file_path)
+            try:
+                if not manifest_file.is_file():
+                    errors.append(
+                        f"trusted manifest file is missing: {manifest_file}")
+                else:
+                    resolved = manifest_file.resolve(strict=False)
+                    actual_file_sha256 = _digest_file(resolved)
+                    manifest_file_bound = (
+                        actual_file_sha256 == trusted_manifest_file_sha256)
+                    if not manifest_file_bound:
+                        errors.append(
+                            "manifest file bytes do not match the trusted "
+                            "manifest file anchor")
+                    else:
+                        # Guard against the anchored file and the verified
+                        # mapping diverging (e.g. a caller-supplied mapping).
+                        try:
+                            file_manifest = json.loads(
+                                resolved.read_text(encoding="utf-8"))
+                        except (OSError, ValueError) as exc:
+                            errors.append(
+                                "trusted manifest file could not be parsed "
+                                f"for mapping comparison: {exc}")
+                        else:
+                            if file_manifest != dict(manifest):
+                                errors.append(
+                                    "verified manifest mapping does not equal "
+                                    "the trusted manifest file contents")
+            except OSError as exc:
+                errors.append(
+                    f"trusted manifest file could not be read: {exc}")
+    checks["manifest_file_sha256"] = actual_file_sha256
+    checks["manifest_file_anchor_bound"] = manifest_file_bound
+    checks["manifest_file_anchor_supplied"] = (
+        trusted_manifest_file_sha256 is not None)
+    if require_manifest_file_anchor and trusted_manifest_file_sha256 is None:
+        errors.append(
+            "strict primary verification requires a trusted manifest file "
+            "anchor (SHA-256 of the on-disk manifest bytes)")
 
     data_contract = manifest.get("contract_sha256")
     if not isinstance(data_contract, str) or not SHA256_RE.fullmatch(data_contract):
@@ -772,6 +1006,13 @@ def verify_input_manifest(
     expected_framework_valid = (
         isinstance(expected_framework_contract_sha256, str) and
         bool(SHA256_RE.fullmatch(expected_framework_contract_sha256)))
+    runtime_framework_match = (
+        expected_framework_valid and
+        expected_framework_contract_sha256 == C.contract_hash())
+    if expected_framework_valid and not runtime_framework_match:
+        errors.append(
+            "requested framework contract hash does not match the runtime "
+            "framework contract")
     declared_framework_valid = (
         declared_framework is None or
         (isinstance(declared_framework, str) and
@@ -783,9 +1024,10 @@ def verify_input_manifest(
     checks["framework_contract_declaration_valid"] = declared_framework_valid
     checks["framework_contract_declaration_bound"] = (
         declared_framework is not None and expected_framework_valid and
+        runtime_framework_match and
         declared_framework == expected_framework_contract_sha256)
     checks["framework_contract_runtime_bound"] = (
-        expected_framework_valid and declared_framework_valid and
+        runtime_framework_match and declared_framework_valid and
         (declared_framework is None or
          declared_framework == expected_framework_contract_sha256))
     # Backward-compatible alias: this field means runtime binding, not merely
@@ -854,7 +1096,8 @@ def verify_input_manifest(
                     _PHASE_ARTIFACT_CONTRACTS["B"] and
                     _PHASE_ARTIFACT_CONTRACTS["B"].get(
                         str(artifact.get("artifact_id")), {}).get("vector_bundle")):
-                phase_contract_errors.extend(validate_artifact_bundle(root_path, artifact))
+                phase_contract_errors.extend(_validate_artifact_bundle(
+                    root_path, artifact, digest_file=_digest_file))
 
         status = artifact.get("status")
         if status not in DATA_STATUSES:
@@ -920,7 +1163,7 @@ def verify_input_manifest(
         actual_bytes = resolved.stat().st_size
         if actual_bytes != byte_count:
             errors.append(f"{artifact_id}: byte count mismatch ({byte_count} -> {actual_bytes})")
-        actual_hash = sha256_file(resolved)
+        actual_hash = _digest_file(resolved)
         if actual_hash != digest:
             errors.append(f"{artifact_id}: checksum mismatch ({digest} -> {actual_hash})")
 
@@ -937,11 +1180,11 @@ def verify_input_manifest(
     if phase_name == "B":
         phase_contract_errors.extend(_validate_b_manifest_declarations(manifest))
         source_errors, source_diagnostics = _validate_contract_source_bindings(
-            manifest, root_path, repo_root)
+            manifest, root_path, repo_root, digest_file=_digest_file)
         phase_contract_errors.extend(source_errors)
         checks["contract_source_bindings"] = source_diagnostics
         phase_contract_errors.extend(_validate_package_inventory_files(
-            root_path, manifest))
+            root_path, manifest, digest_file=_digest_file))
         phase_contract_errors.extend(_validate_b_source_references(manifest, ids))
         declared_required = manifest.get("required_artifact_ids")
         expected_required = list(PHASE_REQUIRED_ARTIFACT_IDS["B"])
@@ -975,6 +1218,10 @@ def verify_input_manifest(
         checks.get("contract_bound") and
         checks.get("framework_contract_bound") and required_ids and
         not missing_required and not blocking_required and
+        (trusted_manifest_sha256 is None or
+         checks.get("trusted_manifest_anchor_bound") is True) and
+        (not require_manifest_file_anchor or
+         checks.get("manifest_file_anchor_bound") is True) and
         (phase_name is None or checks.get("phase_contract_valid") is True))
     checks["required_declaration"] = bool(required_ids)
     checks["artifact_count"] = len(artifacts)
@@ -1007,6 +1254,11 @@ def verify_phase_manifest(
     manifest: Mapping[str, Any], root: str | Path, phase: str, *,
     expected_contract_sha256: Optional[str] = None,
     expected_framework_contract_sha256: Optional[str] = None,
+    trusted_manifest_sha256: Optional[str] = None,
+    trusted_manifest_file_sha256: Optional[str] = None,
+    manifest_file_path: Optional[str | Path] = None,
+    require_manifest_file_anchor: bool = False,
+    expected_candidate_generation_id: Optional[str] = None,
     repo_root: Optional[str | Path] = None,
     scan_root_for_raw_slc: bool = True,
 ) -> InputManifestVerification:
@@ -1019,9 +1271,82 @@ def verify_phase_manifest(
         manifest, root,
         expected_contract_sha256=expected_contract_sha256,
         expected_framework_contract_sha256=expected_framework_contract_sha256,
+        trusted_manifest_sha256=trusted_manifest_sha256,
+        trusted_manifest_file_sha256=trusted_manifest_file_sha256,
+        manifest_file_path=manifest_file_path,
+        require_manifest_file_anchor=require_manifest_file_anchor,
+        expected_candidate_generation_id=expected_candidate_generation_id,
         repo_root=repo_root,
         required_artifact_ids=required,
         required_role=str(phase).upper(),
         phase=str(phase).upper(),
+        scan_root_for_raw_slc=scan_root_for_raw_slc,
+    )
+
+
+def verify_canonical_input_manifest(
+    manifest: Mapping[str, Any],
+    root: str | Path,
+    *,
+    trusted_manifest_sha256: Optional[str],
+    expected_contract_sha256: Optional[str],
+    expected_framework_contract_sha256: Optional[str],
+    required_artifact_ids: Optional[Iterable[str]] = None,
+    required_role: Optional[str] = None,
+    primary_roles: Iterable[str] = PRIMARY_ROLES,
+    phase: Optional[str] = None,
+    repo_root: Optional[str | Path] = None,
+    scan_root_for_raw_slc: bool = True,
+    trusted_manifest_file_sha256: Optional[str] = None,
+    manifest_file_path: Optional[str | Path] = None,
+) -> InputManifestVerification:
+    """Run the non-compatibility manifest authorization boundary.
+
+    ``verify_input_manifest`` intentionally retains the downloader's pretty
+    JSON result as a diagnostic for historical manifests.  This helper is the
+    strict production-facing boundary: both contract domains and an external
+    trusted canonical manifest digest are required, so a generated or
+    compatibility-only self-hash cannot authorize a primary run.  When
+    ``trusted_manifest_file_sha256`` is supplied, the on-disk manifest bytes
+    at ``manifest_file_path`` are independently re-hashed and required to
+    match — the canonical payload anchor and the file-byte anchor are
+    deliberately distinct checks.
+    """
+    required_values = [
+        ("expected_contract_sha256", expected_contract_sha256),
+        ("expected_framework_contract_sha256", expected_framework_contract_sha256),
+        ("trusted_manifest_sha256", trusted_manifest_sha256),
+    ]
+    if trusted_manifest_file_sha256 is not None:
+        required_values.append(
+            ("trusted_manifest_file_sha256", trusted_manifest_file_sha256))
+    invalid = [
+        f"{name} must be an explicit lowercase SHA-256"
+        for name, value in required_values
+        if not isinstance(value, str) or not SHA256_RE.fullmatch(value)
+    ]
+    if invalid:
+        return InputManifestVerification(
+            ok=False,
+            can_run_primary=False,
+            errors=tuple(invalid),
+            checks={"strict_canonical_authorization": False},
+        )
+    return verify_input_manifest(
+        manifest,
+        root,
+        expected_contract_sha256=expected_contract_sha256,
+        expected_framework_contract_sha256=expected_framework_contract_sha256,
+        trusted_manifest_sha256=trusted_manifest_sha256,
+        trusted_manifest_file_sha256=trusted_manifest_file_sha256,
+        manifest_file_path=manifest_file_path,
+        require_manifest_file_anchor=(
+            trusted_manifest_file_sha256 is not None),
+        required_artifact_ids=required_artifact_ids,
+        required_role=required_role,
+        primary_roles=primary_roles,
+        phase=phase,
+        repo_root=repo_root,
+        require_self_hash=True,
         scan_root_for_raw_slc=scan_root_for_raw_slc,
     )

@@ -1,0 +1,56 @@
+=== WATCHER CYCLE 2 — 2026-09-11T11:27:36Z ===
+
+--- CHECK 1: Frozen Artifact Hash Integrity ---
+  OK   data/features_nepal_jja_2001_2026.csv
+  OK   data/gmm_false_positive_results.json
+  OK   data/locked_jja_events.json
+  OK   preregistration.md
+  RESULT: ALL FROZEN ARTIFACTS INTACT
+
+--- CHECK 2: Codex Lane Isolation (no writes to data/framework_inputs_v1/) ---
+  OK   No recent Codex writes to GLM2 data scope
+
+--- CHECK 3: GLM2 Lane Isolation (no writes to nepal/ or tests/) ---
+  WARN Recent modifications in nepal/ or tests/ (may be Codex lane):
+    /Users/sanjayb/nepal-event-anomaly/nepal/framework_v1/catalog.py
+    /Users/sanjayb/nepal-event-anomaly/nepal/framework_v1/input_manifest.py
+    /Users/sanjayb/nepal-event-anomaly/nepal/framework_v1/provenance.py
+    /Users/sanjayb/nepal-event-anomaly/nepal/framework_v1/contract.py
+    /Users/sanjayb/nepal-event-anomaly/tests/test_framework_v1_input_manifest.py
+    /Users/sanjayb/nepal-event-anomaly/tests/test_framework_v1_catalog.py
+
+--- CHECK 4: Disk Space ---
+  Disk available: 11Gi (95% used)
+  data/ size: 1.7G
+  framework_inputs_v1/ size: 854M
+
+--- CHECK 5: Test Suite (framework_v1) ---
+  175 passed in 0.49s
+
+--- CHECK 6: Manifest Status ---
+  Artifacts: 23
+    INCOMPLETE: 1
+    PROVISIONAL: 1
+    READY: 14
+    UNAVAILABLE: 7
+  Manifest hash: a8b9cf2b120345dfa31b47a54abef900
+
+--- CHECK 7: Recent File Modifications (last 10 min) ---
+  /Users/sanjayb/nepal-event-anomaly/.pytest_cache/v/cache/nodeids
+  /Users/sanjayb/nepal-event-anomaly/.pytest_cache/v/cache/lastfailed
+  /Users/sanjayb/nepal-event-anomaly/nepal/framework_v1/catalog.py
+  /Users/sanjayb/nepal-event-anomaly/nepal/framework_v1/input_manifest.py
+  /Users/sanjayb/nepal-event-anomaly/nepal/framework_v1/provenance.py
+  /Users/sanjayb/nepal-event-anomaly/nepal/framework_v1/contract.py
+  /Users/sanjayb/nepal-event-anomaly/.phase-loop/glm2_reconciled_download_plan.md
+  /Users/sanjayb/nepal-event-anomaly/tests/test_framework_v1_input_manifest.py
+  /Users/sanjayb/nepal-event-anomaly/tests/test_framework_v1_catalog.py
+  /Users/sanjayb/nepal-event-anomaly/data/framework_inputs_v1_reconciled/sentinel2/dry_season_metadata.json
+  /Users/sanjayb/nepal-event-anomaly/data/framework_inputs_v1_reconciled/manifest.json
+  /Users/sanjayb/nepal-event-anomaly/data/framework_inputs_v1_reconciled/glacier_inventory/focal_rgi_record.json
+  /Users/sanjayb/nepal-event-anomaly/data/framework_inputs_v1_reconciled/sentinel1/winter_acquisition_table.json
+  /Users/sanjayb/nepal-event-anomaly/data/framework_inputs_v1_reconciled/handoff_gate_result.json
+  /Users/sanjayb/nepal-event-anomaly/data/framework_inputs_v1_reconciled/tests_reconciled/conftest.py
+  /Users/sanjayb/nepal-event-anomaly/data/framework_inputs_v1_reconciled/tests_reconciled/test_verification_matrix.py
+
+=== CYCLE 2 COMPLETE ===

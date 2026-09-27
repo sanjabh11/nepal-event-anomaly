@@ -1,0 +1,50 @@
+=== WATCHER CYCLE 1 — 2026-09-11T11:17:28Z ===
+
+--- CHECK 1: Frozen Artifact Hash Integrity ---
+  OK   data/features_nepal_jja_2001_2026.csv
+  OK   data/gmm_false_positive_results.json
+  OK   data/locked_jja_events.json
+  OK   preregistration.md
+  RESULT: ALL FROZEN ARTIFACTS INTACT
+
+--- CHECK 2: Codex Lane Isolation (no writes to data/framework_inputs_v1/) ---
+  OK   No recent Codex writes to GLM2 data scope
+
+--- CHECK 3: GLM2 Lane Isolation (no writes to nepal/ or tests/) ---
+  OK   No recent GLM2 writes to Codex code scope
+
+--- CHECK 4: Disk Space ---
+  Disk available: 10Gi (95% used)
+  data/ size: 1.3G
+  framework_inputs_v1/ size: 854M
+
+--- CHECK 5: Test Suite (framework_v1) ---
+  169 passed in 2.32s
+
+--- CHECK 6: Manifest Status ---
+  Artifacts: 23
+    INCOMPLETE: 1
+    PROVISIONAL: 1
+    READY: 14
+    UNAVAILABLE: 7
+  Manifest hash: a8b9cf2b120345dfa31b47a54abef900
+
+--- CHECK 7: Recent File Modifications (last 10 min) ---
+  /Users/sanjayb/nepal-event-anomaly/.pytest_cache/v/cache/nodeids
+  /Users/sanjayb/nepal-event-anomaly/data/framework_inputs_v1_reconciled/catalog/language_coverage_log.json
+  /Users/sanjayb/nepal-event-anomaly/data/framework_inputs_v1_reconciled/catalog/adjudication_ledger.json
+  /Users/sanjayb/nepal-event-anomaly/data/framework_inputs_v1_reconciled/dry_run_manifest.json
+  /Users/sanjayb/nepal-event-anomaly/data/framework_inputs_v1_reconciled/scripts/canonical_manifest.py
+  /Users/sanjayb/nepal-event-anomaly/data/framework_inputs_v1_reconciled/scripts/contract.py
+  /Users/sanjayb/nepal-event-anomaly/data/framework_inputs_v1_reconciled/manifest.json
+  /Users/sanjayb/nepal-event-anomaly/data/framework_inputs_v1_reconciled/dem/dem_300x300_100m_32645.tif
+  /Users/sanjayb/nepal-event-anomaly/data/framework_inputs_v1_reconciled/dem/dem_coverage_mask_300x300.tif
+  /Users/sanjayb/nepal-event-anomaly/data/framework_inputs_v1_reconciled/glacier_inventory/rgi15_fixed_box_subset.shx
+  /Users/sanjayb/nepal-event-anomaly/data/framework_inputs_v1_reconciled/glacier_inventory/rgi15_south_asia_east.prj
+  /Users/sanjayb/nepal-event-anomaly/data/framework_inputs_v1_reconciled/glacier_inventory/rgi15_fixed_box_subset.shp
+  /Users/sanjayb/nepal-event-anomaly/data/framework_inputs_v1_reconciled/glacier_inventory/rgi15_fixed_box_subset.cpg
+  /Users/sanjayb/nepal-event-anomaly/data/framework_inputs_v1_reconciled/glacier_inventory/rgi15_fixed_box_subset.dbf
+  /Users/sanjayb/nepal-event-anomaly/data/framework_inputs_v1_reconciled/glacier_inventory/rgi14_south_asia_west.prj
+  /Users/sanjayb/nepal-event-anomaly/data/framework_inputs_v1_reconciled/glacier_inventory/rgi15_fixed_box_subset.prj
+
+=== CYCLE 1 COMPLETE ===

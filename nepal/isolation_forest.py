@@ -52,22 +52,25 @@ DAILY_FEATURE_COLS = [
 
 
 def build_multivariate_vector(daily_df: pd.DataFrame) -> pd.DataFrame:
-    """Build the 10-D (or 4-D from daily) multivariate vector for Isolation Forest.
+    """Build the multivariate vector for Isolation Forest.
 
-    From daily data we have: t2m_daily, pdd_daily, pdd_7day, freezing_height_m
-    We also need: precipitation, snowfall, SWE, wind_speed, wind_dir, RH
-    These come from the hourly data resampled to daily.
+    DATA SOURCE NOTE (2026-09-10):
+    EDH daily data does not include sd (snow_depth) or sf (snowfall).
+    These columns are all-NaN. We drop all-NaN columns BEFORE dropna()
+    so that rows are not lost due to missing variables.
+    For JJA monsoon at 28°N, sd/sf are near-zero; their absence does not
+    affect the anomaly detection for this regime.
     """
-    # If the daily_df already has all columns, use them
+    # Start with all configured columns that exist in the dataframe
     cols = [c for c in DAILY_FEATURE_COLS if c in daily_df.columns]
 
-    # Add any additional columns that might be present
-    for extra in ["tp_daily", "sf_daily", "sd_daily", "wind_speed_daily",
-                  "wind_dir_sin", "wind_dir_cos", "rh_daily"]:
-        if extra in daily_df.columns:
-            cols.append(extra)
+    # Drop columns that are entirely NaN (e.g., sd_daily, sf_daily from EDH)
+    subset = daily_df[cols]
+    non_null_cols = [c for c in subset.columns if not subset[c].isna().all()]
+    subset = subset[non_null_cols]
 
-    return daily_df[cols].dropna()
+    # Now drop rows with NaN in the remaining columns
+    return subset.dropna()
 
 
 def run_isolation_forest(daily_df: pd.DataFrame, target_year: int = 2026) -> dict:

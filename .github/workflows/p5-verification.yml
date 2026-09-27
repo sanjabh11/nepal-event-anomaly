@@ -1,0 +1,53 @@
+# DRAFT ONLY: manual workflow for a future remote verification surface.
+# It is intentionally not a pull-request trigger and does not publish,
+# acquire data, or write the governed evidence root. Pin the official action
+# references to full commit SHAs before enabling this workflow remotely.
+name: p5-verification-draft
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+  PYTHONPATH: .
+  PYTEST_ADDOPTS: "-p no:cacheprovider"
+
+jobs:
+  verify:
+    name: Draft read-only verification
+    runs-on: ubuntu-latest
+    steps:
+      # Draft action references are version tags pending owner review and
+      # full-SHA pinning. No third-party or secret-bearing action is used.
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements.txt
+          python -m pip install --disable-pip-version-check pytest
+
+      - name: Run canonical test collection
+        run: python -B -m pytest tests/ -q -rs
+
+      - name: Scan governed claims
+        run: |
+          set -eu
+          python -B -m nepal.research_v0.cli claim-scan docs/science
+          python -B -m nepal.research_v0.cli claim-scan README.md
+          for file in .github/workflows/*.yml; do
+            python -B -m nepal.research_v0.cli claim-scan "$file"
+          done
+
+      - name: Verify manifest bytes
+        run: |
+          python -B -m nepal.research_v0.cli \
+            verify-manifest docs/science/ARTIFACT_MANIFEST_V0.json

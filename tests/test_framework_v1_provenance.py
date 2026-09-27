@@ -111,6 +111,12 @@ class TestManifests:
         ok, problems = verify_manifest(tmp_path, m)
         assert ok is False and any("mismatch" in p for p in problems)
 
+    def test_generated_manifest_verifies_before_file_tamper(self, tmp_path):
+        f = tmp_path / "payload.bin"
+        f.write_bytes(b"payload")
+        m = build_manifest({"payload.bin": f})
+        assert verify_manifest(tmp_path, m) == (True, [])
+
     def test_verify_manifest_detects_missing(self, tmp_path):
         f = tmp_path / "gone.bin"
         f.write_bytes(b"x")

@@ -1,0 +1,27 @@
+{
+  "lease_id": "run-20260912-2a8757b/D1",
+  "agent": "D1",
+  "model_label": "GLM-5.3",
+  "role": "data acquisition and provenance producer",
+  "status": "READY_TO_DISPATCH",
+  "exclusive_write_paths": [
+    "/Users/sanjayb/nepal-event-anomaly/data/framework_inputs_v1_reconciled_candidates/run-20260912-2a8757b",
+    "/Users/sanjayb/nepal-event-anomaly/.phase-loop/parallel_runs/run-20260912-2a8757b/packets/D1"
+  ],
+  "forbidden_paths": [
+    "/Users/sanjayb/nepal-event-anomaly/nepal",
+    "/Users/sanjayb/nepal-event-anomaly/tests",
+    "/Users/sanjayb/nepal-event-anomaly/preregistration.md",
+    "/Users/sanjayb/nepal-event-anomaly/data/framework_inputs_v1_reconciled",
+    "/Users/sanjayb/nepal-event-anomaly/data/framework_inputs_v1"
+  ],
+  "gate_ids": ["G02", "G05", "G08", "G09", "G10", "G11", "G20", "G26", "G27", "G28", "G29", "G30", "G38", "G39", "G40"],
+  "constraints": [
+    "one material bulk download at a time",
+    "stop below disk guard (5 GiB persistent / 8 GiB temp)",
+    "no placeholders, synthetic data, or invented hashes",
+    "report CANDIDATE_READY only; coordinator authorizes promotion"
+  ],
+  "issued_at_utc": "2026-09-12T06:54:41Z",
+  "ttl_note": "valid until coordinator revokes or run closes"
+}

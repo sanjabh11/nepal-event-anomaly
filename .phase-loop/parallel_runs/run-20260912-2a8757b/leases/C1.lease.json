@@ -1,0 +1,33 @@
+{
+  "lease_id": "run-20260912-2a8757b/C1",
+  "agent": "C1",
+  "model_label": "Codex 5.3",
+  "role": "framework implementation and test owner",
+  "status": "READY_TO_DISPATCH",
+  "exclusive_write_paths": [
+    "/Users/sanjayb/nepal-event-anomaly-worktrees/run-20260912-2a8757b-code",
+    "/Users/sanjayb/nepal-event-anomaly/.phase-loop/parallel_runs/run-20260912-2a8757b/packets/C1"
+  ],
+  "within_worktree_allowed": [
+    "nepal/framework_v1/",
+    "tests/test_framework_v1_*.py",
+    "approved framework CLI/schema/documentation files"
+  ],
+  "forbidden_paths": [
+    "data/framework_inputs_v1_reconciled/",
+    "data/framework_inputs_v1/",
+    "preregistration.md",
+    "legacy data files",
+    "frozen artifacts"
+  ],
+  "base_head": "2a8757b200eac0bb1921015c47eae25120f692a9",
+  "gate_ids": ["G03", "G04", "G06", "G07", "G12", "G13", "G14", "G15", "G16", "G17", "G18", "G19", "G21", "G22", "G23", "G24", "G25", "G31", "G32", "G33", "G34", "G35", "G36", "G37", "G41", "G42"],
+  "constraints": [
+    "isolated git worktree only; never the dirty main checkout",
+    "failing tests before fixes; prove existing behavior first",
+    "no threshold/weight/semantic changes to obtain PASS",
+    "if framework contract changes, report new runtime hash and invalidate data packets"
+  ],
+  "issued_at_utc": "2026-09-12T06:54:41Z",
+  "ttl_note": "valid until coordinator revokes or run closes"
+}

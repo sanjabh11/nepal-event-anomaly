@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
+import sys
 import time
 from dataclasses import dataclass, field
 from datetime import date
@@ -25,7 +27,9 @@ from .input_manifest import (B_TARGET_GRID_ARTIFACT_IDS,
                               validate_artifact_semantics,
                               verify_phase_manifest)
 from .provenance import (bind_artifact_envelope, bind_gate_artifact,
-                         verify_gate_artifact, write_deterministic_json)
+                         gate_input_artifact_sha256, verify_gate_input,
+                         write_deterministic_json)
+from .ranked_digest import stamp_ranked_digests
 from .screen import (leave_one_layer_out_top5, rank_box, separate_hyp3_signals,
                      terrain_components_from_dem, validate_acquisition_record,
                      evaluate_b_to_c_gate)
@@ -182,6 +186,9 @@ def load_b_input_bundle(
     controls_lock: Optional[ControlsLock] = None,
     repo_root: Optional[str | Path] = None,
     target: TargetGrid = TargetGrid(),
+    manifest_path: Optional[str | Path] = None,
+    trusted_manifest_file_sha256: Optional[str] = None,
+    expected_candidate_generation_id: Optional[str] = None,
 ) -> BInputBundle:
     """Read and validate the reconciled B handoff without writing to it.
 
@@ -196,17 +203,30 @@ def load_b_input_bundle(
     artifact_paths: dict[str, str] = {}
     terrain: dict[str, Any] = {}
     exposure: dict[str, Any] = {}
+    resolved_manifest_path: Optional[Path] = None
     observability: dict[str, Optional[float]] = {}
     diagnostics: dict[str, Any] = {}
 
     if manifest is None:
-        manifest_path = root_path / "manifest.json"
+        resolved_manifest_path = (Path(manifest_path) if manifest_path
+                                  is not None else root_path / "manifest.json")
         try:
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest = json.loads(
+                resolved_manifest_path.read_text(encoding="utf-8"))
         except FileNotFoundError:
-            errors.append(f"B input manifest is missing: {manifest_path}")
+            errors.append(
+                f"B input manifest is missing: {resolved_manifest_path}")
         except (OSError, ValueError) as exc:
             errors.append(f"B input manifest is unreadable: {exc}")
+    elif manifest_path is not None:
+        # A caller-supplied mapping can never satisfy a file anchor: the
+        # manifest must be read from disk so the verifier re-hashes real bytes.
+        resolved_manifest_path = Path(manifest_path)
+        if trusted_manifest_file_sha256 is not None:
+            errors.append(
+                "trusted manifest file anchor requires the manifest to be "
+                "loaded from disk, not supplied as a mapping")
+            return BInputBundle("BLOCKED", None, tuple(errors), tuple(warnings))
     if not isinstance(manifest, Mapping):
         errors.append("B input manifest must be a mapping")
         return BInputBundle("BLOCKED", None, tuple(errors), tuple(warnings))
@@ -217,6 +237,11 @@ def load_b_input_bundle(
         expected_framework_contract_sha256=(
             C.contract_hash() if expected_framework_contract_sha256 is None
             else expected_framework_contract_sha256),
+        trusted_manifest_file_sha256=trusted_manifest_file_sha256,
+        manifest_file_path=resolved_manifest_path,
+        require_manifest_file_anchor=(
+            trusted_manifest_file_sha256 is not None),
+        expected_candidate_generation_id=expected_candidate_generation_id,
         repo_root=repo_root,
     )
     errors.extend(verification.errors)
@@ -337,20 +362,43 @@ def load_verified_b_input_bundle(
     controls_lock: Optional[ControlsLock] = None,
     repo_root: Optional[str | Path] = None,
     target: TargetGrid = TargetGrid(),
+    manifest_path: Optional[str | Path] = None,
+    trusted_manifest_file_sha256: Optional[str] = None,
+    candidate_generation_id: Optional[str] = None,
 ) -> BInputBundle:
     """Strict one-shot B loader with both contract domains explicitly bound.
 
     The ordinary loader remains useful for diagnostics and deliberately blocks
     when the data contract hash is omitted.  This wrapper is the only loader
-    intended for a primary B screening invocation.
+    intended for a primary B screening invocation.  Strict primary execution
+    additionally requires ``trusted_manifest_file_sha256``: an externally
+    pinned SHA-256 of the on-disk manifest bytes, and
+    ``candidate_generation_id``: the candidate generation the strict run is
+    authorized for.  Loadability alone is not authorization.
     """
     problems: list[str] = []
+    if not isinstance(candidate_generation_id, str) or \
+            not candidate_generation_id:
+        problems.append(
+            "candidate_generation_id must be an explicit non-empty string "
+            "for strict loading")
     for name, value in (
             ("expected_contract_sha256", expected_contract_sha256),
             ("expected_framework_contract_sha256",
-             expected_framework_contract_sha256)):
+             expected_framework_contract_sha256),
+            ("trusted_manifest_file_sha256", trusted_manifest_file_sha256)):
         if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value):
             problems.append(f"{name} must be an explicit lowercase SHA-256")
+    if (isinstance(expected_framework_contract_sha256, str) and
+            re.fullmatch(r"[0-9a-f]{64}", expected_framework_contract_sha256) and
+            expected_framework_contract_sha256 != C.contract_hash()):
+        problems.append(
+            "expected framework contract hash does not match the runtime "
+            "framework contract")
+    if manifest is not None and manifest_path is not None:
+        problems.append(
+            "strict loading reads the manifest from manifest_path; do not "
+            "also supply a detached mapping")
     if problems:
         return BInputBundle("BLOCKED", None, tuple(problems))
     return load_b_input_bundle(
@@ -360,6 +408,9 @@ def load_verified_b_input_bundle(
         controls_lock=controls_lock,
         repo_root=repo_root,
         target=target,
+        manifest_path=manifest_path,
+        trusted_manifest_file_sha256=trusted_manifest_file_sha256,
+        expected_candidate_generation_id=candidate_generation_id,
     )
 
 
@@ -375,6 +426,11 @@ def build_b_screen_from_bundle(
 ) -> dict[str, Any]:
     """Run the pure B assembler only after the read-only bundle is READY."""
     problems: list[str] = []
+    bundle_generation: Optional[str] = None
+    if bundle.verification is not None:
+        bundle_checks = bundle.verification.to_dict().get("checks", {})
+        if isinstance(bundle_checks, Mapping):
+            bundle_generation = bundle_checks.get("candidate_generation_id")
     if not bundle.ok or bundle.verification is None:
         problems = list(bundle.errors) or ["validated B input bundle is required"]
         return bind_artifact_envelope({
@@ -382,7 +438,9 @@ def build_b_screen_from_bundle(
             "gate_id": C.GateId.B_TO_C.value,
             "gate_passed": False,
             "phase_status": C.PHASE_STATUS_B_TO_C_BLOCKED,
+            "candidate_generation_id": bundle_generation,
             "errors": sorted(set(problems)),
+            "blocked_reasons": sorted(set(problems)),
             "gate": bind_gate_artifact({
                 "gate_id": C.GateId.B_TO_C.value, "passed": False,
                 "checks": {}, "problems": sorted(set(problems)),
@@ -396,7 +454,9 @@ def build_b_screen_from_bundle(
             "gate_id": C.GateId.B_TO_C.value,
             "gate_passed": False,
             "phase_status": C.PHASE_STATUS_B_TO_C_BLOCKED,
+            "candidate_generation_id": bundle_generation,
             "errors": [problem],
+            "blocked_reasons": [problem],
             "gate": bind_gate_artifact({
                 "gate_id": C.GateId.B_TO_C.value, "passed": False,
                 "checks": {"gate_A_passed": {"passed": False}},
@@ -404,11 +464,12 @@ def build_b_screen_from_bundle(
             }),
         })
     if a_gate_artifact is not None:
-        a_ok, a_problems = verify_gate_artifact(
-            a_gate_artifact, expected_gate_id=C.GateId.A_CATALOG.value)
+        a_ok, a_inner, _, a_problems = verify_gate_input(
+            a_gate_artifact, expected_gate_id=C.GateId.A_CATALOG.value,
+            require_outer_envelope=True)
         if not a_ok:
             problems = [f"A gate artifact: {problem}" for problem in a_problems]
-        elif a_gate_artifact.get("passed") is not True:
+        elif not isinstance(a_inner, Mapping) or a_inner.get("passed") is not True:
             problems = ["A_CATALOG gate artifact is not passed"]
         if problems:
             return bind_artifact_envelope({
@@ -416,9 +477,11 @@ def build_b_screen_from_bundle(
                 "gate_id": C.GateId.B_TO_C.value,
                 "gate_passed": False,
                 "phase_status": C.PHASE_STATUS_B_TO_C_BLOCKED,
+                "candidate_generation_id": bundle_generation,
                 "errors": sorted(set(problems)),
-                "provenance": {"a_gate_artifact_sha256": a_gate_artifact.get(
-                    "gate_artifact_sha256")},
+                "blocked_reasons": sorted(set(problems)),
+                "provenance": {"a_gate_artifact_sha256":
+                                gate_input_artifact_sha256(a_gate_artifact)},
                 "gate": bind_gate_artifact({
                     "gate_id": C.GateId.B_TO_C.value, "passed": False,
                     "checks": {"gate_A_passed": {"passed": False}},
@@ -433,6 +496,7 @@ def build_b_screen_from_bundle(
             "gate_id": C.GateId.B_TO_C.value,
             "gate_passed": False,
             "phase_status": C.PHASE_STATUS_B_TO_C_BLOCKED,
+            "candidate_generation_id": bundle_generation,
             "errors": [problem],
             "gate": bind_gate_artifact({
                 "gate_id": C.GateId.B_TO_C.value, "passed": False,
@@ -456,16 +520,156 @@ def build_b_screen_from_bundle(
     )
 
 
+def _b_worker_entry(bundle: BInputBundle,
+                    kwargs: Mapping[str, Any],
+                    result_path: str,
+                    error_path: str) -> None:
+    """Child-process entry point: run B and hand the envelope back by file."""
+    try:
+        result = build_b_screen_from_bundle(bundle, **dict(kwargs))
+        write_deterministic_json(result_path, result)
+    except BaseException as exc:  # noqa: BLE001 - boundary handoff
+        try:
+            write_deterministic_json(error_path, {
+                "error_type": type(exc).__name__,
+                "error": str(exc)[:2000],
+            })
+        except OSError:
+            pass
+
+
+def _b_timeout_envelope(stage: str, elapsed: float) -> dict[str, Any]:
+    problem = (f"B execution exceeded its bounded worker deadline "
+               f"({elapsed:.1f}s) during {stage}; worker was terminated")
+    gate = bind_gate_artifact({
+        "gate_id": C.GateId.B_TO_C.value,
+        "passed": False,
+        "checks": {"bounded_execution": {"passed": False}},
+        "problems": [problem],
+    })
+    return bind_artifact_envelope({
+        "status": C.B_TIMEOUT_STATUS,
+        "gate_id": C.GateId.B_TO_C.value,
+        "gate_passed": False,
+        "phase_status": C.PHASE_STATUS_B_TO_C_BLOCKED,
+        "errors": [problem],
+        "blocked_reasons": [problem],
+        "gate": gate,
+        "provenance": {"framework_contract_sha256": C.contract_hash()},
+    })
+
+
+def run_b_screen_in_worker(
+    bundle: BInputBundle,
+    *,
+    controls_lock: ControlsLock,
+    a_gate_artifact: Optional[Mapping[str, Any]] = None,
+    sidecar_grids: Optional[Mapping[str, Any]] = None,
+    timeout_seconds: Optional[float] = None,
+    checkpoint_path: Optional[str | Path] = None,
+) -> dict[str, Any]:
+    """Run strict B inside a killable worker process.
+
+    In-process deadline checks cannot interrupt a hang inside a native
+    ranking/LOO call; a child process can be terminated.  The worker writes
+    checkpoints itself (same atomic path) and hands the result envelope back
+    through a file.  A deadline breach yields the B timeout envelope — never a
+    passed result.
+    """
+    import multiprocessing
+    import tempfile
+
+    effective_timeout = (
+        C.B_DEFAULT_TIMEOUT_SECONDS if timeout_seconds is None
+        else float(timeout_seconds))
+    if not math.isfinite(effective_timeout) or effective_timeout < 0:
+        raise C.ContractViolation(
+            "B timeout_seconds must be finite and non-negative")
+
+    kwargs: dict[str, Any] = {
+        "controls_lock": controls_lock,
+        "a_gate_artifact": a_gate_artifact,
+        "sidecar_grids": sidecar_grids,
+        "timeout_seconds": effective_timeout,
+        "checkpoint_path": (str(checkpoint_path)
+                            if checkpoint_path is not None else None),
+    }
+    started = time.monotonic()
+    with tempfile.TemporaryDirectory(prefix="nepal-b-worker-") as tmp:
+        result_path = os.path.join(tmp, "b_result.json")
+        error_path = os.path.join(tmp, "b_error.json")
+        ctx = multiprocessing.get_context("spawn")
+        proc = ctx.Process(
+            target=_b_worker_entry,
+            args=(bundle, kwargs, result_path, error_path),
+            name="nepal-b-screen-worker",
+        )
+        proc.start()
+        # Parent-side grace beyond the worker's own deadline lets an orderly
+        # BExecutionTimeout envelope reach disk before a hard kill.
+        proc.join(effective_timeout + C.B_WORKER_KILL_GRACE_SECONDS)
+        if proc.is_alive():
+            proc.terminate()
+            proc.join(C.B_WORKER_TERMINATE_WAIT_SECONDS)
+            if proc.is_alive():
+                proc.kill()
+                proc.join(5)
+            if checkpoint_path is not None:
+                try:
+                    write_deterministic_json(
+                        checkpoint_path,
+                        bind_artifact_envelope({
+                            "framework_version": C.FRAMEWORK_VERSION,
+                            "status": "TIMEOUT",
+                            "stage": "worker_terminated",
+                            "worker_pid": proc.pid,
+                        }))
+                except OSError:
+                    pass
+            return _b_timeout_envelope("worker", time.monotonic() - started)
+        if os.path.isfile(result_path):
+            return dict(json.loads(
+                Path(result_path).read_text(encoding="utf-8")))
+        if os.path.isfile(error_path):
+            detail = dict(json.loads(
+                Path(error_path).read_text(encoding="utf-8")))
+            problem = (f"B worker failed: {detail.get('error_type', 'Error')}: "
+                       f"{detail.get('error', '')}")
+        else:
+            problem = (f"B worker exited without a result "
+                       f"(exitcode={proc.exitcode})")
+    return bind_artifact_envelope({
+        "status": C.OutputStatus.BLOCKED.value,
+        "gate_id": C.GateId.B_TO_C.value,
+        "gate_passed": False,
+        "phase_status": C.PHASE_STATUS_B_TO_C_BLOCKED,
+        "errors": [problem],
+        "blocked_reasons": [problem],
+        "gate": bind_gate_artifact({
+            "gate_id": C.GateId.B_TO_C.value, "passed": False,
+            "checks": {"worker_completed": {"passed": False}},
+            "problems": [problem],
+        }),
+        "provenance": {"framework_contract_sha256": C.contract_hash()},
+    })
+
+
 def validate_target_array(name: str, array: Any,
                           target: TargetGrid = TargetGrid(),
                           semantic: Optional[Mapping[str, Any]] = None) -> list[str]:
     """Validate an adapter array without coercing missing data to zero."""
     problems = target.validate()
-    arr = np.asarray(array)
+    try:
+        arr = np.asarray(array, dtype=float)
+    except (TypeError, ValueError):
+        problems.append(f"{name} must contain numeric values")
+        return problems
     if arr.shape != target.shape:
         problems.append(f"{name} shape {arr.shape} != target {target.shape}")
     if arr.ndim != 2:
         problems.append(f"{name} must be a two-dimensional grid")
+    if arr.ndim == 2 and np.isinf(arr).any():
+        problems.append(f"{name} contains infinite values")
     if semantic is not None and arr.ndim == 2:
         finite = np.isfinite(arr)
         if not finite.any():
@@ -490,6 +694,23 @@ def validate_target_array(name: str, array: Any,
                     (values >= 0.0) & (values <= 1.0)):
                 problems.append(f"{name} contains values outside fraction domain [0, 1]")
     return problems
+
+
+_COMPONENT_SEMANTICS: dict[str, Mapping[str, Any]] = {
+    "built_up": C.B_ARTIFACT_SEMANTICS["ghsl_built_up_surface"],
+    "infrastructure": C.B_ARTIFACT_SEMANTICS[
+        "osm_infrastructure_grid_300x300_100m_32645"],
+    "river_connectivity": C.B_ARTIFACT_SEMANTICS[
+        "hydrorivers_connectivity_grid_300x300_100m_32645"],
+    "hanging_ice_support": C.B_ARTIFACT_SEMANTICS[
+        "hanging_ice_support_grid"],
+    "population": C.B_ARTIFACT_SEMANTICS["worldpop_population"],
+}
+
+
+def _component_semantic(name: str) -> Optional[Mapping[str, Any]]:
+    """Return the artifact semantic contract for a derived component name."""
+    return _COMPONENT_SEMANTICS.get(name)
 
 
 def reproject_dem_to_target(dem_path: str, *,
@@ -863,7 +1084,32 @@ def build_b_screen(
         raise C.ContractViolation(
             "B timeout_seconds must be finite and non-negative")
     started = time.monotonic()
+    perf_started = time.perf_counter()
     deadline = started + effective_timeout_seconds
+
+    def _peak_rss_bytes() -> Optional[int]:
+        try:
+            import resource
+        except ImportError:
+            return None
+        # ru_maxrss is KiB on Linux, bytes on macOS/BSD.
+        value = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+        return value * 1024 if sys.platform == "linux" else value
+
+    verification_checks = (
+        manifest_verification.checks
+        if isinstance(manifest_verification, InputManifestVerification)
+        else {})
+    input_fingerprint = {
+        "input_manifest_sha256": verification_checks.get("manifest_sha256"),
+        "manifest_file_sha256": verification_checks.get("manifest_file_sha256"),
+        "candidate_generation_id": verification_checks.get(
+            "candidate_generation_id"),
+        "a_gate_artifact_sha256": (
+            gate_input_artifact_sha256(a_gate_artifact)
+            if isinstance(a_gate_artifact, Mapping) else None),
+        "controls_lock_sha256": controls_lock.sha256,
+    }
 
     def _checkpoint(stage: str, status: str = "RUNNING", **extra: Any) -> None:
         if checkpoint_path is None:
@@ -872,12 +1118,22 @@ def build_b_screen(
             "framework_version": C.FRAMEWORK_VERSION,
             "status": status,
             "stage": stage,
+            "candidate_generation_id": input_fingerprint.get(
+                "candidate_generation_id"),
             "component_registry_version": C.COMPONENT_REGISTRY_VERSION,
             "active_terrain_components": list(C.ACTIVE_TERRAIN_COMPONENTS),
             "active_exposure_components": list(C.ACTIVE_EXPOSURE_COMPONENTS),
+            "input_fingerprint": input_fingerprint,
+            "elapsed_seconds": round(time.monotonic() - started, 6),
+            "peak_rss_bytes": _peak_rss_bytes(),
         }
         payload.update(extra)
-        write_deterministic_json(checkpoint_path, payload)
+        # A checkpoint is a resumability/security boundary, so authenticate
+        # the complete payload just like the result envelope.  This prevents
+        # a mutable progress file from being mistaken for the stage state it
+        # claims to describe.
+        write_deterministic_json(
+            checkpoint_path, bind_artifact_envelope(payload))
 
     def _check(stage: str) -> None:
         if progress_callback is not None:
@@ -901,24 +1157,30 @@ def build_b_screen(
             "gate_id": C.GateId.B_TO_C.value,
             "gate_passed": False,
             "phase_status": C.PHASE_STATUS_B_TO_C_BLOCKED,
+            "candidate_generation_id": manifest_checks.get(
+                "candidate_generation_id"),
             "errors": [problem],
+            "blocked_reasons": [problem],
             "gate": gate,
             "provenance": {
                 "framework_contract_sha256": C.contract_hash(),
+                "candidate_generation_id": manifest_checks.get(
+                    "candidate_generation_id"),
                 "component_registry_version": C.COMPONENT_REGISTRY_VERSION,
                 "timeout_seconds": effective_timeout_seconds,
+                "elapsed_seconds": time.perf_counter() - perf_started,
+                "timeout": True,
                 "checkpoint_path": str(checkpoint_path) if checkpoint_path else None,
             },
         })
 
     manifest_checks = {}
     verification_payload = None
-    if manifest_verification is not None:
-        to_dict = getattr(manifest_verification, "to_dict", None)
-        if callable(to_dict):
-            verification_payload = to_dict()
-        elif isinstance(manifest_verification, Mapping):
-            verification_payload = manifest_verification
+    if isinstance(manifest_verification, InputManifestVerification):
+        verification_payload = manifest_verification.to_dict()
+    elif manifest_verification is not None:
+        problems.append(
+            "typed input manifest verification is required; mappings are not trusted")
     if isinstance(verification_payload, Mapping):
         checks = verification_payload.get("checks", {})
         if isinstance(checks, Mapping):
@@ -929,14 +1191,15 @@ def build_b_screen(
             problems.append("A gate artifact must be a mapping")
             a_gate_passed = False
         else:
-            a_ok, a_problems = verify_gate_artifact(
+            a_ok, a_inner, _, a_problems = verify_gate_input(
                 a_gate_artifact, expected_gate_id=C.GateId.A_CATALOG.value)
-            a_gate_artifact_hash = a_gate_artifact.get("gate_artifact_sha256")
+            a_gate_artifact_hash = gate_input_artifact_sha256(a_gate_artifact)
             if not a_ok:
                 problems.extend(f"A gate artifact: {problem}"
                                 for problem in a_problems)
                 a_gate_passed = False
-            elif a_gate_artifact.get("passed") is not True:
+            elif not isinstance(a_inner, Mapping) or a_inner.get(
+                    "passed") is not True:
                 problems.append("A_CATALOG gate artifact is not passed")
                 a_gate_passed = False
             else:
@@ -968,12 +1231,19 @@ def build_b_screen(
                                   else None),
         "input_manifest_canonical_authorized": bool(
             manifest_checks.get("canonical_manifest_authorized", False)),
+        "candidate_generation_id": manifest_checks.get(
+            "candidate_generation_id"),
+        "input_manifest_file_sha256": manifest_checks.get(
+            "manifest_file_sha256"),
+        "input_fingerprint": dict(input_fingerprint),
         "component_registry_version": C.COMPONENT_REGISTRY_VERSION,
         "active_terrain_components": list(C.ACTIVE_TERRAIN_COMPONENTS),
         "active_exposure_components": list(C.ACTIVE_EXPOSURE_COMPONENTS),
         "optional_exposure_components": list(C.OPTIONAL_EXPOSURE_COMPONENTS),
         "a_gate_artifact_sha256": a_gate_artifact_hash,
         "timeout_seconds": effective_timeout_seconds,
+        "elapsed_seconds": None,
+        "timeout": False,
         "checkpoint_path": str(checkpoint_path) if checkpoint_path else None,
     }
     try:
@@ -1002,7 +1272,9 @@ def build_b_screen(
         if name not in terrain_grids:
             problems.append(f"missing terrain component: {name}")
         else:
-            problems.extend(validate_target_array(name, terrain_grids[name], target))
+            problems.extend(validate_target_array(
+                name, terrain_grids[name], target,
+                semantic=_component_semantic(name)))
     for name in (*C.ACTIVE_EXPOSURE_COMPONENTS,
                  *C.OPTIONAL_EXPOSURE_COMPONENTS):
         if name not in C.ACTIVE_EXPOSURE_COMPONENTS and name not in exposure_grids:
@@ -1010,7 +1282,9 @@ def build_b_screen(
         if name not in exposure_grids:
             problems.append(f"missing exposure component: {name}")
         else:
-            problems.extend(validate_target_array(name, exposure_grids[name], target))
+            problems.extend(validate_target_array(
+                name, exposure_grids[name], target,
+                semantic=_component_semantic(name)))
     if not isinstance(observability_by_unit, Mapping):
         problems.append("per-analysis-unit winter observability must be a mapping")
     else:
@@ -1052,7 +1326,15 @@ def build_b_screen(
             "phase_status": C.PHASE_STATUS_B_TO_C_BLOCKED,
             "gate": gate,
             "errors": sorted(set(problems)),
+            "blocked_reasons": sorted(set(problems)),
+            "candidate_generation_id": provenance.get(
+                "candidate_generation_id"),
             "provenance": provenance,
+            "runtime": {
+                "elapsed_seconds": time.perf_counter() - perf_started,
+                "timeout_seconds": effective_timeout_seconds,
+                "timeout": False,
+            },
         })
 
     try:
@@ -1108,15 +1390,31 @@ def build_b_screen(
         if name not in exposure_grids
     ]
     result["status"] = C.PHASE_STATUS_SCREEN_RANKED
+    result["candidate_generation_id"] = provenance.get(
+        "candidate_generation_id")
     result["gate_id"] = C.GateId.B_TO_C.value
     result["gate_passed"] = bool(result["gate"].get("passed"))
     result["phase_status"] = (
         C.PHASE_STATUS_B_TO_C_READY
         if result["gate_passed"] else C.PHASE_STATUS_B_TO_C_BLOCKED)
+    stamp_ranked_digests(result)
     bound = bind_artifact_envelope(result)
+    bound["runtime"] = {
+        "elapsed_seconds": time.perf_counter() - perf_started,
+        "timeout_seconds": effective_timeout_seconds,
+        "timeout": False,
+    }
+    bound["resource_evidence"] = {
+        "elapsed_seconds": round(time.monotonic() - started, 6),
+        "peak_rss_bytes": _peak_rss_bytes(),
+        "platform": sys.platform,
+        "rss_units": "bytes",
+        "timeout_seconds": effective_timeout_seconds,
+    }
+    bound = bind_artifact_envelope(bound)
     try:
         _checkpoint("completed", "COMPLETED",
-                    artifact_sha256=bound["artifact_sha256"],
+                    result_artifact_sha256=bound["artifact_sha256"],
                     phase_status=bound["phase_status"])
     except OSError as exc:
         # A result cannot be advertised as resumable if its checkpoint could

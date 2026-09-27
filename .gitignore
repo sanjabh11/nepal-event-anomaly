@@ -21,3 +21,25 @@ data/temp/
 data/download_ledger.json
 data/era5_land_nepal_jja_2001_2026.nc
 data/features_nepal_hourly_jja_2001_2026.csv
+
+# Worktree-local test fixture link (environment-bound reconciled handoff)
+data/framework_inputs_v1_reconciled
+
+# P5-15: research run roots (raw/, monthly/, merged/, features/, gmm/)
+# are run outputs — never committed.
+research_runs/
+
+# multi-agent write coordination scratch
+.write-leases/
+
+# Large geo/binary data files — kept on disk, not in git (GitHub 100MB limit)
+*.pbf
+*.osm.pbf
+*.tif
+*.shp
+*.dbf
+*.shx
+*.cpg
+*.prj
+*.nc
+*.xlsx
