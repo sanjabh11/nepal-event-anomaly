@@ -231,7 +231,7 @@ def _evidence_screen(unverified_eligible: int,
                      unverified_controls: int) -> str:
     if unverified_eligible or unverified_controls:
         return "UNVERIFIED_EVIDENCE_PRESENT"
-    return "EVIDENCE_BOUND"
+    return "NO_UNVERIFIED_CLAIMS"
 
 
 def build_report(crosswalk_path: str | Path, lake_frame_path: str | Path,
