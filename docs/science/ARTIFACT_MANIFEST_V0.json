@@ -1,6 +1,6 @@
 {
  "baseline_head": "54aa612f7d478082716dfe5d0bca7d92d62d493b",
- "content_head": "13af0ace76efdbab71e82f790f5a88682d8491fa",
+ "content_head": "7bf11a64f6d92a361feaacf9a44bfdb90f5472cc",
  "files": [
   {
    "relpath": ".github/workflows/p5-verification.yml",
@@ -78,6 +78,16 @@
    "size_bytes": 3759
   },
   {
+   "relpath": "docs/science/INDIA_INVENTORY_REGISTRY_SUPPLEMENT_V0.json",
+   "sha256": "cc299111e8ba3e370ddf44cf9eaa0aed3779c69037b792b24a4cd8c2f94fa190",
+   "size_bytes": 2659
+  },
+  {
+   "relpath": "docs/science/INDIA_INVENTORY_REGISTRY_SUPPLEMENT_V0.json.sha256",
+   "sha256": "538664070923081afdc9416d2391902a7eb06149605494304686789e2501a20e",
+   "size_bytes": 110
+  },
+  {
    "relpath": "docs/science/INDIA_INVENTORY_REGISTRY_V1.json",
    "sha256": "7c53deacb0e2f0a493a18d23f7b8ac678d79322efe3c94a630ff2edc3fbd064d",
    "size_bytes": 9944
@@ -93,6 +103,16 @@
    "size_bytes": 9415
   },
   {
+   "relpath": "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V0.json",
+   "sha256": "24c04fa30ba9a7a8dd1379a7d8fa894d62fca8acd45f8664d283046d0d26496b",
+   "size_bytes": 4776
+  },
+  {
+   "relpath": "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V0.json.sha256",
+   "sha256": "e1d8e0215d5ad09a394285892cedb6bf491eca0904fc1f5da5e8cf3a1fc499d7",
+   "size_bytes": 101
+  },
+  {
    "relpath": "docs/science/INFORMATION_CUTOFF_TARGET_POLICY_V0.md",
    "sha256": "df856eb1e4e2e264e725d662dfbe9862660e965a8ac8c459f99c5d910dc1861e",
    "size_bytes": 9062
@@ -106,6 +126,16 @@
    "relpath": "docs/science/NEPAL_SCIENCE_GATE_CHECKLIST_V0.json",
    "sha256": "e880f9381d7aff47574e9528010c57e9ddbfaf8d293daa46366cf719a5847c4e",
    "size_bytes": 4247
+  },
+  {
+   "relpath": "docs/science/NEPAL_SCIENCE_GATE_CHECKLIST_V1.json",
+   "sha256": "561c0c891ad6b02c23afed2b81605c7829728f282a518167f54ab5f76f240d45",
+   "size_bytes": 3728
+  },
+  {
+   "relpath": "docs/science/NEPAL_SCIENCE_GATE_CHECKLIST_V1.json.sha256",
+   "sha256": "77d0614f9bdf26685cff1a64766de57b1184dc6a26d77eb43116dc27fcda8cf3",
+   "size_bytes": 103
   },
   {
    "relpath": "docs/science/OPEN_DISTRIBUTION_NOTE_V0.md",
@@ -529,8 +559,8 @@
   },
   {
    "relpath": "scripts/build_india_release_closure.py",
-   "sha256": "e2f84b29a3716287b02d690e3449cf3b1ae4c7a037874b522cd6af22673d6ac9",
-   "size_bytes": 7923
+   "sha256": "83cfc570101423de869a8be6f6e1f6c16147da66d7f4a429112dabc465b17272",
+   "size_bytes": 42512
   },
   {
    "relpath": "scripts/build_p5_release_closure_v2.py",
@@ -579,8 +609,8 @@
   },
   {
    "relpath": "scripts/india_feasibility_report.py",
-   "sha256": "b0134c36bcac4426e9ff74e93c6680285f283a3bce62cdc645670c15fde0eb71",
-   "size_bytes": 24979
+   "sha256": "aa25dd33fc32ab0256d964c0513657b8a78e93ceef022bb3f3128fc47000d8eb",
+   "size_bytes": 32811
   },
   {
    "relpath": "scripts/india_inventory_metadata.py",
@@ -651,6 +681,16 @@
    "relpath": "scripts/validate_incident_surface.py",
    "sha256": "b351dce2df0b06ecd4459321cba774ff9d3f70378db3bc65aa28ab4563135fec",
    "size_bytes": 4043
+  },
+  {
+   "relpath": "scripts/validate_india_source_intake.py",
+   "sha256": "0775d88378f25f7355ce9a9e094ea074d2a721a3a35103c057bc4dd445dc093b",
+   "size_bytes": 15279
+  },
+  {
+   "relpath": "scripts/validate_nepal_science_gate_checklist.py",
+   "sha256": "8b18f1c7f8a8b626b3aaadb1e33dbcdc7c3daacb9d593528d302a3841d32ee52",
+   "size_bytes": 11243
   },
   {
    "relpath": "scripts/validate_reexecution_report.py",
@@ -774,13 +814,18 @@
   },
   {
    "relpath": "tests/test_india_phase0.py",
-   "sha256": "1f61284a2e5740eb5979bd85c9ed62ac7f3b9fc26e276655e31e5f29fcf2460d",
-   "size_bytes": 29979
+   "sha256": "0dbcc7c1c26c1ed34a95948bcad6e9635d0f425a9f42f598f55a2404dee67212",
+   "size_bytes": 33493
   },
   {
    "relpath": "tests/test_india_release_closure.py",
-   "sha256": "812843bc038d8a45ca4ef217af230534bb3fb72485a7e5f7b74a4fc896fded61",
-   "size_bytes": 1611
+   "sha256": "7b6ba39f222337790e24f4a3a95bb2a85e3f084020c5b99e4c94a2b0bb2dde20",
+   "size_bytes": 13911
+  },
+  {
+   "relpath": "tests/test_india_source_intake.py",
+   "sha256": "59d698858f52de6c52752ef9925996e9c215d60dbf23ae1c3f75df1e8dbc13e6",
+   "size_bytes": 7099
   },
   {
    "relpath": "tests/test_india_source_registry.py",
@@ -791,6 +836,11 @@
    "relpath": "tests/test_materialize_evidence_sidecars.py",
    "sha256": "2c961be038a5cb373702544a8c9bd5dfa9bb168b19d38486f9710ea8ed38e157",
    "size_bytes": 1110
+  },
+  {
+   "relpath": "tests/test_nepal_science_gate_checklist.py",
+   "sha256": "0afbd39f0e19cd5ba59505f7d7c93e7f2fd06cba4a5d46e509354bbb8d2cb510",
+   "size_bytes": 5315
   },
   {
    "relpath": "tests/test_one_station_contract.py",
@@ -1085,7 +1135,7 @@
  ],
  "generated": "post-P5 phase-B/C bind \u2014 model re-execution proof (MODEL_REEXECUTED both lanes, digest-exact), preregistered promotion protocol, clean-room export + verification-ladder harness, owner-scoped Arm C amendment (retrieval deferred)",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "13af0ace76efdbab71e82f790f5a88682d8491fa",
+ "manifest_commit": "7bf11a64f6d92a361feaacf9a44bfdb90f5472cc",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -1095,7 +1145,7 @@
  "test_results": {
   "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
   "claim_scan": "clean on all governed files",
-  "collection_guard": "repo-wide collection == tests/ (4303 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
+  "collection_guard": "repo-wide collection == tests/ (4338 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
   "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
   "full_suite_venv": "4300 passed, 3 skipped, 0 failed, 101 warnings (4303 collected) on pinned .venv (Python 3.14.7) \u2014 post-clean-history-rewrite suite with release-closure tooling; machine receipt docs/science/SUITE_RECEIPT_20260927_R3.json; skips: CANDIDATE_ONLY artifact gate, evidence-conditional gate, no-published-India-closure gate",
   "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
