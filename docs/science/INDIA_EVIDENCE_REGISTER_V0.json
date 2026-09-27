@@ -37,7 +37,19 @@
       "coverage": {
         "temporal_start": null,
         "temporal_end": null,
-        "spatial_scope": "Indian Himalayan river basins (Indus, Ganga, Brahmaputra)"
+        "spatial": {
+          "countries": [
+            "India"
+          ],
+          "basins": [
+            "Indus",
+            "Ganga",
+            "Brahmaputra"
+          ],
+          "bbox": null,
+          "polygon_ref": null
+        },
+        "spatial_label": "Indian Himalayan river basins (Indus, Ganga, Brahmaputra)"
       },
       "limitations": [
         "Metadata-level record only; row-level lake bytes not ingested",
@@ -57,7 +69,15 @@
       "coverage": {
         "temporal_start": null,
         "temporal_end": null,
-        "spatial_scope": "India — CWC monitored glacial lakes and water bodies"
+        "spatial": {
+          "countries": [
+            "India"
+          ],
+          "basins": null,
+          "bbox": null,
+          "polygon_ref": null
+        },
+        "spatial_label": "India \u2014 CWC monitored glacial lakes and water bodies"
       },
       "limitations": [
         "Metadata-level record only; the monitoring portfolio is not a verified non-event history",
@@ -77,10 +97,18 @@
       "coverage": {
         "temporal_start": null,
         "temporal_end": null,
-        "spatial_scope": "India — lakes >10 ha under CWC monitoring"
+        "spatial": {
+          "countries": [
+            "India"
+          ],
+          "basins": null,
+          "bbox": null,
+          "polygon_ref": null
+        },
+        "spatial_label": "India \u2014 lakes >10 ha under CWC monitoring"
       },
       "limitations": [
-        "Metadata-level record only; different product scope than NRSC atlas — not comparable as a trend",
+        "Metadata-level record only; different product scope than NRSC atlas \u2014 not comparable as a trend",
         "Cannot satisfy event-evidence or control-evidence checks"
       ],
       "registered_utc": "2026-09-27T00:00:00Z"
@@ -97,7 +125,20 @@
       "coverage": {
         "temporal_start": null,
         "temporal_end": null,
-        "spatial_scope": "Hindu Kush Himalaya"
+        "spatial": {
+          "countries": [
+            "India",
+            "Nepal",
+            "Bhutan",
+            "Pakistan",
+            "China",
+            "Afghanistan"
+          ],
+          "basins": null,
+          "bbox": null,
+          "polygon_ref": null
+        },
+        "spatial_label": "Hindu Kush Himalaya"
       },
       "limitations": [
         "Catalog-level record only; per-event rows require pinned bytes before adjudication citations can resolve",

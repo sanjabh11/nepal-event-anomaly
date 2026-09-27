@@ -41,6 +41,11 @@ OBSERVATION_STATUSES = {"UNKNOWN", "PARTIAL", "KNOWN_BREACH", "VERIFIED_NON_EVEN
 COMPLETENESS = {"UNKNOWN", "PARTIAL", "FULL"}
 TERRITORY_STATUSES = {"IN_COUNTRY", "OUTSIDE", "UNCERTAIN", "UNASSESSED"}
 IDENTITY_STATUSES = {"UNRECONCILED", "RECONCILED", "UNRESOLVED_CONFLICT"}
+OBSERVATION_CADENCES = {"ANNUAL", "SEASONAL", "MONTHLY", "WEEKLY",
+                        "CONTINUOUS", "EVENT_DRIVEN"}
+OBSERVATION_METHOD_FIELDS = ("modality", "cadence", "temporal_coverage",
+                             "spatial_resolution", "detection_threshold",
+                             "gaps_censoring")
 
 
 def sha256_file(path: str | Path) -> str:
@@ -89,6 +94,57 @@ def _iso_date(value: Any, field: str, source_id: str) -> str | None:
     if parsed.isoformat() != text:
         raise ValueError(f"{source_id}: {field} must be canonical YYYY-MM-DD")
     return text
+
+
+def _observation_method(value: Any, source_id: str,
+                        completeness: str) -> dict[str, Any]:
+    """Parse and enforce the observation-method contract.
+
+    FULL completeness requires an explicit declaration of how the lake
+    was observed: modality, cadence, temporal coverage, spatial
+    resolution, detection threshold, and gaps/censoring.  Lighter
+    completeness levels may carry a partial block or none.
+    """
+    if value is None:
+        if completeness == "FULL":
+            raise ValueError(
+                f"{source_id}: FULL completeness lacks an "
+                "observation_method declaration")
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"{source_id}: observation_method must be an object")
+    method = dict(value)
+    if completeness == "FULL":
+        for field in OBSERVATION_METHOD_FIELDS:
+            if field not in method:
+                raise ValueError(
+                    f"{source_id}: FULL completeness lacks "
+                    f"observation_method.{field}")
+        for field in ("modality", "cadence", "spatial_resolution",
+                      "detection_threshold"):
+            if not _text(method.get(field)):
+                raise ValueError(
+                    f"{source_id}: observation_method.{field} must be "
+                    "non-empty")
+        if _text(method.get("cadence")).upper() not in OBSERVATION_CADENCES:
+            raise ValueError(
+                f"{source_id}: invalid observation_method.cadence")
+        coverage = method.get("temporal_coverage")
+        if not isinstance(coverage, dict) or not (
+                _iso_date(coverage.get("start"), "temporal_coverage.start",
+                          source_id)
+                and _iso_date(coverage.get("end"),
+                              "temporal_coverage.end", source_id)):
+            raise ValueError(
+                f"{source_id}: observation_method.temporal_coverage "
+                "requires ISO start/end")
+        gaps = method.get("gaps_censoring")
+        if not isinstance(gaps, list) or any(
+                not isinstance(y, int) or not 1 <= y <= 9999 for y in gaps):
+            raise ValueError(
+                f"{source_id}: observation_method.gaps_censoring must be "
+                "a list of integer years")
+    return method
 
 
 def _observed_years(row: dict[str, Any], source_id: str) -> list[int]:
@@ -151,6 +207,13 @@ def _record(row: dict[str, Any], source_name: str, source_version: str) -> dict[
     if at_risk_start and at_risk_end and at_risk_start > at_risk_end:
         raise ValueError(f"{source_id}: at-risk interval starts after it ends")
     observed_years = _observed_years(row, source_id)
+    # UNKNOWN + FULL is a contradiction: unobserved lakes cannot claim
+    # complete observation and are never observable lake-years.
+    if observation_status == "UNKNOWN" and completeness == "FULL":
+        raise ValueError(
+            f"{source_id}: UNKNOWN observation cannot claim FULL completeness")
+    method = _observation_method(row.get("observation_method"), source_id,
+                                 completeness)
     # FULL completeness is a coverage claim, not a label: it requires an
     # explicit observed_years list, and when an at-risk interval is declared
     # that list must contain every year of the interval.  A monitored
@@ -166,6 +229,20 @@ def _record(row: dict[str, Any], source_name: str, source_version: str) -> dict[
                 raise ValueError(
                     f"{source_id}: observed_years do not cover the declared "
                     "at-risk interval")
+        coverage = method.get("temporal_coverage")
+        if isinstance(coverage, dict):
+            lo = int(coverage["start"][:4]) if coverage.get("start") else None
+            hi = int(coverage["end"][:4]) if coverage.get("end") else None
+            if lo is not None and hi is not None and not all(
+                    lo <= year <= hi for year in observed_years):
+                raise ValueError(
+                    f"{source_id}: observed_years outside declared "
+                    "temporal_coverage")
+        gaps = method.get("gaps_censoring") or []
+        if set(gaps) & set(observed_years):
+            raise ValueError(
+                f"{source_id}: observed_years overlap declared "
+                "gaps/censoring")
     control_eligible = (observation_status == "VERIFIED_NON_EVENT"
                         and completeness == "FULL"
                         and bool(at_risk_start and at_risk_end and refs))
@@ -193,6 +270,7 @@ def _record(row: dict[str, Any], source_name: str, source_version: str) -> dict[
             "observed_years": observed_years,
             "at_risk_start": at_risk_start,
             "at_risk_end": at_risk_end,
+            "method": method,
             "evidence_refs": refs,
             "control_eligible": control_eligible,
         },
@@ -274,8 +352,34 @@ def validate_frame(doc: dict[str, Any]) -> list[str]:
             problems.append(f"{sid}: invalid observation status")
         if obs.get("completeness") not in COMPLETENESS:
             problems.append(f"{sid}: invalid observation completeness")
+        if obs.get("status") == "UNKNOWN" and obs.get("completeness") == "FULL":
+            problems.append(
+                f"{sid}: UNKNOWN observation cannot claim FULL completeness")
         if obs.get("completeness") == "FULL":
             full += 1
+            method = obs.get("method")
+            if not isinstance(method, dict) or any(
+                    field not in method for field in OBSERVATION_METHOD_FIELDS):
+                problems.append(
+                    f"{sid}: FULL completeness lacks a complete "
+                    "observation_method declaration")
+            else:
+                for field in ("modality", "cadence", "spatial_resolution",
+                              "detection_threshold"):
+                    if not _text(method.get(field)):
+                        problems.append(
+                            f"{sid}: observation_method.{field} must be "
+                            "non-empty")
+                if _text(method.get("cadence")).upper() not in OBSERVATION_CADENCES:
+                    problems.append(
+                        f"{sid}: invalid observation_method.cadence")
+                coverage = method.get("temporal_coverage")
+                if not isinstance(coverage, dict) or not (
+                        isinstance(coverage.get("start"), str)
+                        and isinstance(coverage.get("end"), str)):
+                    problems.append(
+                        f"{sid}: observation_method.temporal_coverage "
+                        "requires ISO start/end")
             years = obs.get("observed_years")
             if (not isinstance(years, list) or not years or any(
                     not isinstance(year, int) or not 1 <= year <= 9999
@@ -292,6 +396,21 @@ def validate_frame(doc: dict[str, Any]) -> list[str]:
                         problems.append(
                             f"{sid}: observed_years do not cover the declared "
                             "at-risk interval")
+                if isinstance(obs.get("method"), dict):
+                    coverage = obs["method"].get("temporal_coverage")
+                    if isinstance(coverage, dict) and coverage.get(
+                            "start") and coverage.get("end"):
+                        lo, hi = int(coverage["start"][:4]), int(
+                            coverage["end"][:4])
+                        if not all(lo <= y <= hi for y in years):
+                            problems.append(
+                                f"{sid}: observed_years outside declared "
+                                "temporal_coverage")
+                    gaps = obs["method"].get("gaps_censoring") or []
+                    if set(gaps) & set(years):
+                        problems.append(
+                            f"{sid}: observed_years overlap declared "
+                            "gaps/censoring")
                 full_years += len(years)
         if obs.get("status") == "UNKNOWN":
             unknown += 1

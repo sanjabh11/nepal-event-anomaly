@@ -50,6 +50,24 @@ _INT_RE = re.compile(r"^[+-]?\d+(?:\.0+)?$")
 # Territory is an adjudicated classification, never a coordinate guess:
 # catalog country strings select rows; they do not classify territory.
 TERRITORY_STATUSES = {"IN_COUNTRY", "OUTSIDE", "UNCERTAIN", "UNASSESSED"}
+# Every catalog row is retained; candidate_class is a catalog-string
+# triage for review ordering only — never a territory classification.
+CANDIDATE_CLASSES = {"TARGET_COUNTRY", "TRANSBOUNDARY", "UNKNOWN_COUNTRY",
+                     "OUTSIDE"}
+
+
+def _candidate_class(country_text: Any, target: str) -> str:
+    value = _text(country_text)
+    if not value:
+        return "UNKNOWN_COUNTRY"
+    folded = value.casefold()
+    if folded == target:
+        return "TARGET_COUNTRY"
+    # Mentions the target alongside other labels — kept for adjudication
+    # rather than silently dropped (transboundary/borderline labels).
+    if target and target in folded:
+        return "TRANSBOUNDARY"
+    return "OUTSIDE"
 
 
 def sha256_file(path: str | Path) -> str:
@@ -152,7 +170,7 @@ def _evidence_refs(row: dict[str, Any]) -> list[str]:
     return refs
 
 
-def _record(row: dict[str, Any], source_version: str) -> dict[str, Any]:
+def _record(row: dict[str, Any], source_version: str, target: str) -> dict[str, Any]:
     gf_id = _text(row.get("GF_ID"))
     if not gf_id:
         raise ValueError("India catalog row is missing GF_ID")
@@ -177,6 +195,7 @@ def _record(row: dict[str, Any], source_version: str) -> dict[str, Any]:
         },
         "date": date,
         "location": _location(row),
+        "candidate_class": _candidate_class(row.get("Country"), target),
         "lake_identity": _lake_identity(row.get("GL_ID")),
         "evidence": {"references": _evidence_refs(row)},
         "episode": {
@@ -200,16 +219,21 @@ def build_crosswalk(csv_path: str | Path, source_version: str,
     with path.open(encoding="cp1252", newline="") as handle:
         rows = list(csv.DictReader(handle))
     target = _text(country).casefold()
-    india_rows = [row for row in rows if _text(row.get("Country")).casefold() == target]
-    records = [_record(row, source_version) for row in india_rows]
+    # Every catalog row is retained — borderline country labels can never
+    # silently remove a candidate.  OUTSIDE rows are reference-only.
+    records = [_record(row, source_version, target) for row in rows]
     ids = [r["source_record_id"] for r in records]
     if len(ids) != len(set(ids)):
-        raise ValueError("source catalog contains duplicate GF_ID values for target country")
+        raise ValueError("source catalog contains duplicate GF_ID values")
 
-    exact = [r for r in records if r["date"]["precision"] == "day"]
+    candidates = [r for r in records
+                  if r["candidate_class"] != "OUTSIDE"]
+    exact = [r for r in candidates if r["date"]["precision"] == "day"]
     post = [r for r in exact if r["date"]["post_1979_candidate"]]
     post_with_id = [r for r in post if r["lake_identity"]["status"] == "SOURCE_ID_PRESENT"]
     unique_ids = sorted({r["lake_identity"]["raw_id"] for r in post_with_id})
+    by_class = {cls: sum(r["candidate_class"] == cls for r in records)
+                for cls in CANDIDATE_CLASSES}
     return {
         "schema": SCHEMA,
         "version": 0,
@@ -226,6 +250,8 @@ def build_crosswalk(csv_path: str | Path, source_version: str,
         "source": {"name": "HMAGLOFDB", "version": source_version,
                    "path_label": path.name, "sha256": sha256_file(path)},
         "rules": [
+            "Every catalog row is retained; no row disappears on a raw country-string match.",
+            "OUTSIDE records are reference-only and never enter India denominators.",
             "Catalog rows are not independent episodes.",
             "No lake alias, recurrence, cascade, mechanism, or eligibility is inferred.",
             "UNREVIEWED rows cannot enter weather analysis or serve as controls.",
@@ -234,7 +260,12 @@ def build_crosswalk(csv_path: str | Path, source_version: str,
             "A future adjudication must be append-only and cite primary evidence.",
         ],
         "summary": {
-            "n_target_country_rows": len(records),
+            "n_total_rows": len(records),
+            "n_target_country_rows": by_class["TARGET_COUNTRY"],
+            "n_transboundary_rows": by_class["TRANSBOUNDARY"],
+            "n_unknown_country_rows": by_class["UNKNOWN_COUNTRY"],
+            "n_reference_only_rows": by_class["OUTSIDE"],
+            "n_candidate_rows": len(candidates),
             "n_exact_day_rows": len(exact),
             "n_exact_day_post_1979_rows": len(post),
             "n_post_1979_rows_with_source_lake_id": len(post_with_id),
@@ -250,7 +281,9 @@ def build_crosswalk(csv_path: str | Path, source_version: str,
 
 def _summary_from_records(records: list[dict[str, Any]]) -> dict[str, Any]:
     records = [record for record in records if isinstance(record, dict)]
-    exact = [r for r in records
+    candidates = [r for r in records
+                  if r.get("candidate_class") != "OUTSIDE"]
+    exact = [r for r in candidates
              if isinstance(r.get("date"), dict)
              and r["date"].get("precision") == "day"]
     post = [r for r in exact
@@ -262,8 +295,15 @@ def _summary_from_records(records: list[dict[str, Any]]) -> dict[str, Any]:
     unique_ids = sorted({r.get("lake_identity", {}).get("raw_id")
                          for r in post_with_id
                          if isinstance(r.get("lake_identity", {}).get("raw_id"), str)})
+    by_class = {cls: sum(r.get("candidate_class") == cls for r in records)
+                for cls in CANDIDATE_CLASSES}
     return {
-        "n_target_country_rows": len(records),
+        "n_total_rows": len(records),
+        "n_target_country_rows": by_class["TARGET_COUNTRY"],
+        "n_transboundary_rows": by_class["TRANSBOUNDARY"],
+        "n_unknown_country_rows": by_class["UNKNOWN_COUNTRY"],
+        "n_reference_only_rows": by_class["OUTSIDE"],
+        "n_candidate_rows": len(candidates),
         "n_exact_day_rows": len(exact),
         "n_exact_day_post_1979_rows": len(post),
         "n_post_1979_rows_with_source_lake_id": len(post_with_id),
@@ -319,6 +359,8 @@ def validate_crosswalk(doc: dict[str, Any]) -> list[str]:
             episode = {}
         if episode.get("candidate_episode_id") is not None:
             problems.append(f"{sid}: episode id requires adjudication")
+        if record.get("candidate_class") not in CANDIDATE_CLASSES:
+            problems.append(f"{sid}: invalid candidate_class")
         location = record.get("location", {})
         if not isinstance(location, dict):
             problems.append(f"{sid}: location must be an object")

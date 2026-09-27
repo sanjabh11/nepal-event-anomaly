@@ -92,9 +92,13 @@ def _independent_exact(
             date = {}
         has_identity = bool(identity.get("canonical_lake_id") or
                             identity.get("status") == "SOURCE_ID_PRESENT")
+        catalog = record.get("catalog_fields", {})
+        if not isinstance(catalog, dict):
+            catalog = {}
         resolved = evidence_register.resolved_evidence_ids(
             adj.get("evidence_citations"), verified,
-            date.get("start"), date.get("end"))
+            date.get("start"), date.get("end"),
+            country="India", basin=catalog.get("river_basin") or None)
         mechanism_ok = (adj.get("mechanism_certainty") in MECHANISM_CERTAINTY
                         and bool(adj.get("mechanism")))
         if (adj.get("eligibility") == "ELIGIBLE"
@@ -119,9 +123,13 @@ def _evidence_verified_event(
     date = record.get("date") if isinstance(record, dict) else None
     if not isinstance(adj, dict) or not isinstance(date, dict):
         return False
+    catalog = record.get("catalog_fields", {})
+    if not isinstance(catalog, dict):
+        catalog = {}
     return bool(evidence_register.resolved_evidence_ids(
         adj.get("evidence_citations"), verified,
-        date.get("start"), date.get("end")))
+        date.get("start"), date.get("end"),
+        country="India", basin=catalog.get("river_basin") or None))
 
 
 def _review_complete(record: dict[str, Any]) -> bool:
@@ -187,7 +195,8 @@ def _lake_denominators(
         control_candidates += 1
         resolved = evidence_register.resolved_evidence_ids(
             obs.get("evidence_refs"), verified,
-            obs.get("at_risk_start"), obs.get("at_risk_end"))
+            obs.get("at_risk_start"), obs.get("at_risk_end"),
+            country="India", basin=location.get("basin") or None)
         if not resolved:
             unverified_controls += 1
             continue
@@ -261,6 +270,10 @@ def build_report(crosswalk_path: str | Path, lake_frame_path: str | Path,
     lake_records = frame.get("records", [])
 
     unreviewed = sum(not _review_complete(r) for r in records)
+    candidate_rows = sum(
+        isinstance(r, dict) and r.get("candidate_class") != "OUTSIDE"
+        for r in records)
+    reference_rows = len(records) - candidate_rows
     eligible = [r for r in records
                 if isinstance(r, dict)
                 and isinstance(r.get("adjudication"), dict)
@@ -296,6 +309,8 @@ def build_report(crosswalk_path: str | Path, lake_frame_path: str | Path,
         },
         "denominators": {
             "catalog_rows": len(records),
+            "india_candidate_rows": candidate_rows,
+            "reference_only_rows": reference_rows,
             "adjudicated_eligible_rows": len(eligible),
             "eligible_unverified_evidence": unverified_eligible,
             "independent_exact_day_episodes": len(episode_ids),
@@ -366,7 +381,8 @@ def validate_report(doc: dict[str, Any]) -> list[str]:
     if doc.get("authority") != AUTHORITY_FLAGS:
         problems.append("authority flags must all be present and false")
     d = doc.get("denominators", {})
-    for key in ("catalog_rows", "adjudicated_eligible_rows",
+    for key in ("catalog_rows", "india_candidate_rows",
+                "reference_only_rows", "adjudicated_eligible_rows",
                 "eligible_unverified_evidence",
                 "independent_exact_day_episodes", "mapped_lake_rows",
                 "in_country_canonical_lakes", "outside_lakes",
@@ -378,6 +394,12 @@ def validate_report(doc: dict[str, Any]) -> list[str]:
             problems.append(f"invalid denominator: {key}")
     if d.get("adjudicated_eligible_rows", 0) > d.get("catalog_rows", 0):
         problems.append("eligible rows exceed catalog rows")
+    if d.get("india_candidate_rows", 0) + d.get("reference_only_rows", 0) \
+            != d.get("catalog_rows", 0):
+        problems.append("candidate + reference rows must equal catalog rows")
+    if d.get("adjudicated_eligible_rows", 0) > d.get(
+            "india_candidate_rows", 0):
+        problems.append("eligible rows exceed India candidate rows")
     if d.get("independent_exact_day_episodes", 0) > d.get(
             "adjudicated_eligible_rows", 0):
         problems.append("independent episodes exceed eligible rows")
@@ -450,14 +472,68 @@ def validate_report(doc: dict[str, Any]) -> list[str]:
     return problems
 
 
+def verify_report(report_path: str | Path, crosswalk_path: str | Path,
+                  lake_frame_path: str | Path, register_path: str | Path,
+                  adjudication_path: str | Path | None = None) -> list[str]:
+    """Independently recompute a stored report from validated inputs.
+
+    A forged but internally consistent report fails here: denominators,
+    gates, episode ids, and bound input digests are recomputed from the
+    sidecar-verified inputs and compared against the stored artifact.
+    """
+    problems: list[str] = []
+    stored = json.loads(Path(report_path).read_text(encoding="utf-8"))
+    invalid = validate_report(stored)
+    if invalid:
+        return ["stored report fails its own validator: "
+                + "; ".join(invalid)]
+    computed = build_report(crosswalk_path, lake_frame_path, register_path,
+                            adjudication_path)
+    for key, expected in computed["denominators"].items():
+        if stored["denominators"].get(key) != expected:
+            problems.append(
+                f"denominator {key}: stored "
+                f"{stored['denominators'].get(key)!r} != recomputed "
+                f"{expected!r}")
+    if stored.get("independent_episode_ids") != computed.get(
+            "independent_episode_ids"):
+        problems.append("independent_episode_ids differ from recomputation")
+    if stored.get("gates") != computed.get("gates"):
+        problems.append("gates differ from recomputation")
+    if stored.get("next_gate") != computed.get("next_gate"):
+        problems.append("next_gate differs from recomputation")
+    for key, expected in computed["inputs"].items():
+        if stored["inputs"].get(key) != expected:
+            problems.append(
+                f"inputs.{key}: stored report does not bind the "
+                "provided inputs")
+    return problems
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--crosswalk", required=True)
     parser.add_argument("--lake-frame", required=True)
     parser.add_argument("--evidence-register", required=True)
     parser.add_argument("--adjudication")
-    parser.add_argument("--out", required=True)
+    parser.add_argument("--out")
+    parser.add_argument("--verify",
+                        help="recompute-check a stored report instead of "
+                             "building a new one")
     args = parser.parse_args()
+    if args.verify:
+        problems = verify_report(args.verify, args.crosswalk,
+                                 args.lake_frame, args.evidence_register,
+                                 args.adjudication)
+        if problems:
+            for problem in problems:
+                print(f"FEASIBILITY_VERIFY_FAIL: {problem}")
+            return 1
+        print(f"FEASIBILITY_VERIFY_OK: {args.verify} recomputes from "
+              "validated inputs")
+        return 0
+    if not args.out:
+        parser.error("--out is required unless --verify is given")
     doc = build_report(args.crosswalk, args.lake_frame,
                        args.evidence_register, args.adjudication)
     problems = validate_report(doc)

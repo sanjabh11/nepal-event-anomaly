@@ -55,13 +55,45 @@ explicit all-false authority object.
   reuse.
 - **Evidence.** A citation string is attribution only. Eligibility and
   control counting require at least one `evidence:<id>` citation that
-  resolves to a `BYTES_VERIFIED` register record (pinned locator +
-  SHA-256) whose declared temporal coverage contains the claimed
-  interval. `METADATA_VERIFIED` records prove a source's terms exist;
-  they never satisfy evidence checks. Reviewer ids are attribution
-  strings, not authenticated identities or cryptographic signoff.
-  Eligible-but-unverified rows are counted and gated separately
-  (`UNVERIFIED_EVIDENCE_PRESENT` / `VERIFY_EVENT_EVIDENCE`).
+  resolves to a `BYTES_VERIFIED` register record whose pinned digest
+  matches resolvable bytes — either local bytes under a declared
+  evidence root verified on disk, or an immutable external retrieval
+  receipt (URL, redirect chain, retrieval time, HTTP status, content
+  type, response digest equal to the pinned digest, terms reviewed,
+  request parameters). `METADATA_VERIFIED` records prove a source's
+  terms exist; they never satisfy evidence checks. Reviewer ids are
+  attribution strings, not authenticated identities or cryptographic
+  signoff. Eligible-but-unverified rows are counted and gated
+  separately (`UNVERIFIED_EVIDENCE_PRESENT` / `VERIFY_EVENT_EVIDENCE`).
+- **Spatial binding.** Evidence coverage is structured geography —
+  `countries`, `basins`, `bbox`, `polygon_ref` — never free text.
+  Resolution requires the evidence's declared coverage to contain the
+  claim's country or basin; wrong-country or wrong-basin evidence
+  cannot support eligibility.
+- **Row retention.** The crosswalk retains every catalog row and tags
+  each as `TARGET_COUNTRY`, `TRANSBOUNDARY`, `UNKNOWN_COUNTRY`, or
+  `OUTSIDE` (catalog-string triage for review ordering, never a
+  territory classification). No row disappears on a country-label
+  mismatch; `OUTSIDE` rows are reference-only and never enter India
+  denominators.
+- **Episode conflicts.** Rows sharing a `candidate_episode_id` must
+  agree on date interval, lake identity, territory, mechanism,
+  recurrence/cascade grouping, and location — any divergence is an
+  `EPISODE_CONFLICT` and fails closed.
+- **Observation method.** `FULL` completeness additionally requires an
+  `observation_method` declaration: modality, cadence, temporal
+  coverage, spatial resolution, detection threshold, and
+  gaps/censoring. `UNKNOWN + FULL` is rejected outright; observed
+  years must lie inside declared coverage and outside declared gaps.
+- **Recompute verification.** `INDIA_FEASIBILITY_REPORT` artifacts are
+  independently recomputable: `--verify` recomputes denominators,
+  gates, and bound input digests from sidecar-verified inputs; a
+  forged but internally consistent report fails.
+- **Retrieval receipts.** Every registry source carries a
+  `retrieval_receipt` (or null pre-retrieval): requested/final URL,
+  redirects, retrieval time, HTTP status, content type, response
+  digest, request parameters, and `bytes_retained=false` — proving
+  metadata-only contact with zero payload acquisition.
 - **Territory.** Numeric coordinates are never a territory
   classification. Event records carry `territory_status` in
   `{IN_COUNTRY, OUTSIDE, UNCERTAIN, UNASSESSED}` assigned at

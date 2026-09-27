@@ -76,3 +76,33 @@ def test_v1_registry_rejects_undeclared_payload_digest():
     document["sources"][0]["local_payload_sha256"] = "z" * 64
     assert any("local_payload_sha256" in p
                for p in sr.validate_registry(document))
+
+
+def test_v1_registry_receipts_prove_metadata_only_retrieval():
+    document = json.loads(REGISTRY.read_text(encoding="utf-8"))
+    for source in document["sources"]:
+        receipt = source["retrieval_receipt"]
+        assert receipt["bytes_retained"] is False
+        assert receipt["request_method"] in {"HEAD", "GET_METADATA_ONLY"}
+        assert 200 <= receipt["http_status"] < 400
+        assert receipt["requested_url"] == source["source_url"]
+
+
+@pytest.mark.parametrize("mutator", [
+    lambda r: r.__setitem__("bytes_retained", True),
+    lambda r: r.__setitem__("http_status", 404),
+    lambda r: r.__setitem__("request_method", "GET"),
+    lambda r: r.__setitem__("response_sha256", "nothex"),
+    lambda r: r.__setitem__("terms_reviewed", ""),
+    lambda r: r.__setitem__("requested_url", "http://example.com/x"),
+])
+def test_v1_registry_rejects_receipt_escalation(mutator):
+    document = json.loads(REGISTRY.read_text(encoding="utf-8"))
+    mutator(document["sources"][0]["retrieval_receipt"])
+    assert sr.validate_registry(document)
+
+
+def test_v1_registry_receipt_absent_is_pre_retrieval_honest():
+    document = json.loads(REGISTRY.read_text(encoding="utf-8"))
+    document["sources"][0]["retrieval_receipt"] = None
+    assert sr.validate_registry(document) == []

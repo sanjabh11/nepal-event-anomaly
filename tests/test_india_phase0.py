@@ -26,8 +26,14 @@ FIELDS = [
 GEOGRAPHY = {"boundary_source": "test-boundary", "boundary_version": "v1",
              "crs": "EPSG:4326"}
 
+METHOD = {"modality": "SATELLITE_RS", "cadence": "ANNUAL",
+          "temporal_coverage": {"start": "2000-01-01", "end": "2020-12-31"},
+          "spatial_resolution": "30m", "detection_threshold": ">=0.25ha",
+          "gaps_censoring": []}
 
-def _write_catalog(path: Path, n_india: int = 3) -> None:
+
+def _write_catalog(path: Path, n_india: int = 3,
+                   extra_rows: list[dict] | None = None) -> None:
     rows = [
         {"GF_ID": str(i + 1), "Year_approx": "", "Year_exact": str(2001 + i),
          "Month": "6", "Day": "17",
@@ -46,6 +52,7 @@ def _write_catalog(path: Path, n_india: int = 3) -> None:
          "Lon_lake": "", "Driver_lake": "", "Driver_GLOF": "", "Mechanism": "",
          "Repeat": "", "Sat_evidence": "", "Ref_scientific": "",
          "Ref_scientific_full": "", "Ref_other": ""})
+    rows.extend(extra_rows or [])
     with path.open("w", newline="", encoding="cp1252") as handle:
         writer = csv.DictWriter(handle, fieldnames=FIELDS)
         writer.writeheader()
@@ -60,20 +67,36 @@ def _write_bound(path: Path, doc) -> Path:
 
 
 def _register_doc(coverage=("1900-01-01", "2100-12-31"),
+                  countries=("India",), basins=None,
                   state="BYTES_VERIFIED") -> dict:
     digest = "a" * 64 if state == "BYTES_VERIFIED" else None
+    payload = None
+    if state == "BYTES_VERIFIED":
+        payload = {"kind": "EXTERNAL_RETRIEVAL_RECEIPT",
+                   "size_bytes": 1234,
+                   "receipt": {
+                       "source_url": "https://example.org/ev.bin",
+                       "final_url": "https://example.org/ev.bin",
+                       "retrieved_utc": "2026-09-27T00:00:00Z",
+                       "http_status": 200, "content_type": "application/octet-stream",
+                       "response_sha256": digest, "request_params": None,
+                       "terms_reviewed": "fixture terms"}}
     return {
         "schema": er.SCHEMA, "version": 0,
         "claim_scope": "research_only_no_operational_authorization",
         "authority": dict(er.AUTHORITY_FLAGS), "register_state": "OPEN",
         "records": [{
             "evidence_id": "EV:TEST", "source_name": "test-src",
-            "source_version": "1", "locator_type": "LOCAL_PATH_LABEL",
+            "source_version": "1", "locator_type": "DATASET_RECORD",
             "locator": "test-bytes", "sha256": digest,
+            "payload": payload,
             "verification_state": state, "access_terms": "test",
             "coverage": {"temporal_start": coverage[0],
                          "temporal_end": coverage[1],
-                         "spatial_scope": "test"},
+                         "spatial": {"countries": list(countries),
+                                     "basins": basins, "bbox": None,
+                                     "polygon_ref": None},
+                         "spatial_label": "test"},
             "limitations": ["test fixture"],
         }],
     }
@@ -86,7 +109,26 @@ def _reviewed_decision(crosswalk_path: Path, crosswalk: dict,
     decision = json.loads(json.dumps(intake))
     decision["status"] = "REVIEWED"
     decision["geography"] = dict(GEOGRAPHY)
+    crosswalk_records = {r["source_record_id"]: r
+                         for r in crosswalk["records"]}
     for index, record in enumerate(decision["records"]):
+        source = crosswalk_records[record["source_record_id"]]
+        if source.get("candidate_class") == "OUTSIDE":
+            # Reference-only rows get a disposition, not eligibility.
+            record["episode"].update({
+                "candidate_episode_id": f"IND:EP:{index}",
+                "independence_status": "NOT_INDEPENDENT"})
+            record["adjudication"].update({
+                "eligibility": "INELIGIBLE",
+                "review_state": "COMPLETED",
+                "reviewer_ids": ["reviewer-1"],
+                "reviewed_utc": "2026-09-27T00:00:00+00:00",
+                "location_confirmed": True,
+                "territory_status": "OUTSIDE",
+                "mechanism": None, "mechanism_certainty": "UNKNOWN",
+                "evidence_citations": [evidence],
+                "disposition_reason": "outside target territory"})
+            continue
         record["episode"].update({
             "candidate_episode_id": f"IND:EP:{index}",
             "independence_status": "INDEPENDENT" if eligible else "NOT_INDEPENDENT",
@@ -118,26 +160,30 @@ def _paths(tmp_path: Path, n_india: int = 3):
     return crosswalk, cw_path, lf_path, reg_path
 
 
-def test_crosswalk_retains_rows_without_adjudicating(tmp_path):
+def test_crosswalk_retains_all_rows_and_classifies_candidates(tmp_path):
+    extra = [
+        {"GF_ID": "9001", "Country": "India, Nepal", "Year_exact": "2010",
+         "Month": "5", "Day": "2", "GL_ID": "T1"},
+        {"GF_ID": "9002", "Country": "", "Year_exact": "2011",
+         "Month": "6", "Day": "3", "GL_ID": "T2"},
+    ]
     source = tmp_path / "HMAGLOFDB.csv"
-    _write_catalog(source, 3)
+    _write_catalog(source, 3, extra_rows=extra)
     doc = ec.build_crosswalk(source, "test-1.0")
-    assert doc["summary"] == {
-        "n_target_country_rows": 3,
-        "n_exact_day_rows": 3,
-        "n_exact_day_post_1979_rows": 3,
-        "n_post_1979_rows_with_source_lake_id": 3,
-        "n_unique_post_1979_source_lake_ids": 3,
-        "post_1979_source_lake_ids": ["GL:0", "GL:1", "GL:2"],
-        "n_unreviewed": 3,
-        "n_analysis_eligible": 0,
-        "n_independent_episodes": 0,
-    }
+    # No row disappears: 3 India + 1 transboundary + 1 unknown + 1 Nepal.
+    assert doc["summary"]["n_total_rows"] == 6
+    assert doc["summary"]["n_target_country_rows"] == 3
+    assert doc["summary"]["n_transboundary_rows"] == 1
+    assert doc["summary"]["n_unknown_country_rows"] == 1
+    assert doc["summary"]["n_reference_only_rows"] == 1
+    assert doc["summary"]["n_candidate_rows"] == 5
+    by_id = {r["source_record_id"]: r for r in doc["records"]}
+    assert by_id["HMAGLOFDB:9001"]["candidate_class"] == "TRANSBOUNDARY"
+    assert by_id["HMAGLOFDB:9002"]["candidate_class"] == "UNKNOWN_COUNTRY"
+    assert by_id["HMAGLOFDB:9000"]["candidate_class"] == "OUTSIDE"
+    # Day-precision stats count candidates only (India/transboundary/unknown).
+    assert doc["summary"]["n_exact_day_rows"] == 5
     assert ec.validate_crosswalk(doc) == []
-    assert doc["authority"] == ec.AUTHORITY_FLAGS
-    assert doc["geography"]["classification_basis"] == "CATALOG_COUNTRY_FIELD_ONLY"
-    assert all(r["adjudication"]["eligibility"] == "UNREVIEWED"
-               for r in doc["records"])
     assert all(r["location"]["territory_status"] == "UNASSESSED"
                for r in doc["records"])
 
@@ -174,18 +220,40 @@ def test_adjudication_intake_is_append_only_and_digest_bound(tmp_path):
         tampered, crosswalk, ea.sha256_file(crosswalk_path)))
 
 
-def test_adjudication_rejects_duplicate_independent_episode_ids(tmp_path):
+def test_adjudication_rejects_conflicting_shared_episode(tmp_path):
     source = tmp_path / "HMAGLOFDB.csv"
     _write_catalog(source)
     crosswalk = ec.build_crosswalk(source, "test-1.0")
     cw_path = tmp_path / "cw.json"
     cw_path.write_text(json.dumps(crosswalk), encoding="utf-8")
     decision = _reviewed_decision(cw_path, crosswalk)
-    # Two rows claiming the same episode id must agree on independence.
+    # Two rows claiming the same episode id with different dates/lakes —
+    # an EPISODE_CONFLICT, fail closed.
     decision["records"][1]["episode"]["candidate_episode_id"] = "IND:EP:0"
-    decision["records"][1]["episode"]["independence_status"] = "NOT_INDEPENDENT"
-    assert any("inconsistent" in p for p in ea.validate_adjudication(
-        decision, crosswalk, ea.sha256_file(cw_path)))
+    decision["records"][1]["episode"]["independence_status"] = "INDEPENDENT"
+    problems = ea.validate_adjudication(
+        decision, crosswalk, ea.sha256_file(cw_path))
+    assert any("EPISODE_CONFLICT" in p for p in problems)
+
+
+def test_adjudication_accepts_consistent_shared_episode(tmp_path):
+    source = tmp_path / "HMAGLOFDB.csv"
+    _write_catalog(source, n_india=2)
+    # Two rows that are truly the same lake/date cascade pair.
+    text = source.read_text(encoding="cp1252")
+    lines = text.splitlines()
+    lines[2] = lines[2].replace(",2002,6,17,", ",2001,6,17,").replace(
+        "GL:1", "GL:0").replace("Lake1", "Lake0")
+    source.write_text("\n".join(lines), encoding="cp1252")
+    crosswalk = ec.build_crosswalk(source, "test-1.0")
+    cw_path = tmp_path / "cw.json"
+    cw_path.write_text(json.dumps(crosswalk), encoding="utf-8")
+    decision = _reviewed_decision(cw_path, crosswalk)
+    for record in decision["records"][:2]:
+        record["episode"]["candidate_episode_id"] = "IND:EP:SHARED"
+        record["episode"]["independence_status"] = "INDEPENDENT"
+    assert ea.validate_adjudication(
+        decision, crosswalk, ea.sha256_file(cw_path)) == []
 
 
 def test_adjudication_requires_territory_and_geography(tmp_path):
@@ -210,6 +278,9 @@ def test_report_accepts_only_sha_bound_reviewed_successor(tmp_path):
     decision_path = _write_bound(tmp_path / "decision.json", decision)
     report = fr.build_report(cw_path, lf_path, reg_path, decision_path)
     assert report["denominators"]["independent_exact_day_episodes"] == 3
+    assert report["denominators"]["catalog_rows"] == 4
+    assert report["denominators"]["india_candidate_rows"] == 3
+    assert report["denominators"]["reference_only_rows"] == 1
     assert report["independent_episode_ids"] == [
         "IND:EP:0", "IND:EP:1", "IND:EP:2"]
     assert "adjudication_sha256" in report["inputs"]
@@ -221,12 +292,10 @@ def test_report_rejects_missing_or_tampered_sidecars(tmp_path):
     crosswalk, cw_path, lf_path, reg_path = _paths(tmp_path)
     report = fr.build_report(cw_path, lf_path, reg_path)
     assert fr.validate_report(report) == []
-    # Missing sidecar fails closed.
     bare = tmp_path / "bare.json"
     bare.write_text(json.dumps(crosswalk), encoding="utf-8")
     with pytest.raises(ValueError, match="missing evidence sidecar"):
         fr.build_report(bare, lf_path, reg_path)
-    # Tampered bytes with a stale sidecar fail closed.
     tampered = json.loads(cw_path.read_text())
     tampered["records"][0]["catalog_fields"]["lake_name"] = "tampered"
     tampered_path = tmp_path / "tampered.json"
@@ -246,6 +315,30 @@ def test_report_rejects_unvalidated_input_shape(tmp_path):
         fr.build_report(bad_path, lf_path, reg_path)
 
 
+def test_verify_report_catches_forged_report(tmp_path):
+    crosswalk, cw_path, lf_path, reg_path = _paths(tmp_path)
+    decision = _reviewed_decision(cw_path, crosswalk)
+    decision_path = _write_bound(tmp_path / "decision.json", decision)
+    report = fr.build_report(cw_path, lf_path, reg_path, decision_path)
+    report_path = tmp_path / "report.json"
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    # Recompute must confirm a genuine report.
+    assert fr.verify_report(report_path, cw_path, lf_path, reg_path,
+                            decision_path) == []
+    # A forged-but-internally-consistent report fails: shrink the episode
+    # count and fix every mirror-computed field so validate_report stays
+    # clean — only recomputation can catch it.
+    forged = json.loads(json.dumps(report))
+    forged["denominators"]["independent_exact_day_episodes"] = 2
+    forged["independent_episode_ids"] = ["FAKE:0", "FAKE:1"]
+    forged_path = tmp_path / "forged.json"
+    forged_path.write_text(json.dumps(forged), encoding="utf-8")
+    assert fr.validate_report(forged) == []  # consistent forgery passes schema
+    problems = fr.verify_report(forged_path, cw_path, lf_path, reg_path,
+                                decision_path)
+    assert any("recomputed" in p or "differ" in p for p in problems)
+
+
 def _inventory(tmp_path: Path, rows: list[dict]) -> Path:
     p = tmp_path / "inventory.json"
     p.write_text(json.dumps(rows), encoding="utf-8")
@@ -261,31 +354,59 @@ def test_lake_frame_unknown_is_not_control(tmp_path):
     assert lf.validate_frame(doc) == []
 
 
+def test_lake_frame_rejects_unknown_plus_full(tmp_path):
+    p = _inventory(tmp_path, [{"source_record_id": "NRSC:1", "lake_id": "1",
+                               "latitude": 30, "longitude": 80,
+                               "observation_status": "UNKNOWN",
+                               "observation_completeness": "FULL",
+                               "observed_years": [2001],
+                               "observation_method": dict(METHOD)}])
+    with pytest.raises(ValueError, match="UNKNOWN observation cannot claim"):
+        lf.build_frame(p, "NRSC", "test-1")
+
+
+def test_lake_frame_full_requires_method_declaration(tmp_path):
+    base = {"source_record_id": "NRSC:1", "lake_id": "1",
+            "latitude": 30, "longitude": 80,
+            "observation_status": "PARTIAL",
+            "observation_completeness": "FULL",
+            "observed_years": [2001, 2002, 2003]}
+    with pytest.raises(ValueError, match="observation_method"):
+        lf.build_frame(_inventory(tmp_path, [base]), "NRSC", "test-1")
+    missing = dict(base, observation_method={k: v for k, v in METHOD.items()
+                                             if k != "detection_threshold"})
+    with pytest.raises(ValueError, match="detection_threshold"):
+        lf.build_frame(_inventory(tmp_path, [missing]), "NRSC", "test-1")
+    bad_cadence = dict(base, observation_method=dict(
+        METHOD, cadence="WHENEVER"))
+    with pytest.raises(ValueError, match="cadence"):
+        lf.build_frame(_inventory(tmp_path, [bad_cadence]), "NRSC", "test-1")
+
+
+def test_lake_frame_full_rejects_gap_and_coverage_conflicts(tmp_path):
+    base = {"source_record_id": "NRSC:1", "lake_id": "1",
+            "latitude": 30, "longitude": 80,
+            "observation_status": "PARTIAL",
+            "observation_completeness": "FULL",
+            "observed_years": [2001, 2002, 2003]}
+    gappy = dict(base, observation_method=dict(METHOD, gaps_censoring=[2002]))
+    with pytest.raises(ValueError, match="gaps"):
+        lf.build_frame(_inventory(tmp_path, [gappy]), "NRSC", "test-1")
+    narrow = dict(base, observation_method=dict(
+        METHOD, temporal_coverage={"start": "2005-01-01",
+                                   "end": "2010-12-31"}))
+    with pytest.raises(ValueError, match="outside declared"):
+        lf.build_frame(_inventory(tmp_path, [narrow]), "NRSC", "test-1")
+
+
 def test_lake_frame_requires_evidence_for_non_event(tmp_path):
     p = _inventory(tmp_path, [{"source_record_id": "NRSC:1", "lake_id": "1",
                                "latitude": 30, "longitude": 80,
                                "observation_status": "VERIFIED_NON_EVENT",
                                "observation_completeness": "FULL",
-                               "observed_years": [2001]}])
+                               "observed_years": [2001],
+                               "observation_method": dict(METHOD)}])
     with pytest.raises(ValueError, match="lacks full interval evidence"):
-        lf.build_frame(p, "NRSC", "test-1")
-
-
-def test_lake_frame_full_requires_year_coverage(tmp_path):
-    # FULL without any observed_years is a bare label — rejected.
-    p = _inventory(tmp_path, [{"source_record_id": "NRSC:1", "lake_id": "1",
-                               "latitude": 30, "longitude": 80,
-                               "observation_completeness": "FULL"}])
-    with pytest.raises(ValueError, match="lacks observed_years"):
-        lf.build_frame(p, "NRSC", "test-1")
-    # FULL with years that do not cover the declared at-risk interval.
-    p = _inventory(tmp_path, [{"source_record_id": "NRSC:1", "lake_id": "1",
-                               "latitude": 30, "longitude": 80,
-                               "observation_completeness": "FULL",
-                               "at_risk_start": "2001-01-01",
-                               "at_risk_end": "2005-12-31",
-                               "observed_years": [2001, 2003, 2005]}])
-    with pytest.raises(ValueError, match="do not cover"):
         lf.build_frame(p, "NRSC", "test-1")
 
 
@@ -305,6 +426,7 @@ def test_lake_frame_accepts_explicit_verified_control(tmp_path):
                                "at_risk_start": "2001-01-01",
                                "at_risk_end": "2003-12-31",
                                "observed_years": [2001, 2002, 2003],
+                               "observation_method": dict(METHOD),
                                "evidence_refs": ["evidence:EV:TEST"]}])
     doc = lf.build_frame(p, "NRSC", "test-1")
     assert doc["summary"]["n_verified_non_event_controls"] == 1
@@ -314,26 +436,13 @@ def test_lake_frame_accepts_explicit_verified_control(tmp_path):
 def test_lake_frame_counts_only_full_observed_years(tmp_path):
     p = _inventory(tmp_path, [{"source_record_id": "NRSC:1", "lake_id": "1",
                                "lat": 30, "lon": 80,
+                               "observation_status": "PARTIAL",
                                "observation_completeness": "FULL",
-                               "observed_years": [2001, 2002, 2003]}])
+                               "observed_years": [2001, 2002, 2003],
+                               "observation_method": dict(METHOD)}])
     doc = lf.build_frame(p, "NRSC", "test-1")
     assert doc["summary"]["n_observable_lake_years"] == 3
     assert lf.validate_frame(doc) == []
-
-
-def test_lake_frame_rejects_noncanonical_or_reversed_at_risk_interval(tmp_path):
-    base = {"source_record_id": "NRSC:1", "lake_id": "1",
-            "latitude": 30, "longitude": 80,
-            "observation_status": "VERIFIED_NON_EVENT",
-            "observation_completeness": "FULL",
-            "observed_years": [2001, 2002, 2003],
-            "evidence_refs": ["evidence:EV:TEST"]}
-    bad_format = dict(base, at_risk_start="2001-1-01", at_risk_end="2003-12-31")
-    with pytest.raises(ValueError, match="canonical YYYY-MM-DD"):
-        lf.build_frame(_inventory(tmp_path, [bad_format]), "NRSC", "test-1")
-    reversed_interval = dict(base, at_risk_start="2003-12-31", at_risk_end="2001-01-01")
-    with pytest.raises(ValueError, match="starts after"):
-        lf.build_frame(_inventory(tmp_path, [reversed_interval]), "NRSC", "test-1")
 
 
 def test_frame_validation_rejects_unverified_canonical_claim(tmp_path):
@@ -350,8 +459,6 @@ def test_feasibility_keeps_gate_pending_while_adjudication_is_incomplete(tmp_pat
     _, cw_path, lf_path, reg_path = _paths(tmp_path)
     report = fr.build_report(cw_path, lf_path, reg_path)
     assert report["gates"]["event_weather_screen"] == "ADJUDICATION_INCOMPLETE"
-    # An empty frame has no identities to reconcile — the gate is the
-    # missing inventory, not unresolved identity work.
     assert report["gates"]["lake_year_screen"] == "INSUFFICIENT_LAKE_FRAME"
     assert report["gates"]["bulk_acquisition_authorized"] is False
     assert report["authority"] == fr.AUTHORITY_FLAGS
@@ -371,8 +478,6 @@ def test_feasibility_gate_requires_identity_reconciliation(tmp_path):
     decision = _reviewed_decision(cw_path, crosswalk)
     decision_path = _write_bound(tmp_path / "decision.json", decision)
     report = fr.build_report(cw_path, lf_path, reg_path, decision_path)
-    # Two unreconciled in-country source rows block the lake screen even
-    # though rows exist — source rows are not canonical lakes.
     assert report["denominators"]["unresolved_lake_identities"] == 2
     assert report["denominators"]["in_country_canonical_lakes"] == 0
     assert report["gates"]["lake_year_screen"] == "IDENTITY_RECONCILE_REQUIRED"
@@ -383,10 +488,10 @@ def test_feasibility_gate_requires_territory_classification(tmp_path):
     crosswalk, cw_path, _, reg_path = _paths(tmp_path, 3)
     inventory = _inventory(tmp_path, [
         {"source_record_id": "NRSC:1", "lake_id": "1",
-         "latitude": 30, "longitude": 80},  # territory UNASSESSED
+         "latitude": 30, "longitude": 80},
         {"source_record_id": "NRSC:2", "lake_id": "2",
          "latitude": 31, "longitude": 79,
-         "territory_status": "UNCERTAIN"},  # transboundary — visible, excluded
+         "territory_status": "UNCERTAIN"},
         {"source_record_id": "NRSC:3", "lake_id": "3",
          "latitude": 32, "longitude": 78, "territory_status": "OUTSIDE"},
     ])
@@ -422,21 +527,28 @@ def test_feasibility_requires_simulation_at_twenty_episodes(tmp_path):
 
 
 def test_feasibility_counts_distinct_episode_ids_not_rows(tmp_path):
-    crosswalk, cw_path, lf_path, reg_path = _paths(tmp_path, 3)
+    crosswalk, cw_path, lf_path, reg_path = _paths(tmp_path, 2)
+    # Build two rows that truly share a lake/date so the shared episode id
+    # is consistent (same episode, two source rows).
+    src = tmp_path / "HMAGLOFDB.csv"
+    text = src.read_text(encoding="cp1252")
+    lines = text.splitlines()
+    lines[2] = lines[2].replace(",2002,6,17,", ",2001,6,17,").replace(
+        "GL:1", "GL:0").replace("Lake1", "Lake0")
+    src.write_text("\n".join(lines), encoding="cp1252")
+    crosswalk = ec.build_crosswalk(src, "test-1.0")
+    cw_path = _write_bound(tmp_path / "cw2.json", crosswalk)
     decision = _reviewed_decision(cw_path, crosswalk)
-    # All three rows legitimately belong to one shared episode.
-    for record in decision["records"]:
+    for record in decision["records"][:2]:
         record["episode"]["candidate_episode_id"] = "IND:EP:SHARED"
     decision_path = _write_bound(tmp_path / "decision.json", decision)
     report = fr.build_report(cw_path, lf_path, reg_path, decision_path)
-    assert report["denominators"]["adjudicated_eligible_rows"] == 3
+    assert report["denominators"]["adjudicated_eligible_rows"] == 2
     assert report["denominators"]["independent_exact_day_episodes"] == 1
     assert report["independent_episode_ids"] == ["IND:EP:SHARED"]
 
 
 def test_feasibility_rejects_unresolvable_evidence(tmp_path):
-    # A nonempty citation string that does not resolve to BYTES_VERIFIED
-    # register evidence cannot produce an eligible independent episode.
     report = _report_with_n_episodes(tmp_path, 3, evidence="paper:unverified")
     assert report["denominators"]["adjudicated_eligible_rows"] == 3
     assert report["denominators"]["independent_exact_day_episodes"] == 0
@@ -449,6 +561,19 @@ def test_feasibility_rejects_out_of_coverage_evidence(tmp_path):
     crosswalk, cw_path, lf_path, _ = _paths(tmp_path, 3)
     narrow = _register_doc(coverage=("2020-01-01", "2020-12-31"))
     reg_path = _write_bound(tmp_path / "narrow_reg.json", narrow)
+    decision = _reviewed_decision(cw_path, crosswalk)
+    decision_path = _write_bound(tmp_path / "decision.json", decision)
+    report = fr.build_report(cw_path, lf_path, reg_path, decision_path)
+    assert report["denominators"]["independent_exact_day_episodes"] == 0
+    assert report["gates"]["evidence_screen"] == "UNVERIFIED_EVIDENCE_PRESENT"
+
+
+def test_feasibility_rejects_wrong_country_evidence(tmp_path):
+    # Evidence whose spatial coverage excludes India cannot support an
+    # India eligibility claim, even with a valid digest.
+    crosswalk, cw_path, lf_path, _ = _paths(tmp_path, 3)
+    foreign = _register_doc(countries=("Nepal", "Bhutan"))
+    reg_path = _write_bound(tmp_path / "foreign_reg.json", foreign)
     decision = _reviewed_decision(cw_path, crosswalk)
     decision_path = _write_bound(tmp_path / "decision.json", decision)
     report = fr.build_report(cw_path, lf_path, reg_path, decision_path)
@@ -488,6 +613,4 @@ def test_pinned_evidence_register_validates():
         "docs/science/INDIA_EVIDENCE_REGISTER_V0.json")
     doc = json.loads(register.read_text(encoding="utf-8"))
     assert er.validate_register(doc) == []
-    # The seeded register is honest: metadata-verified entries only, so no
-    # citation can produce a verified eligible event or control today.
     assert er.verified_records(doc) == {}

@@ -215,9 +215,11 @@ def validate_adjudication(doc: dict[str, Any], crosswalk_doc: dict[str, Any],
                 problems.append(f"{sid}: eligible record lacks candidate episode id")
             if not adj.get("mechanism") or adj.get("mechanism_certainty") not in {"CONFIRMED", "PROBABLE"}:
                 problems.append(f"{sid}: eligible record lacks mechanism adjudication")
-    # Rows sharing a candidate episode id describe the same episode; they
-    # must agree on independence so denominators cannot double-count it.
-    by_episode: dict[str, set[str]] = {}
+    # Rows sharing a candidate episode id describe the same episode; every
+    # episode-level fact must agree — date interval, lake identity,
+    # territory, mechanism, recurrence/cascade grouping, and location —
+    # else the shared id is an EPISODE_CONFLICT and fails closed.
+    by_episode: dict[str, list[dict[str, Any]]] = {}
     for record in records:
         if not isinstance(record, dict):
             continue
@@ -226,13 +228,49 @@ def validate_adjudication(doc: dict[str, Any], crosswalk_doc: dict[str, Any],
             continue
         episode_id = episode.get("candidate_episode_id")
         if isinstance(episode_id, str) and episode_id.strip():
-            by_episode.setdefault(episode_id, set()).add(
-                str(episode.get("independence_status")))
-    for episode_id, statuses in by_episode.items():
-        if len(statuses) > 1:
-            problems.append(
-                f"candidate_episode_id {episode_id} has inconsistent "
-                f"independence_status values {sorted(statuses)}")
+            by_episode.setdefault(episode_id, []).append(record)
+
+    # Episode facts like date, lake identity, and location live on the
+    # crosswalk record; the adjudication row only carries decisions.
+    crosswalk_by_id = {r.get("source_record_id"): r
+                       for r in crosswalk_doc.get("records", [])
+                       if isinstance(r, dict)}
+
+    def _episode_facts(record: dict[str, Any]) -> dict[str, Any]:
+        adj = record.get("adjudication") if isinstance(
+            record.get("adjudication"), dict) else {}
+        source = crosswalk_by_id.get(record.get("source_record_id"), {})
+        date = source.get("date") if isinstance(
+            source.get("date"), dict) else {}
+        lake = source.get("lake_identity") if isinstance(
+            source.get("lake_identity"), dict) else {}
+        episode = record.get("episode") if isinstance(
+            record.get("episode"), dict) else {}
+        location = source.get("location") if isinstance(
+            source.get("location"), dict) else {}
+        return {
+            "date_start": date.get("start"),
+            "date_end": date.get("end"),
+            "lake_raw_id": lake.get("raw_id") or None,
+            "canonical_lake_id": lake.get("canonical_lake_id") or None,
+            "territory_status": adj.get("territory_status"),
+            "mechanism": adj.get("mechanism"),
+            "recurrence_group_id": episode.get("recurrence_group_id") or None,
+            "cascade_group_id": episode.get("cascade_group_id") or None,
+            "independence_status": episode.get("independence_status"),
+            "latitude": location.get("latitude"),
+            "longitude": location.get("longitude"),
+        }
+
+    for episode_id, members in by_episode.items():
+        facts = [_episode_facts(record) for record in members]
+        for field in facts[0]:
+            values = {f[field] for f in facts}
+            if len(values) > 1:
+                problems.append(
+                    f"candidate_episode_id {episode_id} has conflicting "
+                    f"{field} values {sorted(str(v) for v in values)} "
+                    f"(EPISODE_CONFLICT)")
     return problems
 
 

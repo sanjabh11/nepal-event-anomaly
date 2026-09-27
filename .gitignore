@@ -51,3 +51,15 @@ data/*_results.json
 data/locked_jja_events.json
 data/edh_*_log.txt
 data/features_nepal_*.csv
+
+# Operator-local ERA5/NISAR download artifacts + bulky rasters —
+# permanently on-disk only (release-audit hardening).  General rules
+# data/*.nc, data/temp/, and the explicit data/download_ledger.json are
+# already ignored above and are not duplicated here; the explicit file
+# paths below are belt-and-suspenders so a future rule change cannot
+# expose them.
+data/*.tif
+data/dem_n28e085.tif
+data/temp/era5_land_2001_06.nc
+data/era5_download_log.txt
+data/nisar_catalog_ledger.json

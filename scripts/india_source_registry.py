@@ -45,8 +45,53 @@ _REQUIRED_SOURCE_FIELDS = {
     "source_url", "source_access_status", "scope", "file_format",
     "access_terms", "reported_counts", "row_level_inventory_ingested",
     "local_payload_sha256", "source_bytes_retained",
-    "retrieval_instructions", "interpretation_limit",
+    "retrieval_instructions", "interpretation_limit", "retrieval_receipt",
 }
+_RECEIPT_METHODS = {"HEAD", "GET_METADATA_ONLY"}
+
+
+def _valid_retrieval_receipt(receipt: object, prefix: str) -> list[str]:
+    """Metadata-only retrieval receipt: proves the official endpoint was
+    reached and that zero payload bytes were acquired.  Absent while a
+    source has never been contacted; required once retrieval runs."""
+    problems: list[str] = []
+    if receipt is None:
+        return problems  # pre-retrieval state is honest
+    if not isinstance(receipt, dict):
+        return [f"{prefix}.retrieval_receipt must be an object or null"]
+    for field in ("requested_url", "retrieved_utc", "request_method",
+                  "content_type", "terms_reviewed"):
+        if not isinstance(receipt.get(field), str) or not receipt[field].strip():
+            problems.append(
+                f"{prefix}.retrieval_receipt.{field} must be non-empty")
+    for field in ("requested_url", "final_url"):
+        url = receipt.get(field)
+        if url is not None and (not isinstance(url, str)
+                                or urlsplit(url).scheme != "https"):
+            problems.append(
+                f"{prefix}.retrieval_receipt.{field} must be HTTPS or null")
+    if not isinstance(receipt.get("http_status"), int) \
+            or not 200 <= receipt["http_status"] < 400:
+        problems.append(f"{prefix}.retrieval_receipt.http_status must be "
+                        "a successful HTTP status (<400)")
+    if receipt.get("request_method") not in _RECEIPT_METHODS:
+        problems.append(
+            f"{prefix}.retrieval_receipt.request_method must be HEAD or "
+            "GET_METADATA_ONLY")
+    if receipt.get("bytes_retained") is not False:
+        problems.append(
+            f"{prefix}.retrieval_receipt.bytes_retained must be false")
+    digest = receipt.get("response_sha256")
+    if digest is not None and not (isinstance(digest, str)
+                                   and _HEX64.fullmatch(digest)):
+        problems.append(
+            f"{prefix}.retrieval_receipt.response_sha256 must be 64 hex "
+            "or null")
+    if receipt.get("redirects") is not None and not isinstance(
+            receipt.get("redirects"), list):
+        problems.append(
+            f"{prefix}.retrieval_receipt.redirects must be a list or null")
+    return problems
 
 
 def _official_https_url(value: object) -> bool:
@@ -133,6 +178,8 @@ def validate_registry(document: object) -> list[str]:
         if source.get("comparable_to") is not None and not isinstance(
                 source.get("comparable_to"), list):
             problems.append(f"{prefix}.comparable_to must be a list or null")
+        problems.extend(
+            _valid_retrieval_receipt(source.get("retrieval_receipt"), prefix))
 
     by_id = {source.get("id"): source for source in sources
              if isinstance(source, dict)}
