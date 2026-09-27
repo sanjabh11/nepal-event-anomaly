@@ -1,6 +1,6 @@
 {
  "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
- "content_head": "1ff917ae2399fe45fec4fe0e202ea9dd44e26b92",
+ "content_head": "ffb9144cab5dd0e895906c3753a349fe72f1a35a",
  "files": [
   {
    "relpath": ".github/workflows/p5-verification.yml",
@@ -9,13 +9,13 @@
   },
   {
    "relpath": ".github/workflows/research-v0.yml",
-   "sha256": "e881d1d78211063b08a1e8cee19dd5e4b92c250b8efe1dfeb700c25a0d0e6bbf",
-   "size_bytes": 19910
+   "sha256": "7596fa9528b1fab7dd44ba1e3a00c179e114a7588feeb3da8eaf78f1b5a88863",
+   "size_bytes": 17240
   },
   {
    "relpath": ".gitignore",
-   "sha256": "451eef24e54b190ebac023bcb3f4dc35d9ca1f5afba3146d12a62ba1bbe22fd3",
-   "size_bytes": 948
+   "sha256": "03d470456d5b7dbbb2c4d27bc5c9354478ff407b60c5ffef267c09d77063c950",
+   "size_bytes": 1433
   },
   {
    "relpath": ".phase-loop/master-plan.md",
@@ -34,8 +34,8 @@
   },
   {
    "relpath": "README.md",
-   "sha256": "7088f14209d046d48ff99ed548a069540e95249b0488e0890633e4c11911b17a",
-   "size_bytes": 20601
+   "sha256": "397bc223f18f54d9ccf868cdc1b862dc5e8780bfa175162361c993f4a51d6d8b",
+   "size_bytes": 21238
   },
   {
    "relpath": "conftest.py",
@@ -64,12 +64,12 @@
   },
   {
    "relpath": "docs/science/INDIA_EVIDENCE_REGISTER_V0.json",
-   "sha256": "3994f1ac30d3ea45bf512bdf61458c173ba2c861441e4bc5b207ca740b461383",
-   "size_bytes": 4638
+   "sha256": "0a085630e9136b35e9630738cd15b28c05028a659c9eb5109527695272b856cf",
+   "size_bytes": 5519
   },
   {
    "relpath": "docs/science/INDIA_EVIDENCE_REGISTER_V0.json.sha256",
-   "sha256": "d0a17cf5cb7f94e78f5dbf04a2d298325d96ba1a3b789911f3485b9bb81fd41b",
+   "sha256": "e754402cd5c3a23a3c58ac4a6d1030925dbbc71e9f99b24a889d19f33b574cc7",
    "size_bytes": 98
   },
   {
@@ -79,8 +79,8 @@
   },
   {
    "relpath": "docs/science/INDIA_INVENTORY_REGISTRY_V1.json",
-   "sha256": "77f7201df1319331cc2a53b6dc3b8c3d10b4f0251231ab7ae4e6903c48ef612e",
-   "size_bytes": 7271
+   "sha256": "7c53deacb0e2f0a493a18d23f7b8ac678d79322efe3c94a630ff2edc3fbd064d",
+   "size_bytes": 9944
   },
   {
    "relpath": "docs/science/INDIA_PHASE0_PROTOCOL_V0.md",
@@ -89,8 +89,8 @@
   },
   {
    "relpath": "docs/science/INDIA_PHASE0_PROTOCOL_V1.md",
-   "sha256": "920c894d7168287aef8cab6db5eba45d47a24a718dae4474f0ce8faa351cda2f",
-   "size_bytes": 7408
+   "sha256": "7a5335c22707f5f53fabb81fc894d7383a017ffc495240458787d11006f99372",
+   "size_bytes": 9415
   },
   {
    "relpath": "docs/science/INFORMATION_CUTOFF_TARGET_POLICY_V0.md",
@@ -219,8 +219,8 @@
   },
   {
    "relpath": "docs/science/TRACKED_DATA_PROVENANCE_V0.md",
-   "sha256": "2794f5ffd1acc5bde99e06a56036da00905baae5dd7c88d972ba60bae1fed069",
-   "size_bytes": 17414
+   "sha256": "18b3dd4f9a73459fc6eabdb189bdc8a6812dcbf67944771fb128ec63b1f692e0",
+   "size_bytes": 18050
   },
   {
    "relpath": "docs/science/run_a/HYBRID_ROUTE_RECONCILIATION_V0.md",
@@ -554,23 +554,23 @@
   },
   {
    "relpath": "scripts/india_event_adjudication.py",
-   "sha256": "2d30e541f87994781841a3dfb575fbb63a3be32e45b3de3a2c09a04817442be6",
-   "size_bytes": 12623
+   "sha256": "9e758372ebc7b6353b9138f5b91421bf6dab468b84c19b9d1cacca97ef85c9a5",
+   "size_bytes": 14569
   },
   {
    "relpath": "scripts/india_event_crosswalk.py",
-   "sha256": "a014f780416a0abaadd9c09f8ce96a53ac5adf7ccabfdea4594bdd90362d84b7",
-   "size_bytes": 15734
+   "sha256": "855b632341bc7c350cd511184c81ece2cea8841e1e8c19195da058c3bef367ac",
+   "size_bytes": 17884
   },
   {
    "relpath": "scripts/india_evidence_register.py",
-   "sha256": "f2ae4258e63448177bc1100187c4fa8ea42c39952d82a4933d3efde5a7ac4008",
-   "size_bytes": 8869
+   "sha256": "02e05ad5eaeb3ddf88cf7d933fe0b801f87b41ccf9c3ebc10ce99508d355472d",
+   "size_bytes": 14697
   },
   {
    "relpath": "scripts/india_feasibility_report.py",
-   "sha256": "eaccc6410a1b4e19325190380d07df238a62126678cdf924c422a459c81d3ea9",
-   "size_bytes": 21297
+   "sha256": "b0134c36bcac4426e9ff74e93c6680285f283a3bce62cdc645670c15fde0eb71",
+   "size_bytes": 24979
   },
   {
    "relpath": "scripts/india_inventory_metadata.py",
@@ -579,13 +579,13 @@
   },
   {
    "relpath": "scripts/india_lake_frame.py",
-   "sha256": "162c6ab6ed37401267dd6c1affdc092c7d8bc8985b29af5b7c0268c37b963914",
-   "size_bytes": 16760
+   "sha256": "8af55a2f33fd73acc4f00ea29bc51f618d4ea2cc1bfd25821df775c7e14cb8fa",
+   "size_bytes": 22966
   },
   {
    "relpath": "scripts/india_source_registry.py",
-   "sha256": "fa43a3e20e8583dd4e08567b4051a2a892fc597cf45b1b520262e2fdf2723194",
-   "size_bytes": 7819
+   "sha256": "5745a6d0eb28f7022223ed7a0dcbee89b9717813d96de0ebd0b5360aae69f5f7",
+   "size_bytes": 10234
   },
   {
    "relpath": "scripts/materialize_evidence_sidecars.py",
@@ -754,8 +754,8 @@
   },
   {
    "relpath": "tests/test_india_evidence_register.py",
-   "sha256": "cf2eeb6784a5c0d8213f4337a12c829cd664ed177b52c71ada306aa44b6d164e",
-   "size_bytes": 3981
+   "sha256": "afcd42d5dcb3f992b7992c1c2be69a5a36fcb09c98d7f2cf9070014e061b7c6d",
+   "size_bytes": 7915
   },
   {
    "relpath": "tests/test_india_inventory_metadata.py",
@@ -764,13 +764,13 @@
   },
   {
    "relpath": "tests/test_india_phase0.py",
-   "sha256": "80df0ce3b40f12b52309df5fb34c0c9646c051ffe2e00a85288ef2af7ff2de49",
-   "size_bytes": 23568
+   "sha256": "1f61284a2e5740eb5979bd85c9ed62ac7f3b9fc26e276655e31e5f29fcf2460d",
+   "size_bytes": 29979
   },
   {
    "relpath": "tests/test_india_source_registry.py",
-   "sha256": "2689d802572e41c5802fd723de4936d3dc9dae1952b26685cffc8f769e681640",
-   "size_bytes": 3464
+   "sha256": "cba00c9ef425f4132225a684b51a9059be9641e851160e0efc161542dbc4af23",
+   "size_bytes": 4748
   },
   {
    "relpath": "tests/test_materialize_evidence_sidecars.py",
@@ -1070,7 +1070,7 @@
  ],
  "generated": "post-P5 phase-B/C bind \u2014 model re-execution proof (MODEL_REEXECUTED both lanes, digest-exact), preregistered promotion protocol, clean-room export + verification-ladder harness, owner-scoped Arm C amendment (retrieval deferred)",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "1ff917ae2399fe45fec4fe0e202ea9dd44e26b92",
+ "manifest_commit": "ffb9144cab5dd0e895906c3753a349fe72f1a35a",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -1080,7 +1080,7 @@
  "test_results": {
   "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
   "claim_scan": "clean on all governed files",
-  "collection_guard": "repo-wide collection == tests/ (4282 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
+  "collection_guard": "repo-wide collection == tests/ (4300 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
   "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
   "full_suite_venv": "4280 passed, 1 skipped, 1 failed, 101 warnings (4282 collected) at 8633415 on pinned .venv (Python 3.14.7, rasterio present) \u2014 fresh suite after India Phase-0 hardening; machine receipt docs/science/SUITE_RECEIPT_20260927.json; the single failure is the REL-01 stale-record consistency gate itself (this record predated the post-hardening census) \u2014 self-resolves on this update; green-state receipt: docs/science/SUITE_RECEIPT_20260927_FINAL.json; skip: 1x CANDIDATE_ONLY cached-artifact gate",
   "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
