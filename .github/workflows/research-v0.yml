@@ -258,8 +258,16 @@ jobs:
         # outside the supported lock — ENV-01); -rs keeps skip reasons
         # visible.
         run: |
+          # The integrity PoC enforces a hard 512-MiB peak-RSS bound on
+          # ru_maxrss — which measures the hosting pytest process, so it
+          # must run in a dedicated process or it inherits the suite's
+          # accumulated high-water mark and reports INCOMPLETE.
           PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
-            python -B -m pytest tests/test_framework_v1_*.py -q -rs
+            python -B -m pytest tests/test_framework_v1_integrity_poc.py \
+            -q -rs
+          PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
+            python -B -m pytest -q -rs \
+            $(ls tests/test_framework_v1_*.py | grep -v integrity_poc)
 
       - name: ERA5 download dry-run gate
         run: python -B nepal/era5_download.py --dry-run
