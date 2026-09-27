@@ -920,6 +920,16 @@
    "relpath": "docs/science/SUITE_RECEIPT_20260928_R4.json.sha256",
    "category": "dated_run_receipt",
    "reason": "integrity sidecar for the R4 full-suite receipt"
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20260928_R5.json",
+   "category": "dated_run_receipt",
+   "reason": "failed full-suite receipt retained append-only; it caught the manifest's stale 4338 collection tally after test growth to 4340"
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20260928_R5.json.sha256",
+   "category": "dated_run_receipt",
+   "reason": "integrity sidecar for the failed R5 full-suite receipt"
   }
  ],
  "generated_utc": "2026-09-21T05:50:42Z",
