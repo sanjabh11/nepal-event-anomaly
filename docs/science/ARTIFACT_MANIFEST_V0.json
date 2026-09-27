@@ -1,6 +1,6 @@
 {
  "baseline_head": "54aa612f7d478082716dfe5d0bca7d92d62d493b",
- "content_head": "d5ccd8f637d249863d38b563452c5c8bb8580595",
+ "content_head": "5af6dd975a0adb1bfa1b0aa09ecc55a468c277e7",
  "files": [
   {
    "relpath": ".github/workflows/p5-verification.yml",
@@ -559,8 +559,8 @@
   },
   {
    "relpath": "scripts/build_india_release_closure.py",
-   "sha256": "b501137231b24cbb0145270de340d5e998df4219f160494878e8d92cb7e27bd3",
-   "size_bytes": 42929
+   "sha256": "b4a84c8bf1cc19fbbcbc714ba9ed8cf50797c1eeeccea485ee881c5fb77ccb41",
+   "size_bytes": 43132
   },
   {
    "relpath": "scripts/build_p5_release_closure_v2.py",
@@ -819,8 +819,8 @@
   },
   {
    "relpath": "tests/test_india_release_closure.py",
-   "sha256": "043bb906e651b0c30eb904be8205f7d9f2e0bf8921c318015265cd36d2ec5b9c",
-   "size_bytes": 14431
+   "sha256": "d92e76eca6869f5b448bd2f1b38d7e947db547f95da321cbc93be711d6fa49f6",
+   "size_bytes": 15767
   },
   {
    "relpath": "tests/test_india_source_intake.py",
@@ -1135,7 +1135,7 @@
  ],
  "generated": "post-P5 phase-B/C bind \u2014 model re-execution proof (MODEL_REEXECUTED both lanes, digest-exact), preregistered promotion protocol, clean-room export + verification-ladder harness, owner-scoped Arm C amendment (retrieval deferred)",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "d5ccd8f637d249863d38b563452c5c8bb8580595",
+ "manifest_commit": "5af6dd975a0adb1bfa1b0aa09ecc55a468c277e7",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -1145,7 +1145,7 @@
  "test_results": {
   "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
   "claim_scan": "clean on all governed files",
-  "collection_guard": "repo-wide collection == tests/ (4338 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
+  "collection_guard": "repo-wide collection == tests/ (4340 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
   "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
   "full_suite_venv": "Full suite at tested repository HEAD b35be38b1fd40b6606526b015f8ddaed91778e8f: 4335 passed, 3 skipped, 0 failed, 101 warnings (4338 collected) on pinned .venv (Python 3.14.7); immutable receipt docs/science/SUITE_RECEIPT_20260928_R2.json. A subsequent production closure build exposed that its checker assumed a schema field absent from this ARTIFACT_MANIFEST_V0.3; the checker and fixture are corrected in the successor. R2 is valid pre-fix test evidence, not the final closure-bound pass. The earlier failed R1 receipt is retained append-only.",
   "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
