@@ -910,6 +910,16 @@
    "relpath": "docs/science/SUITE_RECEIPT_20260928_R3.json.sha256",
    "category": "dated_run_receipt",
    "reason": "integrity sidecar for the corrected-checker full-suite receipt"
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20260928_R4.json",
+   "category": "dated_run_receipt",
+   "reason": "successful full-suite receipt after removing host-local evidence dependence from India tests; closure-authoritative result"
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20260928_R4.json.sha256",
+   "category": "dated_run_receipt",
+   "reason": "integrity sidecar for the R4 full-suite receipt"
   }
  ],
  "generated_utc": "2026-09-21T05:50:42Z",
