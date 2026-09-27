@@ -180,6 +180,7 @@ def _lake_denominators(
             canonical_ids.add(canonical)
         else:
             unresolved += 1
+            continue
         obs = record.get("observation", {})
         if not isinstance(obs, dict) or obs.get("control_eligible") is not True:
             continue
@@ -190,9 +191,7 @@ def _lake_denominators(
         if not resolved:
             unverified_controls += 1
             continue
-        control_ids.add(canonical if isinstance(canonical, str)
-                        and canonical.strip()
-                        else f"UNRESOLVED:{record.get('source_record_id')}")
+        control_ids.add(canonical)
     return {
         "mapped_lake_rows": len(lake_records),
         "in_country_canonical_lakes": len(canonical_ids),
