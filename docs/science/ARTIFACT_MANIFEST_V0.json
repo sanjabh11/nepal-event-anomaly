@@ -1,16 +1,16 @@
 {
  "baseline_head": "54aa612f7d478082716dfe5d0bca7d92d62d493b",
- "content_head": "0c290a55a323a17614cea3f98c8203d93c91de34",
+ "content_head": "f3f9e4b9d770d95e0157c44d7917d30c93f951f8",
  "files": [
   {
    "relpath": ".github/workflows/p5-verification.yml",
-   "sha256": "31c74d0109680be84d5e32c6bcbe5d1797adc78938f54d5868f9fccb526a230c",
-   "size_bytes": 1693
+   "sha256": "8fcdc19112d1ee4b6104db2bf70ad6abea7d69b6c283c58a181d4c8fa53b3fcc",
+   "size_bytes": 1722
   },
   {
    "relpath": ".github/workflows/research-v0.yml",
-   "sha256": "7596fa9528b1fab7dd44ba1e3a00c179e114a7588feeb3da8eaf78f1b5a88863",
-   "size_bytes": 17240
+   "sha256": "2a8a7d2fac097942f4d479b22292a1920dc246cb5adba26ccf13ccb1eca17aeb",
+   "size_bytes": 17715
   },
   {
    "relpath": ".gitignore",
@@ -834,8 +834,8 @@
   },
   {
    "relpath": "tests/test_r11_5_release_closure.py",
-   "sha256": "207bc15f5481de5d9a00b507eaab298fe2a1b1446dadce2d5d91415900a33711",
-   "size_bytes": 10423
+   "sha256": "fddf428f2c680890661573617258ee940b8eaeff62513fe01bb11fee18686341",
+   "size_bytes": 11893
   },
   {
    "relpath": "tests/test_r11_9_bindings.py",
@@ -1070,7 +1070,7 @@
  ],
  "generated": "post-P5 phase-B/C bind \u2014 model re-execution proof (MODEL_REEXECUTED both lanes, digest-exact), preregistered promotion protocol, clean-room export + verification-ladder harness, owner-scoped Arm C amendment (retrieval deferred)",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "0c290a55a323a17614cea3f98c8203d93c91de34",
+ "manifest_commit": "f3f9e4b9d770d95e0157c44d7917d30c93f951f8",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -1080,7 +1080,7 @@
  "test_results": {
   "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
   "claim_scan": "clean on all governed files",
-  "collection_guard": "repo-wide collection == tests/ (4300 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
+  "collection_guard": "repo-wide collection == tests/ (4301 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
   "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
   "full_suite_venv": "4298 passed, 2 skipped, 0 failed, 101 warnings (4300 collected) on pinned .venv (Python 3.14.7) \u2014 post-clean-history-rewrite suite with round-2 India hardening; machine receipt docs/science/SUITE_RECEIPT_20260927_R2.json; skips: 1x CANDIDATE_ONLY cached-artifact gate, 1x no published v4+ release closure",
   "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
