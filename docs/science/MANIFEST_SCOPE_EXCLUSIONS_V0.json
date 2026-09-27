@@ -4,15 +4,12 @@
  "bound_files_at_baseline": 161,
  "boundary_invariant": "tracked files == bound entries + recorded exclusions + the self-excluded manifest; enforced by the rebind scope audit, which fails closed on any unrecorded tracked file",
  "counts": {
-  "agent_phase_ledger_not_indexed": 0,
-  "armc_lane_governed_by_p5_manifest_chain": 36,
-  "bound_files": 161,
-  "ci_workflow_outside_release_surface": 0,
-  "data_payload_outside_science_scope": 5,
-  "exclusions": 111,
-  "legacy_science_doc_pre_bound_surface": 0,
-  "legacy_script_pre_bound_surface": 0,
-  "legacy_v0_pre_regime_surface": 32,
+  "agent_phase_ledger_not_indexed": 24,
+  "armc_lane_governed_by_p5_manifest_chain": 51,
+  "bound_files": 193,
+  "data_payload_outside_science_scope": 17,
+  "exclusions": 170,
+  "legacy_v0_pre_regime_surface": 40,
   "legacy_v0_pre_regime_tests": 27,
   "pinned_input_script": 5,
   "root_level_record_outside_governed_surface": 6,
@@ -573,6 +570,301 @@
    "category": "root_level_record_outside_governed_surface",
    "reason": "operator/agent instructions or research-note at repository root; not a governed science artifact",
    "relpath": "nepal_event_anomaly_report.md"
+  },
+  {
+   "category": "agent_phase_ledger_not_indexed",
+   "reason": "agent scratch / phase-loop runtime state; outside the governed science surface",
+   "relpath": ".cursor/hooks/state/continual-learning.json"
+  },
+  {
+   "category": "agent_phase_ledger_not_indexed",
+   "reason": "agent scratch / phase-loop runtime state; outside the governed science surface",
+   "relpath": ".phase-loop/glm2_download_plan.md"
+  },
+  {
+   "category": "agent_phase_ledger_not_indexed",
+   "reason": "agent scratch / phase-loop runtime state; outside the governed science surface",
+   "relpath": ".phase-loop/glm2_reconciled_download_plan.md"
+  },
+  {
+   "category": "agent_phase_ledger_not_indexed",
+   "reason": "agent scratch / phase-loop runtime state; outside the governed science surface",
+   "relpath": ".phase-loop/parallel_runs/run-20260912-2a8757b/RUN_CONTEXT.json"
+  },
+  {
+   "category": "agent_phase_ledger_not_indexed",
+   "reason": "agent scratch / phase-loop runtime state; outside the governed science surface",
+   "relpath": ".phase-loop/parallel_runs/run-20260912-2a8757b/dispatch/C1_packet.md"
+  },
+  {
+   "category": "agent_phase_ledger_not_indexed",
+   "reason": "agent scratch / phase-loop runtime state; outside the governed science surface",
+   "relpath": ".phase-loop/parallel_runs/run-20260912-2a8757b/dispatch/D1_packet.md"
+  },
+  {
+   "category": "agent_phase_ledger_not_indexed",
+   "reason": "agent scratch / phase-loop runtime state; outside the governed science surface",
+   "relpath": ".phase-loop/parallel_runs/run-20260912-2a8757b/dispatch/Q1_packet.md"
+  },
+  {
+   "category": "agent_phase_ledger_not_indexed",
+   "reason": "agent scratch / phase-loop runtime state; outside the governed science surface",
+   "relpath": ".phase-loop/parallel_runs/run-20260912-2a8757b/leases/C1.lease.json"
+  },
+  {
+   "category": "agent_phase_ledger_not_indexed",
+   "reason": "agent scratch / phase-loop runtime state; outside the governed science surface",
+   "relpath": ".phase-loop/parallel_runs/run-20260912-2a8757b/leases/D1.lease.json"
+  },
+  {
+   "category": "agent_phase_ledger_not_indexed",
+   "reason": "agent scratch / phase-loop runtime state; outside the governed science surface",
+   "relpath": ".phase-loop/parallel_runs/run-20260912-2a8757b/leases/Q1.lease.json"
+  },
+  {
+   "category": "agent_phase_ledger_not_indexed",
+   "reason": "agent scratch / phase-loop runtime state; outside the governed science surface",
+   "relpath": ".phase-loop/parallel_runs/run-20260912-2a8757b/watch.out"
+  },
+  {
+   "category": "agent_phase_ledger_not_indexed",
+   "reason": "agent scratch / phase-loop runtime state; outside the governed science surface",
+   "relpath": ".phase-loop/parallel_runs/run-20260912-2a8757b/watch.py"
+  },
+  {
+   "category": "agent_phase_ledger_not_indexed",
+   "reason": "agent scratch / phase-loop runtime state; outside the governed science surface",
+   "relpath": ".phase-loop/parallel_runs/run-20260912-2a8757b/watch_log.jsonl"
+  },
+  {
+   "category": "agent_phase_ledger_not_indexed",
+   "reason": "agent scratch / phase-loop runtime state; outside the governed science surface",
+   "relpath": ".phase-loop/watcher/README.md"
+  },
+  {
+   "category": "agent_phase_ledger_not_indexed",
+   "reason": "agent scratch / phase-loop runtime state; outside the governed science surface",
+   "relpath": ".phase-loop/watcher/baseline_2026-09-11T1557.md"
+  },
+  {
+   "category": "agent_phase_ledger_not_indexed",
+   "reason": "agent scratch / phase-loop runtime state; outside the governed science surface",
+   "relpath": ".phase-loop/watcher/cycle_1.log"
+  },
+  {
+   "category": "agent_phase_ledger_not_indexed",
+   "reason": "agent scratch / phase-loop runtime state; outside the governed science surface",
+   "relpath": ".phase-loop/watcher/cycle_2.log"
+  },
+  {
+   "category": "agent_phase_ledger_not_indexed",
+   "reason": "agent scratch / phase-loop runtime state; outside the governed science surface",
+   "relpath": ".phase-loop/watcher/cycle_3.log"
+  },
+  {
+   "category": "agent_phase_ledger_not_indexed",
+   "reason": "agent scratch / phase-loop runtime state; outside the governed science surface",
+   "relpath": ".phase-loop/watcher/cycle_4.log"
+  },
+  {
+   "category": "agent_phase_ledger_not_indexed",
+   "reason": "agent scratch / phase-loop runtime state; outside the governed science surface",
+   "relpath": ".phase-loop/watcher/cycle_5.log"
+  },
+  {
+   "category": "agent_phase_ledger_not_indexed",
+   "reason": "agent scratch / phase-loop runtime state; outside the governed science surface",
+   "relpath": ".phase-loop/watcher/cycle_6.log"
+  },
+  {
+   "category": "agent_phase_ledger_not_indexed",
+   "reason": "agent scratch / phase-loop runtime state; outside the governed science surface",
+   "relpath": ".phase-loop/watcher/poll_loop.out"
+  },
+  {
+   "category": "agent_phase_ledger_not_indexed",
+   "reason": "agent scratch / phase-loop runtime state; outside the governed science surface",
+   "relpath": ".phase-loop/watcher/poll_loop.sh"
+  },
+  {
+   "category": "agent_phase_ledger_not_indexed",
+   "reason": "agent scratch / phase-loop runtime state; outside the governed science surface",
+   "relpath": ".phase-loop/watcher/watcher_check.sh"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "operator download/validation script outside the governed science scope",
+   "relpath": "nepal/edh_daily_download.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "operator download/validation script outside the governed science scope",
+   "relpath": "nepal/edh_download.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "operator download/validation script outside the governed science scope",
+   "relpath": "nepal/era5_download_optimized.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "operator download/validation script outside the governed science scope",
+   "relpath": "nepal/era5_download_wrapper.sh"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "operator download/validation script outside the governed science scope",
+   "relpath": "nepal/era5_parallel_download.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "operator download/validation script outside the governed science scope",
+   "relpath": "nepal/gmm_false_positive.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "operator download/validation script outside the governed science scope",
+   "relpath": "nepal/multi_event_validation.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "operator download/validation script outside the governed science scope",
+   "relpath": "nepal/phase1_exit_gate.py"
+  },
+  {
+   "category": "data_payload_outside_science_scope",
+   "reason": "analysis plot output outside the governed science-artifact scope",
+   "relpath": "plots/anomaly/05_zscore_jja_2026.png"
+  },
+  {
+   "category": "data_payload_outside_science_scope",
+   "reason": "analysis plot output outside the governed science-artifact scope",
+   "relpath": "plots/anomaly/06_percentile_pre_event.png"
+  },
+  {
+   "category": "data_payload_outside_science_scope",
+   "reason": "analysis plot output outside the governed science-artifact scope",
+   "relpath": "plots/change_point/07_pelt_t2m_2026.png"
+  },
+  {
+   "category": "data_payload_outside_science_scope",
+   "reason": "analysis plot output outside the governed science-artifact scope",
+   "relpath": "plots/change_point/08_pelt_pdd_2026.png"
+  },
+  {
+   "category": "data_payload_outside_science_scope",
+   "reason": "analysis plot output outside the governed science-artifact scope",
+   "relpath": "plots/eda/01_jja_2026_temperature.png"
+  },
+  {
+   "category": "data_payload_outside_science_scope",
+   "reason": "analysis plot output outside the governed science-artifact scope",
+   "relpath": "plots/eda/02_jja_2026_pdd_7day.png"
+  },
+  {
+   "category": "data_payload_outside_science_scope",
+   "reason": "analysis plot output outside the governed science-artifact scope",
+   "relpath": "plots/eda/03_climatology_2026_vs_baseline.png"
+  },
+  {
+   "category": "data_payload_outside_science_scope",
+   "reason": "analysis plot output outside the governed science-artifact scope",
+   "relpath": "plots/eda/04_freezing_level_2026.png"
+  },
+  {
+   "category": "data_payload_outside_science_scope",
+   "reason": "analysis plot output outside the governed science-artifact scope",
+   "relpath": "plots/gmm/10_gmm_bic_scores.png"
+  },
+  {
+   "category": "data_payload_outside_science_scope",
+   "reason": "analysis plot output outside the governed science-artifact scope",
+   "relpath": "plots/gmm/11_gmm_cluster_occupancy.png"
+  },
+  {
+   "category": "data_payload_outside_science_scope",
+   "reason": "analysis plot output outside the governed science-artifact scope",
+   "relpath": "plots/gmm_false_positive/gmm_false_positive_histogram.png"
+  },
+  {
+   "category": "data_payload_outside_science_scope",
+   "reason": "analysis plot output outside the governed science-artifact scope",
+   "relpath": "plots/isolation_forest/09_isolation_forest_scores.png"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "ARMC evidence-lane script governed by the P5 evidence manifest chain, not this v0 manifest",
+   "relpath": "scripts/armc_adjm_inventory_v1.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "ARMC evidence-lane script governed by the P5 evidence manifest chain, not this v0 manifest",
+   "relpath": "scripts/armc_hma_cohort_inputs_v1.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "ARMC evidence-lane script governed by the P5 evidence manifest chain, not this v0 manifest",
+   "relpath": "scripts/armc_hma_precheck_v1.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "ARMC evidence-lane script governed by the P5 evidence manifest chain, not this v0 manifest",
+   "relpath": "scripts/armc_request_plan_hma_v1.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "ARMC evidence-lane script governed by the P5 evidence manifest chain, not this v0 manifest",
+   "relpath": "scripts/armc_request_plan_tienshan_v1.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "ARMC evidence-lane script governed by the P5 evidence manifest chain, not this v0 manifest",
+   "relpath": "scripts/armc_retrieve_driver_earthmover_adjm_v1.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "ARMC evidence-lane script governed by the P5 evidence manifest chain, not this v0 manifest",
+   "relpath": "scripts/armc_retrieve_driver_earthmover_hma_v1.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "ARMC evidence-lane script governed by the P5 evidence manifest chain, not this v0 manifest",
+   "relpath": "scripts/armc_retrieve_driver_earthmover_ts_v1.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "ARMC evidence-lane script governed by the P5 evidence manifest chain, not this v0 manifest",
+   "relpath": "scripts/armc_routeb_analyze_hma_v1.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "ARMC evidence-lane script governed by the P5 evidence manifest chain, not this v0 manifest",
+   "relpath": "scripts/armc_routeb_analyze_tienshan_v1.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "ARMC evidence-lane script governed by the P5 evidence manifest chain, not this v0 manifest",
+   "relpath": "scripts/armc_routeb_analyze_v2.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "ARMC evidence-lane script governed by the P5 evidence manifest chain, not this v0 manifest",
+   "relpath": "scripts/armc_ts_cohort_inputs_v1.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "ARMC evidence-lane script governed by the P5 evidence manifest chain, not this v0 manifest",
+   "relpath": "scripts/armc_ts_precheck_v1.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "ARMC evidence-lane script governed by the P5 evidence manifest chain, not this v0 manifest",
+   "relpath": "scripts/run_seasonal_regime_redesign_v1.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "ARMC evidence-lane script governed by the P5 evidence manifest chain, not this v0 manifest",
+   "relpath": "tests/test_armc_routeb_analyze_v2.py"
   }
  ],
  "generated_utc": "2026-09-21T05:50:42Z",
