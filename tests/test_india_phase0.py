@@ -362,21 +362,43 @@ def test_feasibility_gate_requires_identity_reconciliation(tmp_path):
     crosswalk, cw_path, _, reg_path = _paths(tmp_path, 3)
     inventory = _inventory(tmp_path, [
         {"source_record_id": "NRSC:1", "lake_id": "1",
-         "latitude": 30, "longitude": 80},
+         "latitude": 30, "longitude": 80, "territory_status": "IN_COUNTRY"},
         {"source_record_id": "CWC:1", "lake_id": "9",
-         "latitude": 31, "longitude": 79},
+         "latitude": 31, "longitude": 79, "territory_status": "IN_COUNTRY"},
     ])
     frame = lf.build_frame(inventory, "NRSC", "test-1")
     lf_path = _write_bound(tmp_path / "lf2.json", frame)
     decision = _reviewed_decision(cw_path, crosswalk)
     decision_path = _write_bound(tmp_path / "decision.json", decision)
     report = fr.build_report(cw_path, lf_path, reg_path, decision_path)
-    # Two unreconciled source rows block the lake screen even though rows
-    # exist — source rows are not canonical lakes.
+    # Two unreconciled in-country source rows block the lake screen even
+    # though rows exist — source rows are not canonical lakes.
     assert report["denominators"]["unresolved_lake_identities"] == 2
-    assert report["denominators"]["canonical_lakes"] == 0
+    assert report["denominators"]["in_country_canonical_lakes"] == 0
     assert report["gates"]["lake_year_screen"] == "IDENTITY_RECONCILE_REQUIRED"
     assert report["next_gate"] == "RECONCILE_LAKE_IDENTITIES"
+
+
+def test_feasibility_gate_requires_territory_classification(tmp_path):
+    crosswalk, cw_path, _, reg_path = _paths(tmp_path, 3)
+    inventory = _inventory(tmp_path, [
+        {"source_record_id": "NRSC:1", "lake_id": "1",
+         "latitude": 30, "longitude": 80},  # territory UNASSESSED
+        {"source_record_id": "NRSC:2", "lake_id": "2",
+         "latitude": 31, "longitude": 79,
+         "territory_status": "UNCERTAIN"},  # transboundary — visible, excluded
+        {"source_record_id": "NRSC:3", "lake_id": "3",
+         "latitude": 32, "longitude": 78, "territory_status": "OUTSIDE"},
+    ])
+    frame = lf.build_frame(inventory, "NRSC", "test-1")
+    lf_path = _write_bound(tmp_path / "lf3.json", frame)
+    decision = _reviewed_decision(cw_path, crosswalk)
+    decision_path = _write_bound(tmp_path / "decision.json", decision)
+    report = fr.build_report(cw_path, lf_path, reg_path, decision_path)
+    assert report["denominators"]["uncertain_territory_lakes"] == 2
+    assert report["denominators"]["outside_lakes"] == 1
+    assert report["gates"]["lake_year_screen"] == "TERRITORY_REVIEW_REQUIRED"
+    assert report["next_gate"] == "REVIEW_TERRITORY_CLASSIFICATION"
 
 
 def _report_with_n_episodes(tmp_path: Path, n: int,

@@ -144,14 +144,32 @@ def _review_complete(record: dict[str, Any]) -> bool:
 def _lake_denominators(
         lake_records: list[dict[str, Any]],
         verified: dict[str, dict[str, Any]]) -> dict[str, int]:
-    """Canonical-lake denominators: rows are source rows, not lakes."""
+    """Canonical-lake denominators: rows are source rows, not lakes.
+
+    India-only accounting: records classified OUTSIDE remain visible but
+    never enter India denominators; UNCERTAIN/UNASSESSED territory records
+    block the frame until classified; only IN_COUNTRY reconciled
+    identities contribute canonical lakes.
+    """
     canonical_ids: set[str] = set()
     unresolved = 0
+    outside = 0
+    uncertain = 0
     control_ids: set[str] = set()
     control_candidates = 0
     unverified_controls = 0
     for record in lake_records:
         if not isinstance(record, dict):
+            continue
+        location = record.get("location", {})
+        if not isinstance(location, dict):
+            location = {}
+        territory = location.get("territory_status")
+        if territory == "OUTSIDE":
+            outside += 1
+            continue
+        if territory != "IN_COUNTRY":
+            uncertain += 1
             continue
         lake = record.get("lake", {})
         if not isinstance(lake, dict):
@@ -177,7 +195,9 @@ def _lake_denominators(
                         else f"UNRESOLVED:{record.get('source_record_id')}")
     return {
         "mapped_lake_rows": len(lake_records),
-        "canonical_lakes": len(canonical_ids),
+        "in_country_canonical_lakes": len(canonical_ids),
+        "outside_lakes": outside,
+        "uncertain_territory_lakes": uncertain,
         "unresolved_lake_identities": unresolved,
         "control_candidates": control_candidates,
         "verified_non_event_controls": len(control_ids),
@@ -195,11 +215,13 @@ def _event_screen(unreviewed: int, independent_exact: int) -> str:
     return "SIMULATION_REQUIRED"
 
 
-def _lake_screen(unresolved: int, canonical_lakes: int,
-                 verified_controls: int) -> str:
+def _lake_screen(uncertain: int, unresolved: int,
+                 in_country_canonical: int, verified_controls: int) -> str:
+    if uncertain:
+        return "TERRITORY_REVIEW_REQUIRED"
     if unresolved:
         return "IDENTITY_RECONCILE_REQUIRED"
-    if canonical_lakes < 150:
+    if in_country_canonical < 150:
         return "INSUFFICIENT_LAKE_FRAME"
     if not verified_controls:
         return "CONTROL_FRAME_NOT_ESTABLISHED"
@@ -254,8 +276,9 @@ def build_report(crosswalk_path: str | Path, lake_frame_path: str | Path,
 
     event_screen = _event_screen(unreviewed, len(episode_ids))
     lake_screen = _lake_screen(
+        lake_denominators["uncertain_territory_lakes"],
         lake_denominators["unresolved_lake_identities"],
-        lake_denominators["canonical_lakes"],
+        lake_denominators["in_country_canonical_lakes"],
         lake_denominators["verified_non_event_controls"])
     evidence_screen = _evidence_screen(
         unverified_eligible,
@@ -278,7 +301,11 @@ def build_report(crosswalk_path: str | Path, lake_frame_path: str | Path,
             "eligible_unverified_evidence": unverified_eligible,
             "independent_exact_day_episodes": len(episode_ids),
             "mapped_lake_rows": lake_denominators["mapped_lake_rows"],
-            "canonical_lakes": lake_denominators["canonical_lakes"],
+            "in_country_canonical_lakes":
+                lake_denominators["in_country_canonical_lakes"],
+            "outside_lakes": lake_denominators["outside_lakes"],
+            "uncertain_territory_lakes":
+                lake_denominators["uncertain_territory_lakes"],
             "unresolved_lake_identities":
                 lake_denominators["unresolved_lake_identities"],
             "control_candidates": lake_denominators["control_candidates"],
@@ -305,11 +332,13 @@ def build_report(crosswalk_path: str | Path, lake_frame_path: str | Path,
                       "VERIFY_EVENT_EVIDENCE" if unverified_eligible else
                       "RUN_PREDECLARED_PRECISION_SIMULATION"
                       if len(episode_ids) >= 20 else
+                      "REVIEW_TERRITORY_CLASSIFICATION"
+                      if lake_denominators["uncertain_territory_lakes"] else
                       "RECONCILE_LAKE_IDENTITIES"
                       if lake_denominators["unresolved_lake_identities"] else
                       "ESTABLISH_OBSERVATION_FRAME"
-                      if lake_denominators["canonical_lakes"] >= 150 else
-                      "RECONCILE_LAKE_INVENTORY"),
+                      if lake_denominators["in_country_canonical_lakes"] >= 150
+                      else "RECONCILE_LAKE_INVENTORY"),
         "decision": "PHASE0_ONLY_NO_ACQUISITION",
         "notes": [
             "A catalog row is not an independent episode.",
@@ -319,6 +348,8 @@ def build_report(crosswalk_path: str | Path, lake_frame_path: str | Path,
             "A citation string is attribution until it resolves to a BYTES_VERIFIED register record with covering temporal coverage.",
             "Reviewer ids are attribution, not authenticated signoff.",
             "Rows sharing a candidate episode id count once in episode denominators.",
+            "OUTSIDE and UNCERTAIN territory records stay visible but never enter India-only denominators.",
+            "A BYTES_VERIFIED register record binds bytes to a digest and locator; it does not prove the source content is authentic — that rests on the recorded official source and access terms.",
             "No weather, satellite, or seismic payload may be retrieved from this report.",
         ],
     }
@@ -339,7 +370,8 @@ def validate_report(doc: dict[str, Any]) -> list[str]:
     for key in ("catalog_rows", "adjudicated_eligible_rows",
                 "eligible_unverified_evidence",
                 "independent_exact_day_episodes", "mapped_lake_rows",
-                "canonical_lakes", "unresolved_lake_identities",
+                "in_country_canonical_lakes", "outside_lakes",
+                "uncertain_territory_lakes", "unresolved_lake_identities",
                 "control_candidates", "verified_non_event_controls",
                 "unverified_control_candidates", "observable_lake_years",
                 "unreviewed_event_rows"):
@@ -356,8 +388,13 @@ def validate_report(doc: dict[str, Any]) -> list[str]:
     if d.get("verified_non_event_controls", 0) > d.get(
             "control_candidates", 0):
         problems.append("verified controls exceed control candidates")
-    if d.get("canonical_lakes", 0) > d.get("mapped_lake_rows", 0):
-        problems.append("canonical lakes exceed mapped lake rows")
+    if d.get("outside_lakes", 0) + d.get("uncertain_territory_lakes", 0) > \
+            d.get("mapped_lake_rows", 0):
+        problems.append("territory-excluded lakes exceed mapped lake rows")
+    if d.get("in_country_canonical_lakes", 0) > (
+            d.get("mapped_lake_rows", 0) - d.get("outside_lakes", 0)
+            - d.get("uncertain_territory_lakes", 0)):
+        problems.append("canonical lakes exceed in-country mapped rows")
     ids = doc.get("independent_episode_ids")
     if not isinstance(ids, list) or len(ids) != len(set(ids)) or any(
             not isinstance(v, str) or not v for v in ids):
@@ -369,8 +406,9 @@ def validate_report(doc: dict[str, Any]) -> list[str]:
         d.get("independent_exact_day_episodes", 0),
     )
     expected_lake = _lake_screen(
+        d.get("uncertain_territory_lakes", 0),
         d.get("unresolved_lake_identities", 0),
-        d.get("canonical_lakes", 0),
+        d.get("in_country_canonical_lakes", 0),
         d.get("verified_non_event_controls", 0),
     )
     expected_evidence = _evidence_screen(
@@ -396,10 +434,12 @@ def validate_report(doc: dict[str, Any]) -> list[str]:
                      if d.get("eligible_unverified_evidence", 0) else
                      "RUN_PREDECLARED_PRECISION_SIMULATION"
                      if d.get("independent_exact_day_episodes", 0) >= 20 else
+                     "REVIEW_TERRITORY_CLASSIFICATION"
+                     if d.get("uncertain_territory_lakes", 0) else
                      "RECONCILE_LAKE_IDENTITIES"
                      if d.get("unresolved_lake_identities", 0) else
                      "ESTABLISH_OBSERVATION_FRAME"
-                     if d.get("canonical_lakes", 0) >= 150 else
+                     if d.get("in_country_canonical_lakes", 0) >= 150 else
                      "RECONCILE_LAKE_INVENTORY")
     if doc.get("next_gate") != expected_next:
         problems.append("next_gate does not match denominators")

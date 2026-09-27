@@ -68,6 +68,23 @@ explicit all-false authority object.
   adjudication against a declared boundary source, version, and CRS
   (the adjudication document's `geography` block); eligibility requires
   `IN_COUNTRY`. Lake-frame records carry the same taxonomy.
+  Classification criteria: `IN_COUNTRY` requires the record's position
+  to fall inside the declared boundary version at the declared CRS;
+  `UNCERTAIN` covers transboundary, disputed, or insufficient-evidence
+  locations; `OUTSIDE` records and `UNCERTAIN`/`UNASSESSED` records
+  remain visible in outputs but are excluded from India-only
+  denominators — `UNCERTAIN` blocks the lake screen
+  (`TERRITORY_REVIEW_REQUIRED`) until classified.
+- **Ambiguity handling.** Uncertain territory and unresolved-identity
+  records are never silently dropped or auto-promoted: they stay
+  visible in every denominator report, are excluded from India-only
+  counts, and are resolvable only by a serialized adjudication pass
+  under the coordinator — no automated event or lake admission.
+- **Evidence integrity vs authenticity.** `BYTES_VERIFIED` binds bytes
+  to a digest and a locator — it proves integrity of what was pinned,
+  not the authenticity of the source. Authenticity rests on the
+  recorded official locator and access terms, which is why register
+  entries name the official source and its terms explicitly.
 - **Identity.** Lake identities carry `identity_status` in
   `{UNRECONCILED, RECONCILED, UNRESOLVED_CONFLICT}`; a `RECONCILED`
   record must name a `canonical_lake_id`, and canonical ids may merge
