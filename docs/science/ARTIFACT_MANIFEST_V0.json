@@ -1,6 +1,6 @@
 {
  "baseline_head": "54aa612f7d478082716dfe5d0bca7d92d62d493b",
- "content_head": "c2579e1606949b8f78a645bb93abc4cbe6152b5e",
+ "content_head": "0c290a55a323a17614cea3f98c8203d93c91de34",
  "files": [
   {
    "relpath": ".github/workflows/p5-verification.yml",
@@ -1070,7 +1070,7 @@
  ],
  "generated": "post-P5 phase-B/C bind \u2014 model re-execution proof (MODEL_REEXECUTED both lanes, digest-exact), preregistered promotion protocol, clean-room export + verification-ladder harness, owner-scoped Arm C amendment (retrieval deferred)",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "c2579e1606949b8f78a645bb93abc4cbe6152b5e",
+ "manifest_commit": "0c290a55a323a17614cea3f98c8203d93c91de34",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
