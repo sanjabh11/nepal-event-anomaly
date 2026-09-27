@@ -1,6 +1,6 @@
 {
  "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
- "content_head": "50b500f2a52af719551d76ce41b0b489af8cc795",
+ "content_head": "f3f5512a492868e3e488b8ac5485b5646ac74d96",
  "files": [
   {
    "relpath": ".github/workflows/p5-verification.yml",
@@ -84,8 +84,8 @@
   },
   {
    "relpath": "docs/science/INDIA_PHASE0_PROTOCOL_V1.md",
-   "sha256": "6526e4f3a584be954c54c8236fba0df2e65b1377795ba72ef76e9bd868537505",
-   "size_bytes": 6292
+   "sha256": "920c894d7168287aef8cab6db5eba45d47a24a718dae4474f0ce8faa351cda2f",
+   "size_bytes": 7408
   },
   {
    "relpath": "docs/science/INFORMATION_CUTOFF_TARGET_POLICY_V0.md",
@@ -564,8 +564,8 @@
   },
   {
    "relpath": "scripts/india_feasibility_report.py",
-   "sha256": "e1463c2e6b2de86682632e1d6c363c4d63b753633d1d44b5e9b2839f56d27402",
-   "size_bytes": 19312
+   "sha256": "47f8156a96a932538c08c1a394172a10791fbe706d8186dba271300ed8f9fafd",
+   "size_bytes": 21422
   },
   {
    "relpath": "scripts/india_inventory_metadata.py",
@@ -759,8 +759,8 @@
   },
   {
    "relpath": "tests/test_india_phase0.py",
-   "sha256": "5efa790f2e077df3536bf4dd8df1a629c9599ed217265b33aeb14b24ced5f8a4",
-   "size_bytes": 22291
+   "sha256": "80df0ce3b40f12b52309df5fb34c0c9646c051ffe2e00a85288ef2af7ff2de49",
+   "size_bytes": 23568
   },
   {
    "relpath": "tests/test_india_source_registry.py",
@@ -1065,7 +1065,7 @@
  ],
  "generated": "post-P5 phase-B/C bind \u2014 model re-execution proof (MODEL_REEXECUTED both lanes, digest-exact), preregistered promotion protocol, clean-room export + verification-ladder harness, owner-scoped Arm C amendment (retrieval deferred)",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "50b500f2a52af719551d76ce41b0b489af8cc795",
+ "manifest_commit": "f3f5512a492868e3e488b8ac5485b5646ac74d96",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -1075,7 +1075,7 @@
  "test_results": {
   "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
   "claim_scan": "clean on all governed files",
-  "collection_guard": "repo-wide collection == tests/ (4281 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
+  "collection_guard": "repo-wide collection == tests/ (4282 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
   "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
   "full_suite_venv": "4236 passed, 6 skipped, 0 failed, 93 warnings (4242 collected) at 0b1b19c \u2014 merged main suite; composition verified: 4213 measured passes at 2ef72a7 plus 22 india_* contract tests confirmed passing after collection restoration, and the REL-01 drift gate (self-resolving once this record updated); -rs captured: 5x rasterio intentionally absent (ENV-01), 1x CANDIDATE_ONLY cached-artifact gate",
   "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
