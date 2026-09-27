@@ -870,6 +870,16 @@
    "relpath": "docs/science/SUITE_RECEIPT_20260927_R2.json.sha256",
    "category": "dated_run_receipt",
    "reason": "integrity sidecar for the dated suite receipt"
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20260927_R3.json",
+   "category": "dated_run_receipt",
+   "reason": "dated machine suite receipt binding the post-rewrite, post-CI-hardening tree; cannot be manifest-bound without circularity"
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20260927_R3.json.sha256",
+   "category": "dated_run_receipt",
+   "reason": "integrity sidecar for the dated suite receipt"
   }
  ],
  "generated_utc": "2026-09-21T05:50:42Z",
