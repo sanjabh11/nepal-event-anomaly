@@ -1,6 +1,6 @@
 {
  "baseline_head": "54aa612f7d478082716dfe5d0bca7d92d62d493b",
- "content_head": "1e1c855d9a3122a4c0362af36cad54efe4f63258",
+ "content_head": "d5ccd8f637d249863d38b563452c5c8bb8580595",
  "files": [
   {
    "relpath": ".github/workflows/p5-verification.yml",
@@ -819,13 +819,13 @@
   },
   {
    "relpath": "tests/test_india_release_closure.py",
-   "sha256": "2bc19e294bbf0505d757e9f9cf66f5ef22b206348fd13f7e0470ec2d6f425d94",
-   "size_bytes": 13989
+   "sha256": "043bb906e651b0c30eb904be8205f7d9f2e0bf8921c318015265cd36d2ec5b9c",
+   "size_bytes": 14431
   },
   {
    "relpath": "tests/test_india_source_intake.py",
-   "sha256": "59d698858f52de6c52752ef9925996e9c215d60dbf23ae1c3f75df1e8dbc13e6",
-   "size_bytes": 7099
+   "sha256": "ecd765fb13c5e6f0985f29884a21bb937a7ae8c525f94b7b1bc33473da49538d",
+   "size_bytes": 8293
   },
   {
    "relpath": "tests/test_india_source_registry.py",
@@ -1135,7 +1135,7 @@
  ],
  "generated": "post-P5 phase-B/C bind \u2014 model re-execution proof (MODEL_REEXECUTED both lanes, digest-exact), preregistered promotion protocol, clean-room export + verification-ladder harness, owner-scoped Arm C amendment (retrieval deferred)",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "1e1c855d9a3122a4c0362af36cad54efe4f63258",
+ "manifest_commit": "d5ccd8f637d249863d38b563452c5c8bb8580595",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
