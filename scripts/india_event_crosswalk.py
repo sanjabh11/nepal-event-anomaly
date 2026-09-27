@@ -47,6 +47,9 @@ AUTHORITY_FLAGS = {
 PLACEHOLDER_LAKE_IDS = frozenset({"", "NA", "N/A", "NONE", "NO LAKE",
                                   "NOT MAPPED", "UNKNOWN", "EPHEMERAL"})
 _INT_RE = re.compile(r"^[+-]?\d+(?:\.0+)?$")
+# Territory is an adjudicated classification, never a coordinate guess:
+# catalog country strings select rows; they do not classify territory.
+TERRITORY_STATUSES = {"IN_COUNTRY", "OUTSIDE", "UNCERTAIN", "UNASSESSED"}
 
 
 def sha256_file(path: str | Path) -> str:
@@ -122,6 +125,24 @@ def _lake_identity(raw: Any) -> dict[str, Any]:
             "canonical_lake_id": None}
 
 
+def _float_or_none(value: Any) -> float | None:
+    text = _text(value)
+    if not text:
+        return None
+    try:
+        result = float(text)
+    except ValueError:
+        return None
+    return result if math.isfinite(result) else None
+
+
+def _location(row: dict[str, Any]) -> dict[str, Any]:
+    lat = _float_or_none(row.get("Lat_lake"))
+    lon = _float_or_none(row.get("Lon_lake"))
+    return {"latitude": lat, "longitude": lon,
+            "territory_status": "UNASSESSED"}
+
+
 def _evidence_refs(row: dict[str, Any]) -> list[str]:
     refs = []
     for key in ("Ref_scientific", "Ref_scientific_full", "Ref_other", "Sat_evidence"):
@@ -155,6 +176,7 @@ def _record(row: dict[str, Any], source_version: str) -> dict[str, Any]:
             "sat_evidence_raw": _text(row.get("Sat_evidence")),
         },
         "date": date,
+        "location": _location(row),
         "lake_identity": _lake_identity(row.get("GL_ID")),
         "evidence": {"references": _evidence_refs(row)},
         "episode": {
@@ -194,6 +216,13 @@ def build_crosswalk(csv_path: str | Path, source_version: str,
         "claim_scope": "research_only_no_operational_authorization",
         "authority": dict(AUTHORITY_FLAGS),
         "adjudication_state": "AWAITING_ADJUDICATION",
+        "geography": {
+            "classification_basis": "CATALOG_COUNTRY_FIELD_ONLY",
+            "boundary_source": None,
+            "boundary_version": None,
+            "crs": None,
+            "territory_statuses": sorted(TERRITORY_STATUSES),
+        },
         "source": {"name": "HMAGLOFDB", "version": source_version,
                    "path_label": path.name, "sha256": sha256_file(path)},
         "rules": [
@@ -201,6 +230,7 @@ def build_crosswalk(csv_path: str | Path, source_version: str,
             "No lake alias, recurrence, cascade, mechanism, or eligibility is inferred.",
             "UNREVIEWED rows cannot enter weather analysis or serve as controls.",
             "Placeholder GL_ID values are not canonical lake identities.",
+            "Coordinates are never a territory classification; adjudication assigns IN_COUNTRY/OUTSIDE/UNCERTAIN against a versioned boundary.",
             "A future adjudication must be append-only and cite primary evidence.",
         ],
         "summary": {
@@ -255,6 +285,12 @@ def validate_crosswalk(doc: dict[str, Any]) -> list[str]:
         problems.append("crosswalk must remain awaiting adjudication")
     if doc.get("authority") != AUTHORITY_FLAGS:
         problems.append("authority flags must all be present and false")
+    geography = doc.get("geography")
+    if not isinstance(geography, dict) or not geography.get("classification_basis"):
+        problems.append("geography must declare a classification_basis")
+    elif not isinstance(geography.get("territory_statuses"), list) or not set(
+            geography["territory_statuses"]) <= TERRITORY_STATUSES:
+        problems.append("geography.territory_statuses must list known statuses")
     records = doc.get("records")
     if not isinstance(records, list):
         return ["records must be a list"]
@@ -283,6 +319,21 @@ def validate_crosswalk(doc: dict[str, Any]) -> list[str]:
             episode = {}
         if episode.get("candidate_episode_id") is not None:
             problems.append(f"{sid}: episode id requires adjudication")
+        location = record.get("location", {})
+        if not isinstance(location, dict):
+            problems.append(f"{sid}: location must be an object")
+        elif location.get("territory_status") not in TERRITORY_STATUSES:
+            problems.append(f"{sid}: invalid territory_status")
+        else:
+            for field in ("latitude", "longitude"):
+                value = location.get(field)
+                if value is not None and not isinstance(value, (int, float)):
+                    problems.append(f"{sid}: {field} must be numeric or null")
+            lat, lon = location.get("latitude"), location.get("longitude")
+            if isinstance(lat, (int, float)) and not -90 <= lat <= 90:
+                problems.append(f"{sid}: latitude out of range")
+            if isinstance(lon, (int, float)) and not -180 <= lon <= 180:
+                problems.append(f"{sid}: longitude out of range")
         date = record.get("date", {})
         if not isinstance(date, dict):
             problems.append(f"{sid}: date must be an object")

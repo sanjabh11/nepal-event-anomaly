@@ -38,6 +38,7 @@ AUTHORITY_FLAGS = {
 TERMINAL_ELIGIBILITY = {"ELIGIBLE", "INELIGIBLE", "UNCERTAIN"}
 MECHANISM_CERTAINTY = {"CONFIRMED", "PROBABLE", "POSSIBLE", "UNKNOWN"}
 INDEPENDENCE = {"INDEPENDENT", "NOT_INDEPENDENT", "UNASSESSED"}
+REVIEWED_TERRITORY = {"IN_COUNTRY", "OUTSIDE", "UNCERTAIN"}
 
 
 def sha256_file(path: str | Path) -> str:
@@ -63,6 +64,7 @@ def _blank_record(source_record_id: str) -> dict[str, Any]:
             "reviewer_ids": [],
             "reviewed_utc": None,
             "location_confirmed": None,
+            "territory_status": "UNASSESSED",
             "mechanism": None,
             "mechanism_certainty": None,
             "evidence_citations": [],
@@ -87,11 +89,16 @@ def build_intake(crosswalk_path: str | Path) -> dict[str, Any]:
         "status": "AWAITING_REVIEWER_ADJUDICATION",
         "crosswalk_sha256": sha256_file(path),
         "n_records": len(records),
+        "geography": {"boundary_source": None, "boundary_version": None,
+                      "crs": None},
         "rules": [
             "The crosswalk v0 bytes are never modified.",
             "Every source_record_id requires a disposition; no silent drops.",
             "Eligibility, mechanism, recurrence, cascade, and independence are reviewer fields.",
             "A catalog mechanism string alone is not mechanism adjudication.",
+            "Territory is adjudicated as IN_COUNTRY/OUTSIDE/UNCERTAIN against a declared boundary source, version, and CRS — never from coordinates alone.",
+            "reviewer_ids are attribution strings, not authenticated identities or cryptographic signoff.",
+            "ELIGIBLE counting additionally requires at least one evidence:<id> citation resolving to a BYTES_VERIFIED register record covering the event date.",
             "This record authorizes no weather, satellite, or seismic acquisition.",
         ],
         "records": records,
@@ -135,6 +142,19 @@ def validate_adjudication(doc: dict[str, Any], crosswalk_doc: dict[str, Any],
     status = doc.get("status")
     if status not in {"AWAITING_REVIEWER_ADJUDICATION", "REVIEWED"}:
         problems.append("invalid adjudication status")
+    geography = doc.get("geography")
+    if status == "REVIEWED":
+        if not isinstance(geography, dict) or any(
+                not isinstance(geography.get(field), str)
+                or not geography[field].strip()
+                for field in ("boundary_source", "boundary_version", "crs")):
+            problems.append(
+                "reviewed adjudication requires declared geography "
+                "(boundary_source, boundary_version, crs)")
+    elif isinstance(geography, dict) and any(
+            geography.get(field) is not None
+            for field in ("boundary_source", "boundary_version", "crs")):
+        problems.append("pending adjudication cannot declare a boundary")
     for record in records:
         if not isinstance(record, dict):
             problems.append("adjudication record must be an object")
@@ -156,6 +176,7 @@ def validate_adjudication(doc: dict[str, Any], crosswalk_doc: dict[str, Any],
             )
             if (adj.get("eligibility") != "UNREVIEWED"
                     or adj.get("review_state") != "AWAITING_ADJUDICATION"
+                    or adj.get("territory_status") != "UNASSESSED"
                     or not blank_defaults):
                 problems.append(f"{sid}: pending intake contains a decision")
             continue
@@ -173,6 +194,9 @@ def validate_adjudication(doc: dict[str, Any], crosswalk_doc: dict[str, Any],
             problems.append(f"{sid}: reviewed_utc must be timezone-aware ISO")
         if not isinstance(adj.get("location_confirmed"), bool):
             problems.append(f"{sid}: location_confirmed must be boolean")
+        if adj.get("territory_status") not in REVIEWED_TERRITORY:
+            problems.append(f"{sid}: reviewed territory_status must be "
+                            "IN_COUNTRY, OUTSIDE, or UNCERTAIN")
         if adj.get("mechanism_certainty") not in MECHANISM_CERTAINTY:
             problems.append(f"{sid}: invalid mechanism_certainty")
         if (not isinstance(adj.get("evidence_citations"), list)
@@ -185,10 +209,30 @@ def validate_adjudication(doc: dict[str, Any], crosswalk_doc: dict[str, Any],
         if adj.get("eligibility") == "ELIGIBLE":
             if not adj.get("location_confirmed"):
                 problems.append(f"{sid}: eligible record lacks location confirmation")
+            if adj.get("territory_status") != "IN_COUNTRY":
+                problems.append(f"{sid}: eligible record requires territory IN_COUNTRY")
             if not episode.get("candidate_episode_id"):
                 problems.append(f"{sid}: eligible record lacks candidate episode id")
             if not adj.get("mechanism") or adj.get("mechanism_certainty") not in {"CONFIRMED", "PROBABLE"}:
                 problems.append(f"{sid}: eligible record lacks mechanism adjudication")
+    # Rows sharing a candidate episode id describe the same episode; they
+    # must agree on independence so denominators cannot double-count it.
+    by_episode: dict[str, set[str]] = {}
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        episode = record.get("episode")
+        if not isinstance(episode, dict):
+            continue
+        episode_id = episode.get("candidate_episode_id")
+        if isinstance(episode_id, str) and episode_id.strip():
+            by_episode.setdefault(episode_id, set()).add(
+                str(episode.get("independence_status")))
+    for episode_id, statuses in by_episode.items():
+        if len(statuses) > 1:
+            problems.append(
+                f"candidate_episode_id {episode_id} has inconsistent "
+                f"independence_status values {sorted(statuses)}")
     return problems
 
 

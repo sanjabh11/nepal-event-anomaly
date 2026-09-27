@@ -23,27 +23,27 @@
   },
   {
    "category": "data_payload_outside_science_scope",
-   "reason": "input/market data payload outside the governed science-artifact scope; never a released evidence artifact",
+   "reason": "input/market data payload outside the governed science-artifact scope; never a released evidence artifact; provenance/terms review recorded in TRACKED_DATA_PROVENANCE_V0.md",
    "relpath": "data/dem_n28e085.tif"
   },
   {
    "category": "data_payload_outside_science_scope",
-   "reason": "input/market data payload outside the governed science-artifact scope; never a released evidence artifact",
+   "reason": "input/market data payload outside the governed science-artifact scope; never a released evidence artifact; provenance/terms review recorded in TRACKED_DATA_PROVENANCE_V0.md",
    "relpath": "data/download_ledger.json"
   },
   {
    "category": "data_payload_outside_science_scope",
-   "reason": "input/market data payload outside the governed science-artifact scope; never a released evidence artifact",
+   "reason": "input/market data payload outside the governed science-artifact scope; never a released evidence artifact; provenance/terms review recorded in TRACKED_DATA_PROVENANCE_V0.md",
    "relpath": "data/era5_download_log.txt"
   },
   {
    "category": "data_payload_outside_science_scope",
-   "reason": "input/market data payload outside the governed science-artifact scope; never a released evidence artifact",
+   "reason": "input/market data payload outside the governed science-artifact scope; never a released evidence artifact; provenance/terms review recorded in TRACKED_DATA_PROVENANCE_V0.md",
    "relpath": "data/nisar_catalog_ledger.json"
   },
   {
    "category": "data_payload_outside_science_scope",
-   "reason": "input/market data payload outside the governed science-artifact scope; never a released evidence artifact",
+   "reason": "input/market data payload outside the governed science-artifact scope; never a released evidence artifact; provenance/terms review recorded in TRACKED_DATA_PROVENANCE_V0.md",
    "relpath": "data/temp/era5_land_2001_06.nc"
   },
   {
@@ -733,62 +733,62 @@
   },
   {
    "category": "data_payload_outside_science_scope",
-   "reason": "analysis plot output outside the governed science-artifact scope",
+   "reason": "analysis plot output outside the governed science-artifact scope; provenance/terms review recorded in TRACKED_DATA_PROVENANCE_V0.md",
    "relpath": "plots/anomaly/05_zscore_jja_2026.png"
   },
   {
    "category": "data_payload_outside_science_scope",
-   "reason": "analysis plot output outside the governed science-artifact scope",
+   "reason": "analysis plot output outside the governed science-artifact scope; provenance/terms review recorded in TRACKED_DATA_PROVENANCE_V0.md",
    "relpath": "plots/anomaly/06_percentile_pre_event.png"
   },
   {
    "category": "data_payload_outside_science_scope",
-   "reason": "analysis plot output outside the governed science-artifact scope",
+   "reason": "analysis plot output outside the governed science-artifact scope; provenance/terms review recorded in TRACKED_DATA_PROVENANCE_V0.md",
    "relpath": "plots/change_point/07_pelt_t2m_2026.png"
   },
   {
    "category": "data_payload_outside_science_scope",
-   "reason": "analysis plot output outside the governed science-artifact scope",
+   "reason": "analysis plot output outside the governed science-artifact scope; provenance/terms review recorded in TRACKED_DATA_PROVENANCE_V0.md",
    "relpath": "plots/change_point/08_pelt_pdd_2026.png"
   },
   {
    "category": "data_payload_outside_science_scope",
-   "reason": "analysis plot output outside the governed science-artifact scope",
+   "reason": "analysis plot output outside the governed science-artifact scope; provenance/terms review recorded in TRACKED_DATA_PROVENANCE_V0.md",
    "relpath": "plots/eda/01_jja_2026_temperature.png"
   },
   {
    "category": "data_payload_outside_science_scope",
-   "reason": "analysis plot output outside the governed science-artifact scope",
+   "reason": "analysis plot output outside the governed science-artifact scope; provenance/terms review recorded in TRACKED_DATA_PROVENANCE_V0.md",
    "relpath": "plots/eda/02_jja_2026_pdd_7day.png"
   },
   {
    "category": "data_payload_outside_science_scope",
-   "reason": "analysis plot output outside the governed science-artifact scope",
+   "reason": "analysis plot output outside the governed science-artifact scope; provenance/terms review recorded in TRACKED_DATA_PROVENANCE_V0.md",
    "relpath": "plots/eda/03_climatology_2026_vs_baseline.png"
   },
   {
    "category": "data_payload_outside_science_scope",
-   "reason": "analysis plot output outside the governed science-artifact scope",
+   "reason": "analysis plot output outside the governed science-artifact scope; provenance/terms review recorded in TRACKED_DATA_PROVENANCE_V0.md",
    "relpath": "plots/eda/04_freezing_level_2026.png"
   },
   {
    "category": "data_payload_outside_science_scope",
-   "reason": "analysis plot output outside the governed science-artifact scope",
+   "reason": "analysis plot output outside the governed science-artifact scope; provenance/terms review recorded in TRACKED_DATA_PROVENANCE_V0.md",
    "relpath": "plots/gmm/10_gmm_bic_scores.png"
   },
   {
    "category": "data_payload_outside_science_scope",
-   "reason": "analysis plot output outside the governed science-artifact scope",
+   "reason": "analysis plot output outside the governed science-artifact scope; provenance/terms review recorded in TRACKED_DATA_PROVENANCE_V0.md",
    "relpath": "plots/gmm/11_gmm_cluster_occupancy.png"
   },
   {
    "category": "data_payload_outside_science_scope",
-   "reason": "analysis plot output outside the governed science-artifact scope",
+   "reason": "analysis plot output outside the governed science-artifact scope; provenance/terms review recorded in TRACKED_DATA_PROVENANCE_V0.md",
    "relpath": "plots/gmm_false_positive/gmm_false_positive_histogram.png"
   },
   {
    "category": "data_payload_outside_science_scope",
-   "reason": "analysis plot output outside the governed science-artifact scope",
+   "reason": "analysis plot output outside the governed science-artifact scope; provenance/terms review recorded in TRACKED_DATA_PROVENANCE_V0.md",
    "relpath": "plots/isolation_forest/09_isolation_forest_scores.png"
   },
   {

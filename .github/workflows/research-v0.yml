@@ -3,9 +3,15 @@
 # it performs no data intake, downloads, clustering, or execution.
 name: research-v0-contracts
 
+permissions:
+  contents: read
+
 on:
   push:
     paths:
+      - "scripts/india*"
+      - "scripts/p5_safe_io.py"
+      - "tests/test_india*"
       - "nepal/research_v0/**"
       - "nepal/science_v0/**"
       - "nepal/experiment_v0/**"
@@ -46,6 +52,9 @@ on:
       - ".github/workflows/research-v0.yml"
   pull_request:
     paths:
+      - "scripts/india*"
+      - "scripts/p5_safe_io.py"
+      - "tests/test_india*"
       - "nepal/research_v0/**"
       - "nepal/science_v0/**"
       - "nepal/experiment_v0/**"
@@ -187,6 +196,16 @@ jobs:
             tests/test_experiment_v0_*.py \
             tests/test_science_experiment_e2e.py \
             -q -rs
+
+      - name: India Phase-0 contract tests
+        # Mandatory contract lane: crosswalk, adjudication, lake frame,
+        # feasibility gates, evidence register, and source registry —
+        # including negative/tamper probes for sidecar digests,
+        # duplicate episode ids, invalid territory, missing observation
+        # coverage, and unresolved citations.
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
+            python -B -m pytest tests/test_india_*.py -q -rs
 
       - name: P5 io-contract tests
         # P5-15: -rs surfaces skip reasons in the CI log — skips (any
@@ -359,7 +378,21 @@ jobs:
           assert '6 skipped' in suite
           assert '0 failed' in suite
           assert '4242 collected' in suite
-          assert int(match.group(1)) == 4242
+          # The manifest's recorded collection count must equal the live
+          # count on this checkout — never a stale pinned literal.
+          import subprocess
+          import sys
+          live = subprocess.run(
+              [sys.executable, '-B', '-m', 'pytest', 'tests/',
+               '--collect-only', '-q'], capture_output=True, text=True,
+              check=True, env={**__import__('os').environ,
+                               'PYTHONDONTWRITEBYTECODE': '1',
+                               'PYTHONPATH': '.'})
+          live_match = re.search(r'(\d+) tests? collected', live.stdout)
+          assert live_match, live.stdout[-400:]
+          assert int(match.group(1)) == int(live_match.group(1)), (
+              f'manifest records {match.group(1)} nodes but live '
+              f'collection is {live_match.group(1)}')
           assert manifest['manifest_commit'] == manifest['content_head']
           print('P5-A2 status consistency: PASS')
           print('P5-A2 posture: CANDIDATE_ONLY / UNSUPERVISED_STRUCTURE_NOT_STABLE')

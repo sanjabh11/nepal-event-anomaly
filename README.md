@@ -339,3 +339,37 @@ provenance fields, machine-verified fail-closed by
 preserved immutably. The current P5 state is indexed in
 `docs/science/P5_EXTENSION_STATUS_V0.md`; post-seasonal audit
 dispositions are recorded in `docs/science/GAP_REGISTER_V0.md`.
+
+### India Phase-0 lane (recorded 2026-09-27)
+
+The India feasibility machinery (`scripts/india_*.py`,
+`tests/test_india_*.py`) is a hardened contract lane:
+
+- `docs/science/INDIA_INVENTORY_REGISTRY_V1.json` succeeds
+  `INDIA_INVENTORY_METADATA_V0.json` (retained unchanged), pinning
+  source versions, access terms, and formats for NRSC (28,043 mapped
+  lakes ≥0.25 ha, 2016–17), CWC September 2024 (902 monitored), the
+  2026 parliamentary product (2,485 lakes >10 ha — a different scope,
+  never a trend), and ICIMOD HMAGLOFDB v1.3.0 (Himalayan-wide, not an
+  India adjudicated cohort). No row-level payloads are ingested.
+- `docs/science/INDIA_EVIDENCE_REGISTER_V0.json` makes evidence
+  resolvable: citations are attribution until they resolve to a
+  `BYTES_VERIFIED` register record whose temporal coverage contains the
+  claimed interval. Reviewer ids are attribution, not signoff.
+- The feasibility report fails closed unless every input passes its
+  validator and matches its `.sha256` sidecar; episode denominators
+  count distinct episode ids, lake denominators count canonical lakes,
+  and `FULL` observation completeness requires validated year-by-year
+  coverage of the declared at-risk interval.
+- Territory is adjudicated as `IN_COUNTRY`/`OUTSIDE`/`UNCERTAIN`
+  against a declared boundary source/version/CRS — coordinates alone
+  never classify territory.
+- `docs/science/TRACKED_DATA_PROVENANCE_V0.md` records the
+  provenance/terms review of every tracked data payload; the project
+  license is recorded in `docs/science/PROJECT_LICENSE_DECISION_V0.md`
+  (MIT for project work only — third-party data excluded).
+
+Fresh local suite at the current head is recorded in the dated receipt
+`docs/science/SUITE_RECEIPT_20260927.json`. Suite counts are bound to
+machine-generated receipts only; the manifest's earlier recorded totals
+are preserved as dated history, not overwritten.

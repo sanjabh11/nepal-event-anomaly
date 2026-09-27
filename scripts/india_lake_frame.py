@@ -39,6 +39,8 @@ AUTHORITY_FLAGS = {
 }
 OBSERVATION_STATUSES = {"UNKNOWN", "PARTIAL", "KNOWN_BREACH", "VERIFIED_NON_EVENT"}
 COMPLETENESS = {"UNKNOWN", "PARTIAL", "FULL"}
+TERRITORY_STATUSES = {"IN_COUNTRY", "OUTSIDE", "UNCERTAIN", "UNASSESSED"}
+IDENTITY_STATUSES = {"UNRECONCILED", "RECONCILED", "UNRESOLVED_CONFLICT"}
 
 
 def sha256_file(path: str | Path) -> str:
@@ -139,12 +141,31 @@ def _record(row: dict[str, Any], source_name: str, source_version: str) -> dict[
         raise ValueError(f"{source_id}: invalid observation_status")
     if completeness not in COMPLETENESS:
         raise ValueError(f"{source_id}: invalid observation_completeness")
+    territory_status = (_text(row.get("territory_status")).upper()
+                        or "UNASSESSED")
+    if territory_status not in TERRITORY_STATUSES:
+        raise ValueError(f"{source_id}: invalid territory_status")
     refs = _refs(row.get("evidence_refs") or row.get("evidence"))
     at_risk_start = _iso_date(row.get("at_risk_start"), "at_risk_start", source_id)
     at_risk_end = _iso_date(row.get("at_risk_end"), "at_risk_end", source_id)
     if at_risk_start and at_risk_end and at_risk_start > at_risk_end:
         raise ValueError(f"{source_id}: at-risk interval starts after it ends")
     observed_years = _observed_years(row, source_id)
+    # FULL completeness is a coverage claim, not a label: it requires an
+    # explicit observed_years list, and when an at-risk interval is declared
+    # that list must contain every year of the interval.  A monitored
+    # portfolio presence is not a verified non-event history.
+    if completeness == "FULL":
+        if not observed_years:
+            raise ValueError(
+                f"{source_id}: FULL completeness lacks observed_years coverage")
+        if at_risk_start and at_risk_end:
+            required = set(range(int(at_risk_start[:4]),
+                                 int(at_risk_end[:4]) + 1))
+            if not required <= set(observed_years):
+                raise ValueError(
+                    f"{source_id}: observed_years do not cover the declared "
+                    "at-risk interval")
     control_eligible = (observation_status == "VERIFIED_NON_EVENT"
                         and completeness == "FULL"
                         and bool(at_risk_start and at_risk_end and refs))
@@ -157,8 +178,7 @@ def _record(row: dict[str, Any], source_name: str, source_version: str) -> dict[
                  "identity_status": "UNRECONCILED",
                  "name": _text(row.get("lake_name"))},
         "location": {"latitude": lat, "longitude": lon,
-                      "territory_status": _text(row.get("territory_status")).upper()
-                      or "UNASSESSED",
+                      "territory_status": territory_status,
                       "state": _text(row.get("state")),
                       "basin": _text(row.get("basin"))},
         "attributes": {"lake_type": _text(row.get("lake_type")),
@@ -257,15 +277,46 @@ def validate_frame(doc: dict[str, Any]) -> list[str]:
         if obs.get("completeness") == "FULL":
             full += 1
             years = obs.get("observed_years")
-            if not isinstance(years, list) or any(
-                    not isinstance(year, int) or not 1 <= year <= 9999 for year in years):
-                problems.append(f"{sid}: observed_years must be valid integer years")
+            if (not isinstance(years, list) or not years or any(
+                    not isinstance(year, int) or not 1 <= year <= 9999
+                    for year in years)):
+                problems.append(f"{sid}: FULL completeness lacks valid "
+                                "observed_years coverage")
             elif len(years) != len(set(years)) or years != sorted(years):
                 problems.append(f"{sid}: observed_years must be unique and sorted")
             else:
+                start, end = obs.get("at_risk_start"), obs.get("at_risk_end")
+                if start and end:
+                    required = set(range(int(start[:4]), int(end[:4]) + 1))
+                    if not required <= set(years):
+                        problems.append(
+                            f"{sid}: observed_years do not cover the declared "
+                            "at-risk interval")
                 full_years += len(years)
         if obs.get("status") == "UNKNOWN":
             unknown += 1
+        location = record.get("location", {})
+        if not isinstance(location, dict):
+            problems.append(f"{sid}: location must be an object")
+        elif location.get("territory_status") not in TERRITORY_STATUSES:
+            problems.append(f"{sid}: invalid territory_status")
+        lake = record.get("lake", {})
+        if not isinstance(lake, dict):
+            problems.append(f"{sid}: lake must be an object")
+        else:
+            identity_status = lake.get("identity_status")
+            canonical = lake.get("canonical_lake_id")
+            if identity_status not in IDENTITY_STATUSES:
+                problems.append(f"{sid}: invalid lake identity_status")
+            elif identity_status == "RECONCILED":
+                if not isinstance(canonical, str) or not canonical.strip():
+                    problems.append(
+                        f"{sid}: RECONCILED identity requires a canonical "
+                        "lake id")
+            elif canonical is not None:
+                problems.append(
+                    f"{sid}: canonical lake identity requires RECONCILED "
+                    "status")
         start, end = obs.get("at_risk_start"), obs.get("at_risk_end")
         for field, value in (("at_risk_start", start), ("at_risk_end", end)):
             if value is not None:
@@ -286,11 +337,6 @@ def validate_frame(doc: dict[str, Any]) -> list[str]:
             problems.append(f"{sid}: VERIFIED_NON_EVENT lacks full interval evidence")
         if eligible:
             controls += 1
-        lake = record.get("lake", {})
-        if not isinstance(lake, dict):
-            problems.append(f"{sid}: lake must be an object")
-        elif lake.get("canonical_lake_id") is not None:
-            problems.append(f"{sid}: canonical lake identity requires reconciliation")
     summary = doc.get("summary", {})
     if summary.get("n_inventory_rows") != len(records):
         problems.append("summary n_inventory_rows mismatch")

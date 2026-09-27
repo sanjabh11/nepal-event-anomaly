@@ -1,0 +1,109 @@
+{
+  "schema": "INDIA_EVIDENCE_REGISTER_V0",
+  "version": 0,
+  "claim_scope": "research_only_no_operational_authorization",
+  "created_utc": "2026-09-27",
+  "register_state": "OPEN",
+  "authority": {
+    "bulk_acquisition_authorized": false,
+    "weather_download_authorized": false,
+    "satellite_bulk_authorized": false,
+    "seismic_waveform_authorized": false,
+    "forecast_authorized": false,
+    "warning_authorized": false,
+    "detector_authorized": false,
+    "odds_authorized": false,
+    "causal_authorized": false,
+    "operational_authorized": false
+  },
+  "rules": [
+    "A citation string is attribution until it resolves to a BYTES_VERIFIED register record whose temporal coverage contains the claimed interval",
+    "BYTES_VERIFIED requires a pinned payload SHA-256, a resolvable locator, and explicit temporal/spatial coverage",
+    "METADATA_VERIFIED records prove a source exists and its terms; they never satisfy event-evidence or control-evidence checks",
+    "UNRESOLVED records are bookkeeping for known-but-unverified references",
+    "reviewer_ids anywhere in the pipeline are attribution strings, not authenticated identities",
+    "This register authorizes no weather, satellite, or seismic acquisition"
+  ],
+  "records": [
+    {
+      "evidence_id": "EV:NRSC_GLA_IHR_METADATA",
+      "source_name": "NRSC Glacial Lake Atlas",
+      "source_version": "atlas-2016-2017-epoch",
+      "locator_type": "URL",
+      "locator": "https://www.nrsc.gov.in/nrscnew/resources_atlas_glacialLake.php",
+      "sha256": null,
+      "verification_state": "METADATA_VERIFIED",
+      "access_terms": "Government of India publication; citation only until redistribution terms confirmed",
+      "coverage": {
+        "temporal_start": null,
+        "temporal_end": null,
+        "spatial_scope": "Indian Himalayan river basins (Indus, Ganga, Brahmaputra)"
+      },
+      "limitations": [
+        "Metadata-level record only; row-level lake bytes not ingested",
+        "Cannot satisfy event-evidence or control-evidence checks"
+      ],
+      "registered_utc": "2026-09-27T00:00:00Z"
+    },
+    {
+      "evidence_id": "EV:CWC_GLWB_SEP_2024_REPORT",
+      "source_name": "CWC monthly monitoring report",
+      "source_version": "monthly-report-2024-09",
+      "locator_type": "URL",
+      "locator": "https://www.cwc.gov.in/sites/default/files/monitoring-report-september-2024.pdf",
+      "sha256": null,
+      "verification_state": "METADATA_VERIFIED",
+      "access_terms": "Government of India publication; citation only until redistribution terms confirmed",
+      "coverage": {
+        "temporal_start": null,
+        "temporal_end": null,
+        "spatial_scope": "India — CWC monitored glacial lakes and water bodies"
+      },
+      "limitations": [
+        "Metadata-level record only; the monitoring portfolio is not a verified non-event history",
+        "Cannot satisfy event-evidence or control-evidence checks"
+      ],
+      "registered_utc": "2026-09-27T00:00:00Z"
+    },
+    {
+      "evidence_id": "EV:LOKSABHA_AU883_2026",
+      "source_name": "Lok Sabha parliamentary answer AU883",
+      "source_version": "AU883-session-2026",
+      "locator_type": "URL",
+      "locator": "https://sansad.in/getFile/lsapps/loksabhaquestions/annex/188/AU883_Vsdm5C.pdf",
+      "sha256": null,
+      "verification_state": "METADATA_VERIFIED",
+      "access_terms": "Government of India parliamentary document; citation only",
+      "coverage": {
+        "temporal_start": null,
+        "temporal_end": null,
+        "spatial_scope": "India — lakes >10 ha under CWC monitoring"
+      },
+      "limitations": [
+        "Metadata-level record only; different product scope than NRSC atlas — not comparable as a trend",
+        "Cannot satisfy event-evidence or control-evidence checks"
+      ],
+      "registered_utc": "2026-09-27T00:00:00Z"
+    },
+    {
+      "evidence_id": "EV:ICIMOD_HMAGLOFDB_V130",
+      "source_name": "HMAGLOFDB",
+      "source_version": "1.3.0",
+      "locator_type": "DATASET_RECORD",
+      "locator": "https://rds.icimod.org/metadata/8881454b-6f7c-461b-95c2-eaf7618230d9",
+      "sha256": null,
+      "verification_state": "METADATA_VERIFIED",
+      "access_terms": "CC BY 4.0",
+      "coverage": {
+        "temporal_start": null,
+        "temporal_end": null,
+        "spatial_scope": "Hindu Kush Himalaya"
+      },
+      "limitations": [
+        "Catalog-level record only; per-event rows require pinned bytes before adjudication citations can resolve",
+        "ESSD 2023 documents date-precision and lake-linkage limitations"
+      ],
+      "registered_utc": "2026-09-27T00:00:00Z"
+    }
+  ]
+}
