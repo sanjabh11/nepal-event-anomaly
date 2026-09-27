@@ -1147,7 +1147,7 @@
   "claim_scan": "clean on all governed files",
   "collection_guard": "repo-wide collection == tests/ (4338 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
   "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
-  "full_suite_venv": "4300 passed, 3 skipped, 0 failed, 101 warnings (4303 collected) on pinned .venv (Python 3.14.7) \u2014 post-clean-history-rewrite suite with release-closure tooling; machine receipt docs/science/SUITE_RECEIPT_20260927_R3.json; skips: CANDIDATE_ONLY artifact gate, evidence-conditional gate, no-published-India-closure gate",
+  "full_suite_venv": "Pre-retry run at repository HEAD 7db2602810ed4ca31c2d02b740c242538d591b50: 4334 passed, 3 skipped, 1 failed, 101 warnings (4338 collected) on pinned .venv (Python 3.14.7); failed only because this manifest summary still recorded the prior 4303-item collection. Immutable failed receipt: docs/science/SUITE_RECEIPT_20260928_R1.json. This is not a passing release claim; the final passing run is separately receipt-bound in the detached release closure.",
   "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
   "p5_a2_status_consistency": "local guard passed; CI guard configured \u2014 current CANDIDATE_ONLY / UNSUPERVISED_STRUCTURE_NOT_STABLE result, false authority flags, and release metadata aligned",
   "p5_a2_temporal_holdout": "110 passed, 1 skipped \u2014 temporal mapping, waiver, and documentation regression lane",
