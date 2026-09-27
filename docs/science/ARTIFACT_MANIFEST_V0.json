@@ -1,6 +1,6 @@
 {
  "baseline_head": "5ef43c292ce41a93c9adec55185973caa7045285",
- "content_head": "b4fe1aa275cd48c99f7bbb0ac8713d2751358825",
+ "content_head": "863341550708118d6349bf7f0d16f11c7c59c0ed",
  "files": [
   {
    "relpath": ".github/workflows/p5-verification.yml",
@@ -66,6 +66,11 @@
    "relpath": "docs/science/INDIA_EVIDENCE_REGISTER_V0.json",
    "sha256": "3994f1ac30d3ea45bf512bdf61458c173ba2c861441e4bc5b207ca740b461383",
    "size_bytes": 4638
+  },
+  {
+   "relpath": "docs/science/INDIA_EVIDENCE_REGISTER_V0.json.sha256",
+   "sha256": "d0a17cf5cb7f94e78f5dbf04a2d298325d96ba1a3b789911f3485b9bb81fd41b",
+   "size_bytes": 98
   },
   {
    "relpath": "docs/science/INDIA_INVENTORY_METADATA_V0.json",
@@ -564,8 +569,8 @@
   },
   {
    "relpath": "scripts/india_feasibility_report.py",
-   "sha256": "1ee4d032c2db55c5a3d50e228452ec42b4f3fa9f7e2dfbd2fa1710657779def3",
-   "size_bytes": 21291
+   "sha256": "eaccc6410a1b4e19325190380d07df238a62126678cdf924c422a459c81d3ea9",
+   "size_bytes": 21297
   },
   {
    "relpath": "scripts/india_inventory_metadata.py",
@@ -1065,7 +1070,7 @@
  ],
  "generated": "post-P5 phase-B/C bind \u2014 model re-execution proof (MODEL_REEXECUTED both lanes, digest-exact), preregistered promotion protocol, clean-room export + verification-ladder harness, owner-scoped Arm C amendment (retrieval deferred)",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "b4fe1aa275cd48c99f7bbb0ac8713d2751358825",
+ "manifest_commit": "863341550708118d6349bf7f0d16f11c7c59c0ed",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
