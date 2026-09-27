@@ -53,13 +53,40 @@ def _fixture(tmp_path: Path, *, payload_bytes: bytes = b"%PDF-1.7 fixture") -> d
         "row_level_records_extracted": False,
     })
 
-    receipt = json.loads(
-        (intake.DEFAULT_RECEIPT).read_text(encoding="utf-8"))
-    receipt["retention"]["path"] = str(payload)
-    receipt["retention"]["file_mode_octal"] = "0600"
-    receipt["retention"]["parent_directory_mode_octal"] = "0700"
-    receipt["response"]["content_length_bytes"] = size
-    receipt["response"]["response_sha256"] = digest
+    # Keep the fixture hermetic: never read the host's external evidence root.
+    # These fields mirror the receipt contract, not a real acquisition receipt.
+    receipt = {
+        "schema": intake.SCHEMA,
+        "version": 0,
+        "source_id": "NRSC_GLA_IHR",
+        "authorization": {
+            "basis": "Explicit in-thread owner approval of bounded India Phase-0 data intake",
+            "cryptographic_signature": False,
+        },
+        "request": {"method": "GET", "url": nrsc["url"]},
+        "terms": {"url": nrsc["terms_url"]},
+        "response": {
+            "http_status": 200,
+            "final_url": nrsc["url"],
+            "redirects": [],
+            "content_type": "application/pdf",
+            "content_length_bytes": size,
+            "response_sha256": digest,
+        },
+        "retention": {
+            "path": str(payload.resolve()),
+            "file_mode_octal": "0600",
+            "parent_directory_mode_octal": "0700",
+            "maximum_total_intake_bytes": packet["scope"][
+                "maximum_payload_bytes_total"],
+            "maximum_per_source_bytes": packet["scope"][
+                "maximum_payload_bytes_per_source"],
+            "retained_outside_git": True,
+        },
+        "verification_boundary": {
+            "weather_satellite_dem_seismic_payloads_acquired": False,
+        },
+    }
     receipt_path = evidence / "NRSC_GLA_IHR_SOURCE_RECEIPT_V0.json"
     _write_json(receipt_path, receipt)
     os.chmod(receipt_path, 0o600)
@@ -92,7 +119,10 @@ def _fixture(tmp_path: Path, *, payload_bytes: bytes = b"%PDF-1.7 fixture") -> d
             "supplement_doc": supplement, "receipt_doc": receipt}
 
 
-def test_valid_bounded_nrsc_intake_is_byte_verified(tmp_path):
+def test_valid_bounded_nrsc_intake_is_byte_verified(tmp_path, monkeypatch):
+    # Prove test collection/execution does not depend on a developer-local receipt.
+    monkeypatch.setattr(
+        intake, "DEFAULT_RECEIPT", tmp_path / "missing-host-receipt.json")
     fixture = _fixture(tmp_path)
     result = intake.validate_intake(
         fixture["packet"], fixture["supplement"], fixture["registry"],

@@ -317,18 +317,26 @@ def test_capture_remote_inventory_includes_every_advertised_ref(
 
 
 def test_external_current_closure_if_present():
-    closures = sorted(closure.EVIDENCE_DIR.glob(
-        "INDIA_PHASE0_RELEASE_CLOSURE_V*.json"))
     matching = []
-    for path in closures:
+    for path in closure.EVIDENCE_DIR.glob(
+            "INDIA_PHASE0_RELEASE_CLOSURE_V*.json"):
         try:
             doc = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             continue
         if doc.get("schema") == closure.SCHEMA:
-            matching.append(path)
+            version = doc.get("version")
+            if isinstance(version, int) and not isinstance(version, bool):
+                matching.append((version, path, doc))
     if not matching:
         pytest.skip("no V1 detached release closure is published here")
-    path = matching[-1]
+
+    _, path, doc = max(matching, key=lambda item: (item[0], item[1].name))
+    head = _git(ROOT, "rev-parse", "HEAD")
+    if doc.get("release_head") != head:
+        pytest.skip("latest detached closure is for a prior release HEAD")
+    if _git(ROOT, "status", "--porcelain"):
+        pytest.skip("detached closure validates only an exact clean checkout")
+
     result = closure.validate_closure(path, ROOT)
     assert result["status"] == "CLOSURE_OK", result["problems"]
