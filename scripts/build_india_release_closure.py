@@ -75,6 +75,18 @@ def _manifest_problems(value: object) -> list[str]:
     return problems
 
 
+def _is_supported_closure_predecessor(value: object) -> bool:
+    """Accept the legacy V0 closure and the current V1 closure as predecessors."""
+    if not isinstance(value, dict):
+        return False
+    schema = value.get("schema")
+    version = value.get("version")
+    if type(version) is not int:
+        return False
+    return ((schema == "INDIA_PHASE0_RELEASE_CLOSURE_V0" and version == 0)
+            or (schema == SCHEMA and version == 1))
+
+
 def _sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -529,10 +541,9 @@ def build(repo_root: Path, receipt_path: Path, release_head: str,
         predecessor_doc = json.loads(predecessor_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ClosureError(f"predecessor closure is unreadable: {exc}") from exc
-    if (not isinstance(predecessor_doc, dict)
-            or predecessor_doc.get("schema") != "INDIA_PHASE0_RELEASE_CLOSURE_V0"
-            or predecessor_doc.get("version") != 0):
-        raise ClosureError("predecessor is not an India Phase-0 release closure")
+    if not _is_supported_closure_predecessor(predecessor_doc):
+        raise ClosureError(
+            "predecessor is not a supported India Phase-0 release closure")
     scan = _history_scan(repo_root)
     if not scan["clean"]:
         raise ClosureError("reachable history contains identified payload paths")
@@ -634,10 +645,7 @@ def validate_closure(closure_path: Path, repo_root: Path,
         except (OSError, json.JSONDecodeError) as exc:
             problems.append(f"supersedes predecessor is unreadable: {exc}")
         else:
-            if (not isinstance(predecessor_doc, dict)
-                    or predecessor_doc.get("schema") !=
-                    "INDIA_PHASE0_RELEASE_CLOSURE_V0"
-                    or predecessor_doc.get("version") != 0):
+            if not _is_supported_closure_predecessor(predecessor_doc):
                 problems.append("supersedes predecessor schema/version is invalid")
     for field in ("release_head", "tested_content_head", "baseline_head"):
         head = doc.get(field)

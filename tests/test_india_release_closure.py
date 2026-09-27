@@ -173,6 +173,37 @@ def test_valid_detached_closure_recomputes_all_bindings(tmp_path, monkeypatch):
     assert result["status"] == "CLOSURE_OK", result["problems"]
 
 
+def test_v1_closure_can_be_immediate_predecessor(tmp_path, monkeypatch):
+    fixture = _fixture(tmp_path, monkeypatch)
+    predecessor = fixture["evidence"] / "INDIA_PHASE0_RELEASE_CLOSURE_V2.json"
+    predecessor.write_text(json.dumps({
+        "schema": closure.SCHEMA, "version": 1,
+    }), encoding="utf-8")
+    _sidecar(predecessor)
+
+    path, document = _build(fixture)
+    assert document["supersedes"]["sha256"] == _sha(predecessor)
+    result = closure.validate_closure(path, fixture["repo"],
+                                      fixture["inventory"])
+    assert result["status"] == "CLOSURE_OK", result["problems"]
+
+
+def test_boolean_predecessor_version_is_rejected(tmp_path, monkeypatch):
+    fixture = _fixture(tmp_path, monkeypatch)
+    predecessor = fixture["evidence"] / "INDIA_PHASE0_RELEASE_CLOSURE_V2.json"
+    predecessor.write_text(json.dumps({
+        "schema": closure.SCHEMA, "version": True,
+    }), encoding="utf-8")
+    _sidecar(predecessor)
+
+    with pytest.raises(closure.ClosureError,
+                       match="supported India Phase-0 release closure"):
+        closure.build(fixture["repo"], fixture["receipt"],
+                      fixture["release"], fixture["tested"],
+                      fixture["allowed"], fixture["inventory"],
+                      "INDIA_PHASE0_RELEASE_CLOSURE_V2.json")
+
+
 def test_live_remote_branch_drift_is_rejected(tmp_path, monkeypatch):
     fixture = _fixture(tmp_path, monkeypatch)
     path, _ = _build(fixture)
