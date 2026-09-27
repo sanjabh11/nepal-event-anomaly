@@ -1082,7 +1082,7 @@
   "claim_scan": "clean on all governed files",
   "collection_guard": "repo-wide collection == tests/ (4300 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
   "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
-  "full_suite_venv": "4280 passed, 1 skipped, 1 failed, 101 warnings (4282 collected) at 8633415 on pinned .venv (Python 3.14.7, rasterio present) \u2014 fresh suite after India Phase-0 hardening; machine receipt docs/science/SUITE_RECEIPT_20260927.json; the single failure is the REL-01 stale-record consistency gate itself (this record predated the post-hardening census) \u2014 self-resolves on this update; green-state receipt: docs/science/SUITE_RECEIPT_20260927_FINAL.json; skip: 1x CANDIDATE_ONLY cached-artifact gate",
+  "full_suite_venv": "4299 passed, 1 skipped, 0 failed, ~101 warnings (4300 collected) on pinned .venv (Python 3.14.7) \u2014 post-clean-history-rewrite suite with round-2 India hardening; machine receipt docs/science/SUITE_RECEIPT_20260927_R2.json; skip: 1x CANDIDATE_ONLY cached-artifact gate",
   "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
   "p5_a2_status_consistency": "local guard passed; CI guard configured \u2014 current CANDIDATE_ONLY / UNSUPERVISED_STRUCTURE_NOT_STABLE result, false authority flags, and release metadata aligned",
   "p5_a2_temporal_holdout": "110 passed, 1 skipped \u2014 temporal mapping, waiver, and documentation regression lane",
