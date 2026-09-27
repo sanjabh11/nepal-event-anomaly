@@ -1,6 +1,6 @@
 {
  "baseline_head": "54aa612f7d478082716dfe5d0bca7d92d62d493b",
- "content_head": "befa5f5d0b6a1b27413780467bf050f00050867d",
+ "content_head": "13af0ace76efdbab71e82f790f5a88682d8491fa",
  "files": [
   {
    "relpath": ".github/workflows/p5-verification.yml",
@@ -779,8 +779,8 @@
   },
   {
    "relpath": "tests/test_india_release_closure.py",
-   "sha256": "45dd635ed78faae8bab73f2d19b2218a341c476840fb5dd36a0279f11c019c4d",
-   "size_bytes": 1561
+   "sha256": "812843bc038d8a45ca4ef217af230534bb3fb72485a7e5f7b74a4fc896fded61",
+   "size_bytes": 1611
   },
   {
    "relpath": "tests/test_india_source_registry.py",
@@ -1085,7 +1085,7 @@
  ],
  "generated": "post-P5 phase-B/C bind \u2014 model re-execution proof (MODEL_REEXECUTED both lanes, digest-exact), preregistered promotion protocol, clean-room export + verification-ladder harness, owner-scoped Arm C amendment (retrieval deferred)",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "befa5f5d0b6a1b27413780467bf050f00050867d",
+ "manifest_commit": "13af0ace76efdbab71e82f790f5a88682d8491fa",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
