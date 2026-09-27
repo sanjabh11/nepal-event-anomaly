@@ -1,589 +1,604 @@
 {
-  "baseline_content_head": "e9e37a6efafd3bc696c4c782d5f19325a340d99b",
-  "baseline_manifest_sha256": "8a205931c80cbaa20a03e92ccdf313b0ff0d9cf305d6c19e3ed7b7c66b0bccc7",
-  "bound_files_at_baseline": 161,
-  "boundary_invariant": "tracked files == bound entries + recorded exclusions + the self-excluded manifest; enforced by the rebind scope audit, which fails closed on any unrecorded tracked file",
-  "counts": {
-    "agent_phase_ledger_not_indexed": 0,
-    "armc_lane_governed_by_p5_manifest_chain": 36,
-    "bound_files": 161,
-    "ci_workflow_outside_release_surface": 0,
-    "data_payload_outside_science_scope": 5,
-    "exclusions": 108,
-    "legacy_science_doc_pre_bound_surface": 0,
-    "legacy_script_pre_bound_surface": 0,
-    "legacy_v0_pre_regime_surface": 32,
-    "legacy_v0_pre_regime_tests": 27,
-    "pinned_input_script": 5,
-    "root_level_record_outside_governed_surface": 3,
-    "tracked_files": 302
+ "baseline_content_head": "e9e37a6efafd3bc696c4c782d5f19325a340d99b",
+ "baseline_manifest_sha256": "8a205931c80cbaa20a03e92ccdf313b0ff0d9cf305d6c19e3ed7b7c66b0bccc7",
+ "bound_files_at_baseline": 161,
+ "boundary_invariant": "tracked files == bound entries + recorded exclusions + the self-excluded manifest; enforced by the rebind scope audit, which fails closed on any unrecorded tracked file",
+ "counts": {
+  "agent_phase_ledger_not_indexed": 0,
+  "armc_lane_governed_by_p5_manifest_chain": 36,
+  "bound_files": 161,
+  "ci_workflow_outside_release_surface": 0,
+  "data_payload_outside_science_scope": 5,
+  "exclusions": 111,
+  "legacy_science_doc_pre_bound_surface": 0,
+  "legacy_script_pre_bound_surface": 0,
+  "legacy_v0_pre_regime_surface": 32,
+  "legacy_v0_pre_regime_tests": 27,
+  "pinned_input_script": 5,
+  "root_level_record_outside_governed_surface": 6,
+  "tracked_files": 365
+ },
+ "exclusions": [
+  {
+   "category": "root_level_record_outside_governed_surface",
+   "reason": "operator-facing status note at the repository root; the current position is stated in the bound docs/science status documents",
+   "relpath": "FRAMEWORK_V1_CURRENT_STATUS.md"
   },
-  "exclusions": [
-    {
-      "category": "root_level_record_outside_governed_surface",
-      "reason": "operator-facing status note at the repository root; the current position is stated in the bound docs/science status documents",
-      "relpath": "FRAMEWORK_V1_CURRENT_STATUS.md"
-    },
-    {
-      "category": "data_payload_outside_science_scope",
-      "reason": "input/market data payload outside the governed science-artifact scope; never a released evidence artifact",
-      "relpath": "data/dem_n28e085.tif"
-    },
-    {
-      "category": "data_payload_outside_science_scope",
-      "reason": "input/market data payload outside the governed science-artifact scope; never a released evidence artifact",
-      "relpath": "data/download_ledger.json"
-    },
-    {
-      "category": "data_payload_outside_science_scope",
-      "reason": "input/market data payload outside the governed science-artifact scope; never a released evidence artifact",
-      "relpath": "data/era5_download_log.txt"
-    },
-    {
-      "category": "data_payload_outside_science_scope",
-      "reason": "input/market data payload outside the governed science-artifact scope; never a released evidence artifact",
-      "relpath": "data/nisar_catalog_ledger.json"
-    },
-    {
-      "category": "data_payload_outside_science_scope",
-      "reason": "input/market data payload outside the governed science-artifact scope; never a released evidence artifact",
-      "relpath": "data/temp/era5_land_2001_06.nc"
-    },
-    {
-      "category": "legacy_v0_pre_regime_surface",
-      "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
-      "relpath": "nepal/anomaly_detector.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_surface",
-      "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
-      "relpath": "nepal/change_point_detector.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_surface",
-      "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
-      "relpath": "nepal/feature_contract.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_surface",
-      "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
-      "relpath": "nepal/framework_v1/__init__.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_surface",
-      "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
-      "relpath": "nepal/framework_v1/adapters.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_surface",
-      "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
-      "relpath": "nepal/framework_v1/briefing.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_surface",
-      "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
-      "relpath": "nepal/framework_v1/catalog.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_surface",
-      "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
-      "relpath": "nepal/framework_v1/cli.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_surface",
-      "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
-      "relpath": "nepal/framework_v1/contract.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_surface",
-      "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
-      "relpath": "nepal/framework_v1/controls.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_surface",
-      "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
-      "relpath": "nepal/framework_v1/extensions.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_surface",
-      "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
-      "relpath": "nepal/framework_v1/feature_matrix_contract.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_surface",
-      "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
-      "relpath": "nepal/framework_v1/i1_packaging.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_surface",
-      "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
-      "relpath": "nepal/framework_v1/input_manifest.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_surface",
-      "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
-      "relpath": "nepal/framework_v1/integrity_poc.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_surface",
-      "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
-      "relpath": "nepal/framework_v1/lineage.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_surface",
-      "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
-      "relpath": "nepal/framework_v1/multi_event_contract.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_surface",
-      "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
-      "relpath": "nepal/framework_v1/orchestrator.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_surface",
-      "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
-      "relpath": "nepal/framework_v1/preflight.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_surface",
-      "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
-      "relpath": "nepal/framework_v1/provenance.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_surface",
-      "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
-      "relpath": "nepal/framework_v1/ranked_digest.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_surface",
-      "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
-      "relpath": "nepal/framework_v1/research_boundaries.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_surface",
-      "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
-      "relpath": "nepal/framework_v1/run_index.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_surface",
-      "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
-      "relpath": "nepal/framework_v1/runtime_quarantine.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_surface",
-      "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
-      "relpath": "nepal/framework_v1/science_contract_package.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_surface",
-      "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
-      "relpath": "nepal/framework_v1/screen.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_surface",
-      "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
-      "relpath": "nepal/framework_v1/validation.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_surface",
-      "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
-      "relpath": "nepal/framework_v1/validation_scaffold.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_surface",
-      "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
-      "relpath": "nepal/framework_v1/verification.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_surface",
-      "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
-      "relpath": "nepal/isolation_forest.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_surface",
-      "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
-      "relpath": "nepal/nisar_catalog_check.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_surface",
-      "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
-      "relpath": "nepal/run_nepal_test.py"
-    },
-    {
-      "category": "pinned_input_script",
-      "reason": "pinned historical input script, not part of the governed release surface",
-      "relpath": "pinned/acquire_era5_land.py"
-    },
-    {
-      "category": "pinned_input_script",
-      "reason": "pinned historical input script, not part of the governed release surface",
-      "relpath": "pinned/anomaly_detector.py"
-    },
-    {
-      "category": "pinned_input_script",
-      "reason": "pinned historical input script, not part of the governed release surface",
-      "relpath": "pinned/leakage_audit.py"
-    },
-    {
-      "category": "pinned_input_script",
-      "reason": "pinned historical input script, not part of the governed release surface",
-      "relpath": "pinned/regions.json"
-    },
-    {
-      "category": "pinned_input_script",
-      "reason": "pinned historical input script, not part of the governed release surface",
-      "relpath": "pinned/request_manifest.py"
-    },
-    {
-      "category": "root_level_record_outside_governed_surface",
-      "reason": "frozen preregistration predates and stands outside the governed science-artifact scope; it is not edited by this workstream",
-      "relpath": "preregistration.md"
-    },
-    {
-      "category": "root_level_record_outside_governed_surface",
-      "reason": "dependency pin file; the manifest records its digest separately as requirements_sha256 rather than as a bound payload entry",
-      "relpath": "requirements.txt"
-    },
-    {
-      "category": "legacy_v0_pre_regime_tests",
-      "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
-      "relpath": "tests/test_framework_v1_a_envelope.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_tests",
-      "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
-      "relpath": "tests/test_framework_v1_adapters.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_tests",
-      "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
-      "relpath": "tests/test_framework_v1_boundary_hardening.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_tests",
-      "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
-      "relpath": "tests/test_framework_v1_catalog.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_tests",
-      "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
-      "relpath": "tests/test_framework_v1_cli.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_tests",
-      "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
-      "relpath": "tests/test_framework_v1_contract.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_tests",
-      "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
-      "relpath": "tests/test_framework_v1_controls.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_tests",
-      "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
-      "relpath": "tests/test_framework_v1_delta_schema.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_tests",
-      "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
-      "relpath": "tests/test_framework_v1_extensions.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_tests",
-      "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
-      "relpath": "tests/test_framework_v1_feature_matrix_contract.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_tests",
-      "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
-      "relpath": "tests/test_framework_v1_full_gates.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_tests",
-      "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
-      "relpath": "tests/test_framework_v1_i1_index.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_tests",
-      "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
-      "relpath": "tests/test_framework_v1_i1_packaging.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_tests",
-      "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
-      "relpath": "tests/test_framework_v1_input_manifest.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_tests",
-      "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
-      "relpath": "tests/test_framework_v1_integrity_poc.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_tests",
-      "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
-      "relpath": "tests/test_framework_v1_lineage.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_tests",
-      "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
-      "relpath": "tests/test_framework_v1_multi_event_contract.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_tests",
-      "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
-      "relpath": "tests/test_framework_v1_preflight.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_tests",
-      "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
-      "relpath": "tests/test_framework_v1_provenance.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_tests",
-      "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
-      "relpath": "tests/test_framework_v1_ranked_digest.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_tests",
-      "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
-      "relpath": "tests/test_framework_v1_research_boundaries.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_tests",
-      "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
-      "relpath": "tests/test_framework_v1_run_index.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_tests",
-      "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
-      "relpath": "tests/test_framework_v1_science_contract_package.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_tests",
-      "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
-      "relpath": "tests/test_framework_v1_screen.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_tests",
-      "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
-      "relpath": "tests/test_framework_v1_validation.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_tests",
-      "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
-      "relpath": "tests/test_framework_v1_validation_scaffold.py"
-    },
-    {
-      "category": "legacy_v0_pre_regime_tests",
-      "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
-      "relpath": "tests/test_nepal_anomaly.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "scripts/armc_adjudicate_autofill.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "scripts/armc_adjudicate_cli.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "scripts/armc_adjudicate_decision.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "scripts/armc_adjudication_intake.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "scripts/armc_cds_retrieve.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "scripts/armc_daily_frame.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "scripts/armc_daily_spell_stats.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "scripts/armc_earthmover_fix_coords.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "scripts/armc_frame_extend.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "scripts/armc_monthly_split.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "scripts/armc_observation_audit.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "scripts/armc_precision_audit.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "scripts/armc_readiness_audit_gen.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "scripts/armc_retrieve_driver.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "scripts/armc_retrieve_driver_earthmover.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "scripts/armc_retrieve_driver_earthmover_single.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "scripts/armc_retrieve_driver_earthmover_v17.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "scripts/armc_retrieve_driver_grouped.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "scripts/armc_retrieve_launch.sh"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "scripts/armc_routeb_analyze.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "scripts/armc_v17_request_plan.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "scripts/armc_v17_request_plan_v1.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "scripts/armc_v19_request_plan.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "scripts/run_armc_daily.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "scripts/run_armc_p5.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "scripts/verify_armc_retrieval.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "scripts/verify_armc_single_retrieval.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "tests/test_armc_adjudication.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "tests/test_armc_cds_retrieve.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "tests/test_armc_frame_extend.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "tests/test_armc_monthly_split.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "tests/test_armc_routeb_analyze.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "tests/test_armc_v17_plan.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "tests/test_armc_v17_request_plan_v1.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "tests/test_run_armc_p5.py"
-    },
-    {
-      "category": "armc_lane_governed_by_p5_manifest_chain",
-      "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
-      "relpath": "tests/test_verify_armc_retrieval.py"
-    }
-  ],
-  "generated_utc": "2026-09-21T05:50:42Z",
-  "generator": {
-    "agent": "GLM-3 audit-3 gap-closure coordinator",
-    "derivation": "git ls-files minus the canonical manifest's bound entries; every remaining tracked file is recorded with an explicit category and reason",
-    "tool": "scripts/rebind_manifest.py scope audit is the consumer; this file is derived, not hand-maintained"
+  {
+   "category": "data_payload_outside_science_scope",
+   "reason": "input/market data payload outside the governed science-artifact scope; never a released evidence artifact",
+   "relpath": "data/dem_n28e085.tif"
   },
-  "main_release_excluded": true,
-  "manifest_relpath": "docs/science/ARTIFACT_MANIFEST_V0.json",
-  "manifest_self_excluded": "docs/science/ARTIFACT_MANIFEST_V0.json",
-  "root_level_scope_note": "Root-level scope is fail-closed: every tracked root file must be bound, a watched root entry, or recorded here. Recorded as a baseline correction rather than a scope change: these files were never bound and were previously unchecked because the governed-prefix audit did not cover the repository root. None of them is load-bearing for the released evidence.",
-  "schema": "MANIFEST_SCOPE_EXCLUSIONS_V0",
-  "title": "Recorded manifest scope-exclusion baseline (fail-closed boundary)",
-  "tracked_files_at_baseline": 234,
-  "watched_prefixes": [
-    ".github/",
-    ".phase-loop/",
-    "docs/science/",
-    "nepal/",
-    "scripts/",
-    "tests/"
-  ],
-  "watched_root_files": [
-    ".gitignore",
-    "README.md",
-    "conftest.py"
-  ]
+  {
+   "category": "data_payload_outside_science_scope",
+   "reason": "input/market data payload outside the governed science-artifact scope; never a released evidence artifact",
+   "relpath": "data/download_ledger.json"
+  },
+  {
+   "category": "data_payload_outside_science_scope",
+   "reason": "input/market data payload outside the governed science-artifact scope; never a released evidence artifact",
+   "relpath": "data/era5_download_log.txt"
+  },
+  {
+   "category": "data_payload_outside_science_scope",
+   "reason": "input/market data payload outside the governed science-artifact scope; never a released evidence artifact",
+   "relpath": "data/nisar_catalog_ledger.json"
+  },
+  {
+   "category": "data_payload_outside_science_scope",
+   "reason": "input/market data payload outside the governed science-artifact scope; never a released evidence artifact",
+   "relpath": "data/temp/era5_land_2001_06.nc"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
+   "relpath": "nepal/anomaly_detector.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
+   "relpath": "nepal/change_point_detector.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
+   "relpath": "nepal/feature_contract.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
+   "relpath": "nepal/framework_v1/__init__.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
+   "relpath": "nepal/framework_v1/adapters.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
+   "relpath": "nepal/framework_v1/briefing.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
+   "relpath": "nepal/framework_v1/catalog.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
+   "relpath": "nepal/framework_v1/cli.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
+   "relpath": "nepal/framework_v1/contract.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
+   "relpath": "nepal/framework_v1/controls.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
+   "relpath": "nepal/framework_v1/extensions.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
+   "relpath": "nepal/framework_v1/feature_matrix_contract.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
+   "relpath": "nepal/framework_v1/i1_packaging.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
+   "relpath": "nepal/framework_v1/input_manifest.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
+   "relpath": "nepal/framework_v1/integrity_poc.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
+   "relpath": "nepal/framework_v1/lineage.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
+   "relpath": "nepal/framework_v1/multi_event_contract.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
+   "relpath": "nepal/framework_v1/orchestrator.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
+   "relpath": "nepal/framework_v1/preflight.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
+   "relpath": "nepal/framework_v1/provenance.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
+   "relpath": "nepal/framework_v1/ranked_digest.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
+   "relpath": "nepal/framework_v1/research_boundaries.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
+   "relpath": "nepal/framework_v1/run_index.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
+   "relpath": "nepal/framework_v1/runtime_quarantine.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
+   "relpath": "nepal/framework_v1/science_contract_package.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
+   "relpath": "nepal/framework_v1/screen.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
+   "relpath": "nepal/framework_v1/validation.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
+   "relpath": "nepal/framework_v1/validation_scaffold.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
+   "relpath": "nepal/framework_v1/verification.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
+   "relpath": "nepal/isolation_forest.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
+   "relpath": "nepal/nisar_catalog_check.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_surface",
+   "reason": "legacy v0 framework surface outside the governed science scope; not regime-interpretation or release-critical",
+   "relpath": "nepal/run_nepal_test.py"
+  },
+  {
+   "category": "pinned_input_script",
+   "reason": "pinned historical input script, not part of the governed release surface",
+   "relpath": "pinned/acquire_era5_land.py"
+  },
+  {
+   "category": "pinned_input_script",
+   "reason": "pinned historical input script, not part of the governed release surface",
+   "relpath": "pinned/anomaly_detector.py"
+  },
+  {
+   "category": "pinned_input_script",
+   "reason": "pinned historical input script, not part of the governed release surface",
+   "relpath": "pinned/leakage_audit.py"
+  },
+  {
+   "category": "pinned_input_script",
+   "reason": "pinned historical input script, not part of the governed release surface",
+   "relpath": "pinned/regions.json"
+  },
+  {
+   "category": "pinned_input_script",
+   "reason": "pinned historical input script, not part of the governed release surface",
+   "relpath": "pinned/request_manifest.py"
+  },
+  {
+   "category": "root_level_record_outside_governed_surface",
+   "reason": "frozen preregistration predates and stands outside the governed science-artifact scope; it is not edited by this workstream",
+   "relpath": "preregistration.md"
+  },
+  {
+   "category": "root_level_record_outside_governed_surface",
+   "reason": "dependency pin file; the manifest records its digest separately as requirements_sha256 rather than as a bound payload entry",
+   "relpath": "requirements.txt"
+  },
+  {
+   "category": "legacy_v0_pre_regime_tests",
+   "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
+   "relpath": "tests/test_framework_v1_a_envelope.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_tests",
+   "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
+   "relpath": "tests/test_framework_v1_adapters.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_tests",
+   "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
+   "relpath": "tests/test_framework_v1_boundary_hardening.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_tests",
+   "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
+   "relpath": "tests/test_framework_v1_catalog.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_tests",
+   "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
+   "relpath": "tests/test_framework_v1_cli.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_tests",
+   "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
+   "relpath": "tests/test_framework_v1_contract.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_tests",
+   "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
+   "relpath": "tests/test_framework_v1_controls.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_tests",
+   "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
+   "relpath": "tests/test_framework_v1_delta_schema.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_tests",
+   "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
+   "relpath": "tests/test_framework_v1_extensions.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_tests",
+   "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
+   "relpath": "tests/test_framework_v1_feature_matrix_contract.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_tests",
+   "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
+   "relpath": "tests/test_framework_v1_full_gates.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_tests",
+   "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
+   "relpath": "tests/test_framework_v1_i1_index.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_tests",
+   "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
+   "relpath": "tests/test_framework_v1_i1_packaging.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_tests",
+   "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
+   "relpath": "tests/test_framework_v1_input_manifest.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_tests",
+   "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
+   "relpath": "tests/test_framework_v1_integrity_poc.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_tests",
+   "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
+   "relpath": "tests/test_framework_v1_lineage.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_tests",
+   "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
+   "relpath": "tests/test_framework_v1_multi_event_contract.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_tests",
+   "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
+   "relpath": "tests/test_framework_v1_preflight.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_tests",
+   "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
+   "relpath": "tests/test_framework_v1_provenance.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_tests",
+   "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
+   "relpath": "tests/test_framework_v1_ranked_digest.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_tests",
+   "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
+   "relpath": "tests/test_framework_v1_research_boundaries.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_tests",
+   "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
+   "relpath": "tests/test_framework_v1_run_index.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_tests",
+   "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
+   "relpath": "tests/test_framework_v1_science_contract_package.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_tests",
+   "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
+   "relpath": "tests/test_framework_v1_screen.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_tests",
+   "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
+   "relpath": "tests/test_framework_v1_validation.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_tests",
+   "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
+   "relpath": "tests/test_framework_v1_validation_scaffold.py"
+  },
+  {
+   "category": "legacy_v0_pre_regime_tests",
+   "reason": "regression lane for the legacy v0 surface; the governed regime suite is bound separately",
+   "relpath": "tests/test_nepal_anomaly.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "scripts/armc_adjudicate_autofill.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "scripts/armc_adjudicate_cli.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "scripts/armc_adjudicate_decision.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "scripts/armc_adjudication_intake.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "scripts/armc_cds_retrieve.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "scripts/armc_daily_frame.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "scripts/armc_daily_spell_stats.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "scripts/armc_earthmover_fix_coords.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "scripts/armc_frame_extend.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "scripts/armc_monthly_split.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "scripts/armc_observation_audit.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "scripts/armc_precision_audit.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "scripts/armc_readiness_audit_gen.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "scripts/armc_retrieve_driver.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "scripts/armc_retrieve_driver_earthmover.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "scripts/armc_retrieve_driver_earthmover_single.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "scripts/armc_retrieve_driver_earthmover_v17.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "scripts/armc_retrieve_driver_grouped.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "scripts/armc_retrieve_launch.sh"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "scripts/armc_routeb_analyze.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "scripts/armc_v17_request_plan.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "scripts/armc_v17_request_plan_v1.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "scripts/armc_v19_request_plan.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "scripts/run_armc_daily.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "scripts/run_armc_p5.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "scripts/verify_armc_retrieval.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "scripts/verify_armc_single_retrieval.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "tests/test_armc_adjudication.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "tests/test_armc_cds_retrieve.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "tests/test_armc_frame_extend.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "tests/test_armc_monthly_split.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "tests/test_armc_routeb_analyze.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "tests/test_armc_v17_plan.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "tests/test_armc_v17_request_plan_v1.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "tests/test_run_armc_p5.py"
+  },
+  {
+   "category": "armc_lane_governed_by_p5_manifest_chain",
+   "reason": "P5/ARMC lane tooling governed by the sealed armc_code_manifest_vNN chain in the p5-armc-pressure-levels evidence root; evidence artifacts live outside the repo \u2014 outside the V0 science-doc governed surface",
+   "relpath": "tests/test_verify_armc_retrieval.py"
+  },
+  {
+   "category": "root_level_record_outside_governed_surface",
+   "reason": "operator/agent instructions or research-note at repository root; not a governed science artifact",
+   "relpath": "AGENTS.md"
+  },
+  {
+   "category": "root_level_record_outside_governed_surface",
+   "reason": "operator/agent instructions or research-note at repository root; not a governed science artifact",
+   "relpath": "DEEP_RESEARCH_ADDENDUM.md"
+  },
+  {
+   "category": "root_level_record_outside_governed_surface",
+   "reason": "operator/agent instructions or research-note at repository root; not a governed science artifact",
+   "relpath": "nepal_event_anomaly_report.md"
+  }
+ ],
+ "generated_utc": "2026-09-21T05:50:42Z",
+ "generator": {
+  "agent": "GLM-3 audit-3 gap-closure coordinator",
+  "derivation": "git ls-files minus the canonical manifest's bound entries; every remaining tracked file is recorded with an explicit category and reason",
+  "tool": "scripts/rebind_manifest.py scope audit is the consumer; this file is derived, not hand-maintained"
+ },
+ "main_release_excluded": true,
+ "manifest_relpath": "docs/science/ARTIFACT_MANIFEST_V0.json",
+ "manifest_self_excluded": "docs/science/ARTIFACT_MANIFEST_V0.json",
+ "root_level_scope_note": "Root-level scope is fail-closed: every tracked root file must be bound, a watched root entry, or recorded here. Recorded as a baseline correction rather than a scope change: these files were never bound and were previously unchecked because the governed-prefix audit did not cover the repository root. None of them is load-bearing for the released evidence.",
+ "schema": "MANIFEST_SCOPE_EXCLUSIONS_V0",
+ "title": "Recorded manifest scope-exclusion baseline (fail-closed boundary)",
+ "tracked_files_at_baseline": 234,
+ "watched_prefixes": [
+  ".github/",
+  ".phase-loop/",
+  "docs/science/",
+  "nepal/",
+  "scripts/",
+  "tests/"
+ ],
+ "watched_root_files": [
+  ".gitignore",
+  "README.md",
+  "conftest.py"
+ ]
 }

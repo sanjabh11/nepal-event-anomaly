@@ -43,3 +43,11 @@ research_runs/
 *.prj
 *.nc
 *.xlsx
+
+# Operator-local data products — on disk only, never tracked
+data/framework_inputs_v1/
+data/glacier_failure_db/
+data/*_results.json
+data/locked_jja_events.json
+data/edh_*_log.txt
+data/features_nepal_*.csv
