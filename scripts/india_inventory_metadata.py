@@ -1,0 +1,145 @@
+"""Validate the pinned India Phase-0 inventory metadata registry.
+
+This module intentionally validates metadata references only.  It does not
+download NRSC/CWC inventory payloads, infer lake rows, or authorize any
+weather, satellite, seismic, or operational work.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+from urllib.parse import urlsplit
+
+
+SCHEMA = "INDIA_INVENTORY_METADATA_V0"
+OFFICIAL_HOSTS = ("nrsc.gov.in", "bhuvan.nrsc.gov.in", "cwc.gov.in")
+AUTHORITY_FLAGS = {
+    "bulk_acquisition_authorized": False,
+    "weather_download_authorized": False,
+    "satellite_bulk_authorized": False,
+    "seismic_waveform_authorized": False,
+    "forecast_authorized": False,
+    "warning_authorized": False,
+    "detector_authorized": False,
+    "odds_authorized": False,
+    "causal_authorized": False,
+    "operational_authorized": False,
+}
+
+
+def _official_https_url(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    parsed = urlsplit(value)
+    host = (parsed.hostname or "").casefold().rstrip(".")
+    return parsed.scheme == "https" and any(
+        host == allowed or host.endswith("." + allowed)
+        for allowed in OFFICIAL_HOSTS
+    )
+
+
+def validate_registry(document: object) -> list[str]:
+    """Return all contract violations; never authorize acquisition."""
+    problems: list[str] = []
+    if not isinstance(document, dict):
+        return ["registry must be an object"]
+    if document.get("schema") != SCHEMA:
+        problems.append(f"schema must be {SCHEMA}")
+    if document.get("version") != 0:
+        problems.append("version must be integer 0")
+    if document.get("claim_scope") != "research_only_phase0_metadata_only":
+        problems.append("claim_scope must remain metadata-only research scope")
+    if document.get("authority") != AUTHORITY_FLAGS:
+        problems.append("authority flags must be present and false")
+
+    acquisition = document.get("acquisition")
+    expected_acquisition = {
+        "policy": "METADATA_ONLY",
+        "metadata_only_queries_run": True,
+        "payload_requests_issued": False,
+        "source_bytes_retained": False,
+    }
+    if not isinstance(acquisition, dict):
+        problems.append("acquisition must be an object")
+    else:
+        for key, expected in expected_acquisition.items():
+            if acquisition.get(key) != expected:
+                problems.append(f"acquisition.{key} must be {expected!r}")
+
+    sources = document.get("sources")
+    if not isinstance(sources, list) or not sources:
+        return problems + ["sources must be a non-empty list"]
+    seen: set[str] = set()
+    required = {
+        "id", "publisher", "title", "publication_or_period",
+        "source_url", "source_access_status", "scope", "reported_counts",
+        "row_level_inventory_ingested", "local_payload_sha256",
+    }
+    for index, source in enumerate(sources):
+        prefix = f"sources[{index}]"
+        if not isinstance(source, dict):
+            problems.append(f"{prefix} must be an object")
+            continue
+        missing = sorted(required - set(source))
+        problems.extend(f"{prefix} missing {field}" for field in missing)
+        source_id = source.get("id")
+        if not isinstance(source_id, str) or not source_id:
+            problems.append(f"{prefix}.id must be a non-empty string")
+        elif source_id in seen:
+            problems.append(f"duplicate source id: {source_id}")
+        else:
+            seen.add(source_id)
+        if not _official_https_url(source.get("source_url")):
+            problems.append(f"{prefix}.source_url must be an official HTTPS URL")
+        if source.get("row_level_inventory_ingested") is not False:
+            problems.append(f"{prefix}.row_level_inventory_ingested must be false")
+        if source.get("local_payload_sha256") is not None:
+            problems.append(
+                f"{prefix}.local_payload_sha256 must be null when bytes are not retained"
+            )
+        if not isinstance(source.get("reported_counts"), dict):
+            problems.append(f"{prefix}.reported_counts must be an object")
+        if not isinstance(source.get("scope"), str) or not source["scope"]:
+            problems.append(f"{prefix}.scope must be non-empty")
+
+    by_id = {source.get("id"): source for source in sources
+             if isinstance(source, dict)}
+    nrsc = by_id.get("NRSC_GLA_IHR")
+    if isinstance(nrsc, dict):
+        if nrsc.get("reported_counts", {}).get("mapped_lakes_ge_0_25ha") != 28043:
+            problems.append("NRSC mapped-lake count must be the pinned 28043")
+        if nrsc.get("mapping_epoch") != "2016-2017":
+            problems.append("NRSC mapping_epoch must be the pinned 2016-2017")
+        if nrsc.get("minimum_lake_area_ha") != 0.25:
+            problems.append("NRSC minimum_lake_area_ha must be 0.25")
+    else:
+        problems.append("NRSC_GLA_IHR source is required")
+    cwc = by_id.get("CWC_GLWB_SEP_2024")
+    if isinstance(cwc, dict):
+        if cwc.get("reported_counts", {}).get(
+                "monitored_glacial_lakes_and_water_bodies") != 902:
+            problems.append("CWC monitored count must be the pinned 902")
+        if cwc.get("publication_or_period") != "2024-09":
+            problems.append("CWC publication_or_period must be the pinned 2024-09")
+    else:
+        problems.append("CWC_GLWB_SEP_2024 source is required")
+    return problems
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--metadata", required=True, type=Path)
+    args = parser.parse_args(argv)
+    document = json.loads(args.metadata.read_text(encoding="utf-8"))
+    problems = validate_registry(document)
+    if problems:
+        for problem in problems:
+            print(f"METADATA_REGISTRY_INVALID: {problem}")
+        return 1
+    print(f"METADATA_REGISTRY_OK: {args.metadata}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

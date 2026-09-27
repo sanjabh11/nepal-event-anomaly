@@ -1,0 +1,91 @@
+{
+  "schema": "INDIA_INVENTORY_METADATA_V0",
+  "version": 0,
+  "claim_scope": "research_only_phase0_metadata_only",
+  "created_utc": "2026-09-27",
+  "authority": {
+    "bulk_acquisition_authorized": false,
+    "weather_download_authorized": false,
+    "satellite_bulk_authorized": false,
+    "seismic_waveform_authorized": false,
+    "forecast_authorized": false,
+    "warning_authorized": false,
+    "detector_authorized": false,
+    "odds_authorized": false,
+    "causal_authorized": false,
+    "operational_authorized": false
+  },
+  "acquisition": {
+    "policy": "METADATA_ONLY",
+    "metadata_only_queries_run": true,
+    "payload_requests_issued": false,
+    "source_bytes_retained": false,
+    "prohibited_actions": [
+      "No weather payload acquisition",
+      "No satellite payload acquisition",
+      "No seismic waveform acquisition",
+      "No operational inference"
+    ]
+  },
+  "sources": [
+    {
+      "id": "NRSC_GLA_IHR",
+      "publisher": "National Remote Sensing Centre (NRSC), ISRO",
+      "title": "Glacial Lake Atlas of Indian Himalayan River Basins",
+      "publication_or_period": "2023-03-16",
+      "source_url": "https://www.nrsc.gov.in/nrscnew/resources_atlas_glacialLake.php",
+      "source_access_status": "OFFICIAL_PAGE_METADATA_VERIFIED",
+      "scope": "Indian Himalayan river basins: Indus, Ganga, and Brahmaputra",
+      "mapping_epoch": "2016-2017",
+      "minimum_lake_area_ha": 0.25,
+      "reported_counts": {
+        "mapped_lakes_ge_0_25ha": 28043,
+        "indus": 5335,
+        "ganga": 4707,
+        "brahmaputra": 18001
+      },
+      "reported_attributes": [
+        "spatial distribution",
+        "area",
+        "lake type",
+        "elevation",
+        "administrative unit"
+      ],
+      "row_level_inventory_ingested": false,
+      "local_payload_sha256": null,
+      "source_bytes_retained": false,
+      "interpretation_limit": "This is a pinned inventory summary, not a row-level lake frame or event/control cohort."
+    },
+    {
+      "id": "CWC_GLWB_SEP_2024",
+      "publisher": "Central Water Commission (CWC), Ministry of Jal Shakti",
+      "title": "Monthly monitoring report of Glacial Lakes & Water Bodies",
+      "publication_or_period": "2024-09",
+      "source_url": "https://www.cwc.gov.in/sites/default/files/monitoring-report-september-2024.pdf",
+      "source_access_status": "OFFICIAL_REPORT_METADATA_VERIFIED",
+      "scope": "CWC monitored glacial lakes and water bodies; monitoring portfolio, not a complete national event census",
+      "monitoring_method": "Remote-sensing water-spread measurement with automatic processing and manual digitization where required",
+      "reported_counts": {
+        "monitored_glacial_lakes_and_water_bodies": 902,
+        "over_50ha_monitored_since_2011": 477,
+        "between_10ha_and_50ha_monitored_from_2022": 425
+      },
+      "reported_attributes": [
+        "monthly water-spread area",
+        "change detection",
+        "frozen/dry/cloud-obscured limitations"
+      ],
+      "row_level_inventory_ingested": false,
+      "local_payload_sha256": null,
+      "source_bytes_retained": false,
+      "interpretation_limit": "Monitoring coverage and reported no-change cannot be treated as verified non-event histories without lake-level observation evidence."
+    }
+  ],
+  "next_gate": "PIN_SOURCE_ROWS_AND_BUILD_INDIA_LAKE_FRAME_AFTER_APPROVED_SOURCE_CROSSWALK",
+  "limitations": [
+    "Reported counts are not independent event counts.",
+    "No row-level inventory payload was acquired in this phase.",
+    "No source bytes are retained by this metadata-only registry; official URLs and scope claims are pinned for the next approved ingestion step.",
+    "No lake is classified as a verified non-event from absence in a catalog."
+  ]
+}
