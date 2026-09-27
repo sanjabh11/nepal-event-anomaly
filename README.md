@@ -388,4 +388,8 @@ single failure was the REL-01 stale-record consistency gate catching
 the pre-update census — self-resolving, documented as dated evidence).
 Suite counts are bound to machine-generated receipts only; the
 manifest's earlier recorded totals are preserved as dated history, not
-overwritten.
+overwritten. The detached India Phase-0 release closure (binding
+release HEAD, tested content HEAD, manifest, receipt, exclusions, and
+the clean-history scan) lives outside the repository in the external
+evidence root — a closure cannot contain the digest of the object set
+that contains it.
