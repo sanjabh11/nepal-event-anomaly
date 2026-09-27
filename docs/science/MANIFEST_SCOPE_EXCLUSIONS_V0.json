@@ -865,6 +865,16 @@
    "category": "armc_lane_governed_by_p5_manifest_chain",
    "reason": "ARMC evidence-lane script governed by the P5 evidence manifest chain, not this v0 manifest",
    "relpath": "tests/test_armc_routeb_analyze_v2.py"
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20260927.json",
+   "category": "dated_run_receipt",
+   "reason": "dated machine suite receipt binding tree under test by digests; cannot be manifest-bound without circularity; write-once artifact"
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20260927.json.sha256",
+   "category": "dated_run_receipt",
+   "reason": "integrity sidecar for the dated suite receipt"
   }
  ],
  "generated_utc": "2026-09-21T05:50:42Z",
