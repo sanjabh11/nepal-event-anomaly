@@ -179,6 +179,32 @@ class TestR115ReleaseClosure:
             f"collection_guard {guard_count} — the recorded suite "
             "result predates the current collection census")
 
+    def test_workflow_baseline_matches_manifest_baseline(self):
+        """R-03 — the CI frozen-boundary baseline must resolve to a real
+        commit and must equal the manifest's recorded baseline_head; a
+        stale or dangling workflow baseline silently disables the
+        frozen-boundary check."""
+        manifest = _manifest()
+        baseline = manifest["baseline_head"]
+        workflow = (_REPO_ROOT / ".github/workflows/research-v0.yml"
+                    ).read_text(encoding="utf-8")
+        assert baseline in workflow, (
+            f"workflow frozen-boundary check does not reference the "
+            f"manifest baseline {baseline}")
+        # Every 40-hex literal used in a baseline context — `before=` or
+        # a `..HEAD` diff range — must be the manifest baseline; action
+        # pins (actions/*@<sha>) are intentionally not in this class.
+        baselines = set(re.findall(r'before="([0-9a-f]{40})"', workflow))
+        baselines |= set(re.findall(r'([0-9a-f]{40})\.\.HEAD', workflow))
+        assert baselines == {baseline}, (
+            f"workflow baseline refs {sorted(baselines)} != manifest "
+            f"baseline {baseline}")
+        proc = subprocess.run(["git", "cat-file", "-e",
+                               f"{baseline}^{{commit}}"],
+                              cwd=_REPO_ROOT, capture_output=True)
+        assert proc.returncode == 0, (
+            f"manifest baseline {baseline} does not resolve to a commit")
+
     def test_live_release_closure_binds_suite_evidence(self):
         """A3-10 — when a detached closure exists, it must bind the live
         suite receipt, index bytes, and replay reports (not just carry
