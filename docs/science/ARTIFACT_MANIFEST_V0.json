@@ -1,6 +1,6 @@
 {
  "baseline_head": "54aa612f7d478082716dfe5d0bca7d92d62d493b",
- "content_head": "e7d68b6a9d3f2cf83ba9b2cd36a683ff3fccf3d8",
+ "content_head": "befa5f5d0b6a1b27413780467bf050f00050867d",
  "files": [
   {
    "relpath": ".github/workflows/p5-verification.yml",
@@ -529,8 +529,8 @@
   },
   {
    "relpath": "scripts/build_india_release_closure.py",
-   "sha256": "bf92f811fd0369441777d73db1a5ef589bc514d9a479e4475718fc10386a1e08",
-   "size_bytes": 7727
+   "sha256": "e2f84b29a3716287b02d690e3449cf3b1ae4c7a037874b522cd6af22673d6ac9",
+   "size_bytes": 7923
   },
   {
    "relpath": "scripts/build_p5_release_closure_v2.py",
@@ -1085,7 +1085,7 @@
  ],
  "generated": "post-P5 phase-B/C bind \u2014 model re-execution proof (MODEL_REEXECUTED both lanes, digest-exact), preregistered promotion protocol, clean-room export + verification-ladder harness, owner-scoped Arm C amendment (retrieval deferred)",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "e7d68b6a9d3f2cf83ba9b2cd36a683ff3fccf3d8",
+ "manifest_commit": "befa5f5d0b6a1b27413780467bf050f00050867d",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
