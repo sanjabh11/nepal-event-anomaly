@@ -1,6 +1,6 @@
 {
  "baseline_head": "54aa612f7d478082716dfe5d0bca7d92d62d493b",
- "content_head": "7bf11a64f6d92a361feaacf9a44bfdb90f5472cc",
+ "content_head": "1e1c855d9a3122a4c0362af36cad54efe4f63258",
  "files": [
   {
    "relpath": ".github/workflows/p5-verification.yml",
@@ -559,8 +559,8 @@
   },
   {
    "relpath": "scripts/build_india_release_closure.py",
-   "sha256": "83cfc570101423de869a8be6f6e1f6c16147da66d7f4a429112dabc465b17272",
-   "size_bytes": 42512
+   "sha256": "b501137231b24cbb0145270de340d5e998df4219f160494878e8d92cb7e27bd3",
+   "size_bytes": 42929
   },
   {
    "relpath": "scripts/build_p5_release_closure_v2.py",
@@ -819,8 +819,8 @@
   },
   {
    "relpath": "tests/test_india_release_closure.py",
-   "sha256": "7b6ba39f222337790e24f4a3a95bb2a85e3f084020c5b99e4c94a2b0bb2dde20",
-   "size_bytes": 13911
+   "sha256": "2bc19e294bbf0505d757e9f9cf66f5ef22b206348fd13f7e0470ec2d6f425d94",
+   "size_bytes": 13989
   },
   {
    "relpath": "tests/test_india_source_intake.py",
@@ -1135,7 +1135,7 @@
  ],
  "generated": "post-P5 phase-B/C bind \u2014 model re-execution proof (MODEL_REEXECUTED both lanes, digest-exact), preregistered promotion protocol, clean-room export + verification-ladder harness, owner-scoped Arm C amendment (retrieval deferred)",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "7bf11a64f6d92a361feaacf9a44bfdb90f5472cc",
+ "manifest_commit": "1e1c855d9a3122a4c0362af36cad54efe4f63258",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -1147,7 +1147,7 @@
   "claim_scan": "clean on all governed files",
   "collection_guard": "repo-wide collection == tests/ (4338 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
   "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
-  "full_suite_venv": "Pre-retry run at repository HEAD 7db2602810ed4ca31c2d02b740c242538d591b50: 4334 passed, 3 skipped, 1 failed, 101 warnings (4338 collected) on pinned .venv (Python 3.14.7); failed only because this manifest summary still recorded the prior 4303-item collection. Immutable failed receipt: docs/science/SUITE_RECEIPT_20260928_R1.json. This is not a passing release claim; the final passing run is separately receipt-bound in the detached release closure.",
+  "full_suite_venv": "Full suite at tested repository HEAD b35be38b1fd40b6606526b015f8ddaed91778e8f: 4335 passed, 3 skipped, 0 failed, 101 warnings (4338 collected) on pinned .venv (Python 3.14.7); immutable receipt docs/science/SUITE_RECEIPT_20260928_R2.json. A subsequent production closure build exposed that its checker assumed a schema field absent from this ARTIFACT_MANIFEST_V0.3; the checker and fixture are corrected in the successor. R2 is valid pre-fix test evidence, not the final closure-bound pass. The earlier failed R1 receipt is retained append-only.",
   "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
   "p5_a2_status_consistency": "local guard passed; CI guard configured \u2014 current CANDIDATE_ONLY / UNSUPERVISED_STRUCTURE_NOT_STABLE result, false authority flags, and release metadata aligned",
   "p5_a2_temporal_holdout": "110 passed, 1 skipped \u2014 temporal mapping, waiver, and documentation regression lane",
