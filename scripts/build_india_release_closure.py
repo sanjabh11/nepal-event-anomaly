@@ -20,6 +20,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 
 SCHEMA = "INDIA_PHASE0_RELEASE_CLOSURE_V1"
+MANIFEST_VERSION = "ARTIFACT_MANIFEST_V0.3"
 REPO = Path(__file__).resolve().parents[1]
 EVIDENCE_ROOT = Path("/Users/sanjayb/nepal-event-anomaly-evidence")
 EVIDENCE_DIR = EVIDENCE_ROOT / "india-phase0-release"
@@ -54,6 +55,24 @@ _PERMITTED_RELEASE_PATH = re.compile(
 
 class ClosureError(ValueError):
     """Raised when a closure cannot be built from verifiable evidence."""
+
+
+def _manifest_problems(value: object) -> list[str]:
+    """Validate the repository's actual ARTIFACT_MANIFEST_V0 structure."""
+    if not isinstance(value, dict):
+        return ["manifest root must be an object"]
+    problems: list[str] = []
+    if value.get("manifest_version") != MANIFEST_VERSION:
+        problems.append(
+            f"manifest_version must be {MANIFEST_VERSION}")
+    if value.get("self_excluded") is not True:
+        problems.append("manifest self_excluded must be true")
+    if value.get("baseline_head") != BASELINE_HEAD:
+        problems.append("manifest baseline_head differs from frozen baseline")
+    for field in ("content_head", "manifest_commit"):
+        if not isinstance(value.get(field), str) or not _HEX40(value[field]):
+            problems.append(f"manifest {field} must be a 40-hex commit")
+    return problems
 
 
 def _sha256_file(path: Path) -> str:
@@ -472,13 +491,10 @@ def build(repo_root: Path, receipt_path: Path, release_head: str,
         manifest_doc = json.loads(manifest.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ClosureError(f"manifest is unreadable JSON: {exc}") from exc
-    if not isinstance(manifest_doc, dict) or manifest_doc.get(
-            "schema") != "ARTIFACT_MANIFEST_V0":
-        raise ClosureError("manifest root/schema is invalid")
-    for field in ("content_head", "manifest_commit"):
-        if not isinstance(manifest_doc.get(field), str) or not _HEX40(
-                manifest_doc[field]):
-            raise ClosureError(f"manifest {field} must be a 40-hex commit")
+    manifest_problems = _manifest_problems(manifest_doc)
+    if manifest_problems:
+        raise ClosureError("manifest is invalid: "
+                           + "; ".join(manifest_problems))
     if receipt_doc is not None and (
             receipt_doc.get("content_head") != manifest_doc.get("content_head")
             or receipt_doc.get("manifest_commit") != manifest_doc.get("manifest_commit")):
@@ -656,13 +672,9 @@ def validate_closure(closure_path: Path, repo_root: Path,
     except (OSError, json.JSONDecodeError) as exc:
         manifest_doc = None
         problems.append(f"manifest is unreadable: {exc}")
-    if not isinstance(manifest_doc, dict) or manifest_doc.get(
-            "schema") != "ARTIFACT_MANIFEST_V0":
-        problems.append("manifest root/schema is invalid")
-    elif any(not isinstance(manifest_doc.get(field), str)
-             or not _HEX40(manifest_doc[field])
-             for field in ("content_head", "manifest_commit")):
-        problems.append("manifest content_head/manifest_commit are invalid")
+    manifest_issues = _manifest_problems(manifest_doc)
+    problems.extend(f"manifest is invalid: {issue}"
+                    for issue in manifest_issues)
 
     rel = doc.get("suite_receipt_relpath")
     receipt_digest = doc.get("suite_receipt_sha256")

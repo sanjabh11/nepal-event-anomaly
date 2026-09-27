@@ -51,7 +51,9 @@ def _fixture(tmp_path: Path, monkeypatch, *, bad_counts: bool = False,
     science = repo / "docs/science"
     science.mkdir(parents=True)
     (science / "ARTIFACT_MANIFEST_V0.json").write_text(json.dumps({
-        "schema": "ARTIFACT_MANIFEST_V0",
+        "manifest_version": closure.MANIFEST_VERSION,
+        "baseline_head": baseline,
+        "self_excluded": True,
         "content_head": baseline,
         "manifest_commit": baseline,
     }), encoding="utf-8")
