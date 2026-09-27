@@ -1,0 +1,54 @@
+{
+  "schema": "INDIA_INVENTORY_REGISTRY_SUPPLEMENT_V0",
+  "version": 0,
+  "claim_scope": "research_only_phase0_inventory_intake",
+  "supersedes_registry": {
+    "file": "INDIA_INVENTORY_REGISTRY_V1.json",
+    "sha256": "7c53deacb0e2f0a493a18d23f7b8ac678d79322efe3c94a630ff2edc3fbd064d"
+  },
+  "source_intake_packet": {
+    "file": "INDIA_PHASE0_SOURCE_INTAKE_V0.json",
+    "sha256": "24c04fa30ba9a7a8dd1379a7d8fa894d62fca8acd45f8664d283046d0d26496b"
+  },
+  "authority": {
+    "bulk_acquisition_authorized": false,
+    "weather_download_authorized": false,
+    "satellite_bulk_authorized": false,
+    "seismic_waveform_authorized": false,
+    "forecast_authorized": false,
+    "warning_authorized": false,
+    "detector_authorized": false,
+    "odds_authorized": false,
+    "causal_authorized": false,
+    "operational_authorized": false
+  },
+  "source_updates": [
+    {
+      "source_id": "NRSC_GLA_IHR",
+      "prior_registry_state": "OFFICIAL_PAGE_METADATA_VERIFIED",
+      "current_payload_state": "BYTES_VERIFIED_FOR_INVENTORY_METADATA_ONLY",
+      "requested_url": "https://www.nrsc.gov.in/nrscnew/assets/pdf/atlas/glaciallake/IHR_GlacialLake_Atlas.pdf",
+      "mapping_epoch": "2016-2017",
+      "official_release_date": "2023-03-16",
+      "reported_mapped_lakes_ge_0_25ha": 28043,
+      "payload_bytes": 109055478,
+      "payload_sha256": "579b61a1592ff1eb977fa97b0b980e24f8baeb91e60f2f63c58c8d6f2b5a5162",
+      "external_receipt": {
+        "logical_path": "india-phase0-source-intake/NRSC_GLA_IHR_SOURCE_RECEIPT_V0.json",
+        "sha256": "6c693f0f8e7589ad6a0c3614d369c6a33cb86530857d211f0688fe7aac11dd12"
+      },
+      "terms": "NRSC permits non-commercial use of downloadable content with attribution and permits derivative works; original PDF retained privately and not redistributed.",
+      "terms_url": "https://www.nrsc.gov.in/nrscnew/termsConditions.php",
+      "data_boundary": "The atlas is an inventory source, not event adjudication or observation-completeness evidence. Table 69 covers lakes >=50 ha only; no rows have been extracted or ingested. India territory is not inferred from coordinates.",
+      "local_payload_retained_outside_git": true,
+      "source_authenticity_cryptographically_attested": false
+    }
+  ],
+  "unchanged_source_dispositions": {
+    "CWC_GLWB_SEP_2024": "NOT_ACQUIRED_TERMS_UNRESOLVED",
+    "CWC_LOKSABHA_AU883_2026": "NOT_ACQUIRED_ENDPOINT_DENIED",
+    "ICIMOD_HMAGLOFDB_V130": "NOT_ACQUIRED_VERSION_DRIFT"
+  },
+  "phase_state": "METADATA_AND_ONE_PINNED_INVENTORY_PDF_ONLY_NO_ROW_LEVEL_INGESTION",
+  "next_gate": "RESOLVE_ROW_LEVEL_SOURCE_VINTAGES_AND_TERMS_BEFORE_CROSSWALK_OR_LAKE_FRAME_INGESTION"
+}

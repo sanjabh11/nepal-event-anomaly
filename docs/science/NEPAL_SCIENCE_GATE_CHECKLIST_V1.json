@@ -1,0 +1,103 @@
+{
+  "schema": "NEPAL_SCIENCE_GATE_CHECKLIST_V1",
+  "version": 1,
+  "scope": "INDIA_PHASE0",
+  "claim_scope": "research_only_no_operational_authorization",
+  "authority": {
+    "bulk_acquisition_authorized": false,
+    "weather_download_authorized": false,
+    "satellite_bulk_authorized": false,
+    "seismic_waveform_authorized": false,
+    "forecast_authorized": false,
+    "warning_authorized": false,
+    "detector_authorized": false,
+    "odds_authorized": false,
+    "causal_authorized": false,
+    "operational_authorized": false
+  },
+  "policy_invariants": [
+    {
+      "id": "GATE_PIPELINE_ORDER",
+      "status": "ENFORCED",
+      "rule": "Pin source and terms, then resolve timing and targets, then adjudicate events and observation frames, then decide feasibility; no weather analysis precedes those gates."
+    },
+    {
+      "id": "GATE_BYTE_BOUND_PROVENANCE",
+      "status": "ENFORCED",
+      "rule": "A source used as evidence must resolve to retained bytes or an immutable retrieval receipt with a verified digest and declared coverage."
+    },
+    {
+      "id": "GATE_NO_BULK_BEFORE_BOUNDED",
+      "status": "ENFORCED",
+      "rule": "Phase 0 does not authorize bulk weather, satellite, DEM, or seismic acquisition; each later acquisition requires its own scoped approval."
+    },
+    {
+      "id": "GATE_PRESERVE_NEGATIVE",
+      "status": "ENFORCED",
+      "rule": "Negative, indeterminate, missing, and not-covered outcomes remain distinct and are never rescued by post-hoc scope changes."
+    },
+    {
+      "id": "GATE_CLAIM_SEPARATION",
+      "status": "ENFORCED",
+      "rule": "Descriptive, association, susceptibility, forecast, warning, causal, and operational claims are separate and require separate evidence and approvals."
+    },
+    {
+      "id": "GATE_NO_NEPAL_PRIOR_TRANSFER",
+      "status": "ENFORCED",
+      "rule": "Nepal effect sizes, feature choices, cluster counts, thresholds, and outcomes are not India priors or success criteria."
+    }
+  ],
+  "phase0_required_conditions": [
+    {
+      "id": "PINNED_SOURCE_VERSION_AND_TERMS",
+      "required_before_decision_ready": true
+    },
+    {
+      "id": "EVENT_ROWS_RETAINED_AND_ADJUDICATION_COMPLETE",
+      "required_before_decision_ready": true
+    },
+    {
+      "id": "CANONICAL_LAKE_FRAME_AND_TERRITORY_RESOLVED",
+      "required_before_decision_ready": true
+    },
+    {
+      "id": "OBSERVATION_COVERAGE_AND_MISSINGNESS_REPORTED",
+      "required_before_decision_ready": true
+    },
+    {
+      "id": "VERIFIED_NON_EVENT_STATUS_NOT_INFERRED_FROM_ABSENCE",
+      "required_before_decision_ready": true
+    }
+  ],
+  "deferred_science_gates": [
+    {
+      "id": "GATE_HUMAN_ADJUDICATION",
+      "status": "DEFERRED_TO_PHASE0_EVIDENCE_REVIEW"
+    },
+    {
+      "id": "GATE_LEAKAGE_AUDIT",
+      "status": "DEFERRED_UNTIL_A_SCIENCE_PROTOCOL_EXISTS"
+    },
+    {
+      "id": "GATE_CONTROLS_PACKAGE",
+      "status": "DEFERRED_UNTIL_OBSERVATION_EVIDENCE_EXISTS"
+    },
+    {
+      "id": "GATE_TEMPORAL_GEOGRAPHIC_HOLDOUT",
+      "status": "DEFERRED_UNTIL_A_SCIENCE_PROTOCOL_EXISTS"
+    },
+    {
+      "id": "GATE_STABILITY_NULLS",
+      "status": "DEFERRED_UNTIL_A_SCIENCE_PROTOCOL_EXISTS"
+    },
+    {
+      "id": "GATE_FORECAST_VINTAGES",
+      "status": "NOT_APPLICABLE_TO_PHASE0"
+    }
+  ],
+  "notes": [
+    "This checklist validates the process policy; it does not make missing scientific evidence complete.",
+    "The feasibility report may be generated while conditions are unresolved, but it must label decision readiness BLOCKED and enumerate the blockers.",
+    "A completed Phase-0 feasibility package is eligible only for owner review of the next research decision; it never authorizes acquisition or operations."
+  ]
+}

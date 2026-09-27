@@ -288,6 +288,47 @@ def test_report_accepts_only_sha_bound_reviewed_successor(tmp_path):
     assert fr.validate_report(report) == []
 
 
+def test_report_passes_complete_observation_partition_to_readiness(tmp_path):
+    crosswalk, cw_path, lf_path, reg_path = _paths(tmp_path)
+    inventory_path = tmp_path / "lake_inventory.json"
+    inventory_path.write_text(json.dumps([{
+        "source_record_id": "NRSC:1", "lake_id": "1",
+        "latitude": 30.7, "longitude": 79.1,
+    }]), encoding="utf-8")
+    frame = lf.build_frame(inventory_path, "NRSC", "test-1")
+    observed_lake_frame = _write_bound(tmp_path / "lf_observed.json", frame)
+
+    report = fr.build_report(cw_path, observed_lake_frame, reg_path)
+    readiness = report["phase0_decision_readiness"]
+    assert report["denominators"]["observation_unknown_lake_rows"] == 1
+    assert "OBSERVATION_STATUS_DENOMINATOR_MISMATCH" not in readiness[
+        "blocking_reasons"]
+    assert readiness["required_condition_status"][
+        "VERIFIED_NON_EVENT_STATUS_NOT_INFERRED_FROM_ABSENCE"] == "SATISFIED"
+    assert readiness["status"] == "BLOCKED"
+
+
+@pytest.mark.parametrize("malformed", [None, [], "report", 7])
+def test_report_validator_rejects_non_object_root(malformed):
+    assert fr.validate_report(malformed) == ["report root must be an object"]
+
+
+def test_report_validator_rejects_malformed_gate_and_unhashable_episode_ids():
+    report = {
+        "schema": fr.SCHEMA,
+        "claim_scope": "research_only_no_operational_authorization",
+        "authority": fr.AUTHORITY_FLAGS,
+        "denominators": {},
+        "independent_episode_ids": [["unhashable"]],
+        "gates": [],
+        "decision": "PHASE0_ONLY_NO_ACQUISITION",
+        "inputs": {},
+    }
+    problems = fr.validate_report(report)
+    assert "independent_episode_ids must be unique strings" in problems
+    assert "gates must be an object" in problems
+
+
 def test_report_rejects_missing_or_tampered_sidecars(tmp_path):
     crosswalk, cw_path, lf_path, reg_path = _paths(tmp_path)
     report = fr.build_report(cw_path, lf_path, reg_path)
@@ -443,6 +484,38 @@ def test_lake_frame_counts_only_full_observed_years(tmp_path):
     doc = lf.build_frame(p, "NRSC", "test-1")
     assert doc["summary"]["n_observable_lake_years"] == 3
     assert lf.validate_frame(doc) == []
+
+
+def test_feasibility_denominators_partition_all_rows_and_deduplicate_years():
+    verified = er.verified_records(_register_doc())
+    rows = [
+        {"location": {"territory_status": "OUTSIDE"},
+         "lake": {"identity_status": "UNRECONCILED"},
+         "observation": {"status": "UNKNOWN", "completeness": "UNKNOWN"}},
+        {"location": {"territory_status": "IN_COUNTRY", "basin": "Ganga"},
+         "lake": {"identity_status": "RECONCILED", "canonical_lake_id": "IN:L1"},
+         "observation": {
+             "status": "VERIFIED_NON_EVENT", "completeness": "FULL",
+             "control_eligible": True, "evidence_refs": ["evidence:EV:TEST"],
+             "at_risk_start": "2001-07-01", "at_risk_end": "2002-12-31",
+             "observed_years": [2001, 2002]}},
+        {"location": {"territory_status": "IN_COUNTRY", "basin": "Ganga"},
+         "lake": {"identity_status": "RECONCILED", "canonical_lake_id": "IN:L1"},
+         "observation": {"status": "PARTIAL", "completeness": "UNKNOWN"}},
+    ]
+    counts = fr._lake_denominators(rows, verified)
+    assert counts["mapped_lake_rows"] == 3
+    assert counts["outside_lakes"] == 1
+    assert counts["in_country_canonical_lakes"] == 1
+    assert counts["observation_unknown_lake_rows"] == 1
+    assert counts["observation_partial_lake_rows"] == 1
+    assert counts["observation_verified_non_event_lake_rows"] == 1
+    assert counts["observation_full_lake_rows"] == 1
+    assert counts["observable_lake_years"] == 2  # one lake, two unique years
+    assert counts["verified_non_event_controls"] == 1
+    assert counts["verified_non_event_intervals"] == 1
+    assert counts["verified_non_event_lake_years"] == 1  # 2001 interval is partial
+    assert counts["unverified_control_candidates"] == 0
 
 
 def test_frame_validation_rejects_unverified_canonical_claim(tmp_path):
