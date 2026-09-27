@@ -159,9 +159,11 @@ jobs:
         run: |
           set -e
           canonical=$(PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
-            python -B -m pytest tests/ --collect-only -q | tail -1)
+            python -B -m pytest tests/ --collect-only -q | tail -1 \
+            | sed -E 's/ in [0-9.]+s$//')
           repowide=$(PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. \
-            python -B -m pytest . --collect-only -q | tail -1)
+            python -B -m pytest . --collect-only -q | tail -1 \
+            | sed -E 's/ in [0-9.]+s$//')
           echo "tests/ collection:   $canonical"
           echo "repo-wide collection: $repowide"
           [ "$canonical" = "$repowide" ] || {

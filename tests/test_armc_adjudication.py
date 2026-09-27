@@ -7,6 +7,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import armc_adjudication_intake as ai
 
 EV = Path("/Users/sanjayb/nepal-event-anomaly-evidence/p5-glof-2026-09-19")
+if not (EV / "glof-events/p3_runner_package_v0.json").is_file():
+    pytest.skip("operator-local GLOF evidence lane absent (CI checkout)",
+                allow_module_level=True)
 ROSTER = {e["event_id"] for e in
           json.loads((EV / "glof-events/p3_runner_package_v0.json").read_text())["event_labels"]}
 
