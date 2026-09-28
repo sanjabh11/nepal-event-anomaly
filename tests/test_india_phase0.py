@@ -212,6 +212,28 @@ def test_crosswalk_retains_and_flags_duplicate_gf_ids(tmp_path):
     assert len(flagged) == 2
 
 
+def test_crosswalk_transboundary_flag_classification(tmp_path):
+    # A catalog Transboundary=Y flag keeps an India-labelled row in the
+    # TRANSBOUNDARY adjudication class instead of plain TARGET_COUNTRY.
+    source = tmp_path / "HMAGLOFDB.csv"
+    _write_catalog(source, n_india=2, extra_rows=[
+        {"GF_ID": "7001", "Year_approx": "", "Year_exact": "2013",
+         "Month": "6", "Day": "17", "Lake_name": "Chorabari",
+         "Glacier_name": "", "GL_ID": "GL:tb", "Country": "India",
+         "Province": "Uttarakhand", "River_Basin": "Ganga",
+         "Lat_lake": "30.7", "Lon_lake": "79.1", "Driver_lake": "",
+         "Driver_GLOF": "", "Mechanism": "", "Repeat": "",
+         "Sat_evidence": "", "Transboundary": "Y",
+         "Ref_scientific": "", "Ref_scientific_full": "",
+         "Ref_other": ""}])
+    doc = ec.build_crosswalk(source, "test-1.0")
+    by_id = {r["source"]["record_id"]: r for r in doc["records"]}
+    assert by_id["7001"]["candidate_class"] == "TRANSBOUNDARY"
+    assert by_id["1"]["candidate_class"] == "TARGET_COUNTRY"
+    assert doc["summary"]["n_transboundary_rows"] == 1
+    assert doc["summary"]["n_candidate_rows"] == 3
+
+
 def test_adjudication_intake_is_append_only_and_digest_bound(tmp_path):
     source = tmp_path / "HMAGLOFDB.csv"
     _write_catalog(source)
