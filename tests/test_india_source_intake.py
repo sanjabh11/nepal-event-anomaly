@@ -217,6 +217,38 @@ def _v2_fixture(tmp_path: Path) -> dict:
     v2_path = tmp_path / "INDIA_PHASE0_SOURCE_INTAKE_V2.json"
     fixture["packet"] = v2_path
     nrsc = next(s for s in packet_doc["sources"] if s["id"] == "NRSC_GLA_IHR")
+    t68_records = [{
+        "serial_no": i,
+        "glacial_lake_id": f"01 42A01 {i:05d}",
+        "glacial_lake_id_compact": f"0142A01{i:05d}",
+        "latitude": 36.0, "longitude": 73.0,
+        "subbasin": "Test", "gl_type": "O",
+        "area_ha": 15.0, "elevation_m": 4000,
+        "source_table": "table_68_ge10ha",
+    } for i in range(1, 2432)]
+    # Printed-serial defect rows: duplicated serials, distinct lake IDs,
+    # below the stated >=10 ha table threshold.
+    t68_records += [
+        {"serial_no": 2001, "glacial_lake_id": "01 42B02 99998",
+         "glacial_lake_id_compact": "0142B0299998", "latitude": 36.0,
+         "longitude": 73.0, "subbasin": "Test", "gl_type": "O",
+         "area_ha": 6.75, "elevation_m": 4000,
+         "source_table": "table_68_ge10ha"},
+        {"serial_no": 2002, "glacial_lake_id": "01 42B02 99999",
+         "glacial_lake_id_compact": "0142B0299999", "latitude": 36.0,
+         "longitude": 73.0, "subbasin": "Test", "gl_type": "O",
+         "area_ha": 5.29, "elevation_m": 4000,
+         "source_table": "table_68_ge10ha"},
+    ]
+    t69_records = [{
+        "serial_no": i,
+        "glacial_lake_id": f"01 42A01 {i:05d}",
+        "glacial_lake_id_compact": f"0142A01{i:05d}",
+        "latitude": 36.0, "longitude": 73.0,
+        "subbasin": "Test", "gl_type": "O",
+        "area_ha": 55.0, "elevation_m": 4100,
+        "source_table": "table_69_ge50ha",
+    } for i in range(1, 300)]
     extraction = {
         "schema": "NRSC_ATLAS_TABLE_EXTRACTION_V0",
         "extraction": {
@@ -225,7 +257,7 @@ def _v2_fixture(tmp_path: Path) -> dict:
             "anomalies": [{"kind": "PRINTED_SERIAL_DUPLICATE",
                            "serials": [2001, 2002]}],
         },
-        "records": [],
+        "records": t68_records + t69_records,
     }
     art_path = evidence / "NRSC_GLA_IHR_TABLE_EXTRACTION_V0.json"
     _write_json(art_path, extraction)
@@ -246,6 +278,7 @@ def _v2_fixture(tmp_path: Path) -> dict:
     nrsc["count_reconciliation"] = {
         "table_68_declared_rows": 2431,
         "table_68_extracted_rows": 2433,
+        "table_68_valid_ge_10ha_rows": 2431,
         "table_69_extracted_rows": 299,
     }
     _write_json(v2_path, packet_doc)

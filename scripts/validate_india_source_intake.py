@@ -17,9 +17,9 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE_ROOT = Path("/Users/sanjayb/nepal-event-anomaly-evidence")
 INTAKE_ROOT = EVIDENCE_ROOT / "india-phase0-source-intake"
-DEFAULT_PACKET = ROOT / "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V0.json"
+DEFAULT_PACKET = ROOT / "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V2.json"
 DEFAULT_SUPPLEMENT = ROOT / "docs/science/INDIA_INVENTORY_REGISTRY_SUPPLEMENT_V0.json"
-DEFAULT_REGISTRY = ROOT / "docs/science/INDIA_INVENTORY_REGISTRY_V1.json"
+DEFAULT_REGISTRY = ROOT / "docs/science/INDIA_INVENTORY_REGISTRY_V2.json"
 DEFAULT_RECEIPT = INTAKE_ROOT / "NRSC_GLA_IHR_SOURCE_RECEIPT_V0.json"
 DEFAULT_PAYLOAD = INTAKE_ROOT / "IHR_GlacialLake_Atlas.pdf"
 SCHEMA = "INDIA_PHASE0_SOURCE_RECEIPT_V0"
@@ -100,7 +100,11 @@ def validate_intake(packet_path: Path, supplement_path: Path,
     supplement_sha = _verify_sidecar(supplement_path)
     packet = _load_object(packet_path, "source-intake packet")
     supplement = _load_object(supplement_path, "registry supplement")
+    registry_v1_path = registry_path.with_name(
+        "INDIA_INVENTORY_REGISTRY_V1.json")
     registry_sha = sha256_file(registry_path)
+    registry_v1_sha = (sha256_file(registry_v1_path)
+                       if registry_v1_path.is_file() else registry_sha)
 
     packet_v0 = (packet.get("schema") == "INDIA_PHASE0_SOURCE_INTAKE_V0"
                  and packet.get("version") == 0)
@@ -194,12 +198,39 @@ def validate_intake(packet_path: Path, supplement_path: Path,
             recon = nrsc.get("count_reconciliation")
             if not isinstance(recon, dict):
                 raise IntakeError("V2 packet must carry count_reconciliation")
-            if (recon.get("table_68_declared_rows") != 2431
-                    or recon.get("table_68_extracted_rows") != 2433
-                    or recon.get("table_69_extracted_rows") != 299):
+            # Bind the declared reconciliation to the actual extracted
+            # rows, not just to the stated totals.
+            recs = art_doc.get("records")
+            if not isinstance(recs, list):
+                raise IntakeError("extraction artifact records missing")
+            t68 = [r for r in recs
+                   if isinstance(r, dict)
+                   and r.get("source_table") == "table_68_ge10ha"]
+            t69 = [r for r in recs
+                   if isinstance(r, dict)
+                   and r.get("source_table") == "table_69_ge50ha"]
+            if len(t68) != recon.get("table_68_extracted_rows") or \
+                    len(t69) != recon.get("table_69_extracted_rows"):
                 raise IntakeError(
-                    "V2 count reconciliation does not match the "
-                    "extracted artifact totals")
+                    "reconciliation totals differ from artifact row counts")
+            ge10 = [r for r in t68 if r.get("area_ha", 0) >= 10]
+            below = sorted(r.get("serial_no") for r in t68
+                           if r.get("area_ha", 0) < 10)
+            if len(ge10) != recon.get("table_68_valid_ge_10ha_rows"):
+                raise IntakeError(
+                    "reconciliation valid >=10ha count differs from rows")
+            if recon.get("table_68_declared_rows") != 2431 or below != [2001, 2002]:
+                raise IntakeError(
+                    "declared 2431-row count or the printed-serial "
+                    "exception rows (2001, 2002) do not reconcile")
+            t69_ids = {r.get("glacial_lake_id_compact") for r in t69}
+            t68_ids = {r.get("glacial_lake_id_compact") for r in t68}
+            if not t69_ids <= t68_ids:
+                raise IntakeError(
+                    "table 69 rows must all be table-68 lake IDs")
+            if any(r.get("area_ha", 0) < 50 for r in t69):
+                raise IntakeError(
+                    "table 69 contains a row below the 50 ha threshold")
     if nrsc.get("payload_sha256") is None or not _HEX64(
             nrsc.get("payload_sha256", "")):
         raise IntakeError("NRSC payload SHA-256 must be pinned")
@@ -226,7 +257,7 @@ def validate_intake(packet_path: Path, supplement_path: Path,
     if supplement.get("authority") != AUTHORITY_FLAGS:
         raise IntakeError("registry supplement authority flags must all be false")
     supersedes = supplement.get("supersedes_registry")
-    if not isinstance(supersedes, dict) or supersedes.get("sha256") != registry_sha:
+    if not isinstance(supersedes, dict) or supersedes.get("sha256") != registry_v1_sha:
         raise IntakeError("registry supplement does not bind the prior registry bytes")
     packet_binding = supplement.get("source_intake_packet")
     bound_sha = sha256_file(v0_path) if extracted_packet else packet_sha

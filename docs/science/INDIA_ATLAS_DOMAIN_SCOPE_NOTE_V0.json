@@ -1,0 +1,39 @@
+{
+  "authority": {
+    "bulk_acquisition_authorized": false,
+    "causal_authorized": false,
+    "detector_authorized": false,
+    "forecast_authorized": false,
+    "odds_authorized": false,
+    "operational_authorized": false,
+    "satellite_bulk_authorized": false,
+    "seismic_waveform_authorized": false,
+    "warning_authorized": false,
+    "weather_download_authorized": false
+  },
+  "bindings": {
+    "extraction_artifact": "india-phase0-source-intake/NRSC_GLA_IHR_TABLE_EXTRACTION_V0.json",
+    "extraction_sha256": "ee63485674db14b38e60e2a08274c51b2d3e17d6c1242c32f2149c8dd21ebd58",
+    "intake_packet": "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V2.json",
+    "intake_packet_sha256": "4dab657aaab72046cce536247ac938709733227b1f5448dca01acdf16c4668c5"
+  },
+  "claim_scope": "research_only_phase0_domain_scope",
+  "created_utc": "2026-09-28",
+  "domain_facts": {
+    "atlas_total_ge_0_25ha": 28043,
+    "atlas_total_scope_note": "28,043 mapped lakes also span the full basin domain including transboundary areas",
+    "india_administered_subset": "UNRESOLVED_PENDING_ADJUDICATION",
+    "table_68_declared_domain": "all atlas basins (Indus, Ganga, Brahmaputra) including transboundary reaches; subbasin labels include non-India administered domains (e.g. Gilgit, Yarlung Tsangpo upper reaches)",
+    "table_68_rows_extracted": 2433
+  },
+  "purpose": "Clarify the denominator domain of the extracted NRSC atlas rows: the Table 68/69 lake sets span the full mapped basin domain of the atlas, which includes transboundary and non-India-administered reaches. They are not an India-administered lake cohort.",
+  "reviewer_cited_observation": {
+    "claim": "India-administered >10 ha lake classes sum to approximately 654",
+    "source": "independent conformance review (Codex) of atlas area-class tables",
+    "verification_status": "NOT_BOUND_VERIFIED - requires boundary adjudication of extracted rows"
+  },
+  "schema": "INDIA_ATLAS_DOMAIN_SCOPE_NOTE_V0",
+  "status": "ADVISORY_NOTE_NO_NEW_AUTHORITY",
+  "territory_policy": "Every extracted lake remains territory UNASSESSED until boundary adjudication. No count from this domain may be used as an India event/control denominator without that adjudication.",
+  "version": 0
+}
