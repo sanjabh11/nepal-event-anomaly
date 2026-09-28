@@ -102,9 +102,18 @@ def validate_intake(packet_path: Path, supplement_path: Path,
     supplement = _load_object(supplement_path, "registry supplement")
     registry_sha = sha256_file(registry_path)
 
-    if packet.get("schema") != "INDIA_PHASE0_SOURCE_INTAKE_V0" \
-            or packet.get("version") != 0:
+    packet_v1 = (packet.get("schema") == "INDIA_PHASE0_SOURCE_INTAKE_V1"
+                 and packet.get("version") == 1)
+    packet_v0 = (packet.get("schema") == "INDIA_PHASE0_SOURCE_INTAKE_V0"
+                 and packet.get("version") == 0)
+    if not (packet_v0 or packet_v1):
         raise IntakeError("unexpected source-intake packet schema/version")
+    v0_path = packet_path.with_name("INDIA_PHASE0_SOURCE_INTAKE_V0.json")
+    if packet_v1:
+        if (packet.get("supersedes") != v0_path.name
+                or packet.get("supersedes_sha256") != sha256_file(v0_path)):
+            raise IntakeError(
+                "V1 packet must bind the superseded V0 packet bytes")
     if packet.get("authority") != AUTHORITY_FLAGS:
         raise IntakeError("source-intake authority flags must all be false")
     scope = packet.get("scope")
@@ -140,8 +149,33 @@ def validate_intake(packet_path: Path, supplement_path: Path,
         raise IntakeError("source ids must exactly match the frozen four-source packet")
     if nrsc.get("acquisition_status") != "BYTES_VERIFIED":
         raise IntakeError("NRSC atlas must be marked BYTES_VERIFIED")
-    if nrsc.get("row_level_records_extracted") is not False:
-        raise IntakeError("atlas row extraction is outside this intake")
+    extracted = nrsc.get("row_level_records_extracted")
+    if packet_v0 and extracted is not False:
+        raise IntakeError("V0 packet must record no row extraction")
+    if packet_v1:
+        if extracted is not True:
+            raise IntakeError("V1 packet must record row extraction")
+        extraction = nrsc.get("extraction")
+        if not isinstance(extraction, dict):
+            raise IntakeError("V1 packet NRSC extraction block is required")
+        artifact = EVIDENCE_ROOT / str(extraction.get("artifact", ""))
+        if _verify_sidecar(artifact) != extraction.get("artifact_sha256"):
+            raise IntakeError("extraction artifact digest differs from packet")
+        art_doc = _load_object(artifact, "extraction artifact")
+        art_src = art_doc.get("extraction", {}).get("source_pdf_sha256")
+        if art_src != nrsc.get("payload_sha256"):
+            raise IntakeError(
+                "extraction artifact does not bind the verified NRSC payload")
+        rows = extraction.get("rows")
+        tables = art_doc.get("extraction", {}).get("tables")
+        if not isinstance(rows, dict) or rows != tables:
+            raise IntakeError(
+                "packet extraction row counts differ from the artifact")
+        anomalies = art_doc.get("extraction", {}).get("anomalies")
+        if not isinstance(anomalies, list) or not anomalies:
+            raise IntakeError(
+                "extraction anomalies (printed serial duplicates) "
+                "must be recorded")
     if nrsc.get("payload_sha256") is None or not _HEX64(
             nrsc.get("payload_sha256", "")):
         raise IntakeError("NRSC payload SHA-256 must be pinned")
@@ -171,15 +205,17 @@ def validate_intake(packet_path: Path, supplement_path: Path,
     if not isinstance(supersedes, dict) or supersedes.get("sha256") != registry_sha:
         raise IntakeError("registry supplement does not bind the prior registry bytes")
     packet_binding = supplement.get("source_intake_packet")
-    if not isinstance(packet_binding, dict) or packet_binding.get("sha256") != packet_sha:
+    bound_sha = sha256_file(v0_path) if packet_v1 else packet_sha
+    if not isinstance(packet_binding, dict) or packet_binding.get("sha256") != bound_sha:
         raise IntakeError("registry supplement does not bind the intake packet bytes")
     unchanged = supplement.get("unchanged_source_dispositions")
     if not isinstance(unchanged, dict) or any(
             value.startswith("ACQUIRED") for value in unchanged.values()
             if isinstance(value, str)):
         raise IntakeError("unchanged source dispositions must not claim acquisition")
-    if supplement.get("phase_state") != (
-            "METADATA_AND_ONE_PINNED_INVENTORY_PDF_ONLY_NO_ROW_LEVEL_INGESTION"):
+    phase_ok = supplement.get("phase_state") == (
+        "METADATA_AND_ONE_PINNED_INVENTORY_PDF_ONLY_NO_ROW_LEVEL_INGESTION")
+    if not phase_ok and not packet_v1:
         raise IntakeError("registry supplement overstates the phase state")
     updates = supplement.get("source_updates")
     if not isinstance(updates, list) or len(updates) != 1:
@@ -270,7 +306,7 @@ def validate_intake(packet_path: Path, supplement_path: Path,
         "receipt_sha256": nrsc["receipt_sha256"],
         "packet_sha256": packet_sha,
         "supplement_sha256": supplement_sha,
-        "row_level_records_extracted": False,
+        "row_level_records_extracted": bool(extracted),
         "authority": AUTHORITY_FLAGS,
     }
 

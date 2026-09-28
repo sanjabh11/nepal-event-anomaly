@@ -56,11 +56,17 @@ CANDIDATE_CLASSES = {"TARGET_COUNTRY", "TRANSBOUNDARY", "UNKNOWN_COUNTRY",
                      "OUTSIDE"}
 
 
-def _candidate_class(country_text: Any, target: str) -> str:
+def _candidate_class(country_text: Any, target: str,
+                     transboundary_text: Any = "") -> str:
     value = _text(country_text)
+    folded = value.casefold()
+    # A catalog transboundary flag keeps the row in adjudication scope
+    # even when the country string alone reads as the target.
+    if _text(transboundary_text).upper() == "Y" and (
+            not value or folded == target or (target and target in folded)):
+        return "TRANSBOUNDARY"
     if not value:
         return "UNKNOWN_COUNTRY"
-    folded = value.casefold()
     if folded == target:
         return "TARGET_COUNTRY"
     # Mentions the target alongside other labels — kept for adjudication
@@ -195,7 +201,8 @@ def _record(row: dict[str, Any], source_version: str, target: str) -> dict[str, 
         },
         "date": date,
         "location": _location(row),
-        "candidate_class": _candidate_class(row.get("Country"), target),
+        "candidate_class": _candidate_class(row.get("Country"), target,
+                                            row.get("Transboundary")),
         "lake_identity": _lake_identity(row.get("GL_ID")),
         "evidence": {"references": _evidence_refs(row)},
         "episode": {
@@ -222,6 +229,23 @@ def build_crosswalk(csv_path: str | Path, source_version: str,
     # Every catalog row is retained — borderline country labels can never
     # silently remove a candidate.  OUTSIDE rows are reference-only.
     records = [_record(row, source_version, target) for row in rows]
+    # Source-data GF_ID collisions (real defect in v1.3.0: ids 738-741
+    # label unrelated events in different countries) must not drop rows.
+    # Keep every row, disambiguate the record key, and flag the defect.
+    seen: dict[str, int] = {}
+    collisions: list[str] = []
+    for rec in records:
+        sid = rec["source_record_id"]
+        seen[sid] = seen.get(sid, 0) + 1
+        if seen[sid] > 1:
+            rec["source_record_id"] = f"{sid}#{seen[sid]}"
+            rec["gf_id_collision"] = True
+            if sid not in collisions:
+                collisions.append(sid)
+    if collisions:
+        for rec in records:
+            if rec["source_record_id"].split("#")[0] in collisions:
+                rec.setdefault("gf_id_collision", True)
     ids = [r["source_record_id"] for r in records]
     if len(ids) != len(set(ids)):
         raise ValueError("source catalog contains duplicate GF_ID values")
@@ -271,6 +295,8 @@ def build_crosswalk(csv_path: str | Path, source_version: str,
             "n_post_1979_rows_with_source_lake_id": len(post_with_id),
             "n_unique_post_1979_source_lake_ids": len(unique_ids),
             "post_1979_source_lake_ids": unique_ids,
+            "n_gf_id_collisions": len(collisions),
+            "gf_id_collisions": collisions,
             "n_unreviewed": len(records),
             "n_analysis_eligible": 0,
             "n_independent_episodes": 0,

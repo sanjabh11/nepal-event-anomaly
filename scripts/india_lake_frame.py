@@ -183,10 +183,10 @@ def _read_rows(path: Path) -> list[dict[str, Any]]:
 
 
 def _record(row: dict[str, Any], source_name: str, source_version: str) -> dict[str, Any]:
-    source_id = _first_text(row, ("source_record_id", "lake_id", "id"))
+    source_id = _first_text(row, ("source_record_id", "lake_id", "id", "glacial_lake_id_compact", "glacial_lake_id"))
     if not source_id:
         raise ValueError("lake inventory row is missing source_record_id/lake_id")
-    lake_id = _first_text(row, ("lake_id", "id", "source_record_id"))
+    lake_id = _first_text(row, ("lake_id", "id", "source_record_id", "glacial_lake_id"))
     lat = _float(_first_text(row, ("latitude", "lat")), "latitude")
     lon = _float(_first_text(row, ("longitude", "lon")), "longitude")
     if not -90 <= lat <= 90 or not -180 <= lon <= 180:
@@ -257,8 +257,8 @@ def _record(row: dict[str, Any], source_name: str, source_version: str) -> dict[
         "location": {"latitude": lat, "longitude": lon,
                       "territory_status": territory_status,
                       "state": _text(row.get("state")),
-                      "basin": _text(row.get("basin"))},
-        "attributes": {"lake_type": _text(row.get("lake_type")),
+                      "basin": _text(row.get("basin") or row.get("subbasin"))},
+        "attributes": {"lake_type": _text(row.get("lake_type") or row.get("gl_type")),
                        "area_ha": _text(row.get("area_ha")),
                        "dam_type": _text(row.get("dam_type")),
                        "glacier_connected": _text(row.get("glacier_connected"))},

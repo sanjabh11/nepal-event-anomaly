@@ -20,7 +20,7 @@ FIELDS = [
     "GF_ID", "Year_approx", "Year_exact", "Month", "Day", "Lake_name",
     "Glacier_name", "GL_ID", "Country", "Province", "River_Basin",
     "Lat_lake", "Lon_lake", "Driver_lake", "Driver_GLOF", "Mechanism",
-    "Repeat", "Sat_evidence", "Ref_scientific", "Ref_scientific_full", "Ref_other",
+    "Repeat", "Sat_evidence", "Transboundary", "Ref_scientific", "Ref_scientific_full", "Ref_other",
 ]
 
 GEOGRAPHY = {"boundary_source": "test-boundary", "boundary_version": "v1",
@@ -196,13 +196,20 @@ def test_crosswalk_rejects_implicit_episode_or_eligibility(tmp_path):
     assert any("cannot silently" in p for p in ec.validate_crosswalk(doc))
 
 
-def test_crosswalk_rejects_duplicate_source_ids(tmp_path):
+def test_crosswalk_retains_and_flags_duplicate_gf_ids(tmp_path):
+    # Real HMAGLOFDB v1.3.0 defect: GF_ID 738-741 label unrelated events;
+    # rows must be retained with the collision flagged, not dropped.
     source = tmp_path / "HMAGLOFDB.csv"
     _write_catalog(source)
     text = source.read_text(encoding="cp1252").replace("\n2,", "\n1,")
     source.write_text(text, encoding="cp1252")
-    with pytest.raises(ValueError, match="duplicate GF_ID"):
-        ec.build_crosswalk(source, "test-1.0")
+    doc = ec.build_crosswalk(source, "test-1.0")
+    assert doc["summary"]["n_total_rows"] == 4
+    assert doc["summary"]["n_gf_id_collisions"] == 1
+    ids = [r["source_record_id"] for r in doc["records"]]
+    assert len(ids) == len(set(ids))
+    flagged = [r for r in doc["records"] if r.get("gf_id_collision")]
+    assert len(flagged) == 2
 
 
 def test_adjudication_intake_is_append_only_and_digest_bound(tmp_path):
