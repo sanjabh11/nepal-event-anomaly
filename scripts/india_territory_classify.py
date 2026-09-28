@@ -28,6 +28,7 @@ import argparse
 import hashlib
 import json
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -36,6 +37,35 @@ from p5_safe_io import write_once_json, write_once_sidecar  # noqa: E402
 import validate_india_source_intake as intake  # noqa: E402
 
 SCHEMA = "INDIA_LAKE_TERRITORY_V1"
+PROXIMITY_THRESHOLD_M = 1000.0  # ~10x the 3-decimal coordinate step
+CLAIM_SCOPE = "research_only_phase0_spatial_relation"
+CLAIM_MEANING = (
+    "Counts are ATLAS ROW positions relative to the selected source "
+    "polygons. They are not canonical lakes, not verified Indian "
+    "territory, and not administration claims.")
+RECORD_BASIS = (
+    "soi_claim_mirror_polygon + disputed overlays; "
+    "spatial relation only, not administration")
+PROVENANCE = (
+    "SoI external boundary via DataMeet mirror "
+    "(india-geodata repo, CC BY 4.0); derivative "
+    "of official product, unverified against "
+    "official SoI bytes; SoI portal download "
+    "failed repeatedly")
+OVERLAY_SOURCES = {
+    "pok": "pok-alhasan.geojson (DataMeet, CC BY 4.0)",
+    "shaksgam": "shaksgam-ne.geojson (Natural Earth de-facto view)",
+    "lsib_disputed": "india-disputed-lsib.geojson (US State Dept LSIB; lines are not de facto control)",
+}
+CRS_NOTE = ".prj declares EPSG:3857; classification reprojects to EPSG:4326"
+PROXIMITY_RULE = {
+    "threshold_m": PROXIMITY_THRESHOLD_M,
+    "meaning": ("rows within the threshold are flagged; "
+                "three-decimal coordinates (~111m) plus 1:1M "
+                "generalisation mean near-boundary placement is "
+                "uncertain and must be resolved before any "
+                "territory decision"),
+}
 EVIDENCE_ROOT = Path("/Users/sanjayb/nepal-event-anomaly-evidence")
 BOUNDARY_DIRNAME = "india-phase0-source-intake/territory-boundary"
 
@@ -50,7 +80,19 @@ OVERLAY_FILES = {
 }
 STATES = ("INSIDE_SOI_CLAIM", "INSIDE_DISPUTED_OVERLAY",
           "OUTSIDE_SOI_CLAIM", "UNASSESSED")
-PROXIMITY_THRESHOLD_M = 1000.0  # ~10x the 3-decimal coordinate step
+ARTIFACT_FIELDS = {
+    "schema", "version", "claim_scope", "meaning", "sources", "states",
+    "proximity_rule", "records", "summary", "authority",
+}
+RECORD_FIELDS = {
+    "source_record_id", "source_lake_id", "basin", "latitude", "longitude",
+    "spatial_relation", "overlay_membership", "proximity_to_boundary_m_lt",
+    "basis",
+}
+SUMMARY_FIELDS = {
+    "atlas_rows", "inside_soi_claim_rows", "inside_disputed_overlay_rows",
+    "outside_soi_claim_rows", "unassessed_rows", "proximity_flagged_rows",
+}
 
 
 def sha256_file(path) -> str:
@@ -62,6 +104,22 @@ def _valid_coord(lat, lon) -> bool:
             and not isinstance(lat, bool) and not isinstance(lon, bool)
             and math.isfinite(lat) and math.isfinite(lon)
             and -90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0)
+
+
+def _coordinate_component_is_serializable(value, lower, upper) -> bool:
+    return (value is None or
+            (isinstance(value, (int, float)) and not isinstance(value, bool)
+             and math.isfinite(value) and lower <= value <= upper))
+
+
+def _require_polygonal_geometries(geometries, label: str) -> None:
+    if any(geom is None or geom.is_empty or not geom.is_valid
+           for geom in geometries):
+        raise ValueError(f"{label} contains missing or invalid geometries")
+    if not set(geom.geom_type for geom in geometries).issubset(
+            {"Polygon", "MultiPolygon"}):
+        raise ValueError(
+            f"{label} must be polygonal; lines are never buffered implicitly")
 
 
 def load_geometries(boundary_dir: Path):
@@ -76,6 +134,7 @@ def load_geometries(boundary_dir: Path):
             f"boundary CRS must be EPSG:3857 as declared in .prj; got {soi.crs}")
     if len(soi) == 0:
         raise ValueError("boundary shapefile is empty")
+    _require_polygonal_geometries(soi.geometry, "boundary")
     soi84 = soi.to_crs(4326).union_all()
     if not soi84.is_valid or soi84.is_empty:
         raise ValueError("boundary union geometry invalid or empty")
@@ -84,6 +143,9 @@ def load_geometries(boundary_dir: Path):
         g = gpd.read_file(boundary_dir / fname)
         if len(g) == 0:
             raise ValueError(f"overlay {fname} empty")
+        if g.crs is None:
+            raise ValueError(f"overlay {fname} has no declared CRS")
+        _require_polygonal_geometries(g.geometry, f"overlay {fname}")
         u = g.to_crs(4326).union_all()
         if not u.is_valid or u.is_empty:
             raise ValueError(f"overlay {fname} geometry invalid")
@@ -129,8 +191,7 @@ def classify(frame: dict, soi_union, overlays: dict) -> list[dict]:
             "overlay_membership": membership,
             "proximity_to_boundary_m_lt": PROXIMITY_THRESHOLD_M
                 if proximity else None,
-            "basis": ("soi_claim_mirror_polygon + disputed overlays; "
-                      "spatial relation only, not administration"),
+            "basis": RECORD_BASIS,
         })
     return records
 
@@ -160,37 +221,19 @@ def build_artifact(frame_path, boundary_dir, out_path):
         prox += 1 if rec["proximity_to_boundary_m_lt"] else 0
     artifact = {
         "schema": SCHEMA, "version": 1,
-        "claim_scope": "research_only_phase0_spatial_relation",
-        "meaning": ("Counts are ATLAS ROW positions relative to the "
-                    "selected source polygons. They are not canonical "
-                    "lakes, not verified Indian territory, and not "
-                    "administration claims."),
+        "claim_scope": CLAIM_SCOPE,
+        "meaning": CLAIM_MEANING,
         "sources": {
             "lake_frame": frame_path.name,
             "lake_frame_sha256": sha256_file(frame_path),
             "boundary_dir": BOUNDARY_DIRNAME,
             "component_digests": component_manifest(boundary_dir),
-            "provenance": ("SoI external boundary via DataMeet mirror "
-                           "(india-geodata repo, CC BY 4.0); derivative "
-                           "of official product, unverified against "
-                           "official SoI bytes; SoI portal download "
-                           "failed repeatedly"),
-            "overlay_sources": {
-                "pok": "pok-alhasan.geojson (DataMeet, CC BY 4.0)",
-                "shaksgam": "shaksgam-ne.geojson (Natural Earth de-facto view)",
-                "lsib_disputed": "india-disputed-lsib.geojson (US State Dept LSIB; lines are not de facto control)"},
-            "crs_note": (".prj declares EPSG:3857; classification "
-                         "reprojects to EPSG:4326"),
+            "provenance": PROVENANCE,
+            "overlay_sources": OVERLAY_SOURCES,
+            "crs_note": CRS_NOTE,
         },
         "states": STATES,
-        "proximity_rule": {
-            "threshold_m": PROXIMITY_THRESHOLD_M,
-            "meaning": ("rows within the threshold are flagged; "
-                        "three-decimal coordinates (~111m) plus 1:1M "
-                        "generalisation mean near-boundary placement is "
-                        "uncertain and must be resolved before any "
-                        "territory decision"),
-        },
+        "proximity_rule": PROXIMITY_RULE,
         "records": records,
         "summary": {
             "atlas_rows": len(records),
@@ -213,16 +256,37 @@ def validate_artifact(doc: dict) -> list[str]:
     problems = []
     if not isinstance(doc, dict) or doc.get("schema") != SCHEMA:
         return ["unexpected schema"]
+    if set(doc) != ARTIFACT_FIELDS:
+        problems.append("artifact fields must match the source-relative contract")
+    if (not isinstance(doc.get("version"), int)
+            or isinstance(doc.get("version"), bool)
+            or doc.get("version") != 1):
+        problems.append("version must be 1 for INDIA_LAKE_TERRITORY_V1")
+    if doc.get("claim_scope") != CLAIM_SCOPE:
+        problems.append("claim_scope must remain research-only spatial relation")
+    if doc.get("meaning") != CLAIM_MEANING:
+        problems.append("meaning must preserve the non-territorial claim boundary")
+    if doc.get("states") != list(STATES):
+        problems.append("states must exactly match the source-relative vocabulary")
+    if doc.get("proximity_rule") != PROXIMITY_RULE:
+        problems.append("proximity_rule differs from the frozen V1 contract")
     recs = doc.get("records")
     if not isinstance(recs, list) or not recs:
         return ["records must be a non-empty list"]
     seen_ids = set()
     live = {s: 0 for s in STATES}
+    proximity_count = 0
     for i, rec in enumerate(recs):
+        if not isinstance(rec, dict):
+            problems.append(f"records[{i}] must be an object")
+            continue
+        if set(rec) != RECORD_FIELDS:
+            problems.append(f"records[{i}] fields must match the source-relative contract")
         sid = rec.get("source_record_id")
-        if not isinstance(sid, str) or sid in seen_ids:
+        if not isinstance(sid, str) or not sid or sid in seen_ids:
             problems.append(f"records[{i}] duplicate/missing source_record_id")
-        seen_ids.add(sid)
+        else:
+            seen_ids.add(sid)
         st = rec.get("spatial_relation")
         if st not in STATES:
             problems.append(f"records[{i}] unknown spatial_relation {st!r}")
@@ -232,19 +296,55 @@ def validate_artifact(doc: dict) -> list[str]:
         if not isinstance(om, dict) or sorted(om) != sorted(OVERLAY_FILES):
             problems.append(f"records[{i}] overlay_membership must cover "
                             f"{sorted(OVERLAY_FILES)}")
-        if st == "INSIDE_DISPUTED_OVERLAY" and not any(
-                isinstance(v, bool) and v for v in (om or {}).values()):
+            om_values = {}
+        elif any(not isinstance(v, bool) for v in om.values()):
+            problems.append(f"records[{i}] overlay_membership values must be booleans")
+            om_values = {k: v for k, v in om.items() if isinstance(v, bool)}
+        else:
+            om_values = om
+        if st == "INSIDE_DISPUTED_OVERLAY" and not any(om_values.values()):
             problems.append(
                 f"records[{i}] INSIDE_DISPUTED_OVERLAY with no overlay true")
-        if st == "INSIDE_SOI_CLAIM" and any((om or {}).values()):
+        if st == "INSIDE_SOI_CLAIM" and any(om_values.values()):
             problems.append(
                 f"records[{i}] INSIDE_SOI_CLAIM but overlay membership true")
-        if not _valid_coord(rec.get("latitude"), rec.get("longitude")) \
-                and st != "UNASSESSED":
+        valid_coord = _valid_coord(rec.get("latitude"), rec.get("longitude"))
+        if (not _coordinate_component_is_serializable(
+                    rec.get("latitude"), -90.0, 90.0)
+                or not _coordinate_component_is_serializable(
+                    rec.get("longitude"), -180.0, 180.0)):
+            problems.append(f"records[{i}] coordinates must be finite values or null")
+        if not valid_coord and st != "UNASSESSED":
             problems.append(f"records[{i}] invalid coords must be UNASSESSED")
-    s = doc.get("summary", {})
+        if valid_coord and st == "UNASSESSED":
+            problems.append(f"records[{i}] valid coords cannot be UNASSESSED")
+        if rec.get("basis") != RECORD_BASIS:
+            problems.append(f"records[{i}] basis must remain explicitly non-territorial")
+        if rec.get("source_lake_id") is not None and not isinstance(
+                rec.get("source_lake_id"), str):
+            problems.append(f"records[{i}] source_lake_id must be string or null")
+        if rec.get("basin") is not None and not isinstance(rec.get("basin"), str):
+            problems.append(f"records[{i}] basin must be string or null")
+        proximity = rec.get("proximity_to_boundary_m_lt")
+        if proximity is not None:
+            if (isinstance(proximity, bool)
+                    or not isinstance(proximity, (int, float))
+                    or proximity != PROXIMITY_THRESHOLD_M):
+                problems.append(f"records[{i}] has invalid proximity flag")
+            elif not valid_coord or st in {"OUTSIDE_SOI_CLAIM", "UNASSESSED"}:
+                problems.append(f"records[{i}] proximity flag is invalid for its state")
+            else:
+                proximity_count += 1
+    s = doc.get("summary")
+    if not isinstance(s, dict) or set(s) != SUMMARY_FIELDS:
+        problems.append("summary fields must exactly match the V1 contract")
+        s = s if isinstance(s, dict) else {}
     if s.get("atlas_rows") != len(recs):
         problems.append("summary.atlas_rows != len(records)")
+    for key in SUMMARY_FIELDS:
+        value = s.get(key)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            problems.append(f"summary.{key} must be a non-negative integer")
     for key, state in (("inside_soi_claim_rows", "INSIDE_SOI_CLAIM"),
                        ("inside_disputed_overlay_rows",
                         "INSIDE_DISPUTED_OVERLAY"),
@@ -252,11 +352,32 @@ def validate_artifact(doc: dict) -> list[str]:
                        ("unassessed_rows", "UNASSESSED")):
         if s.get(key) != live[state]:
             problems.append(f"summary.{key} != counted {state}")
+    if s.get("proximity_flagged_rows") != proximity_count:
+        problems.append("summary.proximity_flagged_rows != counted proximity flags")
     if doc.get("authority") != dict(intake.AUTHORITY_FLAGS):
         problems.append("authority flags must all be present and false")
     src = doc.get("sources", {})
+    if not isinstance(src, dict):
+        problems.append("sources must be an object")
+        src = {}
+    expected_source_fields = {
+        "lake_frame", "lake_frame_sha256", "boundary_dir", "component_digests",
+        "provenance", "overlay_sources", "crs_note",
+    }
+    if set(src) != expected_source_fields:
+        problems.append("sources fields must exactly match the V1 contract")
+    if src.get("boundary_dir") != BOUNDARY_DIRNAME:
+        problems.append("sources.boundary_dir differs from the governed location")
+    if src.get("provenance") != PROVENANCE:
+        problems.append("sources.provenance must retain the derivative disclosure")
+    if src.get("overlay_sources") != OVERLAY_SOURCES:
+        problems.append("sources.overlay_sources differ from the frozen source labels")
+    if src.get("crs_note") != CRS_NOTE:
+        problems.append("sources.crs_note differs from the frozen CRS disclosure")
+    if not isinstance(src.get("lake_frame"), str) or not src["lake_frame"]:
+        problems.append("sources.lake_frame must be a non-empty filename")
     if not isinstance(src.get("lake_frame_sha256"), str) \
-            or len(src["lake_frame_sha256"]) != 64:
+            or not re.fullmatch(r"[0-9a-f]{64}", src["lake_frame_sha256"]):
         problems.append("sources.lake_frame_sha256 must be a sha256")
     cd = src.get("component_digests")
     expected = set(SHP_COMPONENTS) | set(OVERLAY_FILES.values())
@@ -264,9 +385,13 @@ def validate_artifact(doc: dict) -> list[str]:
         problems.append("component_digests must bind all 11 components")
     else:
         for name, ent in cd.items():
-            if not isinstance(ent.get("sha256"), str) \
-                    or len(ent["sha256"]) != 64 \
-                    or not isinstance(ent.get("size_bytes"), int):
+            if (not isinstance(ent, dict)
+                    or set(ent) != {"sha256", "size_bytes"}
+                    or not isinstance(ent.get("sha256"), str)
+                    or not re.fullmatch(r"[0-9a-f]{64}", ent["sha256"])
+                    or not isinstance(ent.get("size_bytes"), int)
+                    or isinstance(ent.get("size_bytes"), bool)
+                    or ent["size_bytes"] <= 0):
                 problems.append(f"component digest malformed: {name}")
     return problems
 
@@ -279,15 +404,22 @@ def verify_artifact(artifact_path: str | Path,
     frame digest, or record drift."""
     problems = []
     artifact_path = Path(artifact_path)
-    doc = json.loads(artifact_path.read_text())
+    try:
+        doc = json.loads(artifact_path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        return [f"artifact unreadable: {exc}"]
     problems.extend(validate_artifact(doc))
     if problems:
         return problems
     sidecar = Path(str(artifact_path) + ".sha256")
     if not sidecar.is_file():
         problems.append("sidecar missing")
-    elif sha256_file(artifact_path) != sidecar.read_text().split()[0]:
-        problems.append("sidecar digest mismatch")
+    else:
+        sidecar_parts = sidecar.read_text().split()
+        if (len(sidecar_parts) != 2
+                or sidecar_parts[0] != sha256_file(artifact_path)
+                or sidecar_parts[1] != artifact_path.name):
+            problems.append("sidecar digest or filename mismatch")
     src = doc["sources"]
     frame_rel = src["lake_frame"]
     frame_path = artifact_path.parent / frame_rel
@@ -319,11 +451,23 @@ def verify_artifact(artifact_path: str | Path,
     soi, overlays = load_geometries(bdir)
     recomputed = classify(frame, soi, overlays)
     for i, (a, b) in enumerate(zip(doc["records"], recomputed)):
-        if (a["spatial_relation"] != b["spatial_relation"]
-                or a["overlay_membership"] != b["overlay_membership"]
-                or a.get("latitude") != b.get("latitude")
-                or a.get("longitude") != b.get("longitude")):
+        if a != b:
             problems.append(f"records[{i}] recomputation mismatch")
+    counts = {s: 0 for s in STATES}
+    proximity_count = 0
+    for rec in recomputed:
+        counts[rec["spatial_relation"]] += 1
+        proximity_count += int(rec["proximity_to_boundary_m_lt"] is not None)
+    expected_summary = {
+        "atlas_rows": len(recomputed),
+        "inside_soi_claim_rows": counts["INSIDE_SOI_CLAIM"],
+        "inside_disputed_overlay_rows": counts["INSIDE_DISPUTED_OVERLAY"],
+        "outside_soi_claim_rows": counts["OUTSIDE_SOI_CLAIM"],
+        "unassessed_rows": counts["UNASSESSED"],
+        "proximity_flagged_rows": proximity_count,
+    }
+    if doc["summary"] != expected_summary:
+        problems.append("summary recomputation mismatch")
     return problems
 
 

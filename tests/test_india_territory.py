@@ -22,19 +22,28 @@ _PRESENT = _BOUNDARY.is_dir() and _ARTIFACT.is_file()
 
 def _doc_template():
     return {"schema": tc.SCHEMA, "version": 1,
+            "claim_scope": tc.CLAIM_SCOPE,
+            "meaning": tc.CLAIM_MEANING,
+            "states": list(tc.STATES),
+            "proximity_rule": tc.PROXIMITY_RULE,
             "records": [], "summary": {},
             "sources": {"lake_frame": "x", "lake_frame_sha256": "0" * 64,
-                        "component_digests": {}},
+                        "boundary_dir": tc.BOUNDARY_DIRNAME,
+                        "component_digests": {},
+                        "provenance": tc.PROVENANCE,
+                        "overlay_sources": tc.OVERLAY_SOURCES,
+                        "crs_note": tc.CRS_NOTE},
             "authority": dict(intake.AUTHORITY_FLAGS)}
 
 
 def _record(sid="a", lat=5.0, lon=5.0, state="INSIDE_SOI_CLAIM",
             membership=None):
-    return {"source_record_id": sid, "latitude": lat, "longitude": lon,
+    return {"source_record_id": sid, "source_lake_id": f"lake-{sid}",
+            "basin": "Test Basin", "latitude": lat, "longitude": lon,
             "spatial_relation": state,
             "overlay_membership": membership or
             {k: False for k in tc.OVERLAY_FILES},
-            "proximity_to_boundary_m_lt": None, "basis": "t"}
+            "proximity_to_boundary_m_lt": None, "basis": tc.RECORD_BASIS}
 
 
 def _summary(recs):
@@ -46,7 +55,8 @@ def _summary(recs):
             "inside_disputed_overlay_rows": live["INSIDE_DISPUTED_OVERLAY"],
             "outside_soi_claim_rows": live["OUTSIDE_SOI_CLAIM"],
             "unassessed_rows": live["UNASSESSED"],
-            "proximity_flagged_rows": 0}
+            "proximity_flagged_rows": sum(
+                r.get("proximity_to_boundary_m_lt") is not None for r in recs)}
 
 
 def _full_doc(recs):
@@ -57,6 +67,12 @@ def _full_doc(recs):
         n: {"sha256": "0" * 64, "size_bytes": 1}
         for n in list(tc.SHP_COMPONENTS) + list(tc.OVERLAY_FILES.values())}
     return d
+
+
+def _write_sidecar(path):
+    import hashlib
+    path.with_suffix(path.suffix + ".sha256").write_text(
+        f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n")
 
 
 def test_classification_partitions_synthetic_geometry():
@@ -134,6 +150,115 @@ def test_bad_authority_rejected():
     doc = _full_doc([_record()])
     doc["authority"]["forecast_authorized"] = True
     assert tc.validate_artifact(doc)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("claim_scope", "administrative_territory"),
+    ("meaning", "These are verified Indian territories."),
+    ("states", ["IN_COUNTRY", "OUTSIDE"]),
+    ("version", 2),
+])
+def test_source_relative_claim_contract_cannot_be_promoted(field, value):
+    doc = _full_doc([_record()])
+    doc[field] = value
+    assert any("claim" in problem or "source-relative" in problem
+               or "states" in problem or "version" in problem
+               for problem in tc.validate_artifact(doc))
+
+
+def test_territory_decision_fields_cannot_be_added_to_artifact_or_row():
+    doc = _full_doc([_record()])
+    doc["territory_status"] = "IN_COUNTRY"
+    assert any("artifact fields" in problem
+               for problem in tc.validate_artifact(doc))
+    doc = _full_doc([_record()])
+    doc["records"][0]["territory_status"] = "IN_COUNTRY"
+    assert any("record" in problem and "fields" in problem
+               for problem in tc.validate_artifact(doc))
+
+
+def test_non_boolean_overlay_membership_fails_without_crashing():
+    doc = _full_doc([_record(membership={
+        "pok": "false", "shaksgam": False, "lsib_disputed": False})])
+    assert any("values must be booleans" in problem
+               for problem in tc.validate_artifact(doc))
+
+
+def test_proximity_count_is_recomputed_structurally():
+    doc = _full_doc([_record()])
+    doc["summary"]["proximity_flagged_rows"] = 1
+    assert any("proximity_flagged_rows" in problem
+               for problem in tc.validate_artifact(doc))
+
+
+@pytest.mark.parametrize("field,value", [
+    ("latitude", float("nan")),
+    ("longitude", float("inf")),
+    ("latitude", 91.0),
+])
+def test_nonfinite_or_out_of_range_record_coordinates_rejected(field, value):
+    doc = _full_doc([_record(state="UNASSESSED", lat=None, lon=None)])
+    doc["records"][0][field] = value
+    assert any("coordinates must be finite" in problem
+               for problem in tc.validate_artifact(doc))
+
+
+def test_basis_cannot_claim_administrative_determination():
+    doc = _full_doc([_record()])
+    doc["records"][0]["basis"] = "administrative determination"
+    assert any("basis" in problem for problem in tc.validate_artifact(doc))
+
+
+@pytest.mark.parametrize("field,value", [
+    ("source_lake_id", "forged-lake"),
+    ("basin", "forged-basin"),
+    ("proximity_to_boundary_m_lt", 1000.0),
+])
+def test_verify_recomputes_all_record_fields(tmp_path, monkeypatch, field, value):
+    from shapely.geometry import box
+
+    boundary_dir = tmp_path / "boundary"
+    boundary_dir.mkdir()
+    for name in list(tc.SHP_COMPONENTS) + list(tc.OVERLAY_FILES.values()):
+        (boundary_dir / name).write_bytes(name.encode("utf-8"))
+    frame = {"records": [{
+        "source_record_id": "record-1",
+        "lake": {"source_lake_id": "lake-1"},
+        "location": {"basin": "Basin A", "latitude": 5.0,
+                     "longitude": 5.0},
+    }]}
+    frame_path = tmp_path / "frame.json"
+    frame_path.write_text(json.dumps(frame))
+    soi = box(0, 0, 10, 10)
+    overlays = {name: box(20, 20, 21, 21) for name in tc.OVERLAY_FILES}
+    monkeypatch.setattr(tc, "load_geometries", lambda _path: (soi, overlays))
+    records = tc.classify(frame, soi, overlays)
+    doc = _full_doc(records)
+    doc["sources"]["lake_frame"] = frame_path.name
+    doc["sources"]["lake_frame_sha256"] = tc.sha256_file(frame_path)
+    doc["sources"]["component_digests"] = tc.component_manifest(boundary_dir)
+    if field == "proximity_to_boundary_m_lt":
+        doc["summary"]["proximity_flagged_rows"] = 1
+    doc["summary"] = {
+        "atlas_rows": 1, "inside_soi_claim_rows": 1,
+        "inside_disputed_overlay_rows": 0, "outside_soi_claim_rows": 0,
+        "unassessed_rows": 0, "proximity_flagged_rows": 0,
+    }
+    artifact_path = tmp_path / "territory.json"
+    doc["records"][0][field] = value
+    artifact_path.write_text(json.dumps(doc))
+    _write_sidecar(artifact_path)
+
+    problems = tc.verify_artifact(artifact_path, boundary_dir)
+    assert problems
+    assert any("recomputation mismatch" in problem for problem in problems)
+
+
+def test_geometry_contract_rejects_line_geometry():
+    from shapely.geometry import LineString
+    with pytest.raises(ValueError, match="polygonal"):
+        tc._require_polygonal_geometries(
+            [LineString([(0, 0), (1, 1)])], "synthetic overlay")
 
 
 @pytest.mark.skipif(not _PRESENT, reason="external evidence root unavailable")
