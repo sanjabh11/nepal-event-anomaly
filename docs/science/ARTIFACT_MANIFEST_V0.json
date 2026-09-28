@@ -1345,9 +1345,9 @@
   "test_results": {
     "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
     "claim_scan": "clean on all governed files",
-    "collection_guard": "repo-wide collection == tests/ (4364 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
+    "collection_guard": "repo-wide collection == tests/ (4368 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
     "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
-    "full_suite_venv": "Pending R16 at 4364 collected on this exact manifest: expected 4361 passed, 3 skipped, 0 failed (4364 collected), exit 0. R15 green 4361/3/0 at repository head 02077fc is sealed evidence; the manifest-record update itself requires one final exact-HEAD rerun per the receipt/manifest fixpoint. Diagnostics retained: R7, R9, R12 (disk-pressure), R14 (record-format). Receipts R1-R15 are append-only dated evidence.",
+    "full_suite_venv": "Pending R17 at 4368 collected on this exact manifest: expected 4365 passed, 3 skipped, 0 failed (4368 collected), exit 0. R16 green 4361/3/0 at repository head 72e8f3f is sealed evidence for the source-reconciliation batch; the territory batch adds 4 contract tests. Diagnostics retained: R7, R9, R12 (disk-pressure), R14 (record-format). Receipts R1-R16 are append-only dated evidence.",
     "india_nrsc_atlas_extraction": "NRSC atlas Tables 68/69 parsed to row-level records: 2433 + 299 rows, serial-set completeness enforced, printed-serial duplicates (S.No 2001/2002) recorded as anomalies; deterministic replay verified; extraction sealed under the external evidence root",
     "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
     "p5_a2_status_consistency": "local guard passed; CI guard configured \u2014 current CANDIDATE_ONLY / UNSUPERVISED_STRUCTURE_NOT_STABLE result, false authority flags, and release metadata aligned",
