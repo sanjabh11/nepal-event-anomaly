@@ -1,6 +1,6 @@
 {
  "baseline_head": "54aa612f7d478082716dfe5d0bca7d92d62d493b",
- "content_head": "5af6dd975a0adb1bfa1b0aa09ecc55a468c277e7",
+ "content_head": "1d894be1ee8625cde157fd0064110dae78403ee7",
  "files": [
   {
    "relpath": ".github/workflows/p5-verification.yml",
@@ -110,6 +110,16 @@
   {
    "relpath": "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V0.json.sha256",
    "sha256": "e1d8e0215d5ad09a394285892cedb6bf491eca0904fc1f5da5e8cf3a1fc499d7",
+   "size_bytes": 101
+  },
+  {
+   "relpath": "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V1.json",
+   "sha256": "ea1cb21ec38be82c2832cafc02757f84cd25fef24293959b8643bf96d7c0c498",
+   "size_bytes": 5893
+  },
+  {
+   "relpath": "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V1.json.sha256",
+   "sha256": "33aeef1927c5d515ea38b164dfe50adc7219febedd039439e8fa2ced22252953",
    "size_bytes": 101
   },
   {
@@ -599,8 +609,8 @@
   },
   {
    "relpath": "scripts/india_event_crosswalk.py",
-   "sha256": "855b632341bc7c350cd511184c81ece2cea8841e1e8c19195da058c3bef367ac",
-   "size_bytes": 17884
+   "sha256": "657c345a49696cfb0715186c072f4daa98b90bdd364f1481d60fa876fbdba8c9",
+   "size_bytes": 19150
   },
   {
    "relpath": "scripts/india_evidence_register.py",
@@ -619,8 +629,13 @@
   },
   {
    "relpath": "scripts/india_lake_frame.py",
-   "sha256": "8af55a2f33fd73acc4f00ea29bc51f618d4ea2cc1bfd25821df775c7e14cb8fa",
-   "size_bytes": 22966
+   "sha256": "0c2eede75b36ab6187b0e39276ae3572632abcb7360029414067de59470fd0a3",
+   "size_bytes": 23076
+  },
+  {
+   "relpath": "scripts/india_nrsc_atlas_extract.py",
+   "sha256": "808458d3799ebf06f7d46164a4640252d8e910810583461c18ab73ab101bba58",
+   "size_bytes": 7247
   },
   {
    "relpath": "scripts/india_source_registry.py",
@@ -684,8 +699,8 @@
   },
   {
    "relpath": "scripts/validate_india_source_intake.py",
-   "sha256": "0775d88378f25f7355ce9a9e094ea074d2a721a3a35103c057bc4dd445dc093b",
-   "size_bytes": 15279
+   "sha256": "690b7e46592821bb1826ae20d52952c895b0a753ebdcfc447e9b5346ca39f23c",
+   "size_bytes": 17262
   },
   {
    "relpath": "scripts/validate_nepal_science_gate_checklist.py",
@@ -813,9 +828,14 @@
    "size_bytes": 2264
   },
   {
+   "relpath": "tests/test_india_nrsc_extract.py",
+   "sha256": "89c46dd2eb20bbb7559ddcd00039f4fbbcc8c28eb115ab9d29c8a4fd5c4e1832",
+   "size_bytes": 4309
+  },
+  {
    "relpath": "tests/test_india_phase0.py",
-   "sha256": "0dbcc7c1c26c1ed34a95948bcad6e9635d0f425a9f42f598f55a2404dee67212",
-   "size_bytes": 33493
+   "sha256": "abc9996b78140af306467e929ceb10b95218f141f4703aa0b6e9221726989f8d",
+   "size_bytes": 35043
   },
   {
    "relpath": "tests/test_india_release_closure.py",
@@ -1135,7 +1155,7 @@
  ],
  "generated": "post-P5 phase-B/C bind \u2014 model re-execution proof (MODEL_REEXECUTED both lanes, digest-exact), preregistered promotion protocol, clean-room export + verification-ladder harness, owner-scoped Arm C amendment (retrieval deferred)",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "5af6dd975a0adb1bfa1b0aa09ecc55a468c277e7",
+ "manifest_commit": "1d894be1ee8625cde157fd0064110dae78403ee7",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -1145,7 +1165,7 @@
  "test_results": {
   "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
   "claim_scan": "clean on all governed files",
-  "collection_guard": "repo-wide collection == tests/ (4340 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
+  "collection_guard": "repo-wide collection == tests/ (4346 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
   "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
   "full_suite_venv": "Historical full suite at tested repository HEAD bfb44c36288fc1724397b353cbaddde8f8ebecdc: 4336 passed, 3 skipped, 1 failed, 101 warnings (4340 collected), exit 1; immutable diagnostic receipt docs/science/SUITE_RECEIPT_20260928_R5.json. The sole failure was test_recorded_suite_result_is_internally_consistent, which correctly detected that this manifest text still recorded the prior 4338 collection count after two closure-predecessor regression tests raised the live count to 4340. R5 is retained as a truthful failed diagnostic; prior receipts R1-R4 remain append-only.",
   "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
