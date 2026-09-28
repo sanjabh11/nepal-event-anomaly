@@ -197,6 +197,21 @@ def validate_adjudication(doc: dict[str, Any], crosswalk_doc: dict[str, Any],
         if adj.get("territory_status") not in REVIEWED_TERRITORY:
             problems.append(f"{sid}: reviewed territory_status must be "
                             "IN_COUNTRY, OUTSIDE, or UNCERTAIN")
+        if adj.get("territory_status") == "IN_COUNTRY":
+            ev = adj.get("territory_evidence")
+            ok = (isinstance(ev, dict)
+                  and isinstance(ev.get("artifact"), str)
+                  and isinstance(ev.get("artifact_sha256"), str)
+                  and len(ev["artifact_sha256"]) == 64
+                  and ev.get("decision_state") == "QUALIFIED"
+                  and ev.get("binding") == "sha256")
+            if not ok:
+                problems.append(
+                    f"{sid}: IN_COUNTRY territory requires a digest-bound "
+                    "territory_evidence decision (artifact, sha256, "
+                    "decision_state=QUALIFIED); a reviewer vote alone or a "
+                    "source-relative spatial relation cannot establish "
+                    "India-administered status")
         if adj.get("mechanism_certainty") not in MECHANISM_CERTAINTY:
             problems.append(f"{sid}: invalid mechanism_certainty")
         if (not isinstance(adj.get("evidence_citations"), list)

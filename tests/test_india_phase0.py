@@ -140,6 +140,12 @@ def _reviewed_decision(crosswalk_path: Path, crosswalk: dict,
             "reviewed_utc": "2026-09-27T00:00:00+00:00",
             "location_confirmed": eligible,
             "territory_status": territory,
+            "territory_evidence": (
+                {"artifact": "INDIA_LAKE_TERRITORY_QUALIFIED_V1.json",
+                 "artifact_sha256": "a" * 64,
+                 "decision_state": "QUALIFIED",
+                 "binding": "sha256"}
+                if territory == "IN_COUNTRY" else None),
             "mechanism": "moraine" if eligible else None,
             "mechanism_certainty": "CONFIRMED" if eligible else "UNKNOWN",
             "evidence_citations": [evidence],
@@ -571,9 +577,17 @@ def test_feasibility_gate_requires_identity_reconciliation(tmp_path):
     crosswalk, cw_path, _, reg_path = _paths(tmp_path, 3)
     inventory = _inventory(tmp_path, [
         {"source_record_id": "NRSC:1", "lake_id": "1",
-         "latitude": 30, "longitude": 80, "territory_status": "IN_COUNTRY"},
+         "latitude": 30, "longitude": 80, "territory_status": "IN_COUNTRY",
+         "territory_evidence": {
+             "artifact": "INDIA_LAKE_TERRITORY_QUALIFIED_V1.json",
+             "artifact_sha256": "a" * 64,
+             "decision_state": "QUALIFIED", "binding": "sha256"}},
         {"source_record_id": "CWC:1", "lake_id": "9",
-         "latitude": 31, "longitude": 79, "territory_status": "IN_COUNTRY"},
+         "latitude": 31, "longitude": 79, "territory_status": "IN_COUNTRY",
+         "territory_evidence": {
+             "artifact": "INDIA_LAKE_TERRITORY_QUALIFIED_V1.json",
+             "artifact_sha256": "a" * 64,
+             "decision_state": "QUALIFIED", "binding": "sha256"}},
     ])
     frame = lf.build_frame(inventory, "NRSC", "test-1")
     lf_path = _write_bound(tmp_path / "lf2.json", frame)

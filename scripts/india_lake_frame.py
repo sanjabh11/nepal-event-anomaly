@@ -256,6 +256,7 @@ def _record(row: dict[str, Any], source_name: str, source_version: str) -> dict[
                  "name": _text(row.get("lake_name"))},
         "location": {"latitude": lat, "longitude": lon,
                       "territory_status": territory_status,
+                      "territory_evidence": row.get("territory_evidence"),
                       "state": _text(row.get("state")),
                       "basin": _text(row.get("basin") or row.get("subbasin"))},
         "attributes": {"lake_type": _text(row.get("lake_type") or row.get("gl_type")),
@@ -419,6 +420,23 @@ def validate_frame(doc: dict[str, Any]) -> list[str]:
             problems.append(f"{sid}: location must be an object")
         elif location.get("territory_status") not in TERRITORY_STATUSES:
             problems.append(f"{sid}: invalid territory_status")
+        elif location.get("territory_status") == "IN_COUNTRY":
+            # Fail-closed: an India-administered claim requires a typed,
+            # digest-bound territory decision whose artifact declares the
+            # boundary qualified for administration, not merely a
+            # source-relative spatial relation.
+            ev = location.get("territory_evidence")
+            ok = (isinstance(ev, dict)
+                  and isinstance(ev.get("artifact"), str)
+                  and isinstance(ev.get("artifact_sha256"), str)
+                  and len(ev["artifact_sha256"]) == 64
+                  and ev.get("decision_state") == "QUALIFIED"
+                  and ev.get("binding") == "sha256")
+            if not ok:
+                problems.append(
+                    f"{sid}: IN_COUNTRY requires a digest-bound "
+                    "territory_evidence decision (artifact, sha256, "
+                    "decision_state=QUALIFIED)")
         lake = record.get("lake", {})
         if not isinstance(lake, dict):
             problems.append(f"{sid}: lake must be an object")
