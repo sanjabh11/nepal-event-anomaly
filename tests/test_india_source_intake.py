@@ -200,3 +200,103 @@ def test_intake_rejects_same_bytes_from_unrecorded_path(tmp_path):
         intake.validate_intake(
             fixture["packet"], fixture["supplement"], fixture["registry"],
             fixture["receipt"], alternate)
+
+
+def _v2_fixture(tmp_path: Path) -> dict:
+    """Hermetic V1->V2 chain: predecessor packet bytes + extraction
+    artifact + sidecar, all inside tmp_path."""
+    fixture = _fixture(tmp_path)
+    evidence = fixture["payload"].parent
+    packet_doc = fixture["packet_doc"]
+    # The supplement binds the original V0 packet bytes; the fixture's
+    # V0-named file must keep them, so write the chain as separate files.
+    v0_bytes = fixture["packet"].read_bytes()
+    v1_path = tmp_path / "INDIA_PHASE0_SOURCE_INTAKE_V1.json"
+    _write_json(v1_path, dict(packet_doc, schema="INDIA_PHASE0_SOURCE_INTAKE_V1",
+                            version=1))
+    v2_path = tmp_path / "INDIA_PHASE0_SOURCE_INTAKE_V2.json"
+    fixture["packet"] = v2_path
+    nrsc = next(s for s in packet_doc["sources"] if s["id"] == "NRSC_GLA_IHR")
+    extraction = {
+        "schema": "NRSC_ATLAS_TABLE_EXTRACTION_V0",
+        "extraction": {
+            "source_pdf_sha256": nrsc["payload_sha256"],
+            "tables": {"table_68_ge10ha": 2433, "table_69_ge50ha": 299},
+            "anomalies": [{"kind": "PRINTED_SERIAL_DUPLICATE",
+                           "serials": [2001, 2002]}],
+        },
+        "records": [],
+    }
+    art_path = evidence / "NRSC_GLA_IHR_TABLE_EXTRACTION_V0.json"
+    _write_json(art_path, extraction)
+    _write_sidecar(art_path)
+    packet_doc["schema"] = "INDIA_PHASE0_SOURCE_INTAKE_V2"
+    packet_doc["version"] = 2
+    packet_doc["supersedes"] = v1_path.name
+    packet_doc["supersedes_sha256"] = _digest(v1_path)
+    nrsc["row_level_records_extracted"] = True
+    nrsc["extraction"] = {
+        "artifact": str(art_path.relative_to(intake.EVIDENCE_ROOT))
+        if str(art_path).startswith(str(intake.EVIDENCE_ROOT))
+        else str(art_path),
+        "artifact_sha256": _digest(art_path),
+        "rows": {"table_68_ge10ha": 2433, "table_69_ge50ha": 299},
+    }
+    nrsc["interpretation_limit"] = "Bounded subset extracted."
+    nrsc["count_reconciliation"] = {
+        "table_68_declared_rows": 2431,
+        "table_68_extracted_rows": 2433,
+        "table_69_extracted_rows": 299,
+    }
+    _write_json(v2_path, packet_doc)
+    _write_sidecar(v2_path)
+    return fixture
+
+
+def test_v2_packet_with_extraction_binding_validates(tmp_path, monkeypatch):
+    fixture = _v2_fixture(tmp_path)
+    # Point the evidence-root lookup at the hermetic fixture root.
+    monkeypatch.setattr(intake, "EVIDENCE_ROOT",
+                        fixture["payload"].parent)
+    nrsc = next(s for s in fixture["packet_doc"]["sources"]
+                if s["id"] == "NRSC_GLA_IHR")
+    nrsc["extraction"]["artifact"] = "NRSC_GLA_IHR_TABLE_EXTRACTION_V0.json"
+    _write_json(fixture["packet"], fixture["packet_doc"])
+    _write_sidecar(fixture["packet"])
+    result = intake.validate_intake(
+        fixture["packet"], fixture["supplement"], fixture["registry"],
+        fixture["receipt"], fixture["payload"])
+    assert result["status"] == "SOURCE_INTAKE_OK"
+    assert result["row_level_records_extracted"] is True
+
+
+def test_v2_rejects_stale_no_rows_wording(tmp_path, monkeypatch):
+    fixture = _v2_fixture(tmp_path)
+    monkeypatch.setattr(intake, "EVIDENCE_ROOT",
+                        fixture["payload"].parent)
+    nrsc = next(s for s in fixture["packet_doc"]["sources"]
+                if s["id"] == "NRSC_GLA_IHR")
+    nrsc["extraction"]["artifact"] = "NRSC_GLA_IHR_TABLE_EXTRACTION_V0.json"
+    nrsc["interpretation_limit"] = "No rows are extracted."
+    _write_json(fixture["packet"], fixture["packet_doc"])
+    _write_sidecar(fixture["packet"])
+    with pytest.raises(intake.IntakeError, match="stale"):
+        intake.validate_intake(
+            fixture["packet"], fixture["supplement"], fixture["registry"],
+            fixture["receipt"], fixture["payload"])
+
+
+def test_v2_rejects_wrong_count_reconciliation(tmp_path, monkeypatch):
+    fixture = _v2_fixture(tmp_path)
+    monkeypatch.setattr(intake, "EVIDENCE_ROOT",
+                        fixture["payload"].parent)
+    nrsc = next(s for s in fixture["packet_doc"]["sources"]
+                if s["id"] == "NRSC_GLA_IHR")
+    nrsc["extraction"]["artifact"] = "NRSC_GLA_IHR_TABLE_EXTRACTION_V0.json"
+    nrsc["count_reconciliation"]["table_68_extracted_rows"] = 2431
+    _write_json(fixture["packet"], fixture["packet_doc"])
+    _write_sidecar(fixture["packet"])
+    with pytest.raises(intake.IntakeError, match="reconciliation"):
+        intake.validate_intake(
+            fixture["packet"], fixture["supplement"], fixture["registry"],
+            fixture["receipt"], fixture["payload"])

@@ -16,12 +16,15 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import hashlib
 from pathlib import Path
 from urllib.parse import urlsplit
 
 
 SCHEMA = "INDIA_INVENTORY_REGISTRY_V1"
+SCHEMA_V2 = "INDIA_INVENTORY_REGISTRY_V2"
 SUPERSEDES = "docs/science/INDIA_INVENTORY_METADATA_V0.json"
+SUPERSEDES_V2 = "docs/science/INDIA_INVENTORY_REGISTRY_V1.json"
 OFFICIAL_HOSTS = (
     "nrsc.gov.in", "bhuvan.nrsc.gov.in", "cwc.gov.in",
     "icimod.org", "rds.icimod.org", "essd.copernicus.org",
@@ -40,6 +43,10 @@ AUTHORITY_FLAGS = {
     "operational_authorized": False,
 }
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
+
+
+def sha256_file(path: Path) -> str:
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 _REQUIRED_SOURCE_FIELDS = {
     "id", "publisher", "title", "source_version", "publication_or_period",
     "source_url", "source_access_status", "scope", "file_format",
@@ -110,16 +117,40 @@ def validate_registry(document: object) -> list[str]:
     problems: list[str] = []
     if not isinstance(document, dict):
         return ["registry must be an object"]
-    if document.get("schema") != SCHEMA:
-        problems.append(f"schema must be {SCHEMA}")
-    if document.get("version") != 1:
-        problems.append("version must be integer 1")
+    is_v1 = (document.get("schema") == SCHEMA
+             and document.get("version") == 1)
+    is_v2 = (document.get("schema") == SCHEMA_V2
+             and document.get("version") == 2)
+    if not (is_v1 or is_v2):
+        problems.append(f"schema must be {SCHEMA} (v1) or {SCHEMA_V2} (v2)")
     if document.get("claim_scope") != "research_only_phase0_registry":
         problems.append("claim_scope must remain registry scope")
     if document.get("authority") != AUTHORITY_FLAGS:
         problems.append("authority flags must be present and false")
-    if document.get("supersedes") != SUPERSEDES:
+    if is_v1 and document.get("supersedes") != SUPERSEDES:
         problems.append(f"registry must declare supersedes {SUPERSEDES}")
+    if is_v2:
+        if document.get("supersedes") != SUPERSEDES_V2:
+            problems.append(f"registry V2 must declare supersedes {SUPERSEDES_V2}")
+        v1_file = (Path(__file__).resolve().parents[1]
+                   / "docs" / "science" / "INDIA_INVENTORY_REGISTRY_V1.json")
+        if v1_file.is_file():
+            if document.get("supersedes_sha256") != sha256_file(v1_file):
+                problems.append("registry V2 supersedes_sha256 must bind V1 bytes")
+        else:
+            problems.append("cannot verify registry V2 supersedes: V1 file absent")
+        nrsc_v2 = [x for x in document.get("sources", [])
+                   if isinstance(x, dict) and x.get("id") == "NRSC_GLA_IHR"]
+        if nrsc_v2:
+            be = nrsc_v2[0].get("bounded_extraction")
+            if not isinstance(be, dict):
+                problems.append("V2 NRSC entry must carry bounded_extraction")
+            else:
+                art = be.get("artifact_sha256")
+                if not (isinstance(art, str) and _HEX64.fullmatch(art)):
+                    problems.append("bounded_extraction.artifact_sha256 must be 64 hex")
+                if be.get("full_inventory_ingested") is not False:
+                    problems.append("bounded_extraction must not claim full inventory ingestion")
 
     acquisition = document.get("acquisition")
     expected_acquisition = {

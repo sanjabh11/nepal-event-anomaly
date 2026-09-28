@@ -106,3 +106,29 @@ def test_v1_registry_receipt_absent_is_pre_retrieval_honest():
     document = json.loads(REGISTRY.read_text(encoding="utf-8"))
     document["sources"][0]["retrieval_receipt"] = None
     assert sr.validate_registry(document) == []
+
+
+def test_registry_v2_bounded_extraction_contract(tmp_path):
+    import json
+    root = Path(__file__).resolve().parents[1]
+    doc = json.loads(
+        (root / "docs/science/INDIA_INVENTORY_REGISTRY_V2.json").read_text())
+    assert sr.validate_registry(doc) == []
+    nrsc = next(s for s in doc["sources"] if s["id"] == "NRSC_GLA_IHR")
+    assert nrsc["row_level_inventory_ingested"] is False
+    assert nrsc["bounded_extraction"]["full_inventory_ingested"] is False
+    bad = json.loads(json.dumps(doc))
+    bad["supersedes_sha256"] = "0" * 64
+    problems = sr.validate_registry(bad)
+    assert any("supersedes_sha256" in p for p in problems)
+
+
+def test_registry_v2_requires_extraction_block(tmp_path):
+    import json
+    root = Path(__file__).resolve().parents[1]
+    doc = json.loads(
+        (root / "docs/science/INDIA_INVENTORY_REGISTRY_V2.json").read_text())
+    nrsc = next(s for s in doc["sources"] if s["id"] == "NRSC_GLA_IHR")
+    del nrsc["bounded_extraction"]
+    problems = sr.validate_registry(doc)
+    assert any("bounded_extraction" in p for p in problems)

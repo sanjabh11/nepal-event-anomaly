@@ -1,0 +1,105 @@
+{
+  "authority": {
+    "bulk_acquisition_authorized": false,
+    "causal_authorized": false,
+    "detector_authorized": false,
+    "forecast_authorized": false,
+    "odds_authorized": false,
+    "operational_authorized": false,
+    "satellite_bulk_authorized": false,
+    "seismic_waveform_authorized": false,
+    "warning_authorized": false,
+    "weather_download_authorized": false
+  },
+  "authorization_basis": "Explicit in-thread owner approval for bounded Phase-0 data intake; this is not a cryptographic signature.",
+  "claim_scope": "research_only_phase0_source_intake",
+  "correction_note": "V1 carried a stale interpretation_limit inherited from V0 (\"No rows are extracted\") contradicting row_level_records_extracted=true and the bound extraction artifact. V2 corrects the wording and adds an explicit count reconciliation. No new acquisition is authorized.",
+  "created_date": "2026-09-28",
+  "publication_boundary": "The packet and source metadata may be published; acquired NRSC PDF bytes remain outside Git and are not redistributed by this project.",
+  "schema": "INDIA_PHASE0_SOURCE_INTAKE_V2",
+  "scope": {
+    "forbidden": [
+      "ERA5 or ERA5-Land weather data",
+      "IMERG, CHIRPS, or other satellite payloads",
+      "bulk satellite imagery or DEM archives",
+      "seismic waveforms",
+      "forecast, warning, detector, causal, odds, or operational work"
+    ],
+    "maximum_payload_bytes_per_source": 134217728,
+    "maximum_payload_bytes_total": 134217728,
+    "purpose": "Pin a small number of official inventory/catalog artifacts for India Phase-0 feasibility; no scientific event adjudication is implied.",
+    "retention": "Private local research evidence only; do not add source payloads to Git or redistribute original files.",
+    "storage_root": "/Users/sanjayb/nepal-event-anomaly-evidence/india-phase0-source-intake"
+  },
+  "sources": [
+    {
+      "acquisition_status": "BYTES_VERIFIED",
+      "actual_bytes": 109055478,
+      "count_reconciliation": {
+        "table_68_declared_rows": 2431,
+        "table_68_difference_explained": "Printed serial numbers 2001 and 2002 each label two distinct lake IDs; the two extra rows are those duplicate-serial print defects, both below the stated >=10 ha threshold (6.75 ha, 5.29 ha).",
+        "table_68_extracted_rows": 2433,
+        "table_68_valid_ge_10ha_rows": 2431,
+        "table_69_declared_threshold_ha": 50,
+        "table_69_extracted_rows": 299,
+        "table_69_min_area_ha": 50.13,
+        "table_69_rows_all_in_table_68": true
+      },
+      "derived_artifacts": {
+        "event_crosswalk_hmaglofdb": "india-phase0-source-intake/INDIA_HMAGLOFDB_CROSSWALK_V1.json",
+        "feasibility_report": "india-phase0-source-intake/INDIA_FEASIBILITY_REPORT_V0.json",
+        "lake_frame": "india-phase0-source-intake/NRSC_LAKE_FRAME_V0.json",
+        "lake_inventory_view": "india-phase0-source-intake/NRSC_GLA_IHR_LAKE_INVENTORY_V0.json"
+      },
+      "disposition": "ACQUIRE_ONE_STATIC_PDF_WITHIN_CAP",
+      "extraction": {
+        "anomalies": [
+          "printed serial numbers 2001/2002 duplicated on distinct lake IDs; two rows fall below the stated >=10 ha threshold"
+        ],
+        "artifact": "india-phase0-source-intake/NRSC_GLA_IHR_TABLE_EXTRACTION_V0.json",
+        "artifact_sha256": "ee63485674db14b38e60e2a08274c51b2d3e17d6c1242c32f2149c8dd21ebd58",
+        "rows": {
+          "table_68_ge10ha": 2433,
+          "table_69_ge50ha": 299
+        },
+        "scope": "Tables 68 (>=10 ha) and 69 (>=50 ha) only; not the full 28,043-lake inventory"
+      },
+      "id": "NRSC_GLA_IHR",
+      "interpretation_limit": "The atlas reports mapped lakes and mapping attributes. Bounded row-level extraction of the printed Tables 68 (>=10 ha) and 69 (>=50 ha) is complete and bound via the extraction artifact. This is a subset, not the full 28,043-lake inventory (>=0.25 ha). It is not an adjudicated event cohort, a complete observation history, or proof of non-events; territory must be independently resolved.",
+      "payload_sha256": "579b61a1592ff1eb977fa97b0b980e24f8baeb91e60f2f63c58c8d6f2b5a5162",
+      "planned_bytes": 109055478,
+      "receipt_path": "india-phase0-source-intake/NRSC_GLA_IHR_SOURCE_RECEIPT_V0.json",
+      "receipt_sha256": "6c693f0f8e7589ad6a0c3614d369c6a33cb86530857d211f0688fe7aac11dd12",
+      "row_level_records_extracted": true,
+      "terms_review": "NRSC states downloadable content may be used for non-commercial purposes with attribution and permits value-added/derivative works. This intake is private, non-commercial research; cite NRSC/ISRO and do not redistribute the original PDF.",
+      "terms_url": "https://www.nrsc.gov.in/nrscnew/termsConditions.php",
+      "url": "https://www.nrsc.gov.in/nrscnew/assets/pdf/atlas/glaciallake/IHR_GlacialLake_Atlas.pdf",
+      "version": "Indian Himalayan River Basins Glacial Lake Atlas, 2016-2017 mapping epoch, released 2023-03-16"
+    },
+    {
+      "disposition": "NOT_ACQUIRED_TERMS_UNRESOLVED",
+      "id": "CWC_GLWB_SEP_2024",
+      "reason": "Public HTTPS download is reachable, but no applicable source-specific reuse/retention grant was verified in this review. Do not retain the PDF until terms are clarified. Existing official metadata and reported counts remain citation-level only.",
+      "url": "https://www.cwc.gov.in/sites/default/files/monitoring-report-september-2024.pdf",
+      "version": "Monthly monitoring report, 2024-09"
+    },
+    {
+      "disposition": "NOT_ACQUIRED_ENDPOINT_DENIED",
+      "id": "CWC_LOKSABHA_AU883_2026",
+      "reason": "The exact official endpoint returned HTTP 403 during this review. The Parliament Digital Library policy permits attributed non-commercial research reuse of listed material, but the denied endpoint was not bypassed and applicability to this annexure was not assumed.",
+      "url": "https://sansad.in/getFile/lsapps/loksabhaquestions/annex/188/AU883_Vsdm5C.pdf",
+      "version": "Lok Sabha parliamentary answer AU883, 2026 session"
+    },
+    {
+      "disposition": "NOT_ACQUIRED_VERSION_DRIFT",
+      "id": "ICIMOD_HMAGLOFDB_V130",
+      "reason": "Although the current metadata page states CC BY 4.0, it appears to describe a later update than the pinned project version. No credentials were available and no login or version-bypass was attempted. Pin the exact downloadable vintage before ingestion.",
+      "terms_url": "https://rds.icimod.org/metadata/8881454b-6f7c-461b-95c2-eaf7618230d9",
+      "url": "https://rds.icimod.org/metadata/8881454b-6f7c-461b-95c2-eaf7618230d9",
+      "version": "Project registry pins 1.3.0; current RDS metadata record reports an update in December 2025 and 766 events"
+    }
+  ],
+  "supersedes": "INDIA_PHASE0_SOURCE_INTAKE_V1.json",
+  "supersedes_sha256": "ea1cb21ec38be82c2832cafc02757f84cd25fef24293959b8643bf96d7c0c498",
+  "version": 2
+}
