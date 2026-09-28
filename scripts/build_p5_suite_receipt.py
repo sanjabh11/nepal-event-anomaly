@@ -72,6 +72,21 @@ def _parse_summary(text: str) -> dict:
     return counts
 
 
+_SKIP_RE = re.compile(r"^SKIPPED \[\d+\]\s+(?P<node>[^:\s]+:[^\s]+)"
+                      r"\s*-\s*(?P<reason>.*)$")
+
+
+def _parse_skips(text: str) -> list[dict]:
+    """Return skipped node ids + reasons from the -rs summary section."""
+    skips = []
+    for line in text.splitlines():
+        m = _SKIP_RE.match(line.strip())
+        if m:
+            skips.append({"node": m.group("node"),
+                          "reason": m.group("reason").strip()})
+    return skips
+
+
 def _parse_collected(text: str) -> int:
     """Parse the collection census (fail-closed)."""
     for line in reversed(text.splitlines()):
@@ -149,6 +164,8 @@ def run_suite(*, repo: Path, pytest_args: str,
     collected = _parse_collected(collect.stdout + "\n" + collect.stderr)
 
     run_argv = [sys.executable, "-B", "-m", "pytest", *test_args]
+    if "-rs" not in test_args and "-rA" not in test_args:
+        run_argv = [*run_argv, "-rs"]
     command_digest = sha256_bytes(
         json.dumps(run_argv).encode("utf-8"))
     suite_started_utc = _utc_now()
@@ -158,7 +175,9 @@ def run_suite(*, repo: Path, pytest_args: str,
     duration_s = round(time.monotonic() - start, 3)
     suite_completed_utc = _utc_now()
 
-    counts = _parse_summary(run.stdout + "\n" + run.stderr)
+    raw_output = run.stdout + "\n" + run.stderr
+    counts = _parse_summary(raw_output)
+    skipped_tests = _parse_skips(raw_output)
     counts["collected"] = collected
     expected = (counts["passed"] + counts["skipped"]
                 + counts["failed"] + counts["errors"])
@@ -184,6 +203,7 @@ def run_suite(*, repo: Path, pytest_args: str,
             "suite_completed_utc": suite_completed_utc,
         },
         "counts": counts,
+        "skipped_tests": skipped_tests,
         "exit_code": run.returncode,
         "duration_s": duration_s,
         "started_utc": suite_started_utc,

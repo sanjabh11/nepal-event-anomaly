@@ -159,6 +159,11 @@ def phase0_readiness(denominators: dict[str, int]) -> dict[str, Any]:
             "meaning": "Phase-0 feasibility decision readiness only; never acquisition or operational authority.",
         }
     blockers: list[str] = []
+    if "verified_evidence_source_records" in denominators             and "verified_source_bytes" not in denominators:
+        denominators = dict(
+            denominators,
+            verified_source_bytes=
+            denominators["verified_evidence_source_records"])
     keys = (
         "catalog_rows", "mapped_lake_rows", "verified_source_bytes",
         "unreviewed_event_rows", "eligible_unverified_evidence",

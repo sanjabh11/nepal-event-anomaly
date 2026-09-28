@@ -189,3 +189,53 @@ def test_registry_v3_rejects_false_full_inventory_claim():
     nrsc["status_detail"]["full_inventory_ingested"] = True
     problems = sr.validate_registry(doc)
     assert any("full_inventory_ingested" in p for p in problems)
+
+
+@_v3
+def test_registry_v4_supersedes_and_hmaglofdb_bytes():
+    import json
+    root = Path(__file__).resolve().parents[1]
+    doc = json.loads(
+        (root / "docs/science/INDIA_INVENTORY_REGISTRY_V4.json").read_text())
+    assert sr.validate_registry(doc) == []
+    hma = next(s for s in doc["sources"]
+               if s["id"] == "ICIMOD_HMAGLOFDB_V130")
+    assert hma["source_bytes_retained"] is True
+    assert hma["status_detail"]["source_pdf_retained"]["retained"] is True
+    assert "vintage" in json.dumps(hma["status_detail"]).lower()
+
+
+@_v3
+def test_registry_v4_rejects_retention_contradiction():
+    import json
+    root = Path(__file__).resolve().parents[1]
+    doc = json.loads(
+        (root / "docs/science/INDIA_INVENTORY_REGISTRY_V4.json").read_text())
+    nrsc = next(s for s in doc["sources"] if s["id"] == "NRSC_GLA_IHR")
+    nrsc["source_bytes_retained"] = False
+    problems = sr.validate_registry(doc)
+    assert any("source_bytes_retained" in p for p in problems)
+
+
+@_v3
+def test_registry_v4_rejects_wrong_archive_digest():
+    import json
+    root = Path(__file__).resolve().parents[1]
+    doc = json.loads(
+        (root / "docs/science/INDIA_INVENTORY_REGISTRY_V4.json").read_text())
+    hma = next(s for s in doc["sources"]
+               if s["id"] == "ICIMOD_HMAGLOFDB_V130")
+    hma["status_detail"]["source_pdf_retained"]["sha256"] = "0" * 64
+    problems = sr.validate_registry(doc)
+    assert any("HMAGLOFDB" in p for p in problems)
+
+
+@_v3
+def test_registry_v4_rejects_wrong_supersedes():
+    import json
+    root = Path(__file__).resolve().parents[1]
+    doc = json.loads(
+        (root / "docs/science/INDIA_INVENTORY_REGISTRY_V4.json").read_text())
+    doc["supersedes_sha256"] = "0" * 64
+    problems = sr.validate_registry(doc)
+    assert any("supersedes" in p for p in problems)

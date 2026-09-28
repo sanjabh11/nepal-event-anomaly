@@ -24,10 +24,12 @@ from urllib.parse import urlsplit
 SCHEMA = "INDIA_INVENTORY_REGISTRY_V1"
 SCHEMA_V2 = "INDIA_INVENTORY_REGISTRY_V2"
 SCHEMA_V3 = "INDIA_INVENTORY_REGISTRY_V3"
+SCHEMA_V4 = "INDIA_INVENTORY_REGISTRY_V4"
 EVIDENCE_ROOT = Path("/Users/sanjayb/nepal-event-anomaly-evidence")
 SUPERSEDES = "docs/science/INDIA_INVENTORY_METADATA_V0.json"
 SUPERSEDES_V2 = "docs/science/INDIA_INVENTORY_REGISTRY_V1.json"
 SUPERSEDES_V3 = "docs/science/INDIA_INVENTORY_REGISTRY_V2.json"
+SUPERSEDES_V4 = "docs/science/INDIA_INVENTORY_REGISTRY_V3.json"
 OFFICIAL_HOSTS = (
     "nrsc.gov.in", "bhuvan.nrsc.gov.in", "cwc.gov.in",
     "icimod.org", "rds.icimod.org", "essd.copernicus.org",
@@ -115,6 +117,59 @@ def _official_https_url(value: object) -> bool:
     )
 
 
+def _v4_hmaglofdb_crosschecks(source: dict) -> list[str]:
+    """V4: the HMAGLOFDB entry's declared digests must resolve to the
+    retained archive, its inner CSV member and the derived crosswalk."""
+    problems: list[str] = []
+    sd = source.get("status_detail")
+    if not isinstance(sd, dict):
+        return ["ICIMOD_HMAGLOFDB_V130: V4 requires status_detail"]
+    retain = sd.get("source_pdf_retained")
+    if not isinstance(retain, dict) or retain.get("retained") is not True:
+        problems.append(
+            "ICIMOD_HMAGLOFDB_V130 must record retained archive bytes")
+    else:
+        rel = retain.get("relpath")
+        archive = EVIDENCE_ROOT / str(rel or "")
+        if not archive.is_file():
+            problems.append(f"HMAGLOFDB archive path absent: {rel}")
+        else:
+            if sha256_file(archive) != retain.get("sha256"):
+                problems.append("HMAGLOFDB archive sha256 differs from bytes")
+            if archive.stat().st_size != retain.get("bytes"):
+                problems.append("HMAGLOFDB archive size differs")
+        member_sha = retain.get("inner_member_sha256")
+        csv_file = (EVIDENCE_ROOT / "p5-glof-2026-09-19" / "glof-events"
+                    / "HMAGLOFDB.csv")
+        if not csv_file.is_file():
+            problems.append("HMAGLOFDB working CSV absent")
+        elif sha256_file(csv_file) != member_sha:
+            problems.append("HMAGLOFDB inner member sha256 differs from CSV")
+    be = sd.get("bounded_extraction")
+    if not isinstance(be, dict) or be.get("extracted") is not True:
+        problems.append(
+            "ICIMOD_HMAGLOFDB_V130 must record bounded_extraction")
+    else:
+        rel = be.get("artifact")
+        art_file = EVIDENCE_ROOT / str(rel or "")
+        if not art_file.is_file():
+            problems.append(f"crosswalk artifact absent: {rel}")
+        else:
+            if sha256_file(art_file) != be.get("artifact_sha256"):
+                problems.append(
+                    "crosswalk artifact_sha256 differs from bytes")
+            else:
+                try:
+                    doc = json.loads(art_file.read_text(encoding="utf-8"))
+                    rows = doc.get("summary", {}).get("n_total_rows")
+                    if rows != be.get("rows"):
+                        problems.append(
+                            "crosswalk rows differ from artifact summary")
+                except Exception:
+                    problems.append("crosswalk artifact unreadable")
+    return problems
+
+
 def _v3_nrsc_crosschecks(sd: dict) -> list[str]:
     """Cross-validate V3 status_detail against the retained evidence
     bytes themselves (PDF digest, extraction artifact digest and row
@@ -175,10 +230,12 @@ def validate_registry(document: object) -> list[str]:
              and document.get("version") == 2)
     is_v3 = (document.get("schema") == SCHEMA_V3
              and document.get("version") == 3)
-    if not (is_v1 or is_v2 or is_v3):
+    is_v4 = (document.get("schema") == SCHEMA_V4
+             and document.get("version") == 4)
+    if not (is_v1 or is_v2 or is_v3 or is_v4):
         problems.append(
-            f"schema must be {SCHEMA} (v1), {SCHEMA_V2} (v2) or "
-            f"{SCHEMA_V3} (v3)")
+            f"schema must be {SCHEMA} (v1), {SCHEMA_V2} (v2), "
+            f"{SCHEMA_V3} (v3) or {SCHEMA_V4} (v4)")
     if document.get("claim_scope") != "research_only_phase0_registry":
         problems.append("claim_scope must remain registry scope")
     if document.get("authority") != AUTHORITY_FLAGS:
@@ -238,6 +295,58 @@ def validate_registry(document: object) -> list[str]:
             sd = nrsc_v3[0].get("status_detail")
             if isinstance(sd, dict):
                 problems.extend(_v3_nrsc_crosschecks(sd))
+    # Cross-field retention invariant (V4+ corrected contract): retained
+    # payload detail and the top-level flag must never contradict each
+    # other. V3's ambiguous wording predates this rule and is superseded.
+    for source in document.get("sources", []):
+        if not isinstance(source, dict):
+            continue
+        sd = source.get("status_detail")
+        if is_v4 and isinstance(sd, dict):
+            retained_detail = (
+                isinstance(sd.get("source_pdf_retained"), dict)
+                and sd["source_pdf_retained"].get("retained") is True)
+            if retained_detail and source.get("source_bytes_retained") \
+                    is not True:
+                problems.append(
+                    f"{source.get('id', '?')}: status_detail says bytes "
+                    "retained but source_bytes_retained is not true")
+    if is_v4:
+        if document.get("supersedes") != SUPERSEDES_V4:
+            problems.append(
+                f"registry V4 must declare supersedes {SUPERSEDES_V4}")
+        v3_file = (Path(__file__).resolve().parents[1]
+                   / "docs" / "science" / "INDIA_INVENTORY_REGISTRY_V3.json")
+        if v3_file.is_file():
+            if document.get("supersedes_sha256") != sha256_file(v3_file):
+                problems.append(
+                    "registry V4 supersedes_sha256 must bind V3 bytes")
+        else:
+            problems.append(
+                "cannot verify registry V4 supersedes: V3 file absent")
+        for source in document.get("sources", []):
+            if not isinstance(source, dict):
+                continue
+            sd = source.get("status_detail")
+            prefix_id = source.get("id", "?")
+            if not isinstance(sd, dict):
+                problems.append(f"{prefix_id}: V4 requires status_detail")
+                continue
+            if sd.get("full_inventory_ingested") is not False:
+                problems.append(
+                    f"{prefix_id}: status_detail.full_inventory_ingested "
+                    "must be false")
+        nrsc_v4 = [x for x in document.get("sources", [])
+                   if isinstance(x, dict) and x.get("id") == "NRSC_GLA_IHR"]
+        if nrsc_v4:
+            sd = nrsc_v4[0].get("status_detail")
+            if isinstance(sd, dict):
+                problems.extend(_v3_nrsc_crosschecks(sd))
+        hma = [x for x in document.get("sources", [])
+               if isinstance(x, dict)
+               and x.get("id") == "ICIMOD_HMAGLOFDB_V130"]
+        if hma:
+            problems.extend(_v4_hmaglofdb_crosschecks(hma[0]))
 
     acquisition = document.get("acquisition")
     expected_acquisition = {
@@ -280,7 +389,7 @@ def validate_registry(document: object) -> list[str]:
         if source.get("row_level_inventory_ingested") is not False:
             problems.append(
                 f"{prefix}.row_level_inventory_ingested must be false")
-        if source.get("source_bytes_retained") is not False:
+        if not is_v4 and source.get("source_bytes_retained") is not False:
             problems.append(f"{prefix}.source_bytes_retained must be false")
         digest = source.get("local_payload_sha256")
         if digest is not None and not (isinstance(digest, str)

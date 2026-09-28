@@ -50,6 +50,7 @@ _HEX40 = re.compile(r"[0-9a-f]{40}").fullmatch
 _HEX64 = re.compile(r"[0-9a-f]{64}").fullmatch
 _PERMITTED_RELEASE_PATH = re.compile(
     r"docs/science/(?:SUITE_RECEIPT_[A-Za-z0-9_.-]+\.json(?:\.sha256)?|"
+    r"ARTIFACT_MANIFEST_V0\.json(?:\.sha256)?|"
     r"MANIFEST_SCOPE_EXCLUSIONS_V0\.json(?:\.sha256)?)\Z")
 
 

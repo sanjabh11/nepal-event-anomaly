@@ -17,9 +17,9 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE_ROOT = Path("/Users/sanjayb/nepal-event-anomaly-evidence")
 INTAKE_ROOT = EVIDENCE_ROOT / "india-phase0-source-intake"
-DEFAULT_PACKET = ROOT / "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V3.json"
+DEFAULT_PACKET = ROOT / "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V4.json"
 DEFAULT_SUPPLEMENT = ROOT / "docs/science/INDIA_INVENTORY_REGISTRY_SUPPLEMENT_V0.json"
-DEFAULT_REGISTRY = ROOT / "docs/science/INDIA_INVENTORY_REGISTRY_V3.json"
+DEFAULT_REGISTRY = ROOT / "docs/science/INDIA_INVENTORY_REGISTRY_V4.json"
 DEFAULT_RECEIPT = INTAKE_ROOT / "NRSC_GLA_IHR_SOURCE_RECEIPT_V0.json"
 DEFAULT_PAYLOAD = INTAKE_ROOT / "IHR_GlacialLake_Atlas.pdf"
 SCHEMA = "INDIA_PHASE0_SOURCE_RECEIPT_V0"
@@ -30,6 +30,9 @@ REQUIRED_SOURCE_DISPOSITIONS = {
     "CWC_LOKSABHA_AU883_2026": "NOT_ACQUIRED_ENDPOINT_DENIED",
     "ICIMOD_HMAGLOFDB_V130": "NOT_ACQUIRED_VERSION_DRIFT",
 }
+REQUIRED_SOURCE_DISPOSITIONS_V4 = dict(
+    REQUIRED_SOURCE_DISPOSITIONS,
+    ICIMOD_HMAGLOFDB_V130="ACQUIRED_V1_3_0_BYTES_VERIFIED")
 FORBIDDEN_INTAKE = {
     "ERA5 or ERA5-Land weather data",
     "IMERG, CHIRPS, or other satellite payloads",
@@ -114,9 +117,11 @@ def validate_intake(packet_path: Path, supplement_path: Path,
                  and packet.get("version") == 2)
     packet_v3 = (packet.get("schema") == "INDIA_PHASE0_SOURCE_INTAKE_V3"
                  and packet.get("version") == 3)
-    if not (packet_v0 or packet_v1 or packet_v2 or packet_v3):
+    packet_v4 = (packet.get("schema") == "INDIA_PHASE0_SOURCE_INTAKE_V4"
+                 and packet.get("version") == 4)
+    if not (packet_v0 or packet_v1 or packet_v2 or packet_v3 or packet_v4):
         raise IntakeError("unexpected source-intake packet schema/version")
-    extracted_packet = packet_v1 or packet_v2 or packet_v3
+    extracted_packet = (packet_v1 or packet_v2 or packet_v3 or packet_v4)
     v0_path = packet_path.with_name("INDIA_PHASE0_SOURCE_INTAKE_V0.json")
     if packet_v1:
         if (packet.get("supersedes") != v0_path.name
@@ -135,6 +140,12 @@ def validate_intake(packet_path: Path, supplement_path: Path,
                 or packet.get("supersedes_sha256") != sha256_file(v2_path)):
             raise IntakeError(
                 "V3 packet must bind the superseded V2 packet bytes")
+    if packet_v4:
+        v3_path = packet_path.with_name("INDIA_PHASE0_SOURCE_INTAKE_V3.json")
+        if (packet.get("supersedes") != v3_path.name
+                or packet.get("supersedes_sha256") != sha256_file(v3_path)):
+            raise IntakeError(
+                "V4 packet must bind the superseded V3 packet bytes")
     if packet.get("authority") != AUTHORITY_FLAGS:
         raise IntakeError("source-intake authority flags must all be false")
     scope = packet.get("scope")
@@ -197,7 +208,7 @@ def validate_intake(packet_path: Path, supplement_path: Path,
             raise IntakeError(
                 "extraction anomalies (printed serial duplicates) "
                 "must be recorded")
-        if packet_v2 or packet_v3:
+        if packet_v2 or packet_v3 or packet_v4:
             limit = nrsc.get("interpretation_limit", "")
             if "No rows are extracted" in limit:
                 raise IntakeError(
@@ -239,12 +250,18 @@ def validate_intake(packet_path: Path, supplement_path: Path,
             if any(r.get("area_ha", 0) < 50 for r in t69):
                 raise IntakeError(
                     "table 69 contains a row below the 50 ha threshold")
-        if packet_v3:
+        if packet_v3 or packet_v4:
             derived = packet.get("derived_artifacts")
             if not isinstance(derived, dict):
                 raise IntakeError("V3 packet must carry derived_artifacts")
-            for key in ("hmaglofdb_provenance", "event_crosswalk",
-                        "event_adjudication_intake", "observation_frame"):
+            required_keys = ("hmaglofdb_provenance", "event_crosswalk",
+                             "event_adjudication_intake",
+                             "observation_frame")
+            if packet_v4:
+                required_keys += ("lake_observation_cohort",
+                                  "feasibility_report",
+                                  "evidence_register")
+            for key in required_keys:
                 entry = derived.get(key)
                 if not isinstance(entry, dict):
                     raise IntakeError(f"derived_artifacts.{key} missing")
@@ -271,6 +288,32 @@ def validate_intake(packet_path: Path, supplement_path: Path,
                 raise IntakeError(
                     "V3 derived crosswalk rows must carry row_sha256 "
                     "stable identity")
+        if packet_v4:
+            hma = [x for x in packet.get("sources", [])
+                   if isinstance(x, dict)
+                   and x.get("id") == "ICIMOD_HMAGLOFDB_V130"]
+            if not hma:
+                raise IntakeError("V4 packet missing ICIMOD_HMAGLOFDB_V130")
+            hma = hma[0]
+            if hma.get("disposition") != "ACQUIRED_V1_3_0_BYTES_VERIFIED":
+                raise IntakeError(
+                    "V4 HMAGLOFDB disposition must be "
+                    "ACQUIRED_V1_3_0_BYTES_VERIFIED")
+            arch = EVIDENCE_ROOT / str(hma.get("archive_path", ""))
+            if not arch.is_file() or sha256_file(arch) != hma.get(
+                    "archive_sha256"):
+                raise IntakeError(
+                    "V4 HMAGLOFDB archive digest does not resolve")
+            csvf = EVIDENCE_ROOT / str(hma.get("payload_path", ""))
+            if not csvf.is_file() or sha256_file(csvf) != hma.get(
+                    "payload_sha256"):
+                raise IntakeError(
+                    "V4 HMAGLOFDB payload digest does not resolve")
+            prov = EVIDENCE_ROOT / str(hma.get("provenance_doc", ""))
+            if not prov.is_file() or sha256_file(prov) != hma.get(
+                    "provenance_sha256"):
+                raise IntakeError(
+                    "V4 HMAGLOFDB provenance digest does not resolve")
     if nrsc.get("payload_sha256") is None or not _HEX64(
             nrsc.get("payload_sha256", "")):
         raise IntakeError("NRSC payload SHA-256 must be pinned")
@@ -282,7 +325,9 @@ def validate_intake(packet_path: Path, supplement_path: Path,
     for source_id, row in by_id.items():
         if source_id == "NRSC_GLA_IHR":
             continue
-        if row.get("disposition") != REQUIRED_SOURCE_DISPOSITIONS[source_id]:
+        required = (REQUIRED_SOURCE_DISPOSITIONS_V4 if packet_v4
+                    else REQUIRED_SOURCE_DISPOSITIONS)
+        if row.get("disposition") != required[source_id]:
             raise IntakeError(f"unapproved source acquisition in packet: {source_id}")
     if nrsc.get("url") != NRSC_URL or nrsc.get("terms_url") != NRSC_TERMS_URL:
         raise IntakeError("NRSC source and terms URLs differ from the pinned record")

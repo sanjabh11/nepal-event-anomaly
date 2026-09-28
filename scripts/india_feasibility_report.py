@@ -16,6 +16,7 @@ import argparse
 import datetime as dt
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -149,6 +150,12 @@ def _review_complete(record: dict[str, Any]) -> bool:
         and adj.get("reviewer_ids")
         and (adj.get("evidence_citations") or evidence.get("references"))
     )
+
+
+def _artifact_revision(out_path: Path | None) -> int:
+    name = Path(out_path).name if out_path else ""
+    m = re.search(r"_V(\d+)", name)
+    return int(m.group(1)) if m else 0
 
 
 def _lake_denominators(
@@ -297,7 +304,8 @@ def _evidence_screen(unverified_eligible: int,
 def build_report(crosswalk_path: str | Path, lake_frame_path: str | Path,
                  register_path: str | Path,
                  adjudication_path: str | Path | None = None,
-                 checklist_path: str | Path = DEFAULT_CHECKLIST) -> dict[str, Any]:
+                 checklist_path: str | Path = DEFAULT_CHECKLIST,
+                 artifact_revision: int = 0) -> dict[str, Any]:
     crosswalk_path = Path(crosswalk_path)
     lake_frame_path = Path(lake_frame_path)
     register_path = Path(register_path)
@@ -328,6 +336,13 @@ def build_report(crosswalk_path: str | Path, lake_frame_path: str | Path,
         isinstance(r, dict) and r.get("candidate_class") != "OUTSIDE"
         for r in records)
     reference_rows = len(records) - candidate_rows
+    target_country_rows = sum(
+        isinstance(r, dict) and r.get("candidate_class") == "TARGET_COUNTRY"
+        for r in records)
+    transboundary_rows = sum(
+        isinstance(r, dict) and r.get("candidate_class") == "TRANSBOUNDARY"
+        for r in records)
+    other_candidate_rows = candidate_rows - target_country_rows - transboundary_rows
     eligible = [r for r in records
                 if isinstance(r, dict)
                 and isinstance(r.get("adjudication"), dict)
@@ -360,11 +375,18 @@ def build_report(crosswalk_path: str | Path, lake_frame_path: str | Path,
             "lake_frame_sha256": sha256_file(lake_frame_path),
             "evidence_register_sha256": sha256_file(register_path),
             "phase0_checklist_sha256": checklist_digest,
+            "adjudication_sha256": (
+                sha256_file(adjudication_path)
+                if adjudication_path is not None else None),
             "sidecars_verified": True,
         },
+        "artifact_revision": artifact_revision,
         "denominators": {
             "catalog_rows": len(records),
             "india_candidate_rows": candidate_rows,
+            "target_country_candidate_rows": target_country_rows,
+            "transboundary_candidate_rows": transboundary_rows,
+            "other_candidate_rows": other_candidate_rows,
             "reference_only_rows": reference_rows,
             "adjudicated_eligible_rows": len(eligible),
             "eligible_unverified_evidence": unverified_eligible,
@@ -398,7 +420,7 @@ def build_report(crosswalk_path: str | Path, lake_frame_path: str | Path,
                 lake_denominators["observation_full_lake_rows"],
             "observable_lake_years": lake_denominators["observable_lake_years"],
             "unreviewed_event_rows": unreviewed,
-            "verified_source_bytes": len(verified),
+            "verified_evidence_source_records": len(verified),
         },
         "independent_episode_ids": episode_ids,
         "gates": {
@@ -497,7 +519,8 @@ def validate_report(doc: dict[str, Any],
                 "observation_known_breach_lake_rows",
                 "observation_verified_non_event_lake_rows",
                 "observation_full_lake_rows", "observable_lake_years",
-                "unreviewed_event_rows", "verified_source_bytes"):
+                "unreviewed_event_rows",
+                "verified_evidence_source_records"):
         if (not isinstance(d.get(key), int)
                 or isinstance(d.get(key), bool) or d[key] < 0):
             problems.append(f"invalid denominator: {key}")
@@ -673,7 +696,8 @@ def main() -> int:
         parser.error("--out is required unless --verify is given")
     doc = build_report(args.crosswalk, args.lake_frame,
                        args.evidence_register, args.adjudication,
-                       args.checklist)
+                       args.checklist,
+                       artifact_revision=_artifact_revision(args.out))
     problems = validate_report(doc, args.checklist)
     if problems:
         raise SystemExit("feasibility report validation failed: " + "; ".join(problems))

@@ -1,0 +1,268 @@
+{
+  "authority": {
+    "bulk_acquisition_authorized": false,
+    "causal_authorized": false,
+    "detector_authorized": false,
+    "forecast_authorized": false,
+    "odds_authorized": false,
+    "operational_authorized": false,
+    "satellite_bulk_authorized": false,
+    "seismic_waveform_authorized": false,
+    "warning_authorized": false,
+    "weather_download_authorized": false
+  },
+  "claim_scope": "research_only_no_operational_authorization",
+  "created_utc": "2026-09-27",
+  "records": [
+    {
+      "access_terms": "Government of India publication; citation only until redistribution terms confirmed",
+      "coverage": {
+        "spatial": {
+          "basins": [
+            "Indus",
+            "Ganga",
+            "Brahmaputra"
+          ],
+          "bbox": null,
+          "countries": [
+            "India"
+          ],
+          "polygon_ref": null
+        },
+        "spatial_label": "Indian Himalayan river basins (Indus, Ganga, Brahmaputra)",
+        "temporal_end": null,
+        "temporal_start": null
+      },
+      "evidence_id": "EV:NRSC_GLA_IHR_METADATA",
+      "limitations": [
+        "Metadata-level record only; row-level lake bytes not ingested",
+        "Cannot satisfy event-evidence or control-evidence checks"
+      ],
+      "locator": "https://www.nrsc.gov.in/nrscnew/resources_atlas_glacialLake.php",
+      "locator_type": "URL",
+      "registered_utc": "2026-09-27T00:00:00Z",
+      "sha256": null,
+      "source_name": "NRSC Glacial Lake Atlas",
+      "source_version": "atlas-2016-2017-epoch",
+      "verification_state": "METADATA_VERIFIED"
+    },
+    {
+      "access_terms": "Government of India publication; citation only until redistribution terms confirmed",
+      "coverage": {
+        "spatial": {
+          "basins": null,
+          "bbox": null,
+          "countries": [
+            "India"
+          ],
+          "polygon_ref": null
+        },
+        "spatial_label": "India \u2014 CWC monitored glacial lakes and water bodies",
+        "temporal_end": null,
+        "temporal_start": null
+      },
+      "evidence_id": "EV:CWC_GLWB_SEP_2024_REPORT",
+      "limitations": [
+        "Metadata-level record only; the monitoring portfolio is not a verified non-event history",
+        "Cannot satisfy event-evidence or control-evidence checks"
+      ],
+      "locator": "https://www.cwc.gov.in/sites/default/files/monitoring-report-september-2024.pdf",
+      "locator_type": "URL",
+      "registered_utc": "2026-09-27T00:00:00Z",
+      "sha256": null,
+      "source_name": "CWC monthly monitoring report",
+      "source_version": "monthly-report-2024-09",
+      "verification_state": "METADATA_VERIFIED"
+    },
+    {
+      "access_terms": "Government of India parliamentary document; citation only",
+      "coverage": {
+        "spatial": {
+          "basins": null,
+          "bbox": null,
+          "countries": [
+            "India"
+          ],
+          "polygon_ref": null
+        },
+        "spatial_label": "India \u2014 lakes >10 ha under CWC monitoring",
+        "temporal_end": null,
+        "temporal_start": null
+      },
+      "evidence_id": "EV:LOKSABHA_AU883_2026",
+      "limitations": [
+        "Metadata-level record only; different product scope than NRSC atlas \u2014 not comparable as a trend",
+        "Cannot satisfy event-evidence or control-evidence checks"
+      ],
+      "locator": "https://sansad.in/getFile/lsapps/loksabhaquestions/annex/188/AU883_Vsdm5C.pdf",
+      "locator_type": "URL",
+      "registered_utc": "2026-09-27T00:00:00Z",
+      "sha256": null,
+      "source_name": "Lok Sabha parliamentary answer AU883",
+      "source_version": "AU883-session-2026",
+      "verification_state": "METADATA_VERIFIED"
+    },
+    {
+      "access_terms": "CC BY 4.0",
+      "coverage": {
+        "spatial": {
+          "basins": null,
+          "bbox": null,
+          "countries": [
+            "India",
+            "Nepal",
+            "Bhutan",
+            "Pakistan",
+            "China",
+            "Afghanistan"
+          ],
+          "polygon_ref": null
+        },
+        "spatial_label": "Hindu Kush Himalaya",
+        "temporal_end": null,
+        "temporal_start": null
+      },
+      "evidence_id": "EV:ICIMOD_HMAGLOFDB_V130",
+      "limitations": [
+        "Catalog-level record only; per-event rows require pinned bytes before adjudication citations can resolve",
+        "ESSD 2023 documents date-precision and lake-linkage limitations"
+      ],
+      "locator": "https://rds.icimod.org/metadata/8881454b-6f7c-461b-95c2-eaf7618230d9",
+      "locator_type": "DATASET_RECORD",
+      "registered_utc": "2026-09-27T00:00:00Z",
+      "sha256": null,
+      "source_name": "HMAGLOFDB",
+      "source_version": "1.3.0",
+      "verification_state": "METADATA_VERIFIED"
+    },
+    {
+      "access_terms": "NRSC terms permit attributed non-commercial use and value-added derivatives; original materials remain NRSC/ISRO property; retained for research verification only",
+      "coverage": {
+        "spatial": {
+          "basins": [
+            "Indus",
+            "Ganga",
+            "Brahmaputra"
+          ],
+          "bbox": null,
+          "countries": [
+            "India"
+          ],
+          "polygon_ref": null
+        },
+        "spatial_label": "Indian Himalayan river basins (2016-2017 mapping epoch)",
+        "temporal_end": "2017-12-31",
+        "temporal_start": "2016-01-01"
+      },
+      "evidence_id": "EV:NRSC_GLA_IHR_ATLAS_PDF",
+      "limitations": [
+        "Atlas-domain rows are not an India-administered count",
+        "2016-2017 mapping epoch is a snapshot, not an observation interval"
+      ],
+      "locator": "https://www.nrsc.gov.in/nrscnew/resources_atlas_glacialLake.php",
+      "locator_type": "URL",
+      "payload": {
+        "evidence_root": "/Users/sanjayb/nepal-event-anomaly-evidence",
+        "kind": "LOCAL_PATH_LABEL",
+        "path": "india-phase0-source-intake/IHR_GlacialLake_Atlas.pdf",
+        "size_bytes": 109055478
+      },
+      "registered_utc": "2026-09-28T00:00:00Z",
+      "sha256": "579b61a1592ff1eb977fa97b0b980e24f8baeb91e60f2f63c58c8d6f2b5a5162",
+      "source_name": "NRSC Glacial Lake Atlas",
+      "source_version": "atlas-2016-2017-epoch",
+      "verification_state": "BYTES_VERIFIED"
+    },
+    {
+      "access_terms": "CC BY 4.0",
+      "coverage": {
+        "spatial": {
+          "basins": [
+            "Indus",
+            "Ganga",
+            "Brahmaputra"
+          ],
+          "bbox": null,
+          "countries": [
+            "India"
+          ],
+          "polygon_ref": null
+        },
+        "spatial_label": "High Mountain Asia event catalog (1533-2025, QC through 2025-12-31)",
+        "temporal_end": "2025-12-31",
+        "temporal_start": "1533-01-01"
+      },
+      "evidence_id": "EV:HMAGLOFDB_V1_3_0_ARCHIVE",
+      "limitations": [
+        "768 data rows incl. 4 GF_ID collisions",
+        "ICIMOD RDS page (766 events, Dec 2025) is a different vintage"
+      ],
+      "locator": "https://github.com/fidelsteiner/HMAGLOFDB (release snapshot 1d975de)",
+      "locator_type": "URL",
+      "payload": {
+        "evidence_root": "/Users/sanjayb/nepal-event-anomaly-evidence",
+        "kind": "LOCAL_PATH_LABEL",
+        "path": "p5-glof-2026-09-19/glof-events/HMAGLOFDB-v1.3.0.zip",
+        "size_bytes": 107879
+      },
+      "registered_utc": "2026-09-28T00:00:00Z",
+      "sha256": "7903cd5abf95265705824f7e1f54e7e52bf514b2d300b828718e781fbe2622ca",
+      "source_name": "HMAGLOFDB",
+      "source_version": "v1.3.0",
+      "verification_state": "BYTES_VERIFIED"
+    },
+    {
+      "access_terms": "CC BY 4.0",
+      "coverage": {
+        "spatial": {
+          "basins": [
+            "Indus",
+            "Ganga",
+            "Brahmaputra"
+          ],
+          "bbox": null,
+          "countries": [
+            "India"
+          ],
+          "polygon_ref": null
+        },
+        "spatial_label": "High Mountain Asia event catalog (1533-2025, QC through 2025-12-31)",
+        "temporal_end": "2025-12-31",
+        "temporal_start": "1533-01-01"
+      },
+      "evidence_id": "EV:HMAGLOFDB_V1_3_0_CSV",
+      "limitations": [
+        "Quality-controlled through 2025-12-31 per bundled README",
+        "stable row identity uses version+row_ordinal+row_sha256, not GF_ID"
+      ],
+      "locator": "https://github.com/fidelsteiner/HMAGLOFDB (Database/GLOFs/HMAGLOFDB.csv)",
+      "locator_type": "URL",
+      "payload": {
+        "evidence_root": "/Users/sanjayb/nepal-event-anomaly-evidence",
+        "kind": "LOCAL_PATH_LABEL",
+        "path": "p5-glof-2026-09-19/glof-events/HMAGLOFDB.csv",
+        "size_bytes": 449837
+      },
+      "registered_utc": "2026-09-28T00:00:00Z",
+      "sha256": "34e923e3729800f61ce3757e93577483b00c46e0d14c986f47e58ed6d4ee2bc5",
+      "source_name": "HMAGLOFDB",
+      "source_version": "v1.3.0",
+      "verification_state": "BYTES_VERIFIED"
+    }
+  ],
+  "register_state": "OPEN",
+  "register_version": 1,
+  "revision_note": "Register revision 1 adds BYTES_VERIFIED payload records for the retained NRSC atlas PDF and the HMAGLOFDB v1.3.0 archive/CSV. V0 remains sealed history.",
+  "rules": [
+    "A citation string is attribution until it resolves to a BYTES_VERIFIED register record whose temporal coverage contains the claimed interval",
+    "BYTES_VERIFIED requires a pinned payload SHA-256, a resolvable locator, and explicit temporal/spatial coverage",
+    "METADATA_VERIFIED records prove a source exists and its terms; they never satisfy event-evidence or control-evidence checks",
+    "UNRESOLVED records are bookkeeping for known-but-unverified references",
+    "reviewer_ids anywhere in the pipeline are attribution strings, not authenticated identities",
+    "This register authorizes no weather, satellite, or seismic acquisition"
+  ],
+  "schema": "INDIA_EVIDENCE_REGISTER_V0",
+  "supersedes": "docs/science/INDIA_EVIDENCE_REGISTER_V0.json",
+  "supersedes_sha256": "0a085630e9136b35e9630738cd15b28c05028a659c9eb5109527695272b856cf",
+  "version": 0
+}

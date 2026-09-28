@@ -352,3 +352,55 @@ def test_live_v3_packet_validates_with_derived_artifacts(tmp_path):
         ev / "IHR_GlacialLake_Atlas.pdf")
     assert result["status"] == "SOURCE_INTAKE_OK"
     assert result["row_level_records_extracted"] is True
+
+
+@pytest.mark.skipif(not _EVIDENCE_PRESENT,
+                    reason="external evidence root unavailable")
+def test_live_v4_packet_validates_and_binds_hmaglofdb_bytes(tmp_path):
+    packet = ROOT / "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V4.json"
+    supplement = ROOT / "docs/science/INDIA_INVENTORY_REGISTRY_SUPPLEMENT_V0.json"
+    registry = ROOT / "docs/science/INDIA_INVENTORY_REGISTRY_V4.json"
+    ev = intake.EVIDENCE_ROOT / "india-phase0-source-intake"
+    result = intake.validate_intake(
+        packet, supplement, registry,
+        ev / "NRSC_GLA_IHR_SOURCE_RECEIPT_V0.json",
+        ev / "IHR_GlacialLake_Atlas.pdf")
+    assert result["status"] == "SOURCE_INTAKE_OK"
+
+
+@pytest.mark.skipif(not _EVIDENCE_PRESENT,
+                    reason="external evidence root unavailable")
+def test_v4_packet_rejects_stale_hmaglofdb_disposition(tmp_path):
+    import json, pytest
+    packet = ROOT / "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V4.json"
+    doc = json.loads(packet.read_text())
+    hma = next(s for s in doc["sources"]
+               if s["id"] == "ICIMOD_HMAGLOFDB_V130")
+    hma["disposition"] = "NOT_ACQUIRED_VERSION_DRIFT"
+    forged = tmp_path / "INDIA_PHASE0_SOURCE_INTAKE_V4.json"
+    forged.write_text(json.dumps(doc))
+    forged.with_name(
+        "INDIA_PHASE0_SOURCE_INTAKE_V3.json").write_bytes(
+            (ROOT / "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V3.json")
+            .read_bytes())
+    supplement = ROOT / "docs/science/INDIA_INVENTORY_REGISTRY_SUPPLEMENT_V0.json"
+    registry = ROOT / "docs/science/INDIA_INVENTORY_REGISTRY_V4.json"
+    ev = intake.EVIDENCE_ROOT / "india-phase0-source-intake"
+    with pytest.raises(intake.IntakeError):
+        intake.validate_intake(
+            forged, supplement, registry,
+            ev / "NRSC_GLA_IHR_SOURCE_RECEIPT_V0.json",
+            ev / "IHR_GlacialLake_Atlas.pdf")
+
+
+def test_receipt_skip_parser_extracts_nodes():
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import build_p5_suite_receipt as rb
+    sample = (
+        "SKIPPED [1] tests/test_india_release_closure.py:76 - "
+        "CANDIDATE_ONLY artifact not yet sealed\n"
+        "SKIPPED [2] tests/test_x.py:5 - env absent\n")
+    skips = rb._parse_skips(sample)
+    assert len(skips) == 2
+    assert skips[0]["node"] == "tests/test_india_release_closure.py:76"
+    assert "CANDIDATE_ONLY" in skips[0]["reason"]
