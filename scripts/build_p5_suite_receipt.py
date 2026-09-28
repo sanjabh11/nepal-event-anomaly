@@ -72,8 +72,8 @@ def _parse_summary(text: str) -> dict:
     return counts
 
 
-_SKIP_RE = re.compile(r"^SKIPPED \[\d+\]\s+(?P<node>[^:\s]+:[^\s]+)"
-                      r"\s*-\s*(?P<reason>.*)$")
+_SKIP_RE = re.compile(
+    r"^SKIPPED \[\d+\]\s+(?P<node>[\w./-]+:\d+):?\s*(?P<reason>.*)$")
 
 
 def _parse_skips(text: str) -> list[dict]:
@@ -83,7 +83,7 @@ def _parse_skips(text: str) -> list[dict]:
         m = _SKIP_RE.match(line.strip())
         if m:
             skips.append({"node": m.group("node"),
-                          "reason": m.group("reason").strip()})
+                          "reason": m.group("reason").strip().lstrip("- ").strip()})
     return skips
 
 
