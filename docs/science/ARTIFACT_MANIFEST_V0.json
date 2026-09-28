@@ -1,1361 +1,1371 @@
 {
-  "baseline_head": "54aa612f7d478082716dfe5d0bca7d92d62d493b",
-  "content_head": "90165f6fb7951febf6826be34cf79679737bc3e6",
-  "files": [
-    {
-      "relpath": ".github/workflows/p5-verification.yml",
-      "sha256": "8fcdc19112d1ee4b6104db2bf70ad6abea7d69b6c283c58a181d4c8fa53b3fcc",
-      "size_bytes": 1722
-    },
-    {
-      "relpath": ".github/workflows/research-v0.yml",
-      "sha256": "2a8a7d2fac097942f4d479b22292a1920dc246cb5adba26ccf13ccb1eca17aeb",
-      "size_bytes": 17715
-    },
-    {
-      "relpath": ".gitignore",
-      "sha256": "03d470456d5b7dbbb2c4d27bc5c9354478ff407b60c5ffef267c09d77063c950",
-      "size_bytes": 1433
-    },
-    {
-      "relpath": ".phase-loop/master-plan.md",
-      "sha256": "82e58d8b64a2cc49a26ac8c1ed14d462bd2b031778ba3dd66a9454f8da8884bc",
-      "size_bytes": 4405
-    },
-    {
-      "relpath": ".phase-loop/phase-ledger.jsonl",
-      "sha256": "d76578a78247a40175b6d933d7fbcb8ba312d2ddc9b104f69cdeabd44f82f2f8",
-      "size_bytes": 18820
-    },
-    {
-      "relpath": "LICENSE",
-      "sha256": "819a622f070aa45586c4408827f7793e21e5f4ca4cf146fbc584b519c998ef51",
-      "size_bytes": 1525
-    },
-    {
-      "relpath": "README.md",
-      "sha256": "10166e54a213fdb959126d3f8d8b90208ee5da48a27bf49813e0fb1e3d62a69d",
-      "size_bytes": 21519
-    },
-    {
-      "relpath": "conftest.py",
-      "sha256": "00050cd3d65cef658b01694405a89c0053b2ce42594e294f265f2eb774c91a58",
-      "size_bytes": 743
-    },
-    {
-      "relpath": "docs/science/G3_F1_STEIM_ADMISSION_DECISION_V0.md",
-      "sha256": "38efe97a4293e70ca4fb3b3cb261c317d5fa204db7f339e7b503d2de42765090",
-      "size_bytes": 5124
-    },
-    {
-      "relpath": "docs/science/GAP_REGISTER_V0.md",
-      "sha256": "9ac2db3cdc4f4f077f58a98ae5dce5fc041a7872adbf4310f0eb7d04b802b69f",
-      "size_bytes": 133692
-    },
-    {
-      "relpath": "docs/science/GOVERNANCE_EXERCISE_RECORD_V0.md",
-      "sha256": "3c041ebfe37170044ecb5d83ef102cca09d228058fb6d0ee07f2848e8fa71a2f",
-      "size_bytes": 4235
-    },
-    {
-      "relpath": "docs/science/HAZARD_EVENT_INVENTORY_DECISION_MATRIX_V0.md",
-      "sha256": "557fd307be079f699897ffae707cee2f86f43eb27549ab106573b6c8242ebdd3",
-      "size_bytes": 11403
-    },
-    {
-      "relpath": "docs/science/INDIA_ATLAS_DOMAIN_SCOPE_NOTE_V0.json",
-      "sha256": "f4cc395774c0572fc707649721bac0a670801c6c1261edfdc369f6e5ec855fdf",
-      "size_bytes": 2230
-    },
-    {
-      "relpath": "docs/science/INDIA_ATLAS_DOMAIN_SCOPE_NOTE_V0.json.sha256",
-      "sha256": "53387205499c8ec9350bfe5a77766a93a15c13633cac21e6c349788c57d1da70",
-      "size_bytes": 104
-    },
-    {
-      "relpath": "docs/science/INDIA_ATLAS_DOMAIN_SCOPE_NOTE_V1.json",
-      "sha256": "7b02413c9dcea77ba794691cdf4291e0adf0cb1bb2a82601747c2f3ba3144486",
-      "size_bytes": 2036
-    },
-    {
-      "relpath": "docs/science/INDIA_ATLAS_DOMAIN_SCOPE_NOTE_V1.json.sha256",
-      "sha256": "26ba39b08bba2fbf5d4f4da15d6c15e4e1a0139f8e26f1080335a470f17f3bdc",
-      "size_bytes": 104
-    },
-    {
-      "relpath": "docs/science/INDIA_EVIDENCE_REGISTER_V0.json",
-      "sha256": "0a085630e9136b35e9630738cd15b28c05028a659c9eb5109527695272b856cf",
-      "size_bytes": 5519
-    },
-    {
-      "relpath": "docs/science/INDIA_EVIDENCE_REGISTER_V0.json.sha256",
-      "sha256": "e754402cd5c3a23a3c58ac4a6d1030925dbbc71e9f99b24a889d19f33b574cc7",
-      "size_bytes": 98
-    },
-    {
-      "relpath": "docs/science/INDIA_EVIDENCE_REGISTER_V1.json",
-      "sha256": "935c4d3a63045bac7fa436cbb05e91e598e632f4bc1d7f407757ad63bfd49206",
-      "size_bytes": 9983
-    },
-    {
-      "relpath": "docs/science/INDIA_EVIDENCE_REGISTER_V1.json.sha256",
-      "sha256": "aac4dafd310b8e4acf1ed05d2bab581ed6b187221f8b701b6a8e69fe9b2160ed",
-      "size_bytes": 98
-    },
-    {
-      "relpath": "docs/science/INDIA_INVENTORY_METADATA_V0.json",
-      "sha256": "f9a79dca22be3677f118ecf2aacc4a42053aafcb8c3b27f8f7fdd1d0add02fde",
-      "size_bytes": 3759
-    },
-    {
-      "relpath": "docs/science/INDIA_INVENTORY_REGISTRY_SUPPLEMENT_V0.json",
-      "sha256": "cc299111e8ba3e370ddf44cf9eaa0aed3779c69037b792b24a4cd8c2f94fa190",
-      "size_bytes": 2659
-    },
-    {
-      "relpath": "docs/science/INDIA_INVENTORY_REGISTRY_SUPPLEMENT_V0.json.sha256",
-      "sha256": "538664070923081afdc9416d2391902a7eb06149605494304686789e2501a20e",
-      "size_bytes": 110
-    },
-    {
-      "relpath": "docs/science/INDIA_INVENTORY_REGISTRY_V1.json",
-      "sha256": "7c53deacb0e2f0a493a18d23f7b8ac678d79322efe3c94a630ff2edc3fbd064d",
-      "size_bytes": 9944
-    },
-    {
-      "relpath": "docs/science/INDIA_INVENTORY_REGISTRY_V2.json",
-      "sha256": "6653b29fc1cdfad717e56c5fb918008004996a7db0fa85f28bc636426aa694dc",
-      "size_bytes": 11373
-    },
-    {
-      "relpath": "docs/science/INDIA_INVENTORY_REGISTRY_V2.json.sha256",
-      "sha256": "37ebb48495f93eb5597197b8cbf5c0838d5417008cedb3318acc25f81975284e",
-      "size_bytes": 99
-    },
-    {
-      "relpath": "docs/science/INDIA_INVENTORY_REGISTRY_V3.json",
-      "sha256": "113b3f410f09326a58b9e8dbe9021915f408dab6beb74645fb5947f7b228817b",
-      "size_bytes": 13373
-    },
-    {
-      "relpath": "docs/science/INDIA_INVENTORY_REGISTRY_V3.json.sha256",
-      "sha256": "f05bb6a604e8f3e8da5feb9837d0cf23561575454818acb147e1fcb19b0f739e",
-      "size_bytes": 99
-    },
-    {
-      "relpath": "docs/science/INDIA_INVENTORY_REGISTRY_V4.json",
-      "sha256": "3c98228782c8b45798594cb3c8090f2d7a9c2be3327bab63ebaeeb60b916c492",
-      "size_bytes": 14501
-    },
-    {
-      "relpath": "docs/science/INDIA_INVENTORY_REGISTRY_V4.json.sha256",
-      "sha256": "ef3ef8522b9c48cf70e9e7f7a52af7b1a5733c0185ebd8e5e0128cd743178006",
-      "size_bytes": 99
-    },
-    {
-      "relpath": "docs/science/INDIA_PHASE0_PROTOCOL_V0.md",
-      "sha256": "7741aea26a6860b3c913cd3eba44e96f489c00f828c9384905336c9bc73322dd",
-      "size_bytes": 3758
-    },
-    {
-      "relpath": "docs/science/INDIA_PHASE0_PROTOCOL_V1.md",
-      "sha256": "7a5335c22707f5f53fabb81fc894d7383a017ffc495240458787d11006f99372",
-      "size_bytes": 9415
-    },
-    {
-      "relpath": "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V0.json",
-      "sha256": "24c04fa30ba9a7a8dd1379a7d8fa894d62fca8acd45f8664d283046d0d26496b",
-      "size_bytes": 4776
-    },
-    {
-      "relpath": "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V0.json.sha256",
-      "sha256": "e1d8e0215d5ad09a394285892cedb6bf491eca0904fc1f5da5e8cf3a1fc499d7",
-      "size_bytes": 101
-    },
-    {
-      "relpath": "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V1.json",
-      "sha256": "ea1cb21ec38be82c2832cafc02757f84cd25fef24293959b8643bf96d7c0c498",
-      "size_bytes": 5893
-    },
-    {
-      "relpath": "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V1.json.sha256",
-      "sha256": "33aeef1927c5d515ea38b164dfe50adc7219febedd039439e8fa2ced22252953",
-      "size_bytes": 101
-    },
-    {
-      "relpath": "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V2.json",
-      "sha256": "4dab657aaab72046cce536247ac938709733227b1f5448dca01acdf16c4668c5",
-      "size_bytes": 6836
-    },
-    {
-      "relpath": "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V2.json.sha256",
-      "sha256": "190aaa2978f3d7a1f478c85887d87094869c2e8763d4a288d092a2ed9ae75289",
-      "size_bytes": 101
-    },
-    {
-      "relpath": "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V3.json",
-      "sha256": "eb4ef715ce5f905e1aab517e89606ac1f61e6ba2c8c0971fd61f524d05d5f3aa",
-      "size_bytes": 8305
-    },
-    {
-      "relpath": "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V3.json.sha256",
-      "sha256": "524f885076df30d7211b022204b215ac39966c9e3e3c20f2688daa6b90731f9f",
-      "size_bytes": 101
-    },
-    {
-      "relpath": "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V4.json",
-      "sha256": "992a814e55dfd1aa043e93556fda3b68537f288382a1b6d0a20a63bcc9ef7285",
-      "size_bytes": 9717
-    },
-    {
-      "relpath": "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V4.json.sha256",
-      "sha256": "91ec3a4411defa0c2476f1fc893c514b97a663ccbd1c8ced5de4e659c476b11f",
-      "size_bytes": 101
-    },
-    {
-      "relpath": "docs/science/INFORMATION_CUTOFF_TARGET_POLICY_V0.md",
-      "sha256": "df856eb1e4e2e264e725d662dfbe9862660e965a8ac8c459f99c5d910dc1861e",
-      "size_bytes": 9062
-    },
-    {
-      "relpath": "docs/science/MISSION_SCOPE_OVERLAY_V0.md",
-      "sha256": "3aab8965c2391e87ab2d768dcbb4c6ef6ef2c3ad9c20a27e201e8c73e8d27fb9",
-      "size_bytes": 5758
-    },
-    {
-      "relpath": "docs/science/NEPAL_SCIENCE_GATE_CHECKLIST_V0.json",
-      "sha256": "e880f9381d7aff47574e9528010c57e9ddbfaf8d293daa46366cf719a5847c4e",
-      "size_bytes": 4247
-    },
-    {
-      "relpath": "docs/science/NEPAL_SCIENCE_GATE_CHECKLIST_V1.json",
-      "sha256": "561c0c891ad6b02c23afed2b81605c7829728f282a518167f54ab5f76f240d45",
-      "size_bytes": 3728
-    },
-    {
-      "relpath": "docs/science/NEPAL_SCIENCE_GATE_CHECKLIST_V1.json.sha256",
-      "sha256": "77d0614f9bdf26685cff1a64766de57b1184dc6a26d77eb43116dc27fcda8cf3",
-      "size_bytes": 103
-    },
-    {
-      "relpath": "docs/science/OPEN_DISTRIBUTION_NOTE_V0.md",
-      "sha256": "361706d99fcbf65360bd320417dd5b252f66f39e7b4429a4da36a7269f347334",
-      "size_bytes": 6732
-    },
-    {
-      "relpath": "docs/science/P0_BASELINE_LEDGER.md",
-      "sha256": "fcd4967555d92c3c1d9b15e32e41e4a6ea24033a88359fc4624b1232900f0506",
-      "size_bytes": 25786
-    },
-    {
-      "relpath": "docs/science/P3_ATTESTATION_RECORD_V0.md",
-      "sha256": "bbc0bafa0450764c2764a88c0f8136ef3b64913cc498389f1badc92035a1284a",
-      "size_bytes": 2413
-    },
-    {
-      "relpath": "docs/science/P3_ATTESTATION_TEMPLATE.md",
-      "sha256": "7abd191437d54d7009c2c88877777d2c077f0dfde86a6ae0e49df663c717ac5b",
-      "size_bytes": 7681
-    },
-    {
-      "relpath": "docs/science/P3_BASIN_ASSIGNMENT_RULE_V0.md",
-      "sha256": "f92058354aa9ac5247c074fff3f9e190ece15b14ab661c82cff00bf6e5bc2c80",
-      "size_bytes": 4247
-    },
-    {
-      "relpath": "docs/science/P3_HMAGLOFDB_INTAKE_REPORT_V0.md",
-      "sha256": "8ff4b09d4d854ad66ce864a76cbc76567d9698f7a4ecc2320651fa069481b03e",
-      "size_bytes": 4133
-    },
-    {
-      "relpath": "docs/science/P5_A2_TEMPORAL_REGIME_RESULT_V0.md",
-      "sha256": "4539a78b29fa7010ea24ab0c014896836015c88b62151448b3adbbd32afdd900",
-      "size_bytes": 3065
-    },
-    {
-      "relpath": "docs/science/P5_ACQUISITION_AUTHORIZATION_RECORD_V0.md",
-      "sha256": "963e8d37c0b07d9c699cdd7732f4ef87fb13101be6555712672655b182763063",
-      "size_bytes": 19011
-    },
-    {
-      "relpath": "docs/science/P5_ARM_C_AMENDMENT_TEMPLATE_V0.md",
-      "sha256": "15d041cb4206dfa9c8ddc1d9f8ddba350204ecbab6c6b8a17864c10d238e1df9",
-      "size_bytes": 6595
-    },
-    {
-      "relpath": "docs/science/P5_AUDIT3_REMEDIATION_PLAN_V0.md",
-      "sha256": "2057c046d8cc2163c04cd4e44dc8b83b39b4bca96c6a842fae0f582abce9a61c",
-      "size_bytes": 3878
-    },
-    {
-      "relpath": "docs/science/P5_EXTENSION_STATUS_V0.md",
-      "sha256": "6dc97c05186460f8cecc89510d8ddab32729d45efedd54d58d846f3ee704f363",
-      "size_bytes": 6493
-    },
-    {
-      "relpath": "docs/science/P5_MODEL_REEXECUTION_NOTE_V0.md",
-      "sha256": "9fe50c1bd6616c0949201857cf71f5d3f86361d51fdf72516b620266d19ac9fb",
-      "size_bytes": 4425
-    },
-    {
-      "relpath": "docs/science/P5_OPERATIVE_ANCHOR_NOTE_V0.md",
-      "sha256": "bb1dfd4c0079e749b524fde9b7298404e8f8f9b0fe92fc2bc09fc2ab5bcc4030",
-      "size_bytes": 1702
-    },
-    {
-      "relpath": "docs/science/P5_OPTION3_EXECUTION_TEMPLATE_V0.md",
-      "sha256": "d9556bb4474266f0f34ed6a3e5716f5feae7e754ff88dfd5c6b27d9ebda252b8",
-      "size_bytes": 6371
-    },
-    {
-      "relpath": "docs/science/P5_SCOPE_RECONCILIATION_V0.md",
-      "sha256": "574b17cfce195438ebe57fc8d1b092deaca19dd72f1a24177f70298655001636",
-      "size_bytes": 7009
-    },
-    {
-      "relpath": "docs/science/P5_SEISMIC_CANDIDATE_INVENTORY_V0.md",
-      "sha256": "b762066a063c721231606c19bbe948e55fed972c9c74c150f5b205d59b9f8e84",
-      "size_bytes": 6051
-    },
-    {
-      "relpath": "docs/science/P5_STATISTICAL_POWER_NOTE_V0.md",
-      "sha256": "263cd29f9a5b84dc0deab86dd707a9e54d76ac851bceddc7643972284c1a52e4",
-      "size_bytes": 10045
-    },
-    {
-      "relpath": "docs/science/PHASE4_DUAL_MANIFEST_DECISION_V0.md",
-      "sha256": "f8c1a2ab69c7ef2aeb23bd1955070b3bf6d37331382676e1be3eaac0792f7abe",
-      "size_bytes": 5471
-    },
-    {
-      "relpath": "docs/science/PROJECT_LICENSE_DECISION_V0.md",
-      "sha256": "b6955388432756829cb13d45f75ef6ce94828fbab67218c8ac7fefd7b30272d2",
-      "size_bytes": 1932
-    },
-    {
-      "relpath": "docs/science/RELEASE_INTEGRITY_THREAT_MODEL_V0.md",
-      "sha256": "a5565668b1b658657e1870e38520c4384f6fffc1e443af361f4e4e15e523d63d",
-      "size_bytes": 9982
-    },
-    {
-      "relpath": "docs/science/SEISMIC_SOURCE_QUALIFICATION_V0.md",
-      "sha256": "5870a32c0d672640c089ea388f7113d2b0b63baf7281d739968e0f5ca88a3a97",
-      "size_bytes": 3900
-    },
-    {
-      "relpath": "docs/science/SOURCE_FEASIBILITY_RECORDS_V0.md",
-      "sha256": "5b7ba987f9bc541f30df94b95f89f7c025d1fa815cd14986086f926d86ceda83",
-      "size_bytes": 18600
-    },
-    {
-      "relpath": "docs/science/STATUS_SCOPE_RECONCILIATION_NOTE_20260915.md",
-      "sha256": "21af5dd057fb3febae408a525ab1263c897c225d711fa8409e9726f84e7a16f6",
-      "size_bytes": 3722
-    },
-    {
-      "relpath": "docs/science/SUITE_RECEIPT_20260928_R10.json",
-      "sha256": "c33e8ec527188cf266a79534206621fb8fefe66d1890ad9a60201bedfc3ba39c",
-      "size_bytes": 3369
-    },
-    {
-      "relpath": "docs/science/SUITE_RECEIPT_20260928_R10.json.sha256",
-      "sha256": "1f1f39188b620d85ddfe18707f3d1efed666b5ff01d40b0ff342d6e25cf4c213",
-      "size_bytes": 98
-    },
-    {
-      "relpath": "docs/science/SUITE_RECEIPT_20260928_R11.json",
-      "sha256": "815dcf0eef40fa1cae193c6757ab8cf35bd3517b5d99cac71c629bed156202ff",
-      "size_bytes": 3369
-    },
-    {
-      "relpath": "docs/science/SUITE_RECEIPT_20260928_R11.json.sha256",
-      "sha256": "6794cf3d82064a8b257443ed5a226bb8b84b795b84dbfc2e4c0727a68fca941b",
-      "size_bytes": 98
-    },
-    {
-      "relpath": "docs/science/SUITE_RECEIPT_20260928_R12.json",
-      "sha256": "8c8774d079dc9e4836276672212775ad5aef463d58ccf228caca32c1bb94d0e0",
-      "size_bytes": 3370
-    },
-    {
-      "relpath": "docs/science/SUITE_RECEIPT_20260928_R12.json.sha256",
-      "sha256": "84b8d22420fc68ca58af5406f633f12a63038fb86a280c7c1ada7b366328e211",
-      "size_bytes": 98
-    },
-    {
-      "relpath": "docs/science/SUITE_RECEIPT_20260928_R13.json",
-      "sha256": "5147e1a4a55c57144b3731be2623560d41be703e190837bf337d805f6e50591b",
-      "size_bytes": 3368
-    },
-    {
-      "relpath": "docs/science/SUITE_RECEIPT_20260928_R13.json.sha256",
-      "sha256": "8fed340cc9a4d1dbac79db1fddc41bf980f0e81ae044fa438e6eee7f6a3e12e3",
-      "size_bytes": 98
-    },
-    {
-      "relpath": "docs/science/SUITE_RECEIPT_20260928_R7.json",
-      "sha256": "8cd5fc315d7f024979114f9ca0c83626a284fed6b569721b4990247513fc7c64",
-      "size_bytes": 3369
-    },
-    {
-      "relpath": "docs/science/SUITE_RECEIPT_20260928_R7.json.sha256",
-      "sha256": "68a494b9d3f8aabee005ece90b00fec3063a9cf5e62b37b21782859f265bf903",
-      "size_bytes": 97
-    },
-    {
-      "relpath": "docs/science/SUITE_RECEIPT_20260928_R8.json",
-      "sha256": "2ef3635a68210fa9ac0ad5998f762c55ae532129e3e64695e30d5564e75e3d7e",
-      "size_bytes": 3369
-    },
-    {
-      "relpath": "docs/science/SUITE_RECEIPT_20260928_R8.json.sha256",
-      "sha256": "c75e34fbbf0e65583cf1f1cb0970cfec42e5093aeb020fb592970a7270ee1b02",
-      "size_bytes": 97
-    },
-    {
-      "relpath": "docs/science/SUITE_RECEIPT_20260928_R9.json",
-      "sha256": "91b025d34d8a315e8ee7d48ad2a689b0d64fdf28a60c8564a793d9b1c966e0c8",
-      "size_bytes": 3369
-    },
-    {
-      "relpath": "docs/science/SUITE_RECEIPT_20260928_R9.json.sha256",
-      "sha256": "566121d371eb493caac1de6bd21b7bde3be7d416fdd93f4318a8dd119b308997",
-      "size_bytes": 97
-    },
-    {
-      "relpath": "docs/science/TRACKED_DATA_PROVENANCE_V0.md",
-      "sha256": "8a90f15756c6d9397420db4c7f9a6f1549ec134152acc4f4081a03c2141a0f29",
-      "size_bytes": 18365
-    },
-    {
-      "relpath": "docs/science/run_a/HYBRID_ROUTE_RECONCILIATION_V0.md",
-      "sha256": "9f27f8e7979fc7e79b41fcadda4cf089fc1f2f4f1d64bff2ed0627dfb49446e3",
-      "size_bytes": 10561
-    },
-    {
-      "relpath": "docs/science/run_a/RUN_A_EVIDENCE_SUMMARY_V0.md",
-      "sha256": "bc96809ba6fa3e7bf7395250cd2b7647222373be6e71cb6be248c75da483820d",
-      "size_bytes": 12773
-    },
-    {
-      "relpath": "docs/science/run_a/SCOPE_OVERLAY_V0.md",
-      "sha256": "d0cf500951c36f1663b9576acd9a680140a1831ae97e9383445d307b0371637b",
-      "size_bytes": 3595
-    },
-    {
-      "relpath": "docs/science/run_b/EVENT_PACKAGE_SPEC_V0.md",
-      "sha256": "908d5db988c642a5926115be837a05ad454effd693ff49588e3f78cc3b74a31e",
-      "size_bytes": 10518
-    },
-    {
-      "relpath": "docs/science/run_b/FMX_AUDIT_RUBRIC_V0.md",
-      "sha256": "230796f5e05c43e09721f741dd9b9350f2659e87c282e23e04758f60d75d273f",
-      "size_bytes": 7651
-    },
-    {
-      "relpath": "docs/science/run_b/GLOF_POC_CONTRACT_V0.md",
-      "sha256": "8d04de83d4861cc83a8935802fc5e8fbe929549bc5100298f4b43d5c5af7b457",
-      "size_bytes": 7998
-    },
-    {
-      "relpath": "docs/science/run_b/REGIME_PROMOTION_PROTOCOL_V0.md",
-      "sha256": "6481fd7ff89bc0514c6646ac28e5e0ec285d10b63e80b2958d074a6b3025b826",
-      "size_bytes": 7073
-    },
-    {
-      "relpath": "docs/science/run_b/REGIME_PROTOCOL_V0.md",
-      "sha256": "560f3899743a1987a3d99734cd6c0cf9ba1f8eafd2adb391f10e76ec1582cec1",
-      "size_bytes": 7568
-    },
-    {
-      "relpath": "docs/science/run_b/SEISMIC_EVENT_DETECTION_ADDENDUM_V0.md",
-      "sha256": "2458db9363b522925e2d475be1bbac80cd9d6673cc0ba35be37a775140a5c948",
-      "size_bytes": 9806
-    },
-    {
-      "relpath": "docs/science/run_b/SOURCE_EVIDENCE_ADDENDUM_V0.md",
-      "sha256": "8f76fab0293c3ea018e3afb0b1c19631756176123aa45fb15558269d208d79f2",
-      "size_bytes": 22596
-    },
-    {
-      "relpath": "docs/science/run_b/SOURCE_QUALIFICATION_RECORDS_V0.md",
-      "sha256": "e107268299de48bc78b5271f5be9d575c325a4d6786e3545eca763f7833d87a6",
-      "size_bytes": 34712
-    },
-    {
-      "relpath": "docs/science/run_c/ASSOCIATION_PROTOCOL_V0.md",
-      "sha256": "179c5c0ca56c7e500fa18080f146a3f9bc880e0fde8dec89d0ada886d82e907b",
-      "size_bytes": 9987
-    },
-    {
-      "relpath": "docs/science/run_c/FORECAST_ARCHIVE_MATRIX_V0.md",
-      "sha256": "12293b9f03d14d9e11fc2b4bed3634e7d376dd3149c888550f9bd31026cab16a",
-      "size_bytes": 18538
-    },
-    {
-      "relpath": "docs/science/run_c/FORECAST_EVAL_SCAFFOLD_V0.md",
-      "sha256": "025e40663da5989367da8a5905f7f128e5230263c67527adcc4f76b4700083f5",
-      "size_bytes": 9912
-    },
-    {
-      "relpath": "docs/science/swarm1/A1_SOURCE_QUALIFICATION_DELTAS_V0.md",
-      "sha256": "812f72f029f398a1da0df3f3e499840d945f1ef4f6aa06f62abb2c239453cbbd",
-      "size_bytes": 4173
-    },
-    {
-      "relpath": "nepal/__init__.py",
-      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "size_bytes": 0
-    },
-    {
-      "relpath": "nepal/era5_anchor_intake.py",
-      "sha256": "137f154f295f632d292093e64955dbc8ceaeb703686a909958638e0dd449dc43",
-      "size_bytes": 16767
-    },
-    {
-      "relpath": "nepal/era5_download.py",
-      "sha256": "d563a66e907adbcfb20528f179047c82e7878f590f31bf411854d651d3280a2f",
-      "size_bytes": 36438
-    },
-    {
-      "relpath": "nepal/era5_hybrid_fetch.py",
-      "sha256": "097bcfd76e5b2760ed208a32ec80f0b00c2b4d0c4ebb252ea1caefbcd59b5760",
-      "size_bytes": 23872
-    },
-    {
-      "relpath": "nepal/experiment_v0/__init__.py",
-      "sha256": "c61d2b7557fa0317e3174e90e180211237e2ea2d3885bf370cb58af716319909",
-      "size_bytes": 547
-    },
-    {
-      "relpath": "nepal/experiment_v0/adapters.py",
-      "sha256": "a2af3e3ed99ac3849ece85b302befc8cc2944c1aad85bf7435f2167707032f7e",
-      "size_bytes": 35248
-    },
-    {
-      "relpath": "nepal/experiment_v0/association.py",
-      "sha256": "1fc19abfbb8b60f472bbcfd53dc0fc5582cd5df2c9d705cc7af52a2b0f76eeff",
-      "size_bytes": 151923
-    },
-    {
-      "relpath": "nepal/experiment_v0/audit.py",
-      "sha256": "03a05333bff1bb125eb5fe7354ab51ae5b242fb248247b1a4c28429a34ddf3ac",
-      "size_bytes": 78556
-    },
-    {
-      "relpath": "nepal/experiment_v0/baselines.py",
-      "sha256": "1733c721c79302a1f54e877445442cba82e548dc9fb101e47fbad3ab35f1552b",
-      "size_bytes": 21201
-    },
-    {
-      "relpath": "nepal/experiment_v0/evaluation.py",
-      "sha256": "b1cc46d15467180707fb5dd69f3a2552e6c1f2e542e545537986678de1f8ac59",
-      "size_bytes": 92509
-    },
-    {
-      "relpath": "nepal/experiment_v0/metrics.py",
-      "sha256": "199e187c35593e1d66d80ad05ad1f19b8ea9acb0dfd2d26ea017c8754eea4f5d",
-      "size_bytes": 9955
-    },
-    {
-      "relpath": "nepal/experiment_v0/vintages.py",
-      "sha256": "e120c027e56b7302476f0bdcc693cb32066944e0a7c65fee64b64472e495345a",
-      "size_bytes": 24489
-    },
-    {
-      "relpath": "nepal/feature_extraction.py",
-      "sha256": "3210504c3c4c3a4168f50209224100e3af8fb6b0b44317556d96cda3f0d00cfa",
-      "size_bytes": 40542
-    },
-    {
-      "relpath": "nepal/gitutil.py",
-      "sha256": "01033627ff7cd4032ba2e8d3bb828d8d5be00f45824ed452b6c85ab61046ebfb",
-      "size_bytes": 1210
-    },
-    {
-      "relpath": "nepal/gmm_descriptive.py",
-      "sha256": "a882e9a1a1f6105933f2dba6ae8909ea30d0d4f9f68203e4995903bf8cbed4b5",
-      "size_bytes": 63342
-    },
-    {
-      "relpath": "nepal/real_fmx.py",
-      "sha256": "77f6e3e9f5530450c69f96184981f9f2324c0d82471ee1bff9e001d32f3c8ba1",
-      "size_bytes": 24193
-    },
-    {
-      "relpath": "nepal/research_v0/__init__.py",
-      "sha256": "da71365c725c1f5eb87a578f9720cb703866f43611b7baeb6f49842099661fe4",
-      "size_bytes": 689
-    },
-    {
-      "relpath": "nepal/research_v0/_hashing.py",
-      "sha256": "1c1f4af58c9ffcdd63aa2e1eb75da67bc6e4e2c3538f053df632545412d7694c",
-      "size_bytes": 21261
-    },
-    {
-      "relpath": "nepal/research_v0/cli.py",
-      "sha256": "7fd90c3990733d69111b4acfb1fb91a56ef0b269f7831ef7eea4c33e63b30ea5",
-      "size_bytes": 22079
-    },
-    {
-      "relpath": "nepal/research_v0/gates.py",
-      "sha256": "0b290cd378be8565a5eaa52e20fdc5d9c2c0d53c3ad5d58d7bf1f4bf11a18b2b",
-      "size_bytes": 52671
-    },
-    {
-      "relpath": "nepal/research_v0/p3_intake.py",
-      "sha256": "0eb415a16ef83633684ce9557ed08f4f933e49fa267279f4b99697934be1a46a",
-      "size_bytes": 27740
-    },
-    {
-      "relpath": "nepal/research_v0/p3_package_adapter.py",
-      "sha256": "65b5ce7225a4b9cc09dcca32faea8d815df4257d632fac3e100bbda25b269afc",
-      "size_bytes": 19217
-    },
-    {
-      "relpath": "nepal/research_v0/policy.py",
-      "sha256": "44d4020a423f9ebf621282fff7b2f931ca1084968e3999cc8c159176f113f1c8",
-      "size_bytes": 17409
-    },
-    {
-      "relpath": "nepal/research_v0/producer_validation.py",
-      "sha256": "9e625313993739855be6a1e40604304067122a21cf47985d38c67e57ff819d0c",
-      "size_bytes": 160526
-    },
-    {
-      "relpath": "nepal/research_v0/records.py",
-      "sha256": "8418fc5d7ed4ac8d8d0b0ee663fb34c852ded0b78399c4ac61bb12caeb99e250",
-      "size_bytes": 60394
-    },
-    {
-      "relpath": "nepal/research_v0/run_evidence.py",
-      "sha256": "8fd44d2e240d87f0639ecc9d6e640dc6364b99b06133691d928a11f6a428aeb5",
-      "size_bytes": 18104
-    },
-    {
-      "relpath": "nepal/research_v0/source_intake.py",
-      "sha256": "55161696fff324fa0c33d878831705c86ae63a88222e0e344aa38b23a6047780",
-      "size_bytes": 18513
-    },
-    {
-      "relpath": "nepal/run_ledger_repair.py",
-      "sha256": "87c3599440dcd7f0cad7dc959688adbcc274ef410f4c8d5d9b625f6b05981038",
-      "size_bytes": 13080
-    },
-    {
-      "relpath": "nepal/science_v0/__init__.py",
-      "sha256": "b90fbad8a8efdd48c439acd9bc6c44d5456b3e944115c1b05a2dc0bc6d0b3680",
-      "size_bytes": 677
-    },
-    {
-      "relpath": "nepal/science_v0/events.py",
-      "sha256": "3f7eadfd3a71b42b40ba2f80fce50f0c3835e3dbd888d7697a36b277f3f4355a",
-      "size_bytes": 23011
-    },
-    {
-      "relpath": "nepal/science_v0/fmx_audit.py",
-      "sha256": "5065cfcd357de00b5c4130e0928ce045ad5a7492517b2a91358d30b0fe53b098",
-      "size_bytes": 17054
-    },
-    {
-      "relpath": "nepal/science_v0/glof_poc.py",
-      "sha256": "63632d7d039cebc5758c5c6e3237f223fcc90e0b818a37df70ea41c45344c4f2",
-      "size_bytes": 31726
-    },
-    {
-      "relpath": "nepal/science_v0/regimes.py",
-      "sha256": "76043720871d6c7183e4d3f1ecfe6e378b72887d2429ad0f4484aa83af9fa274",
-      "size_bytes": 155943
-    },
-    {
-      "relpath": "nepal/science_v0/seasonal_frame.py",
-      "sha256": "809bdbdc6ae404a207b30660c0d0be56a3aa71f0281fe792f01d90b5efb7da68",
-      "size_bytes": 14017
-    },
-    {
-      "relpath": "nepal/seismic_sidecar/__init__.py",
-      "sha256": "769513cc77f7a0fc57af4fb4793153c50489c525ac8738c7da11a653bbe3a3a0",
-      "size_bytes": 3961
-    },
-    {
-      "relpath": "nepal/seismic_sidecar/contracts.py",
-      "sha256": "7d1321ed9f7ff1a44b337b7293760e421e1d6dad7a399c164db93663f52d7026",
-      "size_bytes": 24857
-    },
-    {
-      "relpath": "nepal/seismic_sidecar/events.py",
-      "sha256": "d1ca8abf4655d9fd080b1cdf1c676977d908a4e9db5e50f1ae9c71e8db5e4fb7",
-      "size_bytes": 14432
-    },
-    {
-      "relpath": "nepal/seismic_sidecar/features.py",
-      "sha256": "5ed7c02e62d3b1066aa13b75e223cf8de98aa9dcb1b1316e2d07a8d591ba1c4f",
-      "size_bytes": 20738
-    },
-    {
-      "relpath": "nepal/seismic_sidecar/io.py",
-      "sha256": "9ce71c754d4d82d189cdf640c0440c6b3ec52b44854b52584473aa49f0a37136",
-      "size_bytes": 38987
-    },
-    {
-      "relpath": "nepal/seismic_sidecar/observability.py",
-      "sha256": "2f0dedc3c70dc298baa065812f2c0baf8d73c849c28fc17eb8dbcc7fbde613a4",
-      "size_bytes": 16847
-    },
-    {
-      "relpath": "nepal/seismic_sidecar/one_station_contract.py",
-      "sha256": "f084b5a4837c76922df567fdb6f2535d4f58567a4504dfbe7be5ffb9e5c98e66",
-      "size_bytes": 34998
-    },
-    {
-      "relpath": "nepal/seismic_sidecar/provenance.py",
-      "sha256": "536a33b6f67e6fb22d3f8d8214739a1ec1f91b7ec7598dd99d58027c0cec0372",
-      "size_bytes": 24287
-    },
-    {
-      "relpath": "nepal/seismic_sidecar/runner.py",
-      "sha256": "e38b72cc20d3362c0fcbeba0fb845b7d9eebc1ff17708e12f6590718fb8eddc0",
-      "size_bytes": 30422
-    },
-    {
-      "relpath": "scripts/agent_write_lock.py",
-      "sha256": "e6ad9616b2e2c38f20e406328bd56d146da8d88cfea7ada125bc0e45e34d9589",
-      "size_bytes": 6985
-    },
-    {
-      "relpath": "scripts/armc_cds_preflight.py",
-      "sha256": "e1d0a261dda79105e6790578c9c150063d06b69dbfcd94e0de1f24f20efb09fb",
-      "size_bytes": 17036
-    },
-    {
-      "relpath": "scripts/build_india_release_closure.py",
-      "sha256": "eb913873c1f10a3a14abee836dc9a0c78f32d9ffc8e9bfe4f60fc21e085c34b3",
-      "size_bytes": 43180
-    },
-    {
-      "relpath": "scripts/build_p5_release_closure_v2.py",
-      "sha256": "555837a0f61a1031406b1766d98dd9716b96d73c0d8db83d1e869ef35d066dca",
-      "size_bytes": 11797
-    },
-    {
-      "relpath": "scripts/build_p5_release_closure_v4.py",
-      "sha256": "eb1a0fa56973b064b4b26a06f54e3261f5c6ae905dce00b1b07cfb29d72b14e7",
-      "size_bytes": 21039
-    },
-    {
-      "relpath": "scripts/build_p5_suite_receipt.py",
-      "sha256": "45fcac52e905248e932bea12a4de76bfa8e0d47c776cd2000c829a24cb1b223e",
-      "size_bytes": 10823
-    },
-    {
-      "relpath": "scripts/export_release_bundle.py",
-      "sha256": "827ab8846ed10c09b9c2bc859beb78869ee4debc0543d7462adbafac3e002a8e",
-      "size_bytes": 17047
-    },
-    {
-      "relpath": "scripts/generate_evidence_index_v1.py",
-      "sha256": "172e1def7e51e0283f17aa65d5d210b286a94d291c71fd52e5cbc8c4abf728bc",
-      "size_bytes": 10783
-    },
-    {
-      "relpath": "scripts/generate_evidence_index_v2.py",
-      "sha256": "007dca87be02c3f0fe3c55792097867be313deb78b1e1dd696ec0216aad17ebd",
-      "size_bytes": 26060
-    },
-    {
-      "relpath": "scripts/india_event_adjudication.py",
-      "sha256": "9e758372ebc7b6353b9138f5b91421bf6dab468b84c19b9d1cacca97ef85c9a5",
-      "size_bytes": 14569
-    },
-    {
-      "relpath": "scripts/india_event_crosswalk.py",
-      "sha256": "feaa420a4f32f7d0091af0b5b40cea6ceafa9cbde04cf643f2dcb03819d14d52",
-      "size_bytes": 19491
-    },
-    {
-      "relpath": "scripts/india_evidence_register.py",
-      "sha256": "02e05ad5eaeb3ddf88cf7d933fe0b801f87b41ccf9c3ebc10ce99508d355472d",
-      "size_bytes": 14697
-    },
-    {
-      "relpath": "scripts/india_feasibility_report.py",
-      "sha256": "9ad01f0d4299f155d6517f4626287648fcebceaaa592106ab45258c43c497dca",
-      "size_bytes": 33889
-    },
-    {
-      "relpath": "scripts/india_inventory_metadata.py",
-      "sha256": "e4c2797415f5b94e023ee7355e2d7f73d13ce4849955dabadfd9894a95b13537",
-      "size_bytes": 5993
-    },
-    {
-      "relpath": "scripts/india_lake_frame.py",
-      "sha256": "0c2eede75b36ab6187b0e39276ae3572632abcb7360029414067de59470fd0a3",
-      "size_bytes": 23076
-    },
-    {
-      "relpath": "scripts/india_nrsc_atlas_extract.py",
-      "sha256": "808458d3799ebf06f7d46164a4640252d8e910810583461c18ab73ab101bba58",
-      "size_bytes": 7247
-    },
-    {
-      "relpath": "scripts/india_source_registry.py",
-      "sha256": "21242374d113066b8bd9d6f44a9fe880ad9a324ebf921ade7f8215426bd9d6f1",
-      "size_bytes": 21323
-    },
-    {
-      "relpath": "scripts/materialize_evidence_sidecars.py",
-      "sha256": "f0f9bbeb6bcb80e2ebc10c7dbafa0e05b25ad6ebe6d029817ec1b1f4a68a8298",
-      "size_bytes": 2748
-    },
-    {
-      "relpath": "scripts/p5_safe_io.py",
-      "sha256": "239d3a15d4915ab6ae1ad5021045de62c4200d43eac1c6b15ab5cde47af026c5",
-      "size_bytes": 2558
-    },
-    {
-      "relpath": "scripts/rebind_manifest.py",
-      "sha256": "6604a2c658cf06cc2cbd966a0a10a1667b2bf0f7a911741e9a42f76faeb85696",
-      "size_bytes": 21926
-    },
-    {
-      "relpath": "scripts/reexecute_p5_regimes.py",
-      "sha256": "cb962e0c3e8fae401b341e0d6122ed2572289ddf4e5977868a1ee6c1694b436c",
-      "size_bytes": 29476
-    },
-    {
-      "relpath": "scripts/replay_p5.py",
-      "sha256": "57a494ca5c796712fbd850ed4fd675f2f2493beecd7c13a151fedb959df778b1",
-      "size_bytes": 17856
-    },
-    {
-      "relpath": "scripts/replay_seasonal_p5.py",
-      "sha256": "672a7a7542e3e1e881864bd88a7749f525b9a584a3849c0ed84e5e339ad9eb3b",
-      "size_bytes": 16590
-    },
-    {
-      "relpath": "scripts/run_daily_p5.py",
-      "sha256": "3c84add86262145acc1563950b64b3b12270dfb04c7da9cef9ca4b50733fcff7",
-      "size_bytes": 9285
-    },
-    {
-      "relpath": "scripts/run_seasonal_p5.py",
-      "sha256": "92ceabd5b8f751265c3127f117b5f2c3f93956275a45f0d9228779383c433cc6",
-      "size_bytes": 21744
-    },
-    {
-      "relpath": "scripts/run_verification_ladder.py",
-      "sha256": "ea106ad51e096c88577c49c3dada60b023c39ca24ee20fcadbcbc104a3a7a7ef",
-      "size_bytes": 14485
-    },
-    {
-      "relpath": "scripts/validate_evidence_index.py",
-      "sha256": "2cfe134f59f8ae892a76d668a3aaffacb84605ffd4707c39a8f8b8ac4c8e3ebf",
-      "size_bytes": 54514
-    },
-    {
-      "relpath": "scripts/validate_incident_surface.py",
-      "sha256": "b351dce2df0b06ecd4459321cba774ff9d3f70378db3bc65aa28ab4563135fec",
-      "size_bytes": 4043
-    },
-    {
-      "relpath": "scripts/validate_india_source_intake.py",
-      "sha256": "3854fd1c1878970555f94b12bee61797285be6cf0a01c7a4183e71d02b3110da",
-      "size_bytes": 25051
-    },
-    {
-      "relpath": "scripts/validate_nepal_science_gate_checklist.py",
-      "sha256": "2508b74c89b38e578fa7b9b759751d73c07ddf867beb6b3fd21036098ddb9d8b",
-      "size_bytes": 11514
-    },
-    {
-      "relpath": "scripts/validate_reexecution_report.py",
-      "sha256": "239c9adbf8880bb3f9ed0723a726c4c761c37e284f8da0c680560edc9ef6b828",
-      "size_bytes": 16523
-    },
-    {
-      "relpath": "scripts/validate_release_closure.py",
-      "sha256": "b028f2e49751d63f557969abfd998b89553cc3bbba02ac828293227c5466cb48",
-      "size_bytes": 37001
-    },
-    {
-      "relpath": "scripts/verify_exported_bundle.py",
-      "sha256": "81d660fb6b0b15fa5f76e797039641e7446c139cb31c936304069a7eb441fc05",
-      "size_bytes": 20165
-    },
-    {
-      "relpath": "tests/fixtures/__init__.py",
-      "sha256": "554e2961161d47e79350cb29bbaef5ef1aec830ad01405caf89a7c286a1d0084",
-      "size_bytes": 334
-    },
-    {
-      "relpath": "tests/fixtures/synthetic.py",
-      "sha256": "f58049cba16fbe1c56957a06cb2a8fc5f75343c3d624997cd2af3edc80cec33b",
-      "size_bytes": 11367
-    },
-    {
-      "relpath": "tests/fixtures/synthetic_exp_b2.py",
-      "sha256": "d785aa9f32298a7128eb270c9c6e360775775120bcdb38d682c9ffe277da09f5",
-      "size_bytes": 2416
-    },
-    {
-      "relpath": "tests/fixtures/synthetic_exp_b3.py",
-      "sha256": "f2c81e34cef1b53a5eb7c6424508dc15e4c4b1e7373553f56f9928e5df279969",
-      "size_bytes": 21372
-    },
-    {
-      "relpath": "tests/fixtures/synthetic_exp_b4.py",
-      "sha256": "486224a6ce0e48ecafaf967bb8bc010b0ceb12159ab2e175b6f627333e5ef0da",
-      "size_bytes": 35269
-    },
-    {
-      "relpath": "tests/test_armc_cds_preflight.py",
-      "sha256": "a91b4055fc66946f6e22f2ab8432a4f9c86604f3a99b2c295bbdc926fb33be90",
-      "size_bytes": 4634
-    },
-    {
-      "relpath": "tests/test_era5_anchor_intake.py",
-      "sha256": "6fd8e4a92495df280179960f20c6fff0997086d2be3faead1e99afff7da6bf7d",
-      "size_bytes": 7639
-    },
-    {
-      "relpath": "tests/test_evidence_index_validator.py",
-      "sha256": "db0102f7a2eed3611bbf6d3ac9b16b29abdceb6048067a4881c52fd4e1f7dac5",
-      "size_bytes": 29193
-    },
-    {
-      "relpath": "tests/test_experiment_v0_adapters.py",
-      "sha256": "d17edaa9d2b9c1991cb6fa1b165d351c7e4da1fc3591e0282e955bb59348679b",
-      "size_bytes": 27862
-    },
-    {
-      "relpath": "tests/test_experiment_v0_b1_association.py",
-      "sha256": "71355f321586ba132a38b8e2577f20d56681b6dc3c01b66b20e67076fa05821a",
-      "size_bytes": 79789
-    },
-    {
-      "relpath": "tests/test_experiment_v0_b2_vintages.py",
-      "sha256": "b73dc917ed2a63962c23f00ba93c329757f3661761bd9d161e54fca96a74d48b",
-      "size_bytes": 15877
-    },
-    {
-      "relpath": "tests/test_experiment_v0_b3_evaluation.py",
-      "sha256": "7325e620c2cf77279d61f3e0ebef0e482ab23bf4e62e9c6d9fec2738fc44e55f",
-      "size_bytes": 64866
-    },
-    {
-      "relpath": "tests/test_experiment_v0_b3_vintage_timing.py",
-      "sha256": "099b8ca777f947c403b4897a6ead07ec0ae4cfd7dac3e2575501ecbd7f92fc19",
-      "size_bytes": 7426
-    },
-    {
-      "relpath": "tests/test_experiment_v0_b4_audit.py",
-      "sha256": "65bf55c9bc30f902c492199da2478f8c71f513b622df7e584a94c249574f0674",
-      "size_bytes": 28988
-    },
-    {
-      "relpath": "tests/test_experiment_v0_replay.py",
-      "sha256": "9a5a525438671cf0b80f01c47949453f475d3488f34bbdd15a22cb780a50c4d7",
-      "size_bytes": 16943
-    },
-    {
-      "relpath": "tests/test_export_release_bundle.py",
-      "sha256": "ed9823835d67970587f143e614c73bad2a1b7ddfe21cc20c4e59f4214c57c954",
-      "size_bytes": 6900
-    },
-    {
-      "relpath": "tests/test_glof_poc_contract.py",
-      "sha256": "a5278d436906e1324d66a6728e044b77aed399571662c7a4dd5ea60f6aa216ce",
-      "size_bytes": 46365
-    },
-    {
-      "relpath": "tests/test_glof_poc_real_path.py",
-      "sha256": "e06382f55402a978fe3c7f8d56abd6e2133f80b07e97efef57c1a64c0171304a",
-      "size_bytes": 18675
-    },
-    {
-      "relpath": "tests/test_incident_surface.py",
-      "sha256": "1c38deadd4bb282617a0d4067476ff11d7dc6cf34cd53dc9ab2287c6151e1470",
-      "size_bytes": 5074
-    },
-    {
-      "relpath": "tests/test_india_evidence_register.py",
-      "sha256": "afcd42d5dcb3f992b7992c1c2be69a5a36fcb09c98d7f2cf9070014e061b7c6d",
-      "size_bytes": 7915
-    },
-    {
-      "relpath": "tests/test_india_inventory_metadata.py",
-      "sha256": "f5894e59c809b7e10f39ab7ad4d907520655ad4c8bf10b05426502540ab260a4",
-      "size_bytes": 2264
-    },
-    {
-      "relpath": "tests/test_india_nrsc_extract.py",
-      "sha256": "9420efad6eebcf73d45654e4a750e2fb0008ab87651c603a45387e2dbd08fff6",
-      "size_bytes": 4231
-    },
-    {
-      "relpath": "tests/test_india_phase0.py",
-      "sha256": "4533aa137af4b78951508680f011a131139004b1660cd8adc60ec9ee08e0bb76",
-      "size_bytes": 35060
-    },
-    {
-      "relpath": "tests/test_india_release_closure.py",
-      "sha256": "d92e76eca6869f5b448bd2f1b38d7e947db547f95da321cbc93be711d6fa49f6",
-      "size_bytes": 15767
-    },
-    {
-      "relpath": "tests/test_india_source_intake.py",
-      "sha256": "92c2677eb37af4717b3e5c6e13e0ea8c8ccaf65e7ecf2e049d774b9dfdffa49e",
-      "size_bytes": 17544
-    },
-    {
-      "relpath": "tests/test_india_source_registry.py",
-      "sha256": "adcce580b67022407aa0a3f044eee9a504dbeaba200f3eb3c2045192d8afcb9d",
-      "size_bytes": 9842
-    },
-    {
-      "relpath": "tests/test_materialize_evidence_sidecars.py",
-      "sha256": "2c961be038a5cb373702544a8c9bd5dfa9bb168b19d38486f9710ea8ed38e157",
-      "size_bytes": 1110
-    },
-    {
-      "relpath": "tests/test_nepal_science_gate_checklist.py",
-      "sha256": "0afbd39f0e19cd5ba59505f7d7c93e7f2fd06cba4a5d46e509354bbb8d2cb510",
-      "size_bytes": 5315
-    },
-    {
-      "relpath": "tests/test_one_station_contract.py",
-      "sha256": "e85118af9fccfd105ee86b342315302c74a15ca76942d0dedad44e6cf8195386",
-      "size_bytes": 29900
-    },
-    {
-      "relpath": "tests/test_p3_hmaglofdb_intake.py",
-      "sha256": "b4dcd46d5eae713e685af9f9557f9baac772a3ec02c14b2dd21b33da6c300df6",
-      "size_bytes": 16452
-    },
-    {
-      "relpath": "tests/test_p3_package_adapter.py",
-      "sha256": "c157a909d693286c6aff8b0b81a5553f1a387b2153f3c06b75dbf39323989d61",
-      "size_bytes": 5087
-    },
-    {
-      "relpath": "tests/test_p5_audit3_writers.py",
-      "sha256": "cd98406f95732b9f1fc884b84b0c96a9e31de2bf21e2421df34b73fa1843d116",
-      "size_bytes": 2024
-    },
-    {
-      "relpath": "tests/test_p5_glof_intake.py",
-      "sha256": "35b9eaa953c47644d4cad64a026cf53dff7dc1cbe73c7954f9e303e5b77ebc00",
-      "size_bytes": 15407
-    },
-    {
-      "relpath": "tests/test_p5_io_contract.py",
-      "sha256": "6bbc2f4186c5a48711721ad63446ce998b6c4bca9bbe3117e8586599e0f6ad09",
-      "size_bytes": 27405
-    },
-    {
-      "relpath": "tests/test_p5_safe_io.py",
-      "sha256": "d75707727258f4e780fe7c0fbdaffb8eb1a9417967de5e07e5da197cbc6250d5",
-      "size_bytes": 907
-    },
-    {
-      "relpath": "tests/test_promotion_protocol_consistency.py",
-      "sha256": "2dac25a997276c0b72f3e53e5538db8374807bfb34811dea893b029d4899cc63",
-      "size_bytes": 3923
-    },
-    {
-      "relpath": "tests/test_r10_promotion.py",
-      "sha256": "24735c0ad95328ceb6cd3b05211fda574c1645f755363a784c1045ccadf94848",
-      "size_bytes": 61829
-    },
-    {
-      "relpath": "tests/test_r11_2_provenance.py",
-      "sha256": "42aa740c58117b2d1b4531bfaf215270a439270a992acbd0ef525dd0cec4c891",
-      "size_bytes": 15340
-    },
-    {
-      "relpath": "tests/test_r11_3_provenance.py",
-      "sha256": "ed03fac73b4c1eb2a6b238838bf1752f58bc0141c3da5b24eaa7b0ef5f74de0c",
-      "size_bytes": 8151
-    },
-    {
-      "relpath": "tests/test_r11_5_release_closure.py",
-      "sha256": "fddf428f2c680890661573617258ee940b8eaeff62513fe01bb11fee18686341",
-      "size_bytes": 11893
-    },
-    {
-      "relpath": "tests/test_r11_9_bindings.py",
-      "sha256": "f0e5de39fb3f559c236fd945b1e12905fab569dab42c5b7d67f94653fbf6b852",
-      "size_bytes": 23673
-    },
-    {
-      "relpath": "tests/test_r11_9_dual_manifest_contract.py",
-      "sha256": "d56c62f797c66368fc40bd5860427e0adf32caf3b9d708656a5fd89369aaf2f1",
-      "size_bytes": 7536
-    },
-    {
-      "relpath": "tests/test_r11_9_steim_seam.py",
-      "sha256": "1f005019c32b2f6eccdccd36960fee2b1035a7b4d1489eedab9a4d7031732099",
-      "size_bytes": 3705
-    },
-    {
-      "relpath": "tests/test_r6_association.py",
-      "sha256": "c82ddb749029ce0140ac81ec5c7a265c95805aeb98d811ac5ddd0ec01d5f5e42",
-      "size_bytes": 11787
-    },
-    {
-      "relpath": "tests/test_r6_evaluation.py",
-      "sha256": "50a44425a361be44bea8ca4b11e52393a034dd7ae52a1c101c4d6ebc5668aa2c",
-      "size_bytes": 14371
-    },
-    {
-      "relpath": "tests/test_r6_provenance.py",
-      "sha256": "3d4d4a0382b7e5b0c055270c7a908157f370a13798b9b61f83787055755cee73",
-      "size_bytes": 32761
-    },
-    {
-      "relpath": "tests/test_r6_regimes.py",
-      "sha256": "f83d36c871c957546c3ead65faf5b4936f63b7e6b289fe7660b2e9c2da53c704",
-      "size_bytes": 30679
-    },
-    {
-      "relpath": "tests/test_r7_hardening.py",
-      "sha256": "568aa31d1554ef124d0b2913c07bbdf7107b8895aae44a820e6c7a8a2056d389",
-      "size_bytes": 12618
-    },
-    {
-      "relpath": "tests/test_r8_fmx_assoc.py",
-      "sha256": "701eb0958eb319999c50be9d1226ac8994145588e8c7455eca33fb8ee85cf7cc",
-      "size_bytes": 10576
-    },
-    {
-      "relpath": "tests/test_r8_provenance.py",
-      "sha256": "e99e8197d84cffb2b28498f73e232786648ab66dae44896afd42a5dd1e2a9f0a",
-      "size_bytes": 14603
-    },
-    {
-      "relpath": "tests/test_r8_vintage.py",
-      "sha256": "2b6d0c1386a90e0fe9047cabddd9262dd1ae99c2abb665fea8e485d7bc09741b",
-      "size_bytes": 13334
-    },
-    {
-      "relpath": "tests/test_r9_promotion.py",
-      "sha256": "795a682a6a21a9d91185c97e39e0fbc8bb2d61080cae1f0a1b16a444de07e275",
-      "size_bytes": 59551
-    },
-    {
-      "relpath": "tests/test_real_fmx_audit.py",
-      "sha256": "3890d24c61d18d0612764be5a7bdcab7cd8a7a34cf93596397980662f127bc5a",
-      "size_bytes": 13146
-    },
-    {
-      "relpath": "tests/test_rebind_manifest_cli.py",
-      "sha256": "3dee89a2645d1f69b57ec07593eb407c8e4bb4c7ec91c49530ed3b557185b3fa",
-      "size_bytes": 17923
-    },
-    {
-      "relpath": "tests/test_reexecute_p5_regimes.py",
-      "sha256": "b8dabee3a55bffa0d01f67ace6d3ffce30e2510e4360ad2a524291105adb5291",
-      "size_bytes": 13445
-    },
-    {
-      "relpath": "tests/test_regime_real_path.py",
-      "sha256": "0f6b71f8964269c9bb072558a4c6f2992d8ecbab71e1f3f3aa06b2a6bd78f277",
-      "size_bytes": 6746
-    },
-    {
-      "relpath": "tests/test_release_closure_v4.py",
-      "sha256": "4b6c4196412416223aed53fb824873f1dbe865dd28e3e86f23c8fc561f9e7d26",
-      "size_bytes": 21095
-    },
-    {
-      "relpath": "tests/test_release_closure_validator.py",
-      "sha256": "483492d65d5078748d7241ef69dd6133a6b95b297cc30927829e7348872457f0",
-      "size_bytes": 22934
-    },
-    {
-      "relpath": "tests/test_replay_never_reexecutes.py",
-      "sha256": "25ee84040f6b4c97cff0c3956edcc1429c9e58dbbd65654bf7e897ce3cd53fff",
-      "size_bytes": 3211
-    },
-    {
-      "relpath": "tests/test_research_v0_adversarial.py",
-      "sha256": "1780ca9adbe44b5f5522a9c49db2210fbe1d07346c23995449f89c07a7c4c890",
-      "size_bytes": 42747
-    },
-    {
-      "relpath": "tests/test_research_v0_gates.py",
-      "sha256": "946b2a675354f20481d85719e4fc89b4e2cd82e0ab946ed9729602dbddf8185b",
-      "size_bytes": 17741
-    },
-    {
-      "relpath": "tests/test_research_v0_isolation.py",
-      "sha256": "240e481c0a8a8ecd954ad8b0a3990f31c717f7f2cf996610fcf7563eb40813ba",
-      "size_bytes": 7258
-    },
-    {
-      "relpath": "tests/test_research_v0_policy.py",
-      "sha256": "14b31189e02641112090940a776ecbfb6ea5803273b0b6261c6db3d7549eee3f",
-      "size_bytes": 9933
-    },
-    {
-      "relpath": "tests/test_research_v0_seismic_addendum.py",
-      "sha256": "35e62f18d40c0760e438e75cc8959f5029bada709050f06d3740c9ab86cb4ff6",
-      "size_bytes": 2283
-    },
-    {
-      "relpath": "tests/test_round5_hardening.py",
-      "sha256": "777f7f13ea6aa3f1db28bd2956e1f1d0f1eebdbd296d8c91084492e8402b712d",
-      "size_bytes": 17494
-    },
-    {
-      "relpath": "tests/test_run_a_reconciliation.py",
-      "sha256": "da4d29f60fc2c4d05732f79708c7be5d8ff957b67fe54daf77e0213d86728b7e",
-      "size_bytes": 10806
-    },
-    {
-      "relpath": "tests/test_run_evidence_manifest_v0.py",
-      "sha256": "f478b5cb61cebf572393d54b59843d1e5a94e19bd976821d7a9efc35706ccfef",
-      "size_bytes": 7445
-    },
-    {
-      "relpath": "tests/test_science_experiment_e2e.py",
-      "sha256": "bf7a59a7190da5353cdfea6baa4dcd4b995377bda870b07e4a5b96ca79f9f3ee",
-      "size_bytes": 12245
-    },
-    {
-      "relpath": "tests/test_science_v0_events.py",
-      "sha256": "4f2331c0d687f1db90d05ab4f6c598cf48c887171346e1ed18ed2c98f5ba7d08",
-      "size_bytes": 13311
-    },
-    {
-      "relpath": "tests/test_science_v0_fmx.py",
-      "sha256": "05f92f073ce32ff153cfa763aa42ab6616d4edf7350efed9fa448f65dba2e3a6",
-      "size_bytes": 6996
-    },
-    {
-      "relpath": "tests/test_science_v0_regimes.py",
-      "sha256": "39141cad7e06de30a26178c7d1c6c69437c21f423beff9837e95ca3db57f2cf4",
-      "size_bytes": 40955
-    },
-    {
-      "relpath": "tests/test_seasonal_frame_adversarial.py",
-      "sha256": "24a1e2b84792d3e22accd9470e9149c43a07f119d969544c7e81a79078d68538",
-      "size_bytes": 7815
-    },
-    {
-      "relpath": "tests/test_seasonal_lane.py",
-      "sha256": "2c6783bb68aa71f59a6e67aef32e06e6db1f52ff705e4ff945a8f8ad9a523e96",
-      "size_bytes": 31282
-    },
-    {
-      "relpath": "tests/test_seismic_shared_regression.py",
-      "sha256": "4295535478f73c4591fd6b731f9073a171b0693764742873c8d2a33abf548d63",
-      "size_bytes": 7951
-    },
-    {
-      "relpath": "tests/test_seismic_sidecar_contract.py",
-      "sha256": "8f88261b4f5cc0a3f37234dd8cd2e6877efe90d3f206053ff3633207b6f44a33",
-      "size_bytes": 18802
-    },
-    {
-      "relpath": "tests/test_seismic_sidecar_events.py",
-      "sha256": "63881ffc7074d2c34b65edc2b74cdfe8f79e8130a73bbe5265df06fc5cd1e2d1",
-      "size_bytes": 5873
-    },
-    {
-      "relpath": "tests/test_seismic_sidecar_features.py",
-      "sha256": "c435df27c18a3f07f00a4ded5ebdef70b4de0ae8bfecaa99d309c541b08c3576",
-      "size_bytes": 13847
-    },
-    {
-      "relpath": "tests/test_seismic_sidecar_io.py",
-      "sha256": "4624abc6d521fdadb7d264b98d648ce699276bd2521f14f0b34e08f03dfbbd0e",
-      "size_bytes": 21581
-    },
-    {
-      "relpath": "tests/test_seismic_sidecar_observability.py",
-      "sha256": "157767d26463de0591bcadc30df95e6104d44bc9ddc05753059c09d187258a5f",
-      "size_bytes": 7942
-    },
-    {
-      "relpath": "tests/test_seismic_sidecar_provenance.py",
-      "sha256": "c61c08bd29e81ef94f2d027db55f9e4261f76358a9cdc53308d654e9745f620e",
-      "size_bytes": 9678
-    },
-    {
-      "relpath": "tests/test_seismic_sidecar_runner.py",
-      "sha256": "b77339b02b6dd097a2e1cbb6c476559c5b3ee14a036c6ea0b04ead3ea04b742c",
-      "size_bytes": 26884
-    },
-    {
-      "relpath": "tests/test_suite_receipt.py",
-      "sha256": "bf3e89163e0856c3db2d4d47ecaf1fcc7fe9dc2b3bc1083549b49caed977afc2",
-      "size_bytes": 8782
-    },
-    {
-      "relpath": "tests/test_temporal_holdout.py",
-      "sha256": "06c9f25b27b8434e46d8f21e96f823c1e0769f9d97085a017791d3956f4578cc",
-      "size_bytes": 14244
-    },
-    {
-      "relpath": "tests/test_validate_reexecution_report.py",
-      "sha256": "667e4e4e2b13e679211578320d43d1011b9909385bb54f3b126c262fdd93a1b4",
-      "size_bytes": 5339
-    },
-    {
-      "relpath": "tests/test_verification_ladder.py",
-      "sha256": "d3c8c51e510ff9524f4a984efe0c283d86b37f0b88cf782852a14a1a17a22a3c",
-      "size_bytes": 5529
-    },
-    {
-      "relpath": "tests/test_verify_exported_bundle.py",
-      "sha256": "7fd2ad1838ef153c371439c4354de1ecc67034b7c30a5b35915e32603de9cc8e",
-      "size_bytes": 4985
-    }
-  ],
-  "generated": "post-P5 phase-B/C bind \u2014 model re-execution proof (MODEL_REEXECUTED both lanes, digest-exact), preregistered promotion protocol, clean-room export + verification-ladder harness, owner-scoped Arm C amendment (retrieval deferred)",
-  "interpreter": ".venv/bin/python",
-  "manifest_commit": "90165f6fb7951febf6826be34cf79679737bc3e6",
-  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
-  "repository_relative_root": ".",
-  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
-  "research_diagnostic_only": true,
-  "scope": "governed science artifacts: docs/science, nepal/research_v0, research tests, CI workflow, README \u2014 non-science sources excluded by design",
-  "self_excluded": true,
-  "test_results": {
-    "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
-    "claim_scan": "clean on all governed files",
-    "collection_guard": "repo-wide collection == tests/ (4364 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
-    "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
-    "full_suite_venv": "Pending R15 at 4364 collected after the skip-regex fix: expected 4361 passed, 3 skipped, 0 failed (4364 collected), exit 0. R14 recorded 4360/3/1 \u2014 the failure is this record-format gate triggered by an unparenthesized collection count; retained as a format diagnostic. Historical: R13 green 4354/3/0; R12 disk-pressure diagnostic; R7/R9 diagnostics. Receipts R1-R14 are append-only dated evidence.",
-    "india_nrsc_atlas_extraction": "NRSC atlas Tables 68/69 parsed to row-level records: 2433 + 299 rows, serial-set completeness enforced, printed-serial duplicates (S.No 2001/2002) recorded as anomalies; deterministic replay verified; extraction sealed under the external evidence root",
-    "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
-    "p5_a2_status_consistency": "local guard passed; CI guard configured \u2014 current CANDIDATE_ONLY / UNSUPERVISED_STRUCTURE_NOT_STABLE result, false authority flags, and release metadata aligned",
-    "p5_a2_temporal_holdout": "110 passed, 1 skipped \u2014 temporal mapping, waiver, and documentation regression lane",
-    "p5_daily_replay": "REPLAY_OK, replay_scope artifact_integrity_replay, regime_replay_state artifact_integrity_replayed \u2014 persisted v1 artifact validated (envelope+freeze+floor+receipt binding)",
-    "p5_evidence_index_validator": "42 passed \u2014 v1 compatibility plus exhaustive v2 inventory/partition/closure/sidecar/self-reference defect classes fail closed",
-    "p5_io_contract": "34 passed",
-    "p5_one_station_contract": "292 passed \u2014 V1 status vocabulary, v0 mapping completeness, authority-flag strictness, complete ten-digest execution chain, falsey-input rejection, event UTC/date/window/relation semantics, 24h window bound, BLOCKED/NOT_OPERATIONAL/RUN_ERROR bind nothing, bounded malformed-input errors, forbidden-term scan, window bounds, round-trips",
-    "p5_seasonal_frame_adversarial": "11 passed \u2014 input-domain refusals (non-JJA labels, out-of-window dates, undeclared units/years, duplicate/non-consecutive coverage), honest-missingness ledger drops, real-frame clean-build regression",
-    "p5_seasonal_lane": "45 passed \u2014 preflight refusals, parameter-count guard, negative-control statistics, frame-builder integrity, gate-observation semantics, artifact-bound Arm A verification, receipt authority, claim-vocabulary ceiling",
-    "p5_seasonal_replay": "REPLAY_OK, replay_scope artifact_integrity_replay \u2014 deterministic frame rebuild, envelope+freeze digests, producer floor, receipt bindings, gate-observation semantics, live Arm A artifact-chain re-verify, authority fields, negative-control refusal; model reexecution now MODEL_REEXECUTED via p5_model_reexecution_report_v2.json (separate proof scope)",
-    "promotion_matrix": "699 passed (r9 179 + r10 520)",
-    "r10_promotion": "520 passed (505 R10 matrix + 15 R10.1 residual regressions)",
-    "r11_2_provenance": "35 passed",
-    "r11_3_provenance": "23 passed",
-    "r11_5_real_path": "93 passed, 1 skipped (p5_glof_intake + real_fmx_audit + glof_poc_real_path + regime_real_path)",
-    "r11_5_release_closure": "7 passed (manifest_commit identity, lane governance, collection census, CLI stale-commit rejection, head resolvability, dangling-head rejection, suite-result internal consistency)",
-    "r11_9_dual_manifest": "6 passed \u2014 RUN_EVIDENCE_MANIFEST_V0 amendment ratified and wired; strict-xfail pins removed",
-    "r11_9_semantic_binding": "22 passed \u2014 verified-manifest FMX, cutoff/preprocessing records, semantic role binding; historical full-recomputation wording is superseded by current artifact_integrity_replay scope (13 synthetic probes + 9 real-evidence gates, skipif when root absent)",
-    "r11_glof_poc_contract": "132 passed",
-    "r9_promotion": "179 passed",
-    "research_v0": "123 passed",
-    "run_a_reconciliation": "24 passed",
-    "run_evidence_manifest": "11 passed \u2014 role binding, tamper detection, per-role byte verify",
-    "seismic_addendum": "4 passed",
-    "seismic_focused_lane": "210 passed combined (143 component + 47 intake + 14 shared regression + 4 addendum)",
-    "seismic_shared_regression": "14 passed (vocabulary isolation, record lane, engine lane, producer floor, adapter rejection)",
-    "seismic_sidecar": "143 passed component (contract 53 + features 31 + observability 25 + runner 34, incl. one real engine artifact under SEISMIC_WAVEFORM_RETROSPECTIVE)",
-    "seismic_sidecar_intake": "49 passed (io 26 incl. STEIM flag-gate probes + provenance 10 + events 13 \u2014 byte-parsed intake, generation provenance, event package)"
+ "baseline_head": "54aa612f7d478082716dfe5d0bca7d92d62d493b",
+ "content_head": "2906df982e118c605514b807f47752cd7adc1199",
+ "files": [
+  {
+   "relpath": ".github/workflows/p5-verification.yml",
+   "sha256": "8fcdc19112d1ee4b6104db2bf70ad6abea7d69b6c283c58a181d4c8fa53b3fcc",
+   "size_bytes": 1722
+  },
+  {
+   "relpath": ".github/workflows/research-v0.yml",
+   "sha256": "2a8a7d2fac097942f4d479b22292a1920dc246cb5adba26ccf13ccb1eca17aeb",
+   "size_bytes": 17715
+  },
+  {
+   "relpath": ".gitignore",
+   "sha256": "03d470456d5b7dbbb2c4d27bc5c9354478ff407b60c5ffef267c09d77063c950",
+   "size_bytes": 1433
+  },
+  {
+   "relpath": ".phase-loop/master-plan.md",
+   "sha256": "82e58d8b64a2cc49a26ac8c1ed14d462bd2b031778ba3dd66a9454f8da8884bc",
+   "size_bytes": 4405
+  },
+  {
+   "relpath": ".phase-loop/phase-ledger.jsonl",
+   "sha256": "d76578a78247a40175b6d933d7fbcb8ba312d2ddc9b104f69cdeabd44f82f2f8",
+   "size_bytes": 18820
+  },
+  {
+   "relpath": "LICENSE",
+   "sha256": "819a622f070aa45586c4408827f7793e21e5f4ca4cf146fbc584b519c998ef51",
+   "size_bytes": 1525
+  },
+  {
+   "relpath": "README.md",
+   "sha256": "10166e54a213fdb959126d3f8d8b90208ee5da48a27bf49813e0fb1e3d62a69d",
+   "size_bytes": 21519
+  },
+  {
+   "relpath": "conftest.py",
+   "sha256": "00050cd3d65cef658b01694405a89c0053b2ce42594e294f265f2eb774c91a58",
+   "size_bytes": 743
+  },
+  {
+   "relpath": "docs/science/G3_F1_STEIM_ADMISSION_DECISION_V0.md",
+   "sha256": "38efe97a4293e70ca4fb3b3cb261c317d5fa204db7f339e7b503d2de42765090",
+   "size_bytes": 5124
+  },
+  {
+   "relpath": "docs/science/GAP_REGISTER_V0.md",
+   "sha256": "9ac2db3cdc4f4f077f58a98ae5dce5fc041a7872adbf4310f0eb7d04b802b69f",
+   "size_bytes": 133692
+  },
+  {
+   "relpath": "docs/science/GOVERNANCE_EXERCISE_RECORD_V0.md",
+   "sha256": "3c041ebfe37170044ecb5d83ef102cca09d228058fb6d0ee07f2848e8fa71a2f",
+   "size_bytes": 4235
+  },
+  {
+   "relpath": "docs/science/HAZARD_EVENT_INVENTORY_DECISION_MATRIX_V0.md",
+   "sha256": "557fd307be079f699897ffae707cee2f86f43eb27549ab106573b6c8242ebdd3",
+   "size_bytes": 11403
+  },
+  {
+   "relpath": "docs/science/INDIA_ATLAS_DOMAIN_SCOPE_NOTE_V0.json",
+   "sha256": "f4cc395774c0572fc707649721bac0a670801c6c1261edfdc369f6e5ec855fdf",
+   "size_bytes": 2230
+  },
+  {
+   "relpath": "docs/science/INDIA_ATLAS_DOMAIN_SCOPE_NOTE_V0.json.sha256",
+   "sha256": "53387205499c8ec9350bfe5a77766a93a15c13633cac21e6c349788c57d1da70",
+   "size_bytes": 104
+  },
+  {
+   "relpath": "docs/science/INDIA_ATLAS_DOMAIN_SCOPE_NOTE_V1.json",
+   "sha256": "7b02413c9dcea77ba794691cdf4291e0adf0cb1bb2a82601747c2f3ba3144486",
+   "size_bytes": 2036
+  },
+  {
+   "relpath": "docs/science/INDIA_ATLAS_DOMAIN_SCOPE_NOTE_V1.json.sha256",
+   "sha256": "26ba39b08bba2fbf5d4f4da15d6c15e4e1a0139f8e26f1080335a470f17f3bdc",
+   "size_bytes": 104
+  },
+  {
+   "relpath": "docs/science/INDIA_EVIDENCE_REGISTER_V0.json",
+   "sha256": "0a085630e9136b35e9630738cd15b28c05028a659c9eb5109527695272b856cf",
+   "size_bytes": 5519
+  },
+  {
+   "relpath": "docs/science/INDIA_EVIDENCE_REGISTER_V0.json.sha256",
+   "sha256": "e754402cd5c3a23a3c58ac4a6d1030925dbbc71e9f99b24a889d19f33b574cc7",
+   "size_bytes": 98
+  },
+  {
+   "relpath": "docs/science/INDIA_EVIDENCE_REGISTER_V1.json",
+   "sha256": "935c4d3a63045bac7fa436cbb05e91e598e632f4bc1d7f407757ad63bfd49206",
+   "size_bytes": 9983
+  },
+  {
+   "relpath": "docs/science/INDIA_EVIDENCE_REGISTER_V1.json.sha256",
+   "sha256": "aac4dafd310b8e4acf1ed05d2bab581ed6b187221f8b701b6a8e69fe9b2160ed",
+   "size_bytes": 98
+  },
+  {
+   "relpath": "docs/science/INDIA_INVENTORY_METADATA_V0.json",
+   "sha256": "f9a79dca22be3677f118ecf2aacc4a42053aafcb8c3b27f8f7fdd1d0add02fde",
+   "size_bytes": 3759
+  },
+  {
+   "relpath": "docs/science/INDIA_INVENTORY_REGISTRY_SUPPLEMENT_V0.json",
+   "sha256": "cc299111e8ba3e370ddf44cf9eaa0aed3779c69037b792b24a4cd8c2f94fa190",
+   "size_bytes": 2659
+  },
+  {
+   "relpath": "docs/science/INDIA_INVENTORY_REGISTRY_SUPPLEMENT_V0.json.sha256",
+   "sha256": "538664070923081afdc9416d2391902a7eb06149605494304686789e2501a20e",
+   "size_bytes": 110
+  },
+  {
+   "relpath": "docs/science/INDIA_INVENTORY_REGISTRY_V1.json",
+   "sha256": "7c53deacb0e2f0a493a18d23f7b8ac678d79322efe3c94a630ff2edc3fbd064d",
+   "size_bytes": 9944
+  },
+  {
+   "relpath": "docs/science/INDIA_INVENTORY_REGISTRY_V2.json",
+   "sha256": "6653b29fc1cdfad717e56c5fb918008004996a7db0fa85f28bc636426aa694dc",
+   "size_bytes": 11373
+  },
+  {
+   "relpath": "docs/science/INDIA_INVENTORY_REGISTRY_V2.json.sha256",
+   "sha256": "37ebb48495f93eb5597197b8cbf5c0838d5417008cedb3318acc25f81975284e",
+   "size_bytes": 99
+  },
+  {
+   "relpath": "docs/science/INDIA_INVENTORY_REGISTRY_V3.json",
+   "sha256": "113b3f410f09326a58b9e8dbe9021915f408dab6beb74645fb5947f7b228817b",
+   "size_bytes": 13373
+  },
+  {
+   "relpath": "docs/science/INDIA_INVENTORY_REGISTRY_V3.json.sha256",
+   "sha256": "f05bb6a604e8f3e8da5feb9837d0cf23561575454818acb147e1fcb19b0f739e",
+   "size_bytes": 99
+  },
+  {
+   "relpath": "docs/science/INDIA_INVENTORY_REGISTRY_V4.json",
+   "sha256": "3c98228782c8b45798594cb3c8090f2d7a9c2be3327bab63ebaeeb60b916c492",
+   "size_bytes": 14501
+  },
+  {
+   "relpath": "docs/science/INDIA_INVENTORY_REGISTRY_V4.json.sha256",
+   "sha256": "ef3ef8522b9c48cf70e9e7f7a52af7b1a5733c0185ebd8e5e0128cd743178006",
+   "size_bytes": 99
+  },
+  {
+   "relpath": "docs/science/INDIA_PHASE0_PROTOCOL_V0.md",
+   "sha256": "7741aea26a6860b3c913cd3eba44e96f489c00f828c9384905336c9bc73322dd",
+   "size_bytes": 3758
+  },
+  {
+   "relpath": "docs/science/INDIA_PHASE0_PROTOCOL_V1.md",
+   "sha256": "7a5335c22707f5f53fabb81fc894d7383a017ffc495240458787d11006f99372",
+   "size_bytes": 9415
+  },
+  {
+   "relpath": "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V0.json",
+   "sha256": "24c04fa30ba9a7a8dd1379a7d8fa894d62fca8acd45f8664d283046d0d26496b",
+   "size_bytes": 4776
+  },
+  {
+   "relpath": "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V0.json.sha256",
+   "sha256": "e1d8e0215d5ad09a394285892cedb6bf491eca0904fc1f5da5e8cf3a1fc499d7",
+   "size_bytes": 101
+  },
+  {
+   "relpath": "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V1.json",
+   "sha256": "ea1cb21ec38be82c2832cafc02757f84cd25fef24293959b8643bf96d7c0c498",
+   "size_bytes": 5893
+  },
+  {
+   "relpath": "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V1.json.sha256",
+   "sha256": "33aeef1927c5d515ea38b164dfe50adc7219febedd039439e8fa2ced22252953",
+   "size_bytes": 101
+  },
+  {
+   "relpath": "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V2.json",
+   "sha256": "4dab657aaab72046cce536247ac938709733227b1f5448dca01acdf16c4668c5",
+   "size_bytes": 6836
+  },
+  {
+   "relpath": "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V2.json.sha256",
+   "sha256": "190aaa2978f3d7a1f478c85887d87094869c2e8763d4a288d092a2ed9ae75289",
+   "size_bytes": 101
+  },
+  {
+   "relpath": "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V3.json",
+   "sha256": "eb4ef715ce5f905e1aab517e89606ac1f61e6ba2c8c0971fd61f524d05d5f3aa",
+   "size_bytes": 8305
+  },
+  {
+   "relpath": "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V3.json.sha256",
+   "sha256": "524f885076df30d7211b022204b215ac39966c9e3e3c20f2688daa6b90731f9f",
+   "size_bytes": 101
+  },
+  {
+   "relpath": "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V4.json",
+   "sha256": "992a814e55dfd1aa043e93556fda3b68537f288382a1b6d0a20a63bcc9ef7285",
+   "size_bytes": 9717
+  },
+  {
+   "relpath": "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V4.json.sha256",
+   "sha256": "91ec3a4411defa0c2476f1fc893c514b97a663ccbd1c8ced5de4e659c476b11f",
+   "size_bytes": 101
+  },
+  {
+   "relpath": "docs/science/INFORMATION_CUTOFF_TARGET_POLICY_V0.md",
+   "sha256": "df856eb1e4e2e264e725d662dfbe9862660e965a8ac8c459f99c5d910dc1861e",
+   "size_bytes": 9062
+  },
+  {
+   "relpath": "docs/science/MISSION_SCOPE_OVERLAY_V0.md",
+   "sha256": "3aab8965c2391e87ab2d768dcbb4c6ef6ef2c3ad9c20a27e201e8c73e8d27fb9",
+   "size_bytes": 5758
+  },
+  {
+   "relpath": "docs/science/NEPAL_SCIENCE_GATE_CHECKLIST_V0.json",
+   "sha256": "e880f9381d7aff47574e9528010c57e9ddbfaf8d293daa46366cf719a5847c4e",
+   "size_bytes": 4247
+  },
+  {
+   "relpath": "docs/science/NEPAL_SCIENCE_GATE_CHECKLIST_V1.json",
+   "sha256": "561c0c891ad6b02c23afed2b81605c7829728f282a518167f54ab5f76f240d45",
+   "size_bytes": 3728
+  },
+  {
+   "relpath": "docs/science/NEPAL_SCIENCE_GATE_CHECKLIST_V1.json.sha256",
+   "sha256": "77d0614f9bdf26685cff1a64766de57b1184dc6a26d77eb43116dc27fcda8cf3",
+   "size_bytes": 103
+  },
+  {
+   "relpath": "docs/science/OPEN_DISTRIBUTION_NOTE_V0.md",
+   "sha256": "361706d99fcbf65360bd320417dd5b252f66f39e7b4429a4da36a7269f347334",
+   "size_bytes": 6732
+  },
+  {
+   "relpath": "docs/science/P0_BASELINE_LEDGER.md",
+   "sha256": "fcd4967555d92c3c1d9b15e32e41e4a6ea24033a88359fc4624b1232900f0506",
+   "size_bytes": 25786
+  },
+  {
+   "relpath": "docs/science/P3_ATTESTATION_RECORD_V0.md",
+   "sha256": "bbc0bafa0450764c2764a88c0f8136ef3b64913cc498389f1badc92035a1284a",
+   "size_bytes": 2413
+  },
+  {
+   "relpath": "docs/science/P3_ATTESTATION_TEMPLATE.md",
+   "sha256": "7abd191437d54d7009c2c88877777d2c077f0dfde86a6ae0e49df663c717ac5b",
+   "size_bytes": 7681
+  },
+  {
+   "relpath": "docs/science/P3_BASIN_ASSIGNMENT_RULE_V0.md",
+   "sha256": "f92058354aa9ac5247c074fff3f9e190ece15b14ab661c82cff00bf6e5bc2c80",
+   "size_bytes": 4247
+  },
+  {
+   "relpath": "docs/science/P3_HMAGLOFDB_INTAKE_REPORT_V0.md",
+   "sha256": "8ff4b09d4d854ad66ce864a76cbc76567d9698f7a4ecc2320651fa069481b03e",
+   "size_bytes": 4133
+  },
+  {
+   "relpath": "docs/science/P5_A2_TEMPORAL_REGIME_RESULT_V0.md",
+   "sha256": "4539a78b29fa7010ea24ab0c014896836015c88b62151448b3adbbd32afdd900",
+   "size_bytes": 3065
+  },
+  {
+   "relpath": "docs/science/P5_ACQUISITION_AUTHORIZATION_RECORD_V0.md",
+   "sha256": "963e8d37c0b07d9c699cdd7732f4ef87fb13101be6555712672655b182763063",
+   "size_bytes": 19011
+  },
+  {
+   "relpath": "docs/science/P5_ARM_C_AMENDMENT_TEMPLATE_V0.md",
+   "sha256": "15d041cb4206dfa9c8ddc1d9f8ddba350204ecbab6c6b8a17864c10d238e1df9",
+   "size_bytes": 6595
+  },
+  {
+   "relpath": "docs/science/P5_AUDIT3_REMEDIATION_PLAN_V0.md",
+   "sha256": "2057c046d8cc2163c04cd4e44dc8b83b39b4bca96c6a842fae0f582abce9a61c",
+   "size_bytes": 3878
+  },
+  {
+   "relpath": "docs/science/P5_EXTENSION_STATUS_V0.md",
+   "sha256": "6dc97c05186460f8cecc89510d8ddab32729d45efedd54d58d846f3ee704f363",
+   "size_bytes": 6493
+  },
+  {
+   "relpath": "docs/science/P5_MODEL_REEXECUTION_NOTE_V0.md",
+   "sha256": "9fe50c1bd6616c0949201857cf71f5d3f86361d51fdf72516b620266d19ac9fb",
+   "size_bytes": 4425
+  },
+  {
+   "relpath": "docs/science/P5_OPERATIVE_ANCHOR_NOTE_V0.md",
+   "sha256": "bb1dfd4c0079e749b524fde9b7298404e8f8f9b0fe92fc2bc09fc2ab5bcc4030",
+   "size_bytes": 1702
+  },
+  {
+   "relpath": "docs/science/P5_OPTION3_EXECUTION_TEMPLATE_V0.md",
+   "sha256": "d9556bb4474266f0f34ed6a3e5716f5feae7e754ff88dfd5c6b27d9ebda252b8",
+   "size_bytes": 6371
+  },
+  {
+   "relpath": "docs/science/P5_SCOPE_RECONCILIATION_V0.md",
+   "sha256": "574b17cfce195438ebe57fc8d1b092deaca19dd72f1a24177f70298655001636",
+   "size_bytes": 7009
+  },
+  {
+   "relpath": "docs/science/P5_SEISMIC_CANDIDATE_INVENTORY_V0.md",
+   "sha256": "b762066a063c721231606c19bbe948e55fed972c9c74c150f5b205d59b9f8e84",
+   "size_bytes": 6051
+  },
+  {
+   "relpath": "docs/science/P5_STATISTICAL_POWER_NOTE_V0.md",
+   "sha256": "263cd29f9a5b84dc0deab86dd707a9e54d76ac851bceddc7643972284c1a52e4",
+   "size_bytes": 10045
+  },
+  {
+   "relpath": "docs/science/PHASE4_DUAL_MANIFEST_DECISION_V0.md",
+   "sha256": "f8c1a2ab69c7ef2aeb23bd1955070b3bf6d37331382676e1be3eaac0792f7abe",
+   "size_bytes": 5471
+  },
+  {
+   "relpath": "docs/science/PROJECT_LICENSE_DECISION_V0.md",
+   "sha256": "b6955388432756829cb13d45f75ef6ce94828fbab67218c8ac7fefd7b30272d2",
+   "size_bytes": 1932
+  },
+  {
+   "relpath": "docs/science/RELEASE_INTEGRITY_THREAT_MODEL_V0.md",
+   "sha256": "a5565668b1b658657e1870e38520c4384f6fffc1e443af361f4e4e15e523d63d",
+   "size_bytes": 9982
+  },
+  {
+   "relpath": "docs/science/SEISMIC_SOURCE_QUALIFICATION_V0.md",
+   "sha256": "5870a32c0d672640c089ea388f7113d2b0b63baf7281d739968e0f5ca88a3a97",
+   "size_bytes": 3900
+  },
+  {
+   "relpath": "docs/science/SOURCE_FEASIBILITY_RECORDS_V0.md",
+   "sha256": "5b7ba987f9bc541f30df94b95f89f7c025d1fa815cd14986086f926d86ceda83",
+   "size_bytes": 18600
+  },
+  {
+   "relpath": "docs/science/STATUS_SCOPE_RECONCILIATION_NOTE_20260915.md",
+   "sha256": "21af5dd057fb3febae408a525ab1263c897c225d711fa8409e9726f84e7a16f6",
+   "size_bytes": 3722
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20260928_R10.json",
+   "sha256": "c33e8ec527188cf266a79534206621fb8fefe66d1890ad9a60201bedfc3ba39c",
+   "size_bytes": 3369
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20260928_R10.json.sha256",
+   "sha256": "1f1f39188b620d85ddfe18707f3d1efed666b5ff01d40b0ff342d6e25cf4c213",
+   "size_bytes": 98
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20260928_R11.json",
+   "sha256": "815dcf0eef40fa1cae193c6757ab8cf35bd3517b5d99cac71c629bed156202ff",
+   "size_bytes": 3369
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20260928_R11.json.sha256",
+   "sha256": "6794cf3d82064a8b257443ed5a226bb8b84b795b84dbfc2e4c0727a68fca941b",
+   "size_bytes": 98
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20260928_R12.json",
+   "sha256": "8c8774d079dc9e4836276672212775ad5aef463d58ccf228caca32c1bb94d0e0",
+   "size_bytes": 3370
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20260928_R12.json.sha256",
+   "sha256": "84b8d22420fc68ca58af5406f633f12a63038fb86a280c7c1ada7b366328e211",
+   "size_bytes": 98
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20260928_R13.json",
+   "sha256": "5147e1a4a55c57144b3731be2623560d41be703e190837bf337d805f6e50591b",
+   "size_bytes": 3368
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20260928_R13.json.sha256",
+   "sha256": "8fed340cc9a4d1dbac79db1fddc41bf980f0e81ae044fa438e6eee7f6a3e12e3",
+   "size_bytes": 98
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20260928_R14.json",
+   "sha256": "282ca2eb39ee4b6e7803a6e74293624f9459d63fc4862f8bb7a59859e6b2fcab",
+   "size_bytes": 3403
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20260928_R14.json.sha256",
+   "sha256": "8f391b8735fc0bd881345a6067b0eeb8fcda1c0ec619519654195b456a5338ca",
+   "size_bytes": 98
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20260928_R7.json",
+   "sha256": "8cd5fc315d7f024979114f9ca0c83626a284fed6b569721b4990247513fc7c64",
+   "size_bytes": 3369
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20260928_R7.json.sha256",
+   "sha256": "68a494b9d3f8aabee005ece90b00fec3063a9cf5e62b37b21782859f265bf903",
+   "size_bytes": 97
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20260928_R8.json",
+   "sha256": "2ef3635a68210fa9ac0ad5998f762c55ae532129e3e64695e30d5564e75e3d7e",
+   "size_bytes": 3369
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20260928_R8.json.sha256",
+   "sha256": "c75e34fbbf0e65583cf1f1cb0970cfec42e5093aeb020fb592970a7270ee1b02",
+   "size_bytes": 97
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20260928_R9.json",
+   "sha256": "91b025d34d8a315e8ee7d48ad2a689b0d64fdf28a60c8564a793d9b1c966e0c8",
+   "size_bytes": 3369
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20260928_R9.json.sha256",
+   "sha256": "566121d371eb493caac1de6bd21b7bde3be7d416fdd93f4318a8dd119b308997",
+   "size_bytes": 97
+  },
+  {
+   "relpath": "docs/science/TRACKED_DATA_PROVENANCE_V0.md",
+   "sha256": "8a90f15756c6d9397420db4c7f9a6f1549ec134152acc4f4081a03c2141a0f29",
+   "size_bytes": 18365
+  },
+  {
+   "relpath": "docs/science/run_a/HYBRID_ROUTE_RECONCILIATION_V0.md",
+   "sha256": "9f27f8e7979fc7e79b41fcadda4cf089fc1f2f4f1d64bff2ed0627dfb49446e3",
+   "size_bytes": 10561
+  },
+  {
+   "relpath": "docs/science/run_a/RUN_A_EVIDENCE_SUMMARY_V0.md",
+   "sha256": "bc96809ba6fa3e7bf7395250cd2b7647222373be6e71cb6be248c75da483820d",
+   "size_bytes": 12773
+  },
+  {
+   "relpath": "docs/science/run_a/SCOPE_OVERLAY_V0.md",
+   "sha256": "d0cf500951c36f1663b9576acd9a680140a1831ae97e9383445d307b0371637b",
+   "size_bytes": 3595
+  },
+  {
+   "relpath": "docs/science/run_b/EVENT_PACKAGE_SPEC_V0.md",
+   "sha256": "908d5db988c642a5926115be837a05ad454effd693ff49588e3f78cc3b74a31e",
+   "size_bytes": 10518
+  },
+  {
+   "relpath": "docs/science/run_b/FMX_AUDIT_RUBRIC_V0.md",
+   "sha256": "230796f5e05c43e09721f741dd9b9350f2659e87c282e23e04758f60d75d273f",
+   "size_bytes": 7651
+  },
+  {
+   "relpath": "docs/science/run_b/GLOF_POC_CONTRACT_V0.md",
+   "sha256": "8d04de83d4861cc83a8935802fc5e8fbe929549bc5100298f4b43d5c5af7b457",
+   "size_bytes": 7998
+  },
+  {
+   "relpath": "docs/science/run_b/REGIME_PROMOTION_PROTOCOL_V0.md",
+   "sha256": "6481fd7ff89bc0514c6646ac28e5e0ec285d10b63e80b2958d074a6b3025b826",
+   "size_bytes": 7073
+  },
+  {
+   "relpath": "docs/science/run_b/REGIME_PROTOCOL_V0.md",
+   "sha256": "560f3899743a1987a3d99734cd6c0cf9ba1f8eafd2adb391f10e76ec1582cec1",
+   "size_bytes": 7568
+  },
+  {
+   "relpath": "docs/science/run_b/SEISMIC_EVENT_DETECTION_ADDENDUM_V0.md",
+   "sha256": "2458db9363b522925e2d475be1bbac80cd9d6673cc0ba35be37a775140a5c948",
+   "size_bytes": 9806
+  },
+  {
+   "relpath": "docs/science/run_b/SOURCE_EVIDENCE_ADDENDUM_V0.md",
+   "sha256": "8f76fab0293c3ea018e3afb0b1c19631756176123aa45fb15558269d208d79f2",
+   "size_bytes": 22596
+  },
+  {
+   "relpath": "docs/science/run_b/SOURCE_QUALIFICATION_RECORDS_V0.md",
+   "sha256": "e107268299de48bc78b5271f5be9d575c325a4d6786e3545eca763f7833d87a6",
+   "size_bytes": 34712
+  },
+  {
+   "relpath": "docs/science/run_c/ASSOCIATION_PROTOCOL_V0.md",
+   "sha256": "179c5c0ca56c7e500fa18080f146a3f9bc880e0fde8dec89d0ada886d82e907b",
+   "size_bytes": 9987
+  },
+  {
+   "relpath": "docs/science/run_c/FORECAST_ARCHIVE_MATRIX_V0.md",
+   "sha256": "12293b9f03d14d9e11fc2b4bed3634e7d376dd3149c888550f9bd31026cab16a",
+   "size_bytes": 18538
+  },
+  {
+   "relpath": "docs/science/run_c/FORECAST_EVAL_SCAFFOLD_V0.md",
+   "sha256": "025e40663da5989367da8a5905f7f128e5230263c67527adcc4f76b4700083f5",
+   "size_bytes": 9912
+  },
+  {
+   "relpath": "docs/science/swarm1/A1_SOURCE_QUALIFICATION_DELTAS_V0.md",
+   "sha256": "812f72f029f398a1da0df3f3e499840d945f1ef4f6aa06f62abb2c239453cbbd",
+   "size_bytes": 4173
+  },
+  {
+   "relpath": "nepal/__init__.py",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "size_bytes": 0
+  },
+  {
+   "relpath": "nepal/era5_anchor_intake.py",
+   "sha256": "137f154f295f632d292093e64955dbc8ceaeb703686a909958638e0dd449dc43",
+   "size_bytes": 16767
+  },
+  {
+   "relpath": "nepal/era5_download.py",
+   "sha256": "d563a66e907adbcfb20528f179047c82e7878f590f31bf411854d651d3280a2f",
+   "size_bytes": 36438
+  },
+  {
+   "relpath": "nepal/era5_hybrid_fetch.py",
+   "sha256": "097bcfd76e5b2760ed208a32ec80f0b00c2b4d0c4ebb252ea1caefbcd59b5760",
+   "size_bytes": 23872
+  },
+  {
+   "relpath": "nepal/experiment_v0/__init__.py",
+   "sha256": "c61d2b7557fa0317e3174e90e180211237e2ea2d3885bf370cb58af716319909",
+   "size_bytes": 547
+  },
+  {
+   "relpath": "nepal/experiment_v0/adapters.py",
+   "sha256": "a2af3e3ed99ac3849ece85b302befc8cc2944c1aad85bf7435f2167707032f7e",
+   "size_bytes": 35248
+  },
+  {
+   "relpath": "nepal/experiment_v0/association.py",
+   "sha256": "1fc19abfbb8b60f472bbcfd53dc0fc5582cd5df2c9d705cc7af52a2b0f76eeff",
+   "size_bytes": 151923
+  },
+  {
+   "relpath": "nepal/experiment_v0/audit.py",
+   "sha256": "03a05333bff1bb125eb5fe7354ab51ae5b242fb248247b1a4c28429a34ddf3ac",
+   "size_bytes": 78556
+  },
+  {
+   "relpath": "nepal/experiment_v0/baselines.py",
+   "sha256": "1733c721c79302a1f54e877445442cba82e548dc9fb101e47fbad3ab35f1552b",
+   "size_bytes": 21201
+  },
+  {
+   "relpath": "nepal/experiment_v0/evaluation.py",
+   "sha256": "b1cc46d15467180707fb5dd69f3a2552e6c1f2e542e545537986678de1f8ac59",
+   "size_bytes": 92509
+  },
+  {
+   "relpath": "nepal/experiment_v0/metrics.py",
+   "sha256": "199e187c35593e1d66d80ad05ad1f19b8ea9acb0dfd2d26ea017c8754eea4f5d",
+   "size_bytes": 9955
+  },
+  {
+   "relpath": "nepal/experiment_v0/vintages.py",
+   "sha256": "e120c027e56b7302476f0bdcc693cb32066944e0a7c65fee64b64472e495345a",
+   "size_bytes": 24489
+  },
+  {
+   "relpath": "nepal/feature_extraction.py",
+   "sha256": "3210504c3c4c3a4168f50209224100e3af8fb6b0b44317556d96cda3f0d00cfa",
+   "size_bytes": 40542
+  },
+  {
+   "relpath": "nepal/gitutil.py",
+   "sha256": "01033627ff7cd4032ba2e8d3bb828d8d5be00f45824ed452b6c85ab61046ebfb",
+   "size_bytes": 1210
+  },
+  {
+   "relpath": "nepal/gmm_descriptive.py",
+   "sha256": "a882e9a1a1f6105933f2dba6ae8909ea30d0d4f9f68203e4995903bf8cbed4b5",
+   "size_bytes": 63342
+  },
+  {
+   "relpath": "nepal/real_fmx.py",
+   "sha256": "77f6e3e9f5530450c69f96184981f9f2324c0d82471ee1bff9e001d32f3c8ba1",
+   "size_bytes": 24193
+  },
+  {
+   "relpath": "nepal/research_v0/__init__.py",
+   "sha256": "da71365c725c1f5eb87a578f9720cb703866f43611b7baeb6f49842099661fe4",
+   "size_bytes": 689
+  },
+  {
+   "relpath": "nepal/research_v0/_hashing.py",
+   "sha256": "1c1f4af58c9ffcdd63aa2e1eb75da67bc6e4e2c3538f053df632545412d7694c",
+   "size_bytes": 21261
+  },
+  {
+   "relpath": "nepal/research_v0/cli.py",
+   "sha256": "7fd90c3990733d69111b4acfb1fb91a56ef0b269f7831ef7eea4c33e63b30ea5",
+   "size_bytes": 22079
+  },
+  {
+   "relpath": "nepal/research_v0/gates.py",
+   "sha256": "0b290cd378be8565a5eaa52e20fdc5d9c2c0d53c3ad5d58d7bf1f4bf11a18b2b",
+   "size_bytes": 52671
+  },
+  {
+   "relpath": "nepal/research_v0/p3_intake.py",
+   "sha256": "0eb415a16ef83633684ce9557ed08f4f933e49fa267279f4b99697934be1a46a",
+   "size_bytes": 27740
+  },
+  {
+   "relpath": "nepal/research_v0/p3_package_adapter.py",
+   "sha256": "65b5ce7225a4b9cc09dcca32faea8d815df4257d632fac3e100bbda25b269afc",
+   "size_bytes": 19217
+  },
+  {
+   "relpath": "nepal/research_v0/policy.py",
+   "sha256": "44d4020a423f9ebf621282fff7b2f931ca1084968e3999cc8c159176f113f1c8",
+   "size_bytes": 17409
+  },
+  {
+   "relpath": "nepal/research_v0/producer_validation.py",
+   "sha256": "9e625313993739855be6a1e40604304067122a21cf47985d38c67e57ff819d0c",
+   "size_bytes": 160526
+  },
+  {
+   "relpath": "nepal/research_v0/records.py",
+   "sha256": "8418fc5d7ed4ac8d8d0b0ee663fb34c852ded0b78399c4ac61bb12caeb99e250",
+   "size_bytes": 60394
+  },
+  {
+   "relpath": "nepal/research_v0/run_evidence.py",
+   "sha256": "8fd44d2e240d87f0639ecc9d6e640dc6364b99b06133691d928a11f6a428aeb5",
+   "size_bytes": 18104
+  },
+  {
+   "relpath": "nepal/research_v0/source_intake.py",
+   "sha256": "55161696fff324fa0c33d878831705c86ae63a88222e0e344aa38b23a6047780",
+   "size_bytes": 18513
+  },
+  {
+   "relpath": "nepal/run_ledger_repair.py",
+   "sha256": "87c3599440dcd7f0cad7dc959688adbcc274ef410f4c8d5d9b625f6b05981038",
+   "size_bytes": 13080
+  },
+  {
+   "relpath": "nepal/science_v0/__init__.py",
+   "sha256": "b90fbad8a8efdd48c439acd9bc6c44d5456b3e944115c1b05a2dc0bc6d0b3680",
+   "size_bytes": 677
+  },
+  {
+   "relpath": "nepal/science_v0/events.py",
+   "sha256": "3f7eadfd3a71b42b40ba2f80fce50f0c3835e3dbd888d7697a36b277f3f4355a",
+   "size_bytes": 23011
+  },
+  {
+   "relpath": "nepal/science_v0/fmx_audit.py",
+   "sha256": "5065cfcd357de00b5c4130e0928ce045ad5a7492517b2a91358d30b0fe53b098",
+   "size_bytes": 17054
+  },
+  {
+   "relpath": "nepal/science_v0/glof_poc.py",
+   "sha256": "63632d7d039cebc5758c5c6e3237f223fcc90e0b818a37df70ea41c45344c4f2",
+   "size_bytes": 31726
+  },
+  {
+   "relpath": "nepal/science_v0/regimes.py",
+   "sha256": "76043720871d6c7183e4d3f1ecfe6e378b72887d2429ad0f4484aa83af9fa274",
+   "size_bytes": 155943
+  },
+  {
+   "relpath": "nepal/science_v0/seasonal_frame.py",
+   "sha256": "809bdbdc6ae404a207b30660c0d0be56a3aa71f0281fe792f01d90b5efb7da68",
+   "size_bytes": 14017
+  },
+  {
+   "relpath": "nepal/seismic_sidecar/__init__.py",
+   "sha256": "769513cc77f7a0fc57af4fb4793153c50489c525ac8738c7da11a653bbe3a3a0",
+   "size_bytes": 3961
+  },
+  {
+   "relpath": "nepal/seismic_sidecar/contracts.py",
+   "sha256": "7d1321ed9f7ff1a44b337b7293760e421e1d6dad7a399c164db93663f52d7026",
+   "size_bytes": 24857
+  },
+  {
+   "relpath": "nepal/seismic_sidecar/events.py",
+   "sha256": "d1ca8abf4655d9fd080b1cdf1c676977d908a4e9db5e50f1ae9c71e8db5e4fb7",
+   "size_bytes": 14432
+  },
+  {
+   "relpath": "nepal/seismic_sidecar/features.py",
+   "sha256": "5ed7c02e62d3b1066aa13b75e223cf8de98aa9dcb1b1316e2d07a8d591ba1c4f",
+   "size_bytes": 20738
+  },
+  {
+   "relpath": "nepal/seismic_sidecar/io.py",
+   "sha256": "9ce71c754d4d82d189cdf640c0440c6b3ec52b44854b52584473aa49f0a37136",
+   "size_bytes": 38987
+  },
+  {
+   "relpath": "nepal/seismic_sidecar/observability.py",
+   "sha256": "2f0dedc3c70dc298baa065812f2c0baf8d73c849c28fc17eb8dbcc7fbde613a4",
+   "size_bytes": 16847
+  },
+  {
+   "relpath": "nepal/seismic_sidecar/one_station_contract.py",
+   "sha256": "f084b5a4837c76922df567fdb6f2535d4f58567a4504dfbe7be5ffb9e5c98e66",
+   "size_bytes": 34998
+  },
+  {
+   "relpath": "nepal/seismic_sidecar/provenance.py",
+   "sha256": "536a33b6f67e6fb22d3f8d8214739a1ec1f91b7ec7598dd99d58027c0cec0372",
+   "size_bytes": 24287
+  },
+  {
+   "relpath": "nepal/seismic_sidecar/runner.py",
+   "sha256": "e38b72cc20d3362c0fcbeba0fb845b7d9eebc1ff17708e12f6590718fb8eddc0",
+   "size_bytes": 30422
+  },
+  {
+   "relpath": "scripts/agent_write_lock.py",
+   "sha256": "e6ad9616b2e2c38f20e406328bd56d146da8d88cfea7ada125bc0e45e34d9589",
+   "size_bytes": 6985
+  },
+  {
+   "relpath": "scripts/armc_cds_preflight.py",
+   "sha256": "e1d0a261dda79105e6790578c9c150063d06b69dbfcd94e0de1f24f20efb09fb",
+   "size_bytes": 17036
+  },
+  {
+   "relpath": "scripts/build_india_release_closure.py",
+   "sha256": "eb913873c1f10a3a14abee836dc9a0c78f32d9ffc8e9bfe4f60fc21e085c34b3",
+   "size_bytes": 43180
+  },
+  {
+   "relpath": "scripts/build_p5_release_closure_v2.py",
+   "sha256": "555837a0f61a1031406b1766d98dd9716b96d73c0d8db83d1e869ef35d066dca",
+   "size_bytes": 11797
+  },
+  {
+   "relpath": "scripts/build_p5_release_closure_v4.py",
+   "sha256": "eb1a0fa56973b064b4b26a06f54e3261f5c6ae905dce00b1b07cfb29d72b14e7",
+   "size_bytes": 21039
+  },
+  {
+   "relpath": "scripts/build_p5_suite_receipt.py",
+   "sha256": "51a3169bb1c1f34af02494c1393e580b5629ebef4d6a5c5c0da2376614b7d416",
+   "size_bytes": 10819
+  },
+  {
+   "relpath": "scripts/export_release_bundle.py",
+   "sha256": "827ab8846ed10c09b9c2bc859beb78869ee4debc0543d7462adbafac3e002a8e",
+   "size_bytes": 17047
+  },
+  {
+   "relpath": "scripts/generate_evidence_index_v1.py",
+   "sha256": "172e1def7e51e0283f17aa65d5d210b286a94d291c71fd52e5cbc8c4abf728bc",
+   "size_bytes": 10783
+  },
+  {
+   "relpath": "scripts/generate_evidence_index_v2.py",
+   "sha256": "007dca87be02c3f0fe3c55792097867be313deb78b1e1dd696ec0216aad17ebd",
+   "size_bytes": 26060
+  },
+  {
+   "relpath": "scripts/india_event_adjudication.py",
+   "sha256": "9e758372ebc7b6353b9138f5b91421bf6dab468b84c19b9d1cacca97ef85c9a5",
+   "size_bytes": 14569
+  },
+  {
+   "relpath": "scripts/india_event_crosswalk.py",
+   "sha256": "feaa420a4f32f7d0091af0b5b40cea6ceafa9cbde04cf643f2dcb03819d14d52",
+   "size_bytes": 19491
+  },
+  {
+   "relpath": "scripts/india_evidence_register.py",
+   "sha256": "02e05ad5eaeb3ddf88cf7d933fe0b801f87b41ccf9c3ebc10ce99508d355472d",
+   "size_bytes": 14697
+  },
+  {
+   "relpath": "scripts/india_feasibility_report.py",
+   "sha256": "9ad01f0d4299f155d6517f4626287648fcebceaaa592106ab45258c43c497dca",
+   "size_bytes": 33889
+  },
+  {
+   "relpath": "scripts/india_inventory_metadata.py",
+   "sha256": "e4c2797415f5b94e023ee7355e2d7f73d13ce4849955dabadfd9894a95b13537",
+   "size_bytes": 5993
+  },
+  {
+   "relpath": "scripts/india_lake_frame.py",
+   "sha256": "0c2eede75b36ab6187b0e39276ae3572632abcb7360029414067de59470fd0a3",
+   "size_bytes": 23076
+  },
+  {
+   "relpath": "scripts/india_nrsc_atlas_extract.py",
+   "sha256": "808458d3799ebf06f7d46164a4640252d8e910810583461c18ab73ab101bba58",
+   "size_bytes": 7247
+  },
+  {
+   "relpath": "scripts/india_source_registry.py",
+   "sha256": "21242374d113066b8bd9d6f44a9fe880ad9a324ebf921ade7f8215426bd9d6f1",
+   "size_bytes": 21323
+  },
+  {
+   "relpath": "scripts/materialize_evidence_sidecars.py",
+   "sha256": "f0f9bbeb6bcb80e2ebc10c7dbafa0e05b25ad6ebe6d029817ec1b1f4a68a8298",
+   "size_bytes": 2748
+  },
+  {
+   "relpath": "scripts/p5_safe_io.py",
+   "sha256": "239d3a15d4915ab6ae1ad5021045de62c4200d43eac1c6b15ab5cde47af026c5",
+   "size_bytes": 2558
+  },
+  {
+   "relpath": "scripts/rebind_manifest.py",
+   "sha256": "6604a2c658cf06cc2cbd966a0a10a1667b2bf0f7a911741e9a42f76faeb85696",
+   "size_bytes": 21926
+  },
+  {
+   "relpath": "scripts/reexecute_p5_regimes.py",
+   "sha256": "cb962e0c3e8fae401b341e0d6122ed2572289ddf4e5977868a1ee6c1694b436c",
+   "size_bytes": 29476
+  },
+  {
+   "relpath": "scripts/replay_p5.py",
+   "sha256": "57a494ca5c796712fbd850ed4fd675f2f2493beecd7c13a151fedb959df778b1",
+   "size_bytes": 17856
+  },
+  {
+   "relpath": "scripts/replay_seasonal_p5.py",
+   "sha256": "672a7a7542e3e1e881864bd88a7749f525b9a584a3849c0ed84e5e339ad9eb3b",
+   "size_bytes": 16590
+  },
+  {
+   "relpath": "scripts/run_daily_p5.py",
+   "sha256": "3c84add86262145acc1563950b64b3b12270dfb04c7da9cef9ca4b50733fcff7",
+   "size_bytes": 9285
+  },
+  {
+   "relpath": "scripts/run_seasonal_p5.py",
+   "sha256": "92ceabd5b8f751265c3127f117b5f2c3f93956275a45f0d9228779383c433cc6",
+   "size_bytes": 21744
+  },
+  {
+   "relpath": "scripts/run_verification_ladder.py",
+   "sha256": "ea106ad51e096c88577c49c3dada60b023c39ca24ee20fcadbcbc104a3a7a7ef",
+   "size_bytes": 14485
+  },
+  {
+   "relpath": "scripts/validate_evidence_index.py",
+   "sha256": "2cfe134f59f8ae892a76d668a3aaffacb84605ffd4707c39a8f8b8ac4c8e3ebf",
+   "size_bytes": 54514
+  },
+  {
+   "relpath": "scripts/validate_incident_surface.py",
+   "sha256": "b351dce2df0b06ecd4459321cba774ff9d3f70378db3bc65aa28ab4563135fec",
+   "size_bytes": 4043
+  },
+  {
+   "relpath": "scripts/validate_india_source_intake.py",
+   "sha256": "3854fd1c1878970555f94b12bee61797285be6cf0a01c7a4183e71d02b3110da",
+   "size_bytes": 25051
+  },
+  {
+   "relpath": "scripts/validate_nepal_science_gate_checklist.py",
+   "sha256": "2508b74c89b38e578fa7b9b759751d73c07ddf867beb6b3fd21036098ddb9d8b",
+   "size_bytes": 11514
+  },
+  {
+   "relpath": "scripts/validate_reexecution_report.py",
+   "sha256": "239c9adbf8880bb3f9ed0723a726c4c761c37e284f8da0c680560edc9ef6b828",
+   "size_bytes": 16523
+  },
+  {
+   "relpath": "scripts/validate_release_closure.py",
+   "sha256": "b028f2e49751d63f557969abfd998b89553cc3bbba02ac828293227c5466cb48",
+   "size_bytes": 37001
+  },
+  {
+   "relpath": "scripts/verify_exported_bundle.py",
+   "sha256": "81d660fb6b0b15fa5f76e797039641e7446c139cb31c936304069a7eb441fc05",
+   "size_bytes": 20165
+  },
+  {
+   "relpath": "tests/fixtures/__init__.py",
+   "sha256": "554e2961161d47e79350cb29bbaef5ef1aec830ad01405caf89a7c286a1d0084",
+   "size_bytes": 334
+  },
+  {
+   "relpath": "tests/fixtures/synthetic.py",
+   "sha256": "f58049cba16fbe1c56957a06cb2a8fc5f75343c3d624997cd2af3edc80cec33b",
+   "size_bytes": 11367
+  },
+  {
+   "relpath": "tests/fixtures/synthetic_exp_b2.py",
+   "sha256": "d785aa9f32298a7128eb270c9c6e360775775120bcdb38d682c9ffe277da09f5",
+   "size_bytes": 2416
+  },
+  {
+   "relpath": "tests/fixtures/synthetic_exp_b3.py",
+   "sha256": "f2c81e34cef1b53a5eb7c6424508dc15e4c4b1e7373553f56f9928e5df279969",
+   "size_bytes": 21372
+  },
+  {
+   "relpath": "tests/fixtures/synthetic_exp_b4.py",
+   "sha256": "486224a6ce0e48ecafaf967bb8bc010b0ceb12159ab2e175b6f627333e5ef0da",
+   "size_bytes": 35269
+  },
+  {
+   "relpath": "tests/test_armc_cds_preflight.py",
+   "sha256": "a91b4055fc66946f6e22f2ab8432a4f9c86604f3a99b2c295bbdc926fb33be90",
+   "size_bytes": 4634
+  },
+  {
+   "relpath": "tests/test_era5_anchor_intake.py",
+   "sha256": "6fd8e4a92495df280179960f20c6fff0997086d2be3faead1e99afff7da6bf7d",
+   "size_bytes": 7639
+  },
+  {
+   "relpath": "tests/test_evidence_index_validator.py",
+   "sha256": "db0102f7a2eed3611bbf6d3ac9b16b29abdceb6048067a4881c52fd4e1f7dac5",
+   "size_bytes": 29193
+  },
+  {
+   "relpath": "tests/test_experiment_v0_adapters.py",
+   "sha256": "d17edaa9d2b9c1991cb6fa1b165d351c7e4da1fc3591e0282e955bb59348679b",
+   "size_bytes": 27862
+  },
+  {
+   "relpath": "tests/test_experiment_v0_b1_association.py",
+   "sha256": "71355f321586ba132a38b8e2577f20d56681b6dc3c01b66b20e67076fa05821a",
+   "size_bytes": 79789
+  },
+  {
+   "relpath": "tests/test_experiment_v0_b2_vintages.py",
+   "sha256": "b73dc917ed2a63962c23f00ba93c329757f3661761bd9d161e54fca96a74d48b",
+   "size_bytes": 15877
+  },
+  {
+   "relpath": "tests/test_experiment_v0_b3_evaluation.py",
+   "sha256": "7325e620c2cf77279d61f3e0ebef0e482ab23bf4e62e9c6d9fec2738fc44e55f",
+   "size_bytes": 64866
+  },
+  {
+   "relpath": "tests/test_experiment_v0_b3_vintage_timing.py",
+   "sha256": "099b8ca777f947c403b4897a6ead07ec0ae4cfd7dac3e2575501ecbd7f92fc19",
+   "size_bytes": 7426
+  },
+  {
+   "relpath": "tests/test_experiment_v0_b4_audit.py",
+   "sha256": "65bf55c9bc30f902c492199da2478f8c71f513b622df7e584a94c249574f0674",
+   "size_bytes": 28988
+  },
+  {
+   "relpath": "tests/test_experiment_v0_replay.py",
+   "sha256": "9a5a525438671cf0b80f01c47949453f475d3488f34bbdd15a22cb780a50c4d7",
+   "size_bytes": 16943
+  },
+  {
+   "relpath": "tests/test_export_release_bundle.py",
+   "sha256": "ed9823835d67970587f143e614c73bad2a1b7ddfe21cc20c4e59f4214c57c954",
+   "size_bytes": 6900
+  },
+  {
+   "relpath": "tests/test_glof_poc_contract.py",
+   "sha256": "a5278d436906e1324d66a6728e044b77aed399571662c7a4dd5ea60f6aa216ce",
+   "size_bytes": 46365
+  },
+  {
+   "relpath": "tests/test_glof_poc_real_path.py",
+   "sha256": "e06382f55402a978fe3c7f8d56abd6e2133f80b07e97efef57c1a64c0171304a",
+   "size_bytes": 18675
+  },
+  {
+   "relpath": "tests/test_incident_surface.py",
+   "sha256": "1c38deadd4bb282617a0d4067476ff11d7dc6cf34cd53dc9ab2287c6151e1470",
+   "size_bytes": 5074
+  },
+  {
+   "relpath": "tests/test_india_evidence_register.py",
+   "sha256": "afcd42d5dcb3f992b7992c1c2be69a5a36fcb09c98d7f2cf9070014e061b7c6d",
+   "size_bytes": 7915
+  },
+  {
+   "relpath": "tests/test_india_inventory_metadata.py",
+   "sha256": "f5894e59c809b7e10f39ab7ad4d907520655ad4c8bf10b05426502540ab260a4",
+   "size_bytes": 2264
+  },
+  {
+   "relpath": "tests/test_india_nrsc_extract.py",
+   "sha256": "9420efad6eebcf73d45654e4a750e2fb0008ab87651c603a45387e2dbd08fff6",
+   "size_bytes": 4231
+  },
+  {
+   "relpath": "tests/test_india_phase0.py",
+   "sha256": "4533aa137af4b78951508680f011a131139004b1660cd8adc60ec9ee08e0bb76",
+   "size_bytes": 35060
+  },
+  {
+   "relpath": "tests/test_india_release_closure.py",
+   "sha256": "d92e76eca6869f5b448bd2f1b38d7e947db547f95da321cbc93be711d6fa49f6",
+   "size_bytes": 15767
+  },
+  {
+   "relpath": "tests/test_india_source_intake.py",
+   "sha256": "92c2677eb37af4717b3e5c6e13e0ea8c8ccaf65e7ecf2e049d774b9dfdffa49e",
+   "size_bytes": 17544
+  },
+  {
+   "relpath": "tests/test_india_source_registry.py",
+   "sha256": "adcce580b67022407aa0a3f044eee9a504dbeaba200f3eb3c2045192d8afcb9d",
+   "size_bytes": 9842
+  },
+  {
+   "relpath": "tests/test_materialize_evidence_sidecars.py",
+   "sha256": "2c961be038a5cb373702544a8c9bd5dfa9bb168b19d38486f9710ea8ed38e157",
+   "size_bytes": 1110
+  },
+  {
+   "relpath": "tests/test_nepal_science_gate_checklist.py",
+   "sha256": "0afbd39f0e19cd5ba59505f7d7c93e7f2fd06cba4a5d46e509354bbb8d2cb510",
+   "size_bytes": 5315
+  },
+  {
+   "relpath": "tests/test_one_station_contract.py",
+   "sha256": "e85118af9fccfd105ee86b342315302c74a15ca76942d0dedad44e6cf8195386",
+   "size_bytes": 29900
+  },
+  {
+   "relpath": "tests/test_p3_hmaglofdb_intake.py",
+   "sha256": "b4dcd46d5eae713e685af9f9557f9baac772a3ec02c14b2dd21b33da6c300df6",
+   "size_bytes": 16452
+  },
+  {
+   "relpath": "tests/test_p3_package_adapter.py",
+   "sha256": "c157a909d693286c6aff8b0b81a5553f1a387b2153f3c06b75dbf39323989d61",
+   "size_bytes": 5087
+  },
+  {
+   "relpath": "tests/test_p5_audit3_writers.py",
+   "sha256": "cd98406f95732b9f1fc884b84b0c96a9e31de2bf21e2421df34b73fa1843d116",
+   "size_bytes": 2024
+  },
+  {
+   "relpath": "tests/test_p5_glof_intake.py",
+   "sha256": "35b9eaa953c47644d4cad64a026cf53dff7dc1cbe73c7954f9e303e5b77ebc00",
+   "size_bytes": 15407
+  },
+  {
+   "relpath": "tests/test_p5_io_contract.py",
+   "sha256": "6bbc2f4186c5a48711721ad63446ce998b6c4bca9bbe3117e8586599e0f6ad09",
+   "size_bytes": 27405
+  },
+  {
+   "relpath": "tests/test_p5_safe_io.py",
+   "sha256": "d75707727258f4e780fe7c0fbdaffb8eb1a9417967de5e07e5da197cbc6250d5",
+   "size_bytes": 907
+  },
+  {
+   "relpath": "tests/test_promotion_protocol_consistency.py",
+   "sha256": "2dac25a997276c0b72f3e53e5538db8374807bfb34811dea893b029d4899cc63",
+   "size_bytes": 3923
+  },
+  {
+   "relpath": "tests/test_r10_promotion.py",
+   "sha256": "24735c0ad95328ceb6cd3b05211fda574c1645f755363a784c1045ccadf94848",
+   "size_bytes": 61829
+  },
+  {
+   "relpath": "tests/test_r11_2_provenance.py",
+   "sha256": "42aa740c58117b2d1b4531bfaf215270a439270a992acbd0ef525dd0cec4c891",
+   "size_bytes": 15340
+  },
+  {
+   "relpath": "tests/test_r11_3_provenance.py",
+   "sha256": "ed03fac73b4c1eb2a6b238838bf1752f58bc0141c3da5b24eaa7b0ef5f74de0c",
+   "size_bytes": 8151
+  },
+  {
+   "relpath": "tests/test_r11_5_release_closure.py",
+   "sha256": "fddf428f2c680890661573617258ee940b8eaeff62513fe01bb11fee18686341",
+   "size_bytes": 11893
+  },
+  {
+   "relpath": "tests/test_r11_9_bindings.py",
+   "sha256": "f0e5de39fb3f559c236fd945b1e12905fab569dab42c5b7d67f94653fbf6b852",
+   "size_bytes": 23673
+  },
+  {
+   "relpath": "tests/test_r11_9_dual_manifest_contract.py",
+   "sha256": "d56c62f797c66368fc40bd5860427e0adf32caf3b9d708656a5fd89369aaf2f1",
+   "size_bytes": 7536
+  },
+  {
+   "relpath": "tests/test_r11_9_steim_seam.py",
+   "sha256": "1f005019c32b2f6eccdccd36960fee2b1035a7b4d1489eedab9a4d7031732099",
+   "size_bytes": 3705
+  },
+  {
+   "relpath": "tests/test_r6_association.py",
+   "sha256": "c82ddb749029ce0140ac81ec5c7a265c95805aeb98d811ac5ddd0ec01d5f5e42",
+   "size_bytes": 11787
+  },
+  {
+   "relpath": "tests/test_r6_evaluation.py",
+   "sha256": "50a44425a361be44bea8ca4b11e52393a034dd7ae52a1c101c4d6ebc5668aa2c",
+   "size_bytes": 14371
+  },
+  {
+   "relpath": "tests/test_r6_provenance.py",
+   "sha256": "3d4d4a0382b7e5b0c055270c7a908157f370a13798b9b61f83787055755cee73",
+   "size_bytes": 32761
+  },
+  {
+   "relpath": "tests/test_r6_regimes.py",
+   "sha256": "f83d36c871c957546c3ead65faf5b4936f63b7e6b289fe7660b2e9c2da53c704",
+   "size_bytes": 30679
+  },
+  {
+   "relpath": "tests/test_r7_hardening.py",
+   "sha256": "568aa31d1554ef124d0b2913c07bbdf7107b8895aae44a820e6c7a8a2056d389",
+   "size_bytes": 12618
+  },
+  {
+   "relpath": "tests/test_r8_fmx_assoc.py",
+   "sha256": "701eb0958eb319999c50be9d1226ac8994145588e8c7455eca33fb8ee85cf7cc",
+   "size_bytes": 10576
+  },
+  {
+   "relpath": "tests/test_r8_provenance.py",
+   "sha256": "e99e8197d84cffb2b28498f73e232786648ab66dae44896afd42a5dd1e2a9f0a",
+   "size_bytes": 14603
+  },
+  {
+   "relpath": "tests/test_r8_vintage.py",
+   "sha256": "2b6d0c1386a90e0fe9047cabddd9262dd1ae99c2abb665fea8e485d7bc09741b",
+   "size_bytes": 13334
+  },
+  {
+   "relpath": "tests/test_r9_promotion.py",
+   "sha256": "795a682a6a21a9d91185c97e39e0fbc8bb2d61080cae1f0a1b16a444de07e275",
+   "size_bytes": 59551
+  },
+  {
+   "relpath": "tests/test_real_fmx_audit.py",
+   "sha256": "3890d24c61d18d0612764be5a7bdcab7cd8a7a34cf93596397980662f127bc5a",
+   "size_bytes": 13146
+  },
+  {
+   "relpath": "tests/test_rebind_manifest_cli.py",
+   "sha256": "3dee89a2645d1f69b57ec07593eb407c8e4bb4c7ec91c49530ed3b557185b3fa",
+   "size_bytes": 17923
+  },
+  {
+   "relpath": "tests/test_reexecute_p5_regimes.py",
+   "sha256": "b8dabee3a55bffa0d01f67ace6d3ffce30e2510e4360ad2a524291105adb5291",
+   "size_bytes": 13445
+  },
+  {
+   "relpath": "tests/test_regime_real_path.py",
+   "sha256": "0f6b71f8964269c9bb072558a4c6f2992d8ecbab71e1f3f3aa06b2a6bd78f277",
+   "size_bytes": 6746
+  },
+  {
+   "relpath": "tests/test_release_closure_v4.py",
+   "sha256": "4b6c4196412416223aed53fb824873f1dbe865dd28e3e86f23c8fc561f9e7d26",
+   "size_bytes": 21095
+  },
+  {
+   "relpath": "tests/test_release_closure_validator.py",
+   "sha256": "483492d65d5078748d7241ef69dd6133a6b95b297cc30927829e7348872457f0",
+   "size_bytes": 22934
+  },
+  {
+   "relpath": "tests/test_replay_never_reexecutes.py",
+   "sha256": "25ee84040f6b4c97cff0c3956edcc1429c9e58dbbd65654bf7e897ce3cd53fff",
+   "size_bytes": 3211
+  },
+  {
+   "relpath": "tests/test_research_v0_adversarial.py",
+   "sha256": "1780ca9adbe44b5f5522a9c49db2210fbe1d07346c23995449f89c07a7c4c890",
+   "size_bytes": 42747
+  },
+  {
+   "relpath": "tests/test_research_v0_gates.py",
+   "sha256": "946b2a675354f20481d85719e4fc89b4e2cd82e0ab946ed9729602dbddf8185b",
+   "size_bytes": 17741
+  },
+  {
+   "relpath": "tests/test_research_v0_isolation.py",
+   "sha256": "240e481c0a8a8ecd954ad8b0a3990f31c717f7f2cf996610fcf7563eb40813ba",
+   "size_bytes": 7258
+  },
+  {
+   "relpath": "tests/test_research_v0_policy.py",
+   "sha256": "14b31189e02641112090940a776ecbfb6ea5803273b0b6261c6db3d7549eee3f",
+   "size_bytes": 9933
+  },
+  {
+   "relpath": "tests/test_research_v0_seismic_addendum.py",
+   "sha256": "35e62f18d40c0760e438e75cc8959f5029bada709050f06d3740c9ab86cb4ff6",
+   "size_bytes": 2283
+  },
+  {
+   "relpath": "tests/test_round5_hardening.py",
+   "sha256": "777f7f13ea6aa3f1db28bd2956e1f1d0f1eebdbd296d8c91084492e8402b712d",
+   "size_bytes": 17494
+  },
+  {
+   "relpath": "tests/test_run_a_reconciliation.py",
+   "sha256": "da4d29f60fc2c4d05732f79708c7be5d8ff957b67fe54daf77e0213d86728b7e",
+   "size_bytes": 10806
+  },
+  {
+   "relpath": "tests/test_run_evidence_manifest_v0.py",
+   "sha256": "f478b5cb61cebf572393d54b59843d1e5a94e19bd976821d7a9efc35706ccfef",
+   "size_bytes": 7445
+  },
+  {
+   "relpath": "tests/test_science_experiment_e2e.py",
+   "sha256": "bf7a59a7190da5353cdfea6baa4dcd4b995377bda870b07e4a5b96ca79f9f3ee",
+   "size_bytes": 12245
+  },
+  {
+   "relpath": "tests/test_science_v0_events.py",
+   "sha256": "4f2331c0d687f1db90d05ab4f6c598cf48c887171346e1ed18ed2c98f5ba7d08",
+   "size_bytes": 13311
+  },
+  {
+   "relpath": "tests/test_science_v0_fmx.py",
+   "sha256": "05f92f073ce32ff153cfa763aa42ab6616d4edf7350efed9fa448f65dba2e3a6",
+   "size_bytes": 6996
+  },
+  {
+   "relpath": "tests/test_science_v0_regimes.py",
+   "sha256": "39141cad7e06de30a26178c7d1c6c69437c21f423beff9837e95ca3db57f2cf4",
+   "size_bytes": 40955
+  },
+  {
+   "relpath": "tests/test_seasonal_frame_adversarial.py",
+   "sha256": "24a1e2b84792d3e22accd9470e9149c43a07f119d969544c7e81a79078d68538",
+   "size_bytes": 7815
+  },
+  {
+   "relpath": "tests/test_seasonal_lane.py",
+   "sha256": "2c6783bb68aa71f59a6e67aef32e06e6db1f52ff705e4ff945a8f8ad9a523e96",
+   "size_bytes": 31282
+  },
+  {
+   "relpath": "tests/test_seismic_shared_regression.py",
+   "sha256": "4295535478f73c4591fd6b731f9073a171b0693764742873c8d2a33abf548d63",
+   "size_bytes": 7951
+  },
+  {
+   "relpath": "tests/test_seismic_sidecar_contract.py",
+   "sha256": "8f88261b4f5cc0a3f37234dd8cd2e6877efe90d3f206053ff3633207b6f44a33",
+   "size_bytes": 18802
+  },
+  {
+   "relpath": "tests/test_seismic_sidecar_events.py",
+   "sha256": "63881ffc7074d2c34b65edc2b74cdfe8f79e8130a73bbe5265df06fc5cd1e2d1",
+   "size_bytes": 5873
+  },
+  {
+   "relpath": "tests/test_seismic_sidecar_features.py",
+   "sha256": "c435df27c18a3f07f00a4ded5ebdef70b4de0ae8bfecaa99d309c541b08c3576",
+   "size_bytes": 13847
+  },
+  {
+   "relpath": "tests/test_seismic_sidecar_io.py",
+   "sha256": "4624abc6d521fdadb7d264b98d648ce699276bd2521f14f0b34e08f03dfbbd0e",
+   "size_bytes": 21581
+  },
+  {
+   "relpath": "tests/test_seismic_sidecar_observability.py",
+   "sha256": "157767d26463de0591bcadc30df95e6104d44bc9ddc05753059c09d187258a5f",
+   "size_bytes": 7942
+  },
+  {
+   "relpath": "tests/test_seismic_sidecar_provenance.py",
+   "sha256": "c61c08bd29e81ef94f2d027db55f9e4261f76358a9cdc53308d654e9745f620e",
+   "size_bytes": 9678
+  },
+  {
+   "relpath": "tests/test_seismic_sidecar_runner.py",
+   "sha256": "b77339b02b6dd097a2e1cbb6c476559c5b3ee14a036c6ea0b04ead3ea04b742c",
+   "size_bytes": 26884
+  },
+  {
+   "relpath": "tests/test_suite_receipt.py",
+   "sha256": "bf3e89163e0856c3db2d4d47ecaf1fcc7fe9dc2b3bc1083549b49caed977afc2",
+   "size_bytes": 8782
+  },
+  {
+   "relpath": "tests/test_temporal_holdout.py",
+   "sha256": "06c9f25b27b8434e46d8f21e96f823c1e0769f9d97085a017791d3956f4578cc",
+   "size_bytes": 14244
+  },
+  {
+   "relpath": "tests/test_validate_reexecution_report.py",
+   "sha256": "667e4e4e2b13e679211578320d43d1011b9909385bb54f3b126c262fdd93a1b4",
+   "size_bytes": 5339
+  },
+  {
+   "relpath": "tests/test_verification_ladder.py",
+   "sha256": "d3c8c51e510ff9524f4a984efe0c283d86b37f0b88cf782852a14a1a17a22a3c",
+   "size_bytes": 5529
+  },
+  {
+   "relpath": "tests/test_verify_exported_bundle.py",
+   "sha256": "7fd2ad1838ef153c371439c4354de1ecc67034b7c30a5b35915e32603de9cc8e",
+   "size_bytes": 4985
   }
+ ],
+ "generated": "post-P5 phase-B/C bind \u2014 model re-execution proof (MODEL_REEXECUTED both lanes, digest-exact), preregistered promotion protocol, clean-room export + verification-ladder harness, owner-scoped Arm C amendment (retrieval deferred)",
+ "interpreter": ".venv/bin/python",
+ "manifest_commit": "2906df982e118c605514b807f47752cd7adc1199",
+ "manifest_version": "ARTIFACT_MANIFEST_V0.3",
+ "repository_relative_root": ".",
+ "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
+ "research_diagnostic_only": true,
+ "scope": "governed science artifacts: docs/science, nepal/research_v0, research tests, CI workflow, README \u2014 non-science sources excluded by design",
+ "self_excluded": true,
+ "test_results": {
+  "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
+  "claim_scan": "clean on all governed files",
+  "collection_guard": "repo-wide collection == tests/ (4364 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
+  "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
+  "full_suite_venv": "Pending R15 at 4364 collected after the skip-regex fix: expected 4361 passed, 3 skipped, 0 failed (4364 collected), exit 0. R14 recorded 4360/3/1 \u2014 the failure is this record-format gate triggered by an unparenthesized collection count; retained as a format diagnostic. Historical: R13 green 4354/3/0; R12 disk-pressure diagnostic; R7/R9 diagnostics. Receipts R1-R14 are append-only dated evidence.",
+  "india_nrsc_atlas_extraction": "NRSC atlas Tables 68/69 parsed to row-level records: 2433 + 299 rows, serial-set completeness enforced, printed-serial duplicates (S.No 2001/2002) recorded as anomalies; deterministic replay verified; extraction sealed under the external evidence root",
+  "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
+  "p5_a2_status_consistency": "local guard passed; CI guard configured \u2014 current CANDIDATE_ONLY / UNSUPERVISED_STRUCTURE_NOT_STABLE result, false authority flags, and release metadata aligned",
+  "p5_a2_temporal_holdout": "110 passed, 1 skipped \u2014 temporal mapping, waiver, and documentation regression lane",
+  "p5_daily_replay": "REPLAY_OK, replay_scope artifact_integrity_replay, regime_replay_state artifact_integrity_replayed \u2014 persisted v1 artifact validated (envelope+freeze+floor+receipt binding)",
+  "p5_evidence_index_validator": "42 passed \u2014 v1 compatibility plus exhaustive v2 inventory/partition/closure/sidecar/self-reference defect classes fail closed",
+  "p5_io_contract": "34 passed",
+  "p5_one_station_contract": "292 passed \u2014 V1 status vocabulary, v0 mapping completeness, authority-flag strictness, complete ten-digest execution chain, falsey-input rejection, event UTC/date/window/relation semantics, 24h window bound, BLOCKED/NOT_OPERATIONAL/RUN_ERROR bind nothing, bounded malformed-input errors, forbidden-term scan, window bounds, round-trips",
+  "p5_seasonal_frame_adversarial": "11 passed \u2014 input-domain refusals (non-JJA labels, out-of-window dates, undeclared units/years, duplicate/non-consecutive coverage), honest-missingness ledger drops, real-frame clean-build regression",
+  "p5_seasonal_lane": "45 passed \u2014 preflight refusals, parameter-count guard, negative-control statistics, frame-builder integrity, gate-observation semantics, artifact-bound Arm A verification, receipt authority, claim-vocabulary ceiling",
+  "p5_seasonal_replay": "REPLAY_OK, replay_scope artifact_integrity_replay \u2014 deterministic frame rebuild, envelope+freeze digests, producer floor, receipt bindings, gate-observation semantics, live Arm A artifact-chain re-verify, authority fields, negative-control refusal; model reexecution now MODEL_REEXECUTED via p5_model_reexecution_report_v2.json (separate proof scope)",
+  "promotion_matrix": "699 passed (r9 179 + r10 520)",
+  "r10_promotion": "520 passed (505 R10 matrix + 15 R10.1 residual regressions)",
+  "r11_2_provenance": "35 passed",
+  "r11_3_provenance": "23 passed",
+  "r11_5_real_path": "93 passed, 1 skipped (p5_glof_intake + real_fmx_audit + glof_poc_real_path + regime_real_path)",
+  "r11_5_release_closure": "7 passed (manifest_commit identity, lane governance, collection census, CLI stale-commit rejection, head resolvability, dangling-head rejection, suite-result internal consistency)",
+  "r11_9_dual_manifest": "6 passed \u2014 RUN_EVIDENCE_MANIFEST_V0 amendment ratified and wired; strict-xfail pins removed",
+  "r11_9_semantic_binding": "22 passed \u2014 verified-manifest FMX, cutoff/preprocessing records, semantic role binding; historical full-recomputation wording is superseded by current artifact_integrity_replay scope (13 synthetic probes + 9 real-evidence gates, skipif when root absent)",
+  "r11_glof_poc_contract": "132 passed",
+  "r9_promotion": "179 passed",
+  "research_v0": "123 passed",
+  "run_a_reconciliation": "24 passed",
+  "run_evidence_manifest": "11 passed \u2014 role binding, tamper detection, per-role byte verify",
+  "seismic_addendum": "4 passed",
+  "seismic_focused_lane": "210 passed combined (143 component + 47 intake + 14 shared regression + 4 addendum)",
+  "seismic_shared_regression": "14 passed (vocabulary isolation, record lane, engine lane, producer floor, adapter rejection)",
+  "seismic_sidecar": "143 passed component (contract 53 + features 31 + observability 25 + runner 34, incl. one real engine artifact under SEISMIC_WAVEFORM_RETROSPECTIVE)",
+  "seismic_sidecar_intake": "49 passed (io 26 incl. STEIM flag-gate probes + provenance 10 + events 13 \u2014 byte-parsed intake, generation provenance, event package)"
+ }
 }
