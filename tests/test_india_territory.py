@@ -237,13 +237,16 @@ def test_verify_recomputes_all_record_fields(tmp_path, monkeypatch, field, value
     doc["sources"]["lake_frame"] = frame_path.name
     doc["sources"]["lake_frame_sha256"] = tc.sha256_file(frame_path)
     doc["sources"]["component_digests"] = tc.component_manifest(boundary_dir)
-    if field == "proximity_to_boundary_m_lt":
-        doc["summary"]["proximity_flagged_rows"] = 1
     doc["summary"] = {
         "atlas_rows": 1, "inside_soi_claim_rows": 1,
         "inside_disputed_overlay_rows": 0, "outside_soi_claim_rows": 0,
         "unassessed_rows": 0, "proximity_flagged_rows": 0,
     }
+    if field == "proximity_to_boundary_m_lt":
+        # Forged record carries a proximity flag; keep the summary
+        # consistent so the failure is the record recomputation, not
+        # the summary count check (which returns early).
+        doc["summary"]["proximity_flagged_rows"] = 1
     artifact_path = tmp_path / "territory.json"
     doc["records"][0][field] = value
     artifact_path.write_text(json.dumps(doc))

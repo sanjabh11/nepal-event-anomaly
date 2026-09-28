@@ -132,7 +132,7 @@ def test_ingest_enforces_typed_territory_evidence(tmp_path):
     assert any("territory_evidence" in p for p in problems)
 
 
-def test_ingest_with_qualified_territory_evidence(tmp_path):
+def test_ingest_rejects_fake_qualified_territory_evidence(tmp_path):
     cw = _mini_crosswalk(tmp_path, [("India", "T")])
     cw_path = tmp_path / "cw.json"
     cw_path.write_text(json.dumps(cw))
@@ -151,9 +151,11 @@ def test_ingest_with_qualified_territory_evidence(tmp_path):
         territory_evidence_sha256="b" * 64)])
     problems = wf.ingest(ip, cw_path, ws, tmp_path / "d.json",
                          "x", "y", "z")
-    # evidence citation must resolve to BYTES_VERIFIED -> fails upstream
-    # on evidence:EV:TEST, but never on the territory gate
-    assert not any("territory_evidence" in p for p in problems)
+    # A claimed 64-character digest is not enough: the decision artifact,
+    # sidecar, assessment, and current source-relative-only scope must resolve.
+    assert any("territory_evidence" in p or "administrative evidence" in p
+               for p in problems)
+    assert not (tmp_path / "d.json").exists()
 
 
 @pytest.mark.skipif(not _PRESENT, reason="external evidence root unavailable")

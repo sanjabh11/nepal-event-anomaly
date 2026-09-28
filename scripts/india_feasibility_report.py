@@ -317,16 +317,21 @@ def build_report(crosswalk_path: str | Path, lake_frame_path: str | Path,
     crosswalk = _load_verified_json(
         crosswalk_path, event_crosswalk.validate_crosswalk, "crosswalk")
     frame = _load_verified_json(
-        lake_frame_path, lake_frame.validate_frame, "lake frame")
+        lake_frame_path,
+        lambda doc: lake_frame.validate_frame(
+            doc, territory_evidence_dir=crosswalk_path.parent),
+        "lake frame")
     if adjudication_path is not None:
         adjudication_path = Path(adjudication_path)
         adjudication = _load_verified_json(
             adjudication_path,
             lambda doc: event_adjudication.validate_adjudication(
-                doc, crosswalk, sha256_file(crosswalk_path)),
+                doc, crosswalk, sha256_file(crosswalk_path),
+                territory_evidence_dir=crosswalk_path.parent),
             "adjudication")
         records = event_adjudication.apply_adjudication(
-            crosswalk, adjudication, sha256_file(crosswalk_path))
+            crosswalk, adjudication, sha256_file(crosswalk_path),
+            territory_evidence_dir=crosswalk_path.parent)
     else:
         records = crosswalk.get("records", [])
     lake_records = frame.get("records", [])

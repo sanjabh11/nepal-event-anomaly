@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(ROOT / "scripts"))
 from p5_safe_io import write_once_json, write_once_sidecar  # noqa: E402
+import india_territory_decision as territory_decision  # noqa: E402
 
 
 SCHEMA = "INDIA_LAKE_FRAME_V0"
@@ -40,6 +41,10 @@ AUTHORITY_FLAGS = {
 OBSERVATION_STATUSES = {"UNKNOWN", "PARTIAL", "KNOWN_BREACH", "VERIFIED_NON_EVENT"}
 COMPLETENESS = {"UNKNOWN", "PARTIAL", "FULL"}
 TERRITORY_STATUSES = {"IN_COUNTRY", "OUTSIDE", "UNCERTAIN", "UNASSESSED"}
+SOURCE_RELATIVE_RELATIONS = {
+    "INSIDE_SOI_CLAIM", "INSIDE_DISPUTED_OVERLAY",
+    "OUTSIDE_SOI_CLAIM", "UNASSESSED",
+}
 IDENTITY_STATUSES = {"UNRECONCILED", "RECONCILED", "UNRESOLVED_CONFLICT"}
 OBSERVATION_CADENCES = {"ANNUAL", "SEASONAL", "MONTHLY", "WEEKLY",
                         "CONTINUOUS", "EVENT_DRIVEN"}
@@ -201,6 +206,17 @@ def _record(row: dict[str, Any], source_name: str, source_version: str) -> dict[
                         or "UNASSESSED")
     if territory_status not in TERRITORY_STATUSES:
         raise ValueError(f"{source_id}: invalid territory_status")
+    if territory_status != "UNASSESSED":
+        raise ValueError(
+            f"{source_id}: inventory inputs cannot assign administrative "
+            "territory_status; keep UNASSESSED and use the separate "
+            "source_relative_relation field")
+    source_relative_relation = (
+        _text(row.get("source_relative_relation") or
+              row.get("spatial_relation")).upper() or None)
+    if (source_relative_relation is not None
+            and source_relative_relation not in SOURCE_RELATIVE_RELATIONS):
+        raise ValueError(f"{source_id}: invalid source_relative_relation")
     refs = _refs(row.get("evidence_refs") or row.get("evidence"))
     at_risk_start = _iso_date(row.get("at_risk_start"), "at_risk_start", source_id)
     at_risk_end = _iso_date(row.get("at_risk_end"), "at_risk_end", source_id)
@@ -255,7 +271,8 @@ def _record(row: dict[str, Any], source_name: str, source_version: str) -> dict[
                  "identity_status": "UNRECONCILED",
                  "name": _text(row.get("lake_name"))},
         "location": {"latitude": lat, "longitude": lon,
-                      "territory_status": territory_status,
+                      "territory_status": "UNASSESSED",
+                      "source_relative_relation": source_relative_relation,
                       "territory_evidence": row.get("territory_evidence"),
                       "state": _text(row.get("state")),
                       "basin": _text(row.get("basin") or row.get("subbasin"))},
@@ -318,7 +335,9 @@ def build_frame(inventory_path: str | Path, source_name: str,
     }
 
 
-def validate_frame(doc: dict[str, Any]) -> list[str]:
+def validate_frame(doc: dict[str, Any],
+                   territory_evidence_dir: str | Path | None = None
+                   ) -> list[str]:
     problems: list[str] = []
     if doc.get("schema") != SCHEMA:
         problems.append("unexpected schema")
@@ -334,6 +353,10 @@ def validate_frame(doc: dict[str, Any]) -> list[str]:
     full_years = 0
     unknown = 0
     full = 0
+    territory_verifier = (
+        territory_decision.TerritoryDecisionVerificationCache()
+        if territory_evidence_dir is not None else None
+    )
     for record in records:
         if not isinstance(record, dict):
             problems.append("record must be an object")
@@ -420,23 +443,35 @@ def validate_frame(doc: dict[str, Any]) -> list[str]:
             problems.append(f"{sid}: location must be an object")
         elif location.get("territory_status") not in TERRITORY_STATUSES:
             problems.append(f"{sid}: invalid territory_status")
-        elif location.get("territory_status") == "IN_COUNTRY":
-            # Fail-closed: an India-administered claim requires a typed,
-            # digest-bound territory decision whose artifact declares the
-            # boundary qualified for administration, not merely a
-            # source-relative spatial relation.
+        else:
+            relation = location.get("source_relative_relation")
+            if (relation is not None
+                    and relation not in SOURCE_RELATIVE_RELATIONS):
+                problems.append(f"{sid}: invalid source_relative_relation")
             ev = location.get("territory_evidence")
-            ok = (isinstance(ev, dict)
-                  and isinstance(ev.get("artifact"), str)
-                  and isinstance(ev.get("artifact_sha256"), str)
-                  and len(ev["artifact_sha256"]) == 64
-                  and ev.get("decision_state") == "QUALIFIED"
-                  and ev.get("binding") == "sha256")
-            if not ok:
+            territory_status = location.get("territory_status")
+            if territory_status != "UNASSESSED":
+                ok = territory_decision.verify_territory_evidence(
+                    ev, territory_evidence_dir, require_administration=True,
+                    verifier=territory_verifier)
+                if ok:
+                    problems.append(
+                        f"{sid}: territory_status must remain UNASSESSED "
+                        "until a separate administrative evidence contract "
+                        "and owner review are verified: " + "; ".join(ok))
+            elif ev is not None:
+                issues = territory_decision.verify_territory_evidence(
+                    ev, territory_evidence_dir,
+                    require_administration=False,
+                    verifier=territory_verifier)
+                if issues:
+                    problems.append(
+                        f"{sid}: territory evidence reference is invalid: "
+                        + "; ".join(issues))
+            if territory_status != "UNASSESSED" and not ev:
                 problems.append(
-                    f"{sid}: IN_COUNTRY requires a digest-bound "
-                    "territory_evidence decision (artifact, sha256, "
-                    "decision_state=QUALIFIED)")
+                    f"{sid}: {territory_status} requires "
+                    "a separately qualified administrative decision")
         lake = record.get("lake", {})
         if not isinstance(lake, dict):
             problems.append(f"{sid}: lake must be an object")
@@ -487,6 +522,8 @@ def validate_frame(doc: dict[str, Any]) -> list[str]:
         problems.append("summary full-observation count mismatch")
     if summary.get("n_observable_lake_years") != full_years:
         problems.append("summary observable-lake-year count mismatch")
+    if territory_verifier is not None:
+        problems.extend(territory_verifier.verify_unchanged())
     return problems
 
 

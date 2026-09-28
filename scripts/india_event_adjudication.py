@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from p5_safe_io import write_once_json, write_once_sidecar  # noqa: E402
 import india_event_crosswalk as crosswalk  # noqa: E402
+import india_territory_decision as territory_decision  # noqa: E402
 
 
 SCHEMA = "INDIA_EVENT_ADJUDICATION_V0"
@@ -38,7 +39,7 @@ AUTHORITY_FLAGS = {
 TERMINAL_ELIGIBILITY = {"ELIGIBLE", "INELIGIBLE", "UNCERTAIN"}
 MECHANISM_CERTAINTY = {"CONFIRMED", "PROBABLE", "POSSIBLE", "UNKNOWN"}
 INDEPENDENCE = {"INDEPENDENT", "NOT_INDEPENDENT", "UNASSESSED"}
-REVIEWED_TERRITORY = {"IN_COUNTRY", "OUTSIDE", "UNCERTAIN"}
+REVIEWED_TERRITORY = {"IN_COUNTRY", "OUTSIDE", "UNCERTAIN", "UNASSESSED"}
 
 
 def sha256_file(path: str | Path) -> str:
@@ -96,7 +97,7 @@ def build_intake(crosswalk_path: str | Path) -> dict[str, Any]:
             "Every source_record_id requires a disposition; no silent drops.",
             "Eligibility, mechanism, recurrence, cascade, and independence are reviewer fields.",
             "A catalog mechanism string alone is not mechanism adjudication.",
-            "Territory is adjudicated as IN_COUNTRY/OUTSIDE/UNCERTAIN against a declared boundary source, version, and CRS — never from coordinates alone.",
+            "Territory remains UNASSESSED unless a separate administrative-evidence contract and owner review are verified; source-relative geometry is not administration.",
             "reviewer_ids are attribution strings, not authenticated identities or cryptographic signoff.",
             "ELIGIBLE counting additionally requires at least one evidence:<id> citation resolving to a BYTES_VERIFIED register record covering the event date.",
             "This record authorizes no weather, satellite, or seismic acquisition.",
@@ -116,7 +117,9 @@ def _parse_utc(value: Any) -> bool:
 
 
 def validate_adjudication(doc: dict[str, Any], crosswalk_doc: dict[str, Any],
-                          crosswalk_sha256: str) -> list[str]:
+                          crosswalk_sha256: str,
+                          territory_evidence_dir: str | Path | None = None
+                          ) -> list[str]:
     problems: list[str] = []
     if doc.get("schema") != SCHEMA:
         problems.append("unexpected adjudication schema")
@@ -142,6 +145,10 @@ def validate_adjudication(doc: dict[str, Any], crosswalk_doc: dict[str, Any],
     status = doc.get("status")
     if status not in {"AWAITING_REVIEWER_ADJUDICATION", "REVIEWED"}:
         problems.append("invalid adjudication status")
+    territory_verifier = (
+        territory_decision.TerritoryDecisionVerificationCache()
+        if status == "REVIEWED" else None
+    )
     geography = doc.get("geography")
     if status == "REVIEWED":
         if not isinstance(geography, dict) or any(
@@ -173,6 +180,7 @@ def validate_adjudication(doc: dict[str, Any], crosswalk_doc: dict[str, Any],
                 and adj.get("mechanism") is None
                 and adj.get("mechanism_certainty") is None
                 and adj.get("evidence_citations") == []
+                and adj.get("territory_evidence") is None
             )
             if (adj.get("eligibility") != "UNREVIEWED"
                     or adj.get("review_state") != "AWAITING_ADJUDICATION"
@@ -196,22 +204,25 @@ def validate_adjudication(doc: dict[str, Any], crosswalk_doc: dict[str, Any],
             problems.append(f"{sid}: location_confirmed must be boolean")
         if adj.get("territory_status") not in REVIEWED_TERRITORY:
             problems.append(f"{sid}: reviewed territory_status must be "
-                            "IN_COUNTRY, OUTSIDE, or UNCERTAIN")
-        if adj.get("territory_status") == "IN_COUNTRY":
-            ev = adj.get("territory_evidence")
-            ok = (isinstance(ev, dict)
-                  and isinstance(ev.get("artifact"), str)
-                  and isinstance(ev.get("artifact_sha256"), str)
-                  and len(ev["artifact_sha256"]) == 64
-                  and ev.get("decision_state") == "QUALIFIED"
-                  and ev.get("binding") == "sha256")
-            if not ok:
+                            "IN_COUNTRY, OUTSIDE, UNCERTAIN, or UNASSESSED")
+        territory_status = adj.get("territory_status")
+        ev = adj.get("territory_evidence")
+        if territory_status in {"IN_COUNTRY", "OUTSIDE"}:
+            issues = territory_decision.verify_territory_evidence(
+                ev, territory_evidence_dir, require_administration=True,
+                verifier=territory_verifier)
+            problems.append(
+                f"{sid}: {territory_status} requires separately qualified "
+                "administrative evidence and owner review: "
+                + "; ".join(issues))
+        elif ev is not None:
+            issues = territory_decision.verify_territory_evidence(
+                ev, territory_evidence_dir, require_administration=False,
+                verifier=territory_verifier)
+            if issues:
                 problems.append(
-                    f"{sid}: IN_COUNTRY territory requires a digest-bound "
-                    "territory_evidence decision (artifact, sha256, "
-                    "decision_state=QUALIFIED); a reviewer vote alone or a "
-                    "source-relative spatial relation cannot establish "
-                    "India-administered status")
+                    f"{sid}: territory evidence reference is invalid: "
+                    + "; ".join(issues))
         if adj.get("mechanism_certainty") not in MECHANISM_CERTAINTY:
             problems.append(f"{sid}: invalid mechanism_certainty")
         if (not isinstance(adj.get("evidence_citations"), list)
@@ -286,12 +297,18 @@ def validate_adjudication(doc: dict[str, Any], crosswalk_doc: dict[str, Any],
                     f"candidate_episode_id {episode_id} has conflicting "
                     f"{field} values {sorted(str(v) for v in values)} "
                     f"(EPISODE_CONFLICT)")
+    if territory_verifier is not None:
+        problems.extend(territory_verifier.verify_unchanged())
     return problems
 
 
 def apply_adjudication(crosswalk_doc: dict[str, Any], adjudication_doc: dict[str, Any],
-                       crosswalk_sha256: str) -> list[dict[str, Any]]:
-    problems = validate_adjudication(adjudication_doc, crosswalk_doc, crosswalk_sha256)
+                       crosswalk_sha256: str,
+                       territory_evidence_dir: str | Path | None = None
+                       ) -> list[dict[str, Any]]:
+    problems = validate_adjudication(
+        adjudication_doc, crosswalk_doc, crosswalk_sha256,
+        territory_evidence_dir=territory_evidence_dir)
     if problems:
         raise ValueError("adjudication validation failed: " + "; ".join(problems))
     if adjudication_doc["status"] == "AWAITING_REVIEWER_ADJUDICATION":

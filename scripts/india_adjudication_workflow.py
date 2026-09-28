@@ -17,8 +17,9 @@ Three verbs, all fail-closed:
   verify     Revalidate an existing reviewed document.
 
 Every row of the intake roster must carry a disposition: no silent
-drops.  IN_COUNTRY territory additionally requires a digest-bound
-territory_evidence decision (enforced by the shared validator).
+drops.  Territory stays UNASSESSED unless a separate administrative
+evidence contract and owner review resolve to verified bytes.  A
+source-relative spatial decision cannot establish IN_COUNTRY or OUTSIDE.
 """
 from __future__ import annotations
 
@@ -52,7 +53,7 @@ REVIEW_COLS = [
 ]
 SUGGEST_COLS = ["suggested_eligibility", "suggested_disposition_reason"]
 ELIGIBILITY = {"ELIGIBLE", "INELIGIBLE", "UNCERTAIN"}
-TERRITORY = {"IN_COUNTRY", "OUTSIDE", "UNCERTAIN"}
+TERRITORY = {"IN_COUNTRY", "OUTSIDE", "UNCERTAIN", "UNASSESSED"}
 CERTAINTY = {"CONFIRMED", "PROBABLE", "POSSIBLE", "UNKNOWN"}
 INDEPENDENCE = {"INDEPENDENT", "NOT_INDEPENDENT"}
 
@@ -125,7 +126,7 @@ def _truthy(v: str):
 def ingest(intake_path, crosswalk_path, worksheet_path, out_path,
            boundary_source, boundary_version, boundary_crs) -> list[str]:
     intake = json.loads(Path(intake_path).read_text())
-    cw = json.loads(crosswalk_path.read_text())
+    cw = json.loads(Path(crosswalk_path).read_text())
     cw_sha = ea.sha256_file(crosswalk_path)
     if intake.get("status") != "AWAITING_REVIEWER_ADJUDICATION":
         return ["intake is not AWAITING_REVIEWER_ADJUDICATION"]
@@ -210,7 +211,8 @@ def ingest(intake_path, crosswalk_path, worksheet_path, out_path,
                 "binding": "sha256"}
     if problems:
         return problems
-    problems = ea.validate_adjudication(doc, cw, cw_sha)
+    problems = ea.validate_adjudication(
+        doc, cw, cw_sha, territory_evidence_dir=Path(crosswalk_path).parent)
     if problems:
         return problems
     write_once_json(out_path, doc)
@@ -253,7 +255,9 @@ def main() -> int:
         return 0
     doc = json.loads(Path(args.doc).read_text())
     cw = json.loads(Path(args.crosswalk).read_text())
-    problems = ea.validate_adjudication(doc, cw, ea.sha256_file(args.crosswalk))
+    problems = ea.validate_adjudication(
+        doc, cw, ea.sha256_file(args.crosswalk),
+        territory_evidence_dir=Path(args.crosswalk).parent)
     if problems:
         for p in problems:
             print("ADJUDICATION_FAIL:", p)

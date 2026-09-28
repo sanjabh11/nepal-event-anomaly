@@ -155,8 +155,18 @@ def _quarantined_names():
 
 @pytest.fixture(autouse=True)
 def _guard_cleanup():
+    # Suite-order safety: an earlier module may have imported the
+    # quarantined names (or their nepal-prefixed siblings), in which
+    # case sys.modules short-circuits the meta-path guard and the guard
+    # never sees the import attempt.
+    names = set(_quarantined_names())
+    names |= {"nepal." + name.split(".")[-1] for name in names}
+    names.add("nepal.multi_event_validation")
+    stashed = {name: sys.modules.pop(name) for name in names
+               if name in sys.modules}
     yield
     rq.uninstall_import_guard()
+    sys.modules.update(stashed)
 
 
 class TestRuntimeImportGuard:

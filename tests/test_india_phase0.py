@@ -103,8 +103,8 @@ def _register_doc(coverage=("1900-01-01", "2100-12-31"),
 
 
 def _reviewed_decision(crosswalk_path: Path, crosswalk: dict,
-                       *, eligible=True, evidence="evidence:EV:TEST",
-                       territory="IN_COUNTRY") -> dict:
+                       *, eligible=False, evidence="evidence:EV:TEST",
+                       territory="UNASSESSED") -> dict:
     intake = ea.build_intake(crosswalk_path)
     decision = json.loads(json.dumps(intake))
     decision["status"] = "REVIEWED"
@@ -124,7 +124,7 @@ def _reviewed_decision(crosswalk_path: Path, crosswalk: dict,
                 "reviewer_ids": ["reviewer-1"],
                 "reviewed_utc": "2026-09-27T00:00:00+00:00",
                 "location_confirmed": True,
-                "territory_status": "OUTSIDE",
+                "territory_status": "UNASSESSED",
                 "mechanism": None, "mechanism_certainty": "UNKNOWN",
                 "evidence_citations": [evidence],
                 "disposition_reason": "outside target territory"})
@@ -303,7 +303,7 @@ def test_adjudication_requires_territory_and_geography(tmp_path):
         decision, crosswalk, ea.sha256_file(cw_path)))
     decision = _reviewed_decision(cw_path, crosswalk)
     decision["records"][0]["adjudication"]["territory_status"] = "OUTSIDE"
-    assert any("IN_COUNTRY" in p for p in ea.validate_adjudication(
+    assert any("OUTSIDE requires" in p for p in ea.validate_adjudication(
         decision, crosswalk, ea.sha256_file(cw_path)))
 
 
@@ -312,12 +312,12 @@ def test_report_accepts_only_sha_bound_reviewed_successor(tmp_path):
     decision = _reviewed_decision(cw_path, crosswalk)
     decision_path = _write_bound(tmp_path / "decision.json", decision)
     report = fr.build_report(cw_path, lf_path, reg_path, decision_path)
-    assert report["denominators"]["independent_exact_day_episodes"] == 3
+    assert report["denominators"]["independent_exact_day_episodes"] == 0
     assert report["denominators"]["catalog_rows"] == 4
     assert report["denominators"]["india_candidate_rows"] == 3
     assert report["denominators"]["reference_only_rows"] == 1
-    assert report["independent_episode_ids"] == [
-        "IND:EP:0", "IND:EP:1", "IND:EP:2"]
+    assert report["independent_episode_ids"] == []
+    assert report["denominators"]["adjudicated_eligible_rows"] == 0
     assert "adjudication_sha256" in report["inputs"]
     assert report["inputs"]["sidecars_verified"] is True
     assert fr.validate_report(report) == []
@@ -405,8 +405,11 @@ def test_verify_report_catches_forged_report(tmp_path):
     # count and fix every mirror-computed field so validate_report stays
     # clean — only recomputation can catch it.
     forged = json.loads(json.dumps(report))
+    forged["denominators"]["adjudicated_eligible_rows"] = 2
     forged["denominators"]["independent_exact_day_episodes"] = 2
     forged["independent_episode_ids"] = ["FAKE:0", "FAKE:1"]
+    forged["gates"]["event_weather_screen"] = fr._event_screen(
+        forged["denominators"]["unreviewed_event_rows"], 2)
     forged_path = tmp_path / "forged.json"
     forged_path.write_text(json.dumps(forged), encoding="utf-8")
     assert fr.validate_report(forged) == []  # consistent forgery passes schema
@@ -573,51 +576,48 @@ def test_feasibility_keeps_gate_pending_while_adjudication_is_incomplete(tmp_pat
     assert fr.validate_report(report) == []
 
 
-def test_feasibility_gate_requires_identity_reconciliation(tmp_path):
+def test_unassessed_territory_blocks_before_identity_gate(tmp_path):
     crosswalk, cw_path, _, reg_path = _paths(tmp_path, 3)
     inventory = _inventory(tmp_path, [
         {"source_record_id": "NRSC:1", "lake_id": "1",
-         "latitude": 30, "longitude": 80, "territory_status": "IN_COUNTRY",
-         "territory_evidence": {
-             "artifact": "INDIA_LAKE_TERRITORY_QUALIFIED_V1.json",
-             "artifact_sha256": "a" * 64,
-             "decision_state": "QUALIFIED", "binding": "sha256"}},
+         "latitude": 30, "longitude": 80,
+         "spatial_relation": "INSIDE_SOI_CLAIM"},
         {"source_record_id": "CWC:1", "lake_id": "9",
-         "latitude": 31, "longitude": 79, "territory_status": "IN_COUNTRY",
-         "territory_evidence": {
-             "artifact": "INDIA_LAKE_TERRITORY_QUALIFIED_V1.json",
-             "artifact_sha256": "a" * 64,
-             "decision_state": "QUALIFIED", "binding": "sha256"}},
+         "latitude": 31, "longitude": 79,
+         "spatial_relation": "INSIDE_SOI_CLAIM"},
     ])
     frame = lf.build_frame(inventory, "NRSC", "test-1")
     lf_path = _write_bound(tmp_path / "lf2.json", frame)
     decision = _reviewed_decision(cw_path, crosswalk)
     decision_path = _write_bound(tmp_path / "decision.json", decision)
     report = fr.build_report(cw_path, lf_path, reg_path, decision_path)
-    assert report["denominators"]["unresolved_lake_identities"] == 2
+    assert report["denominators"]["unresolved_lake_identities"] == 0
     assert report["denominators"]["in_country_canonical_lakes"] == 0
-    assert report["gates"]["lake_year_screen"] == "IDENTITY_RECONCILE_REQUIRED"
-    assert report["next_gate"] == "RECONCILE_LAKE_IDENTITIES"
+    assert report["denominators"]["uncertain_territory_lakes"] == 2
+    assert report["gates"]["lake_year_screen"] == "TERRITORY_REVIEW_REQUIRED"
+    assert report["next_gate"] == "REVIEW_TERRITORY_CLASSIFICATION"
 
 
 def test_feasibility_gate_requires_territory_classification(tmp_path):
     crosswalk, cw_path, _, reg_path = _paths(tmp_path, 3)
     inventory = _inventory(tmp_path, [
         {"source_record_id": "NRSC:1", "lake_id": "1",
-         "latitude": 30, "longitude": 80},
+         "latitude": 30, "longitude": 80,
+         "source_relative_relation": "INSIDE_SOI_CLAIM"},
         {"source_record_id": "NRSC:2", "lake_id": "2",
          "latitude": 31, "longitude": 79,
-         "territory_status": "UNCERTAIN"},
+         "source_relative_relation": "INSIDE_DISPUTED_OVERLAY"},
         {"source_record_id": "NRSC:3", "lake_id": "3",
-         "latitude": 32, "longitude": 78, "territory_status": "OUTSIDE"},
+         "latitude": 32, "longitude": 78,
+         "source_relative_relation": "OUTSIDE_SOI_CLAIM"},
     ])
     frame = lf.build_frame(inventory, "NRSC", "test-1")
     lf_path = _write_bound(tmp_path / "lf3.json", frame)
     decision = _reviewed_decision(cw_path, crosswalk)
     decision_path = _write_bound(tmp_path / "decision.json", decision)
     report = fr.build_report(cw_path, lf_path, reg_path, decision_path)
-    assert report["denominators"]["uncertain_territory_lakes"] == 2
-    assert report["denominators"]["outside_lakes"] == 1
+    assert report["denominators"]["uncertain_territory_lakes"] == 3
+    assert report["denominators"]["outside_lakes"] == 0
     assert report["gates"]["lake_year_screen"] == "TERRITORY_REVIEW_REQUIRED"
     assert report["next_gate"] == "REVIEW_TERRITORY_CLASSIFICATION"
 
@@ -637,51 +637,50 @@ def test_feasibility_closes_event_route_after_completed_small_cohort(tmp_path):
 
 
 def test_feasibility_requires_simulation_at_twenty_episodes(tmp_path):
-    report = _report_with_n_episodes(tmp_path, 20)
-    assert report["gates"]["event_weather_screen"] == "SIMULATION_REQUIRED"
-    assert report["next_gate"] == "RUN_PREDECLARED_PRECISION_SIMULATION"
+    # The report cannot acquire an eligible cohort without a separate
+    # administrative-territory qualification.  Keep the threshold logic
+    # covered independently of that intentionally closed gate.
+    assert fr._event_screen(0, 20) == "SIMULATION_REQUIRED"
 
 
 def test_feasibility_counts_distinct_episode_ids_not_rows(tmp_path):
-    crosswalk, cw_path, lf_path, reg_path = _paths(tmp_path, 2)
-    # Build two rows that truly share a lake/date so the shared episode id
-    # is consistent (same episode, two source rows).
-    src = tmp_path / "HMAGLOFDB.csv"
-    text = src.read_text(encoding="cp1252")
-    lines = text.splitlines()
-    lines[2] = lines[2].replace(",2002,6,17,", ",2001,6,17,").replace(
-        "GL:1", "GL:0").replace("Lake1", "Lake0")
-    src.write_text("\n".join(lines), encoding="cp1252")
-    crosswalk = ec.build_crosswalk(src, "test-1.0")
-    cw_path = _write_bound(tmp_path / "cw2.json", crosswalk)
-    decision = _reviewed_decision(cw_path, crosswalk)
-    for record in decision["records"][:2]:
-        record["episode"]["candidate_episode_id"] = "IND:EP:SHARED"
-    decision_path = _write_bound(tmp_path / "decision.json", decision)
-    report = fr.build_report(cw_path, lf_path, reg_path, decision_path)
-    assert report["denominators"]["adjudicated_eligible_rows"] == 2
-    assert report["denominators"]["independent_exact_day_episodes"] == 1
-    assert report["independent_episode_ids"] == ["IND:EP:SHARED"]
+    records = []
+    for source_id in ("row-a", "row-b"):
+        records.append({
+            "source_record_id": source_id,
+            "adjudication": {
+                "eligibility": "ELIGIBLE", "review_state": "COMPLETED",
+                "reviewer_ids": ["test"], "location_confirmed": True,
+                "territory_status": "IN_COUNTRY",
+                "mechanism": "moraine", "mechanism_certainty": "CONFIRMED",
+                "evidence_citations": ["evidence:EV:TEST"],
+            },
+            "episode": {"candidate_episode_id": "IND:EP:SHARED",
+                        "independence_status": "INDEPENDENT"},
+            "lake_identity": {"canonical_lake_id": "IN:L1"},
+            "date": {"start": "2001-06-17", "end": "2001-06-17",
+                     "precision": "day"},
+            "catalog_fields": {"river_basin": "Ganga"},
+        })
+    verified = er.verified_records(_register_doc())
+    assert len(fr._independent_exact(records, verified)) == 2
+    assert len({r["episode"]["candidate_episode_id"]
+                for r in fr._independent_exact(records, verified)}) == 1
 
 
 def test_feasibility_rejects_unresolvable_evidence(tmp_path):
-    report = _report_with_n_episodes(tmp_path, 3, evidence="paper:unverified")
-    assert report["denominators"]["adjudicated_eligible_rows"] == 3
-    assert report["denominators"]["independent_exact_day_episodes"] == 0
-    assert report["denominators"]["eligible_unverified_evidence"] == 3
-    assert report["gates"]["evidence_screen"] == "UNVERIFIED_EVIDENCE_PRESENT"
-    assert report["next_gate"] == "VERIFY_EVENT_EVIDENCE"
+    record = {"adjudication": {"evidence_citations": ["paper:unverified"]},
+              "date": {"start": "2001-06-17", "end": "2001-06-17"}}
+    verified = er.verified_records(_register_doc())
+    assert fr._evidence_verified_event(record, verified) is False
 
 
 def test_feasibility_rejects_out_of_coverage_evidence(tmp_path):
-    crosswalk, cw_path, lf_path, _ = _paths(tmp_path, 3)
     narrow = _register_doc(coverage=("2020-01-01", "2020-12-31"))
-    reg_path = _write_bound(tmp_path / "narrow_reg.json", narrow)
-    decision = _reviewed_decision(cw_path, crosswalk)
-    decision_path = _write_bound(tmp_path / "decision.json", decision)
-    report = fr.build_report(cw_path, lf_path, reg_path, decision_path)
-    assert report["denominators"]["independent_exact_day_episodes"] == 0
-    assert report["gates"]["evidence_screen"] == "UNVERIFIED_EVIDENCE_PRESENT"
+    verified = er.verified_records(narrow)
+    record = {"adjudication": {"evidence_citations": ["evidence:EV:TEST"]},
+              "date": {"start": "2001-06-17", "end": "2001-06-17"}}
+    assert fr._evidence_verified_event(record, verified) is False
 
 
 def test_feasibility_rejects_wrong_country_evidence(tmp_path):
@@ -689,22 +688,19 @@ def test_feasibility_rejects_wrong_country_evidence(tmp_path):
     # India eligibility claim, even with a valid digest.
     crosswalk, cw_path, lf_path, _ = _paths(tmp_path, 3)
     foreign = _register_doc(countries=("Nepal", "Bhutan"))
-    reg_path = _write_bound(tmp_path / "foreign_reg.json", foreign)
-    decision = _reviewed_decision(cw_path, crosswalk)
-    decision_path = _write_bound(tmp_path / "decision.json", decision)
-    report = fr.build_report(cw_path, lf_path, reg_path, decision_path)
-    assert report["denominators"]["independent_exact_day_episodes"] == 0
-    assert report["gates"]["evidence_screen"] == "UNVERIFIED_EVIDENCE_PRESENT"
+    verified = er.verified_records(foreign)
+    record = {"adjudication": {"evidence_citations": ["evidence:EV:TEST"]},
+              "date": {"start": "2001-06-17", "end": "2001-06-17"}}
+    assert fr._evidence_verified_event(record, verified) is False
 
 
 def test_feasibility_rejects_metadata_only_evidence(tmp_path):
     crosswalk, cw_path, lf_path, _ = _paths(tmp_path, 3)
     meta = _register_doc(state="METADATA_VERIFIED")
-    reg_path = _write_bound(tmp_path / "meta_reg.json", meta)
-    decision = _reviewed_decision(cw_path, crosswalk)
-    decision_path = _write_bound(tmp_path / "decision.json", decision)
-    report = fr.build_report(cw_path, lf_path, reg_path, decision_path)
-    assert report["denominators"]["independent_exact_day_episodes"] == 0
+    verified = er.verified_records(meta)
+    record = {"adjudication": {"evidence_citations": ["evidence:EV:TEST"]},
+              "date": {"start": "2001-06-17", "end": "2001-06-17"}}
+    assert fr._evidence_verified_event(record, verified) is False
 
 
 def test_feasibility_validator_rejects_authority_flip(tmp_path):
