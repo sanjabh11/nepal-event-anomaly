@@ -1187,7 +1187,7 @@
     "claim_scan": "clean on all governed files",
     "collection_guard": "repo-wide collection == tests/ (4352 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
     "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
-    "full_suite_venv": "Pending R9 run at 4352 collected: expected 4349 passed, 3 skipped, 0 failed. Prior: R8 green (4344/3/0, exit 0) at content head 1d894be; R7 (4340/3/4, exit 1) retained as truthful failed diagnostic of a transient stale-file overwrite during its window. Receipts R1-R8 remain append-only dated evidence.",
+    "full_suite_venv": "R9 diagnostic (docs/science/SUITE_RECEIPT_20260928_R9.json): 4348 passed, 3 skipped, 1 failed (4352 collected), exit 1 \u2014 the sole failure was the suite-record consistency gate itself, because the recorded prediction lacked the required \"(N collected)\" token; retained as a truthful dated diagnostic. Pending R10 run: expected 4349 passed, 3 skipped, 0 failed (4352 collected), exit 0. Prior receipts R1-R8 remain append-only dated evidence.",
     "india_nrsc_atlas_extraction": "NRSC atlas Tables 68/69 parsed to row-level records: 2433 + 299 rows, serial-set completeness enforced, printed-serial duplicates (S.No 2001/2002) recorded as anomalies; deterministic replay verified; extraction sealed under the external evidence root",
     "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
     "p5_a2_status_consistency": "local guard passed; CI guard configured \u2014 current CANDIDATE_ONLY / UNSUPERVISED_STRUCTURE_NOT_STABLE result, false authority flags, and release metadata aligned",
