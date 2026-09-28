@@ -1167,7 +1167,7 @@
     "claim_scan": "clean on all governed files",
     "collection_guard": "repo-wide collection == tests/ (4347 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
     "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
-    "full_suite_venv": "R7 diagnostic (docs/science/SUITE_RECEIPT_20260928_R7.json) recorded 4340 passed, 3 skipped, 4 failed (4347 collected), exit 1 \u2014 the four failures traced to a transiently corrupted working tree mid-run (stale overwrite of tests/test_india_nrsc_extract.py during the suite window); retained as honest dated evidence. Pending R8 run at 4347 collected: expected 4344 passed, 3 skipped, 0 failed. Prior receipts R1-R6 remain append-only dated evidence.",
+    "full_suite_venv": "Successful full suite at repository head 4d9424c (content head 1d894be): 4344 passed, 3 skipped, 0 failed, 101 warnings (4347 collected), exit 0; sealed receipt docs/science/SUITE_RECEIPT_20260928_R8.json. Skips are environment-conditional gates only. R7 (SUITE_RECEIPT_20260928_R7.json, 4340/3/4, exit 1) is retained as a truthful failed diagnostic: the four failures traced to a transient stale-file overwrite of tests/test_india_nrsc_extract.py during the run window. Prior receipts R1-R6 remain append-only dated evidence.",
     "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
     "p5_a2_status_consistency": "local guard passed; CI guard configured \u2014 current CANDIDATE_ONLY / UNSUPERVISED_STRUCTURE_NOT_STABLE result, false authority flags, and release metadata aligned",
     "p5_a2_temporal_holdout": "110 passed, 1 skipped \u2014 temporal mapping, waiver, and documentation regression lane",
@@ -1195,6 +1195,7 @@
     "seismic_focused_lane": "210 passed combined (143 component + 47 intake + 14 shared regression + 4 addendum)",
     "seismic_shared_regression": "14 passed (vocabulary isolation, record lane, engine lane, producer floor, adapter rejection)",
     "seismic_sidecar": "143 passed component (contract 53 + features 31 + observability 25 + runner 34, incl. one real engine artifact under SEISMIC_WAVEFORM_RETROSPECTIVE)",
-    "seismic_sidecar_intake": "49 passed (io 26 incl. STEIM flag-gate probes + provenance 10 + events 13 \u2014 byte-parsed intake, generation provenance, event package)"
+    "seismic_sidecar_intake": "49 passed (io 26 incl. STEIM flag-gate probes + provenance 10 + events 13 \u2014 byte-parsed intake, generation provenance, event package)",
+    "india_nrsc_atlas_extraction": "NRSC atlas Tables 68/69 parsed to row-level records: 2433 + 299 rows, serial-set completeness enforced, printed-serial duplicates (S.No 2001/2002) recorded as anomalies; deterministic replay verified; extraction sealed under the external evidence root"
   }
 }
