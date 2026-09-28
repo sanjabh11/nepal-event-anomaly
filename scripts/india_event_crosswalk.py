@@ -176,7 +176,14 @@ def _evidence_refs(row: dict[str, Any]) -> list[str]:
     return refs
 
 
-def _record(row: dict[str, Any], source_version: str, target: str) -> dict[str, Any]:
+def _row_digest(row: dict[str, Any]) -> str:
+    return hashlib.sha256(
+        json.dumps(row, sort_keys=True, ensure_ascii=False)
+        .encode("utf-8")).hexdigest()
+
+
+def _record(row: dict[str, Any], source_version: str, target: str,
+            row_ordinal: int) -> dict[str, Any]:
     gf_id = _text(row.get("GF_ID"))
     if not gf_id:
         raise ValueError("India catalog row is missing GF_ID")
@@ -184,7 +191,9 @@ def _record(row: dict[str, Any], source_version: str, target: str) -> dict[str, 
     return {
         "source_record_id": f"HMAGLOFDB:{gf_id}",
         "source": {"name": "HMAGLOFDB", "version": source_version,
-                   "record_id": gf_id},
+                   "record_id": gf_id,
+                   "row_ordinal": row_ordinal,
+                   "row_sha256": _row_digest(row)},
         "catalog_fields": {
             "lake_name": _text(row.get("Lake_name")),
             "glacier_name": _text(row.get("Glacier_name")),
@@ -228,7 +237,8 @@ def build_crosswalk(csv_path: str | Path, source_version: str,
     target = _text(country).casefold()
     # Every catalog row is retained — borderline country labels can never
     # silently remove a candidate.  OUTSIDE rows are reference-only.
-    records = [_record(row, source_version, target) for row in rows]
+    records = [_record(row, source_version, target, i)
+               for i, row in enumerate(rows, start=1)]
     # Source-data GF_ID collisions (real defect in v1.3.0: ids 738-741
     # label unrelated events in different countries) must not drop rows.
     # Keep every row, disambiguate the record key, and flag the defect.

@@ -17,9 +17,9 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE_ROOT = Path("/Users/sanjayb/nepal-event-anomaly-evidence")
 INTAKE_ROOT = EVIDENCE_ROOT / "india-phase0-source-intake"
-DEFAULT_PACKET = ROOT / "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V2.json"
+DEFAULT_PACKET = ROOT / "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V3.json"
 DEFAULT_SUPPLEMENT = ROOT / "docs/science/INDIA_INVENTORY_REGISTRY_SUPPLEMENT_V0.json"
-DEFAULT_REGISTRY = ROOT / "docs/science/INDIA_INVENTORY_REGISTRY_V2.json"
+DEFAULT_REGISTRY = ROOT / "docs/science/INDIA_INVENTORY_REGISTRY_V3.json"
 DEFAULT_RECEIPT = INTAKE_ROOT / "NRSC_GLA_IHR_SOURCE_RECEIPT_V0.json"
 DEFAULT_PAYLOAD = INTAKE_ROOT / "IHR_GlacialLake_Atlas.pdf"
 SCHEMA = "INDIA_PHASE0_SOURCE_RECEIPT_V0"
@@ -112,9 +112,11 @@ def validate_intake(packet_path: Path, supplement_path: Path,
                  and packet.get("version") == 1)
     packet_v2 = (packet.get("schema") == "INDIA_PHASE0_SOURCE_INTAKE_V2"
                  and packet.get("version") == 2)
-    if not (packet_v0 or packet_v1 or packet_v2):
+    packet_v3 = (packet.get("schema") == "INDIA_PHASE0_SOURCE_INTAKE_V3"
+                 and packet.get("version") == 3)
+    if not (packet_v0 or packet_v1 or packet_v2 or packet_v3):
         raise IntakeError("unexpected source-intake packet schema/version")
-    extracted_packet = packet_v1 or packet_v2
+    extracted_packet = packet_v1 or packet_v2 or packet_v3
     v0_path = packet_path.with_name("INDIA_PHASE0_SOURCE_INTAKE_V0.json")
     if packet_v1:
         if (packet.get("supersedes") != v0_path.name
@@ -127,6 +129,12 @@ def validate_intake(packet_path: Path, supplement_path: Path,
                 or packet.get("supersedes_sha256") != sha256_file(v1_path)):
             raise IntakeError(
                 "V2 packet must bind the superseded V1 packet bytes")
+    if packet_v3:
+        v2_path = packet_path.with_name("INDIA_PHASE0_SOURCE_INTAKE_V2.json")
+        if (packet.get("supersedes") != v2_path.name
+                or packet.get("supersedes_sha256") != sha256_file(v2_path)):
+            raise IntakeError(
+                "V3 packet must bind the superseded V2 packet bytes")
     if packet.get("authority") != AUTHORITY_FLAGS:
         raise IntakeError("source-intake authority flags must all be false")
     scope = packet.get("scope")
@@ -189,7 +197,7 @@ def validate_intake(packet_path: Path, supplement_path: Path,
             raise IntakeError(
                 "extraction anomalies (printed serial duplicates) "
                 "must be recorded")
-        if packet_v2:
+        if packet_v2 or packet_v3:
             limit = nrsc.get("interpretation_limit", "")
             if "No rows are extracted" in limit:
                 raise IntakeError(
@@ -231,6 +239,38 @@ def validate_intake(packet_path: Path, supplement_path: Path,
             if any(r.get("area_ha", 0) < 50 for r in t69):
                 raise IntakeError(
                     "table 69 contains a row below the 50 ha threshold")
+        if packet_v3:
+            derived = packet.get("derived_artifacts")
+            if not isinstance(derived, dict):
+                raise IntakeError("V3 packet must carry derived_artifacts")
+            for key in ("hmaglofdb_provenance", "event_crosswalk",
+                        "event_adjudication_intake", "observation_frame"):
+                entry = derived.get(key)
+                if not isinstance(entry, dict):
+                    raise IntakeError(f"derived_artifacts.{key} missing")
+                rel = entry.get("file")
+                fpath = (EVIDENCE_ROOT / str(rel)) if str(rel).startswith(
+                    "india-phase0-source-intake/") else ROOT / str(rel)
+                if not fpath.is_file():
+                    raise IntakeError(
+                        f"derived_artifacts.{key} artifact absent: {rel}")
+                if sha256_file(fpath) != entry.get("sha256"):
+                    raise IntakeError(
+                        f"derived_artifacts.{key} sha256 differs from bytes")
+            xw_entry = derived.get("event_crosswalk", {})
+            xw_file = EVIDENCE_ROOT / str(xw_entry.get("file", ""))
+            xw_doc = _load_object(xw_file, "event crosswalk")
+            xw_summary = xw_doc.get("summary", {})
+            if (xw_summary.get("n_total_rows") != xw_entry.get("rows")
+                    or xw_summary.get("n_candidate_rows")
+                    != xw_entry.get("candidates")):
+                raise IntakeError(
+                    "V3 derived crosswalk counts differ from the artifact")
+            if not all("row_sha256" in r.get("source", {})
+                       for r in xw_doc.get("records", [])):
+                raise IntakeError(
+                    "V3 derived crosswalk rows must carry row_sha256 "
+                    "stable identity")
     if nrsc.get("payload_sha256") is None or not _HEX64(
             nrsc.get("payload_sha256", "")):
         raise IntakeError("NRSC payload SHA-256 must be pinned")

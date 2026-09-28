@@ -132,3 +132,60 @@ def test_registry_v2_requires_extraction_block(tmp_path):
     del nrsc["bounded_extraction"]
     problems = sr.validate_registry(doc)
     assert any("bounded_extraction" in p for p in problems)
+
+import os
+_EVIDENCE_PRESENT = Path(
+    "/Users/sanjayb/nepal-event-anomaly-evidence").is_dir()
+_v3 = pytest.mark.skipif(not _EVIDENCE_PRESENT,
+                        reason="external evidence root unavailable")
+
+
+@_v3
+def test_registry_v3_status_detail_crosschecks(tmp_path):
+    import json
+    root = Path(__file__).resolve().parents[1]
+    doc = json.loads(
+        (root / "docs/science/INDIA_INVENTORY_REGISTRY_V3.json").read_text())
+    assert sr.validate_registry(doc) == []
+    nrsc = next(s for s in doc["sources"] if s["id"] == "NRSC_GLA_IHR")
+    sd = nrsc["status_detail"]
+    assert sd["source_pdf_retained"]["retained"] is True
+    assert sd["bounded_extraction"]["extracted"] is True
+    assert sd["full_inventory_ingested"] is False
+
+
+@_v3
+def test_registry_v3_rejects_wrong_pdf_digest():
+    import json
+    root = Path(__file__).resolve().parents[1]
+    doc = json.loads(
+        (root / "docs/science/INDIA_INVENTORY_REGISTRY_V3.json").read_text())
+    nrsc = next(s for s in doc["sources"] if s["id"] == "NRSC_GLA_IHR")
+    nrsc["status_detail"]["source_pdf_retained"]["sha256"] = "0" * 64
+    problems = sr.validate_registry(doc)
+    assert any("source_pdf_retained" in p for p in problems)
+
+
+@_v3
+def test_registry_v3_rejects_wrong_extraction_counts():
+    import json
+    root = Path(__file__).resolve().parents[1]
+    doc = json.loads(
+        (root / "docs/science/INDIA_INVENTORY_REGISTRY_V3.json").read_text())
+    nrsc = next(s for s in doc["sources"] if s["id"] == "NRSC_GLA_IHR")
+    nrsc["status_detail"]["bounded_extraction"]["tables"][
+        "table_68_ge10ha"] = 2431
+    problems = sr.validate_registry(doc)
+    assert any("tables differ" in p or "artifact" in p for p in problems)
+
+
+@_v3
+def test_registry_v3_rejects_false_full_inventory_claim():
+    import json
+    root = Path(__file__).resolve().parents[1]
+    doc = json.loads(
+        (root / "docs/science/INDIA_INVENTORY_REGISTRY_V3.json").read_text())
+    nrsc = next(s for s in doc["sources"] if s["id"] == "NRSC_GLA_IHR")
+    nrsc["status_detail"]["full_inventory_ingested"] = True
+    problems = sr.validate_registry(doc)
+    assert any("full_inventory_ingested" in p for p in problems)

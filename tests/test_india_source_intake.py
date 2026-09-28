@@ -333,3 +333,22 @@ def test_v2_rejects_wrong_count_reconciliation(tmp_path, monkeypatch):
         intake.validate_intake(
             fixture["packet"], fixture["supplement"], fixture["registry"],
             fixture["receipt"], fixture["payload"])
+
+
+_EVIDENCE_PRESENT = Path(
+    "/Users/sanjayb/nepal-event-anomaly-evidence").is_dir()
+
+
+@pytest.mark.skipif(not _EVIDENCE_PRESENT,
+                    reason="external evidence root unavailable")
+def test_live_v3_packet_validates_with_derived_artifacts(tmp_path):
+    packet = ROOT / "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V3.json"
+    supplement = ROOT / "docs/science/INDIA_INVENTORY_REGISTRY_SUPPLEMENT_V0.json"
+    registry = ROOT / "docs/science/INDIA_INVENTORY_REGISTRY_V3.json"
+    ev = intake.EVIDENCE_ROOT / "india-phase0-source-intake"
+    result = intake.validate_intake(
+        packet, supplement, registry,
+        ev / "NRSC_GLA_IHR_SOURCE_RECEIPT_V0.json",
+        ev / "IHR_GlacialLake_Atlas.pdf")
+    assert result["status"] == "SOURCE_INTAKE_OK"
+    assert result["row_level_records_extracted"] is True

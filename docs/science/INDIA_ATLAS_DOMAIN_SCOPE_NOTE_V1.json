@@ -1,0 +1,43 @@
+{
+  "authority": {
+    "bulk_acquisition_authorized": false,
+    "causal_authorized": false,
+    "detector_authorized": false,
+    "forecast_authorized": false,
+    "odds_authorized": false,
+    "operational_authorized": false,
+    "satellite_bulk_authorized": false,
+    "seismic_waveform_authorized": false,
+    "warning_authorized": false,
+    "weather_download_authorized": false
+  },
+  "bindings": {
+    "extraction_artifact": "india-phase0-source-intake/NRSC_GLA_IHR_TABLE_EXTRACTION_V0.json",
+    "extraction_sha256": "ee63485674db14b38e60e2a08274c51b2d3e17d6c1242c32f2149c8dd21ebd58",
+    "intake_packet": "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V2.json",
+    "intake_packet_sha256": "4dab657aaab72046cce536247ac938709733227b1f5448dca01acdf16c4668c5"
+  },
+  "claim_scope": "research_only_phase0_domain_scope",
+  "created_utc": "2026-09-28",
+  "domain_reconciliation": {
+    "atlas_total_ge_0_25ha": 28043,
+    "derivation": "2431 declared - 1777 transboundary = 654",
+    "india_administered_ge10ha_derived": 654,
+    "india_ge_0_25ha_derived": 7570,
+    "table_68_declared_ge10ha_rows": 2431,
+    "transboundary_region_ge10ha": {
+      "10_to_50_ha": 1536,
+      "gt_50_ha": 241,
+      "source": "Atlas Table 62 (transboundary region area-range distribution, extracted PDF text pp.90)",
+      "total": 1777
+    },
+    "transboundary_total_ge_0_25ha": 20473
+  },
+  "purpose": "V1 binds the denominator reconciliation to the atlas's own aggregate tables instead of a review-side citation.",
+  "row_level_territory": "Per-row territory remains UNASSESSED: subbasin labels straddle administrative borders, so domain counts cannot assign any individual lake to India-administered territory. Requires boundary adjudication against a pinned boundary dataset.",
+  "schema": "INDIA_ATLAS_DOMAIN_SCOPE_NOTE_V1",
+  "status": "ADVISORY_NOTE_NO_NEW_AUTHORITY",
+  "supersedes": "docs/science/INDIA_ATLAS_DOMAIN_SCOPE_NOTE_V0.json",
+  "supersedes_sha256": "f4cc395774c0572fc707649721bac0a670801c6c1261edfdc369f6e5ec855fdf",
+  "version": 1
+}
