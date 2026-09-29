@@ -1,6 +1,6 @@
 {
  "baseline_head": "54aa612f7d478082716dfe5d0bca7d92d62d493b",
- "content_head": "50a98a2a463f61876257c80e842ed31cb1f54653",
+ "content_head": "a7bcc5104e966c4fca3b72bdd74bbcf06ee6d31b",
  "files": [
   {
    "relpath": ".github/workflows/p5-verification.yml",
@@ -34,8 +34,8 @@
   },
   {
    "relpath": "README.md",
-   "sha256": "10166e54a213fdb959126d3f8d8b90208ee5da48a27bf49813e0fb1e3d62a69d",
-   "size_bytes": 21519
+   "sha256": "22bfd64240a9b297cee626840f35558d7d1b2b5723765fb93de3579df440b769",
+   "size_bytes": 24162
   },
   {
    "relpath": "conftest.py",
@@ -528,6 +528,16 @@
    "size_bytes": 98
   },
   {
+   "relpath": "docs/science/SUITE_RECEIPT_20260929_R25.json",
+   "sha256": "b7dd31538fc3ef21dcf4df52e93ed250b360908ecf81b522522b3c63e92150c5",
+   "size_bytes": 3848
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20260929_R25.json.sha256",
+   "sha256": "cdcd73551eab9c7c82abd1d6feacc4053205628e3df956feeb44d3851f847bbc",
+   "size_bytes": 98
+  },
+  {
    "relpath": "docs/science/TRACKED_DATA_PROVENANCE_V0.md",
    "sha256": "8a90f15756c6d9397420db4c7f9a6f1549ec134152acc4f4081a03c2141a0f29",
    "size_bytes": 18365
@@ -834,8 +844,8 @@
   },
   {
    "relpath": "scripts/build_india_release_closure.py",
-   "sha256": "eb913873c1f10a3a14abee836dc9a0c78f32d9ffc8e9bfe4f60fc21e085c34b3",
-   "size_bytes": 43180
+   "sha256": "3265618b6535a30e43e9644fd1cd3eac1a571113d3605838f7fbfe6f42e5bdaa",
+   "size_bytes": 45099
   },
   {
    "relpath": "scripts/build_p5_release_closure_v2.py",
@@ -849,8 +859,8 @@
   },
   {
    "relpath": "scripts/build_p5_suite_receipt.py",
-   "sha256": "51a3169bb1c1f34af02494c1393e580b5629ebef4d6a5c5c0da2376614b7d416",
-   "size_bytes": 10819
+   "sha256": "ecd1fdf84472ccce4072089e1b23afc265fb594b1b6a4f598e03ffa4b9067bea",
+   "size_bytes": 13802
   },
   {
    "relpath": "scripts/export_release_bundle.py",
@@ -1156,6 +1166,11 @@
    "relpath": "tests/test_glof_poc_real_path.py",
    "sha256": "e06382f55402a978fe3c7f8d56abd6e2133f80b07e97efef57c1a64c0171304a",
    "size_bytes": 18675
+  },
+  {
+   "relpath": "tests/test_hma_closeout_reconciliation.py",
+   "sha256": "bc5613def2bf4e7297e8d5f1214aae98b1d0b8a76219a5874917e034614854e9",
+   "size_bytes": 7691
   },
   {
    "relpath": "tests/test_hma_error_field_disposition.py",
@@ -1544,8 +1559,8 @@
   },
   {
    "relpath": "tests/test_suite_receipt.py",
-   "sha256": "bf3e89163e0856c3db2d4d47ecaf1fcc7fe9dc2b3bc1083549b49caed977afc2",
-   "size_bytes": 8782
+   "sha256": "1f233cc2777fc4cd23de360a1c6119749138f50a4d05386d3e430204b8309111",
+   "size_bytes": 11274
   },
   {
    "relpath": "tests/test_temporal_holdout.py",
@@ -1575,7 +1590,7 @@
  ],
  "generated": "post-P5 phase-B/C bind \u2014 model re-execution proof (MODEL_REEXECUTED both lanes, digest-exact), preregistered promotion protocol, clean-room export + verification-ladder harness, owner-scoped Arm C amendment (retrieval deferred)",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "50a98a2a463f61876257c80e842ed31cb1f54653",
+ "manifest_commit": "a7bcc5104e966c4fca3b72bdd74bbcf06ee6d31b",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -1585,7 +1600,7 @@
  "test_results": {
   "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
   "claim_scan": "clean on all governed files",
-  "collection_guard": "repo-wide collection == tests/ (4539 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
+  "collection_guard": "repo-wide collection == tests/ (4558 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
   "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
   "full_suite_venv": "R24 at 7cd3da3: 4535 passed, 3 skipped, 1 failed (4539 collected) - sole failure was this record's own staleness (record said 4495 while guard said 4509->4539); receipt SUITE_RECEIPT_20260929_R24.json. Disk-reserve environmental failures cleared after non-destructive cache cleanup (uv cache + pytest tmp; free 6.4->11 GiB). R25 rerun expected green 4536/3/0 at the frozen head. Prior: R23 env-bound 4420/3/72 (4495); R22 green 4426/3/0 (4429); R20 green 4422/3/0 (4425); R21 sealed 1 consistency failure. Receipts R1-R18 are append-only dated evidence.",
   "india_nrsc_atlas_extraction": "NRSC atlas Tables 68/69 parsed to row-level records: 2433 + 299 rows, serial-set completeness enforced, printed-serial duplicates (S.No 2001/2002) recorded as anomalies; deterministic replay verified; extraction sealed under the external evidence root",
