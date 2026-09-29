@@ -71,6 +71,68 @@ def test_strata_split_and_cells():
     assert cells[0] != cells[2]  # 100 km boundary crossed
 
 
+def _sealed_fixture():
+    return {
+        "schema": nkp.SCHEMA_RESULT, "version": 0,
+        "frozen_plan_sha256": "a" * 64,
+        "status": "CONTRAST_ONLY_NO_PERSISTENCE",
+        "cohort": {"complete_paths": 5, "pro_glacial": 2,
+                   "unconnected": 3},
+        "h1": {"auc": 0.7, "passed": True},
+        "h2": {"passed": False, "pairs": {}},
+        "h3": "NOT_RUN",
+        "authority": {k: False for k in
+                      ("bulk_acquisition_authorized",
+                       "weather_download_authorized",
+                       "satellite_bulk_authorized",
+                       "seismic_waveform_authorized",
+                       "forecast_authorized", "warning_authorized",
+                       "detector_authorized", "odds_authorized",
+                       "causal_authorized", "operational_authorized")},
+        "event_association_branch": "DORMANT",
+        "candidate_paths_are_not_confirmed_lakes": True,
+    }
+
+
+_COUNTS = {"complete_paths": 5, "pro_glacial": 2, "unconnected": 3}
+
+
+def test_sealed_metadata_accepts_valid_result():
+    doc = _sealed_fixture()
+    assert nkp._check_sealed_metadata(doc, _COUNTS, "a" * 64) == []
+
+
+import copy
+
+
+@pytest.mark.parametrize("mutator", [
+    lambda d: d.__setitem__("frozen_plan_sha256", "b" * 64),
+    lambda d: d["authority"].__setitem__("forecast_authorized", True),
+    lambda d: d.__setitem__("event_association_branch", "ACTIVE"),
+    lambda d: d.__setitem__("candidate_paths_are_not_confirmed_lakes", False),
+    lambda d: d["cohort"].__setitem__("complete_paths", 6),
+    lambda d: d["cohort"].__setitem__("pro_glacial", 99),
+    lambda d: d.__setitem__("status", "NOVEL_STRUCTURE_DISCOVERED"),
+    lambda d: d.__setitem__("h3", "RAN"),
+    lambda d: d["h1"].__setitem__("passed", False),
+    lambda d: d["h2"].__setitem__("passed", True),
+    lambda d: d.__setitem__("h2", "NOT_RUN_H1_FAILED"),
+])
+def test_sealed_metadata_rejects_tampering(mutator):
+    doc = _sealed_fixture()
+    mutator(doc)
+    assert nkp._check_sealed_metadata(doc, _COUNTS, "a" * 64)
+
+
+def test_sealed_metadata_h3_ran_requires_h2_pass():
+    doc = _sealed_fixture()
+    doc["status"] = "CONTRAST_AND_PERSISTENCE_NO_PARTITION_STRUCTURE"
+    doc["h3"] = {"passed": False}
+    assert nkp._check_sealed_metadata(doc, _COUNTS, "a" * 64)
+    doc["h2"] = {"passed": True, "pairs": {}}
+    assert nkp._check_sealed_metadata(doc, _COUNTS, "a" * 64) == []
+
+
 @pytest.mark.skipif(not _V3_PRESENT,
                     reason="V3 trajectories not sealed yet")
 def test_frozen_plan_binds_v3_inputs():

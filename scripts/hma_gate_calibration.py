@@ -6,6 +6,10 @@ data (Type-I control) and (b) accept genuinely separated structure (power).
 This script freezes the calibration contract FIRST (``plan``), then runs
 each declared configuration deterministically (``run --config``), and
 finally aggregates the partial results into a sealed report (``seal``).
+``verify`` re-checks the sealed lane read-only: every partial must be
+bound to the current plan digest, carry the declared config/kind, exact
+replicate indices and seeds, and a recomputed pass count/rate; the
+sealed result's digests, rates, and verdict must re-derive exactly.
 
 Synthetic cohorts reuse the production gate by constructing candidate-path
 records and calling the V2 engine's evaluate(); the gate code under test is
@@ -40,10 +44,16 @@ V2_PLAN_PATH = V2_ROOT / "FROZEN_EVAL_PLAN_V2.json"
 V2_RESULT_PATH = V2_ROOT / "HMA_LAKE_CLUSTER_STABILITY_V2.json"
 SCHEMA_PLAN = "FROZEN_GCAL_PLAN_V0"
 SCHEMA_RESULT = "HMA_GATE_CALIBRATION_V0"
+SCHEMA_PARTIAL = "HMA_GATE_CALIBRATION_PARTIAL_V0"
 BASE_SEED = 31415926
 REPLICATES = 6
 TYPE_I_TARGET = 0.05
 POWER_TARGET = 0.80
+VERDICTS = (
+    "GATE_NOT_SPECIFIC_UNDER_DECLARED_NULLS",
+    "GATE_UNDERPOWERED_V2_INCONCLUSIVE_AT_TESTED_SCALE",
+    "GATE_CALIBRATED_V2_BOUNDED_NEGATIVE",
+)
 
 
 def _sha256(path: Path) -> str:
@@ -339,7 +349,7 @@ def run_config(config: str, output_root: Path = OUTPUT_ROOT) -> dict:
             })
     passed = sum(r["passed"] for r in results)
     partial = {
-        "schema": "HMA_GATE_CALIBRATION_PARTIAL_V0",
+        "schema": SCHEMA_PARTIAL,
         "config": config,
         "kind": cfg["kind"],
         "frozen_plan_sha256": _sha256(output_root / f"{SCHEMA_PLAN}.json"),
@@ -353,39 +363,132 @@ def run_config(config: str, output_root: Path = OUTPUT_ROOT) -> dict:
             "pass_rate": partial["pass_rate"], "sha256": sha}
 
 
-def seal(output_root: Path = OUTPUT_ROOT) -> dict[str, Any]:
+def _derive_verdict(max_null: float, min_power: float) -> str:
+    if max_null > TYPE_I_TARGET:
+        return VERDICTS[0]
+    if min_power < POWER_TARGET:
+        return VERDICTS[1]
+    return VERDICTS[2]
+
+
+def _check_partial(name: str, spec: dict[str, Any], output_root: Path,
+                   plan_sha: str) -> dict[str, Any]:
+    path = _partial_path(output_root, name)
+    if not path.is_file():
+        raise ValueError(f"missing partial for declared config: {name}")
+    partial = _bound_json(path)
+    if partial.get("schema") != SCHEMA_PARTIAL:
+        raise ValueError(f"{name}: unexpected partial schema")
+    if partial.get("frozen_plan_sha256") != plan_sha:
+        raise ValueError(f"{name}: partial bound to a stale/superseded plan")
+    if partial.get("config") != name:
+        raise ValueError(f"{name}: partial config field mismatch")
+    if partial.get("kind") != spec["kind"]:
+        raise ValueError(f"{name}: partial kind differs from frozen plan")
+    engine._false_authority(partial, f"gcal partial {name}")
+    seeds = spec.get("seeds")
+    if not isinstance(seeds, list) or len(seeds) != spec["replicates"]:
+        raise ValueError(f"{name}: frozen plan seed list inconsistent")
+    reps = partial.get("replicates")
+    if not isinstance(reps, list) or len(reps) != spec["replicates"]:
+        raise ValueError(f"{name}: replicate count != declared "
+                         f"{spec['replicates']}")
+    passed = 0
+    for i, r in enumerate(reps):
+        if r.get("replicate") != i or r.get("seed") != seeds[i]:
+            raise ValueError(f"{name}: replicate/seed binding broken at {i}")
+        if not isinstance(r.get("passed"), bool):
+            raise ValueError(f"{name}: replicate {i} missing passed flag")
+        if "status" in r and r["passed"] != (
+                r["status"] == "ALGORITHMIC_STABILITY_PASS"):
+            raise ValueError(f"{name}: passed/status disagree at {i}")
+        passed += r["passed"]
+    if partial.get("pass_count") != passed:
+        raise ValueError(f"{name}: pass_count disagrees with replicates")
+    if partial.get("pass_rate") != passed / len(reps):
+        raise ValueError(f"{name}: pass_rate disagrees with replicates")
+    return partial
+
+
+def _bound_plan_and_partials(output_root: Path):
     plan_path = output_root / f"{SCHEMA_PLAN}.json"
     plan = _bound_json(plan_path)
-    configs = {}
-    missing = []
-    for name, spec in plan["configurations"].items():
-        p = _partial_path(output_root, name)
-        if not p.is_file():
-            missing.append(name)
-            continue
-        partial = _bound_json(p)
-        if len(partial["replicates"]) != spec["replicates"]:
-            missing.append(f"{name}: incomplete replicates")
-            continue
-        configs[name] = partial
-    if missing:
-        raise ValueError(f"cannot seal; missing/incomplete: {missing}")
-    null_rates = {n: c["pass_rate"] for n, c in configs.items()
-                  if c["kind"] == "null"}
-    planted_rates = {n: c["pass_rate"] for n, c in configs.items()
-                     if c["kind"] == "planted"}
+    if plan.get("schema") != SCHEMA_PLAN:
+        raise ValueError("unexpected plan schema")
+    engine._false_authority(plan, "gcal plan")
+    plan_sha = _sha256(plan_path)
+    partials = {
+        name: _check_partial(name, spec, output_root, plan_sha)
+        for name, spec in plan["configurations"].items()
+    }
+    return plan, plan_sha, partials
+
+
+def _rates(plan: dict[str, Any], partials: dict[str, Any]):
+    null_rates = {n: p["pass_rate"] for n, p in partials.items()
+                  if plan["configurations"][n]["kind"] == "null"}
+    planted_rates = {n: p["pass_rate"] for n, p in partials.items()
+                     if plan["configurations"][n]["kind"] == "planted"}
+    if not null_rates or not planted_rates:
+        raise ValueError("frozen plan lacks null or planted configs")
+    return null_rates, planted_rates
+
+
+def _verify_result(output_root: Path, plan: dict[str, Any], plan_sha: str,
+                   partials: dict[str, Any]) -> dict[str, Any]:
+    result = _bound_json(output_root / f"{SCHEMA_RESULT}.json")
+    if result.get("schema") != SCHEMA_RESULT:
+        raise ValueError("unexpected result schema")
+    if result.get("frozen_plan_sha256") != plan_sha:
+        raise ValueError("result bound to a stale/superseded plan")
+    if result.get("event_association_branch") != "DORMANT":
+        raise ValueError("result event-association branch not DORMANT")
+    engine._false_authority(result, "gcal result")
+    declared = plan["configurations"]
+    if set(result.get("configs", {})) != set(declared):
+        raise ValueError("result config set differs from frozen plan")
+    null_rates, planted_rates = {}, {}
+    for name, spec in declared.items():
+        entry = result["configs"][name]
+        if entry.get("sha256") != _sha256(_partial_path(output_root, name)):
+            raise ValueError(f"{name}: sealed digest != current partial")
+        if entry.get("kind") != spec["kind"]:
+            raise ValueError(f"{name}: result kind differs from plan")
+        if entry.get("pass_rate") != partials[name]["pass_rate"]:
+            raise ValueError(f"{name}: result pass_rate mismatch")
+        if entry.get("replicates") != partials[name]["replicates"]:
+            raise ValueError(f"{name}: result replicates != partial")
+        (null_rates if spec["kind"] == "null"
+         else planted_rates)[name] = partials[name]["pass_rate"]
     max_null = max(null_rates.values())
     min_power = min(planted_rates.values())
-    if max_null > TYPE_I_TARGET:
-        verdict = "GATE_NOT_SPECIFIC_UNDER_DECLARED_NULLS"
-    elif min_power < POWER_TARGET:
-        verdict = "GATE_UNDERPOWERED_V2_INCONCLUSIVE_AT_TESTED_SCALE"
-    else:
-        verdict = "GATE_CALIBRATED_V2_BOUNDED_NEGATIVE"
+    for field, recomputed in (
+            ("null_pass_rates", null_rates),
+            ("planted_pass_rates", planted_rates),
+            ("max_null_pass_rate", max_null),
+            ("min_planted_pass_rate", min_power),
+            ("type_i_target", TYPE_I_TARGET),
+            ("power_target", POWER_TARGET)):
+        if result.get(field) != recomputed:
+            raise ValueError(f"result {field} inconsistent with recomputed")
+    verdict = result.get("verdict")
+    if verdict not in VERDICTS:
+        raise ValueError(f"undeclared verdict: {verdict}")
+    if verdict != _derive_verdict(max_null, min_power):
+        raise ValueError("result verdict inconsistent with recomputed rates")
+    return result
+
+
+def seal(output_root: Path = OUTPUT_ROOT) -> dict[str, Any]:
+    plan, plan_sha, partials = _bound_plan_and_partials(output_root)
+    null_rates, planted_rates = _rates(plan, partials)
+    max_null = max(null_rates.values())
+    min_power = min(planted_rates.values())
+    verdict = _derive_verdict(max_null, min_power)
     result = {
         "schema": SCHEMA_RESULT,
         "version": 0,
-        "frozen_plan_sha256": _sha256(plan_path),
+        "frozen_plan_sha256": plan_sha,
         "verdict": verdict,
         "null_pass_rates": null_rates,
         "planted_pass_rates": planted_rates,
@@ -393,17 +496,28 @@ def seal(output_root: Path = OUTPUT_ROOT) -> dict[str, Any]:
         "min_planted_pass_rate": min_power,
         "type_i_target": TYPE_I_TARGET,
         "power_target": POWER_TARGET,
-        "configs": {n: {"pass_rate": c["pass_rate"], "kind": c["kind"],
+        "configs": {n: {"pass_rate": p["pass_rate"],
+                        "kind": plan["configurations"][n]["kind"],
                         "sha256": _sha256(_partial_path(output_root, n)),
-                        "replicates": c["replicates"]}
-                    for n, c in configs.items()},
+                        "replicates": p["replicates"]}
+                    for n, p in partials.items()},
         "interpretation": plan["numeric_contract"]["decision_rules"],
         "event_association_branch": "DORMANT",
         "authority": dict(engine.linkage.AUTHORITY_FLAGS),
     }
     out = output_root / f"{SCHEMA_RESULT}.json"
     sha = _publish_or_match(out, result)
+    _verify_result(output_root, plan, plan_sha, partials)
     return {"status": "GCAL_SEALED", "verdict": verdict, "sha256": sha}
+
+
+def verify(output_root: Path = OUTPUT_ROOT) -> dict[str, Any]:
+    plan, plan_sha, partials = _bound_plan_and_partials(output_root)
+    result = _verify_result(output_root, plan, plan_sha, partials)
+    return {"status": "GCAL_VERIFY_CLEAN",
+            "verdict": result["verdict"],
+            "configs_checked": len(partials),
+            "result_sha256": _sha256(output_root / f"{SCHEMA_RESULT}.json")}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -413,12 +527,15 @@ def main(argv: list[str] | None = None) -> int:
     r = sub.add_parser("run")
     r.add_argument("--config", required=True)
     sub.add_parser("seal")
+    sub.add_parser("verify")
     args = ap.parse_args(argv)
     try:
         if args.cmd == "plan":
             result = freeze_plan()
         elif args.cmd == "run":
             result = run_config(args.config)
+        elif args.cmd == "verify":
+            result = verify()
         else:
             result = seal()
     except (OSError, ValueError, KeyError, TypeError, IndexError,

@@ -406,17 +406,99 @@ def run() -> dict[str, Any]:
             "sha256": sha}
 
 
+_H3_STATE = {
+    "UNDERPOWERED_STOP": "NOT_RUN",
+    "NO_RECOVERABLE_CONTRAST": "NOT_RUN",
+    "CONTRAST_ONLY_NO_PERSISTENCE": "NOT_RUN",
+    "CONTRAST_AND_PERSISTENCE_NO_PARTITION_STRUCTURE": "RAN",
+    "STRUCTURE_BEYOND_COPULA_NULL": "RAN",
+}
+
+
+def _check_sealed_metadata(sealed: dict[str, Any],
+                           cohort_counts: dict[str, int],
+                           plan_sha256: str) -> list[str]:
+    """Pure provenance/metadata validation — tamper-probeable."""
+    problems: list[str] = []
+    if sealed.get("schema") != SCHEMA_RESULT:
+        problems.append("result schema mismatch")
+    if sealed.get("frozen_plan_sha256") != plan_sha256:
+        problems.append("result does not bind current frozen plan bytes")
+    if sealed.get("authority") != dict(linkage.AUTHORITY_FLAGS):
+        problems.append("authority flags not all false")
+    if sealed.get("event_association_branch") != "DORMANT":
+        problems.append("event_association_branch must be DORMANT")
+    if sealed.get("candidate_paths_are_not_confirmed_lakes") is not True:
+        problems.append("candidate-semantics disclaimer missing")
+    cohort = sealed.get("cohort", {})
+    for key in ("complete_paths", "pro_glacial", "unconnected"):
+        if cohort.get(key) != cohort_counts.get(key):
+            problems.append(f"cohort.{key} differs from recompute")
+    status = sealed.get("status")
+    h3 = sealed.get("h3")
+    if status not in _H3_STATE:
+        problems.append(f"unknown sealed status {status!r}")
+        return problems
+    if (_H3_STATE[status] == "NOT_RUN") != (h3 == "NOT_RUN"):
+        problems.append("H3 state inconsistent with status")
+    h1 = sealed.get("h1")
+    if status == "UNDERPOWERED_STOP":
+        if h1 is not None or sealed.get("h2") != "NOT_RUN":
+            problems.append("underpowered stop must carry h1=null,h2=NOT_RUN")
+    elif not isinstance(h1, dict):
+        problems.append("h1 block missing for non-stop status")
+    elif status == "NO_RECOVERABLE_CONTRAST" and h1.get("passed") is not False:
+        problems.append("NO_RECOVERABLE_CONTRAST requires h1.passed=false")
+    elif status != "NO_RECOVERABLE_CONTRAST" and h1.get("passed") is not True:
+        problems.append("post-H1 statuses require h1.passed=true")
+    if status in ("CONTRAST_ONLY_NO_PERSISTENCE",
+                  "CONTRAST_AND_PERSISTENCE_NO_PARTITION_STRUCTURE",
+                  "STRUCTURE_BEYOND_COPULA_NULL"):
+        h2 = sealed.get("h2")
+        if not isinstance(h2, dict) or "pairs" not in h2:
+            problems.append("h2 block missing where status requires it")
+        else:
+            expected_h2 = status != "CONTRAST_ONLY_NO_PERSISTENCE"
+            if h2.get("passed") is not expected_h2:
+                problems.append(f"h2.passed must be {expected_h2} "
+                                f"for status {status}")
+    return problems
+
+
 def verify() -> dict[str, Any]:
-    out = V3_ROOT / f"{SCHEMA_RESULT}.json"
-    sealed = _bound_json(out)
-    # Recompute deterministically; tolerate only float-serial equality.
-    # (run() is deterministic by seed; replay compares full JSON.)
-    plan_ok = (V3_ROOT / f"{SCHEMA_PLAN}.json").is_file()
-    if not plan_ok:
-        raise ValueError("frozen plan missing")
-    # Re-running run() would attempt write-once publish; emulate replay:
-    # deterministic recompute into memory, compare semantic fields.
+    """Adversarial replay: every provenance/metadata binding must verify
+    before the numeric recompute is even attempted."""
+    plan_path = V3_ROOT / f"{SCHEMA_PLAN}.json"
+    plan = _bound_json(plan_path)
+    plan_sha = _sha256(plan_path)
+    inputs = plan.get("inputs", {})
+    problems: list[str] = []
+    for key, path in (
+            ("trajectories_v3_sha256", TRAJ_V3),
+            ("linkage_review_v1_sha256", REVIEW_V1),
+            ("gcal_result_sha256", GCAL_RESULT),
+            ("gcal_copula_null_sha256", GCAL_COPULA)):
+        if not path.is_file():
+            problems.append(f"input artifact absent: {path.name}")
+        elif inputs.get(key) != _sha256(path):
+            problems.append(f"plan input {key} does not bind current bytes")
+    if problems:
+        return {"status": "NKP_VERIFY_MISMATCH", "replay": "BINDING_FAILURE",
+                "problems": problems}
+    sealed = _bound_json(V3_ROOT / f"{SCHEMA_RESULT}.json")
     rows = _cohort()
+    counts = {
+        "complete_paths": len(rows),
+        "pro_glacial": sum(1 for r in rows
+                         if r["type"] == "Pro-glacial lakes"),
+        "unconnected": sum(1 for r in rows
+                         if r["type"] == "Unconnected glacial lakes"),
+    }
+    problems = _check_sealed_metadata(sealed, counts, plan_sha)
+    if problems:
+        return {"status": "NKP_VERIFY_MISMATCH", "replay": "BINDING_FAILURE",
+                "problems": problems}
+    # Provenance verified — now deterministic numeric replay.
     rng = np.random.default_rng(SEED)
     cents = _centroids_1990()
     cells = _cells(rows, cents)
@@ -426,8 +508,10 @@ def verify() -> dict[str, Any]:
         recomputed["h2"] = _evaluate_h2(rows, cells, rng)
     same = json.dumps(recomputed, sort_keys=True) == json.dumps(
         {k: sealed[k] for k in recomputed}, sort_keys=True)
-    return {"status": "NKP_VERIFY_OK" if same else "NKP_VERIFY_MISMATCH",
-            "replay": "EXACT_MATCH" if same else "MISMATCH",
+    if not same:
+        return {"status": "NKP_VERIFY_MISMATCH", "replay": "NUMERIC_MISMATCH"}
+    return {"status": "NKP_VERIFY_OK", "replay": "EXACT_MATCH",
+            "provenance_checks": "plan+inputs+cohort+status+authority",
             "sealed_status": sealed["status"]}
 
 
