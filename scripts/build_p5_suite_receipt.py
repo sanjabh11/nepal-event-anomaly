@@ -15,6 +15,16 @@ head.  ``execution_window`` records explicit activity timing — test
 execution timestamps are never data maximum dates (``data_context``
 states this boundary in the emitted document).
 
+V2.1 hardening (post-A4 review): after the suite finishes the builder
+re-reads HEAD, the manifest digest, and the worktree status, so the
+receipt proves the tree under test stayed fixed and clean across the
+whole run — a receipt that only proves the *pre-run* state cannot rule
+out mid-run drift.  Timing is recorded twice on purpose:
+``duration_s`` is monotonic (immune to wall-clock adjustment/sleep),
+``execution_window`` spans UTC wall time; when they disagree the
+discrepancy is disclosed in ``timing`` rather than smoothed over.
+A head/manifest/worktree mismatch after the suite fails closed.
+
 Publication is exclusive-create only (write_once_json +
 write_once_sidecar); an existing --out is fatal.  Default is --dry-run:
 run the suite, print the receipt, write nothing.
@@ -99,6 +109,17 @@ def _parse_collected(text: str) -> int:
     raise ClosureError("pytest collection count not found")
 
 
+def _worktree_status(repo: Path) -> str:
+    """Porcelain status of the tracked worktree; '' means clean."""
+    proc = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=no"],
+        cwd=repo, capture_output=True, text=True, check=False)
+    if proc.returncode:
+        raise ClosureError(
+            f"git status failed: {proc.stderr.strip()}")
+    return proc.stdout
+
+
 def _load_manifest(manifest_path: Path, repo: Path) -> dict:
     """Fail-closed manifest load (A4-03): live bytes + bound heads.
 
@@ -151,6 +172,7 @@ def run_suite(*, repo: Path, pytest_args: str,
     # while HEAD or the manifest moves still records the pre-run state.
     repository_head = _head(repo)
     manifest = _load_manifest(manifest_path, repo)
+    status_before = _worktree_status(repo)
 
     # The census pass must emit the "N tests collected" tail; strip quiet
     # flags from the caller's args so a doubled -q cannot collapse the
@@ -174,6 +196,40 @@ def run_suite(*, repo: Path, pytest_args: str,
                          text=True, check=False)
     duration_s = round(time.monotonic() - start, 3)
     suite_completed_utc = _utc_now()
+
+    # Post-run binding: the tree under test must not have drifted mid-run.
+    head_after = _head(repo)
+    manifest_after = _load_manifest(manifest_path, repo)
+    status_after = _worktree_status(repo)
+    drift = []
+    if head_after != repository_head:
+        drift.append("repository HEAD changed during the suite")
+    if manifest_after["sha256"] != manifest["sha256"]:
+        drift.append("manifest bytes changed during the suite")
+    if status_after != status_before:
+        drift.append("worktree status changed during the suite")
+    if status_after:
+        drift.append("worktree not clean after the suite")
+    if drift:
+        raise ClosureError(
+            "tree under test drifted; refusing to emit receipt: "
+            + "; ".join(drift))
+    utc_span_s = round(
+        (__import__("datetime").datetime.fromisoformat(
+            suite_completed_utc.replace("Z", "+00:00"))
+         - __import__("datetime").datetime.fromisoformat(
+            suite_started_utc.replace("Z", "+00:00"))).total_seconds(), 3)
+    timing = {
+        "monotonic_duration_s": duration_s,
+        "utc_span_s": utc_span_s,
+        "span_exceeds_monotonic_s": round(utc_span_s - duration_s, 3),
+        "timing_consistency": (
+            "CONSISTENT" if abs(utc_span_s - duration_s) <=
+            max(5.0, 0.05 * duration_s)
+            else "UTC_SPAN_EXCEEDS_MONOTONIC "
+                 "(wall-clock adjustment or system suspend between start "
+                 "and end; monotonic duration_s is the trustworthy clock)"),
+    }
 
     raw_output = run.stdout + "\n" + run.stderr
     counts = _parse_summary(raw_output)
@@ -206,6 +262,15 @@ def run_suite(*, repo: Path, pytest_args: str,
         "skipped_tests": skipped_tests,
         "exit_code": run.returncode,
         "duration_s": duration_s,
+        "timing": timing,
+        "run_tree_proof": {
+            "worktree_status_before": status_before,
+            "worktree_status_after": status_after,
+            "worktree_clean_throughout": (not status_before
+                                        and not status_after),
+            "head_after_suite": head_after,
+            "manifest_sha256_after_suite": manifest_after["sha256"],
+        },
         "started_utc": suite_started_utc,
         "completed_utc": suite_completed_utc,
         "environment": _environment(),

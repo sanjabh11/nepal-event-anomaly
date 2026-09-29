@@ -340,19 +340,27 @@ preserved immutably. The current P5 state is indexed in
 `docs/science/P5_EXTENSION_STATUS_V0.md`; post-seasonal audit
 dispositions are recorded in `docs/science/GAP_REGISTER_V0.md`.
 
-### India Phase-0 lane (recorded 2026-09-27)
+### India Phase-0 lane (recorded 2026-09-27, updated 2026-09-29)
 
 The India feasibility machinery (`scripts/india_*.py`,
 `tests/test_india_*.py`) is a hardened contract lane:
 
-- `docs/science/INDIA_INVENTORY_REGISTRY_V1.json` succeeds
-  `INDIA_INVENTORY_METADATA_V0.json` (retained unchanged), pinning
-  source versions, access terms, and formats for NRSC (28,043 mapped
-  lakes ≥0.25 ha, 2016–17), CWC September 2024 (902 monitored), the
-  2026 parliamentary product (2,485 lakes >10 ha — a different scope,
-  never a trend), and ICIMOD HMAGLOFDB v1.3.0 (Himalayan-wide, not an
-  India adjudicated cohort). No row-level payloads are ingested.
-- `docs/science/INDIA_EVIDENCE_REGISTER_V0.json` makes evidence
+- `docs/science/INDIA_INVENTORY_REGISTRY_V5.json` is current (V1–V4
+  retained unchanged in the supersedes chain), pinning source versions,
+  access terms, and formats for NRSC (28,043 mapped lakes ≥0.25 ha,
+  2016–17), CWC September 2024 (902 monitored), the 2026 parliamentary
+  product (2,485 lakes >10 ha — a different scope, never a trend),
+  ICIMOD HMAGLOFDB v1.3.0 (Himalayan-wide, not an India adjudicated
+  cohort), and — added in V5 — the Figshare Greater Himalaya lake
+  inventory (39,879 features across 1990/2000/2010/2015/2020, CC BY 4.0)
+  whose retained archive, owner intake decision, and bounded
+  candidate-linkage extraction are all byte-bound. V5 closed the linkage
+  artifact's `unresolved_registry_note`.
+- `docs/science/INDIA_EVIDENCE_REGISTER_V3.json` (schema V0) makes
+  evidence resolvable: citations are attribution until they resolve to
+  a `BYTES_VERIFIED` register record whose pinned digest matches
+  resolvable bytes and whose declared coverage contains the claim.
+  `EV:GREATER_HIMALAYA_FIGSHARE_21708590_ZIP` is BYTES_VERIFIED.
   resolvable: citations are attribution until they resolve to a
   `BYTES_VERIFIED` register record whose pinned digest matches
   resolvable bytes (on-disk or an immutable retrieval receipt) and
@@ -388,7 +396,44 @@ single failure was the REL-01 stale-record consistency gate catching
 the pre-update census — self-resolving, documented as dated evidence).
 Suite counts are bound to machine-generated receipts only; the
 manifest's earlier recorded totals are preserved as dated history, not
-overwritten. The detached India Phase-0 release closure (binding
+overwritten.
+
+**HMA lake-trajectory PoC (branch `codex/india-lake-epoch-linkage`,
+sealed 2026-09-29).** A bounded descriptive study over the Greater
+Himalaya inventory — *candidate* spatial links across epochs, never
+confirmed lake identities; all artifacts live write-once in the external
+evidence root (`nepal-event-anomaly-evidence/india-phase0-source-intake/`):
+
+- **Strict-linkage V2 cohort** (IoU+from-fraction ≥ 0.8): 1,402 complete
+  five-epoch candidate paths; frozen gate returned
+  `NO_ROBUST_STRUCTURE_UNDER_THIS_DESIGN`. Independently re-derived
+  bit-exact by `scripts/hma_independent_audit_v0.py` (no engine imports).
+- **GCAL gate calibration** (`scripts/hma_gate_calibration.py`, frozen
+  plan first): the gate passes dependence-preserving nulls at 0.83–1.00
+  → sealed `GATE_NOT_SPECIFIC_UNDER_DECLARED_NULLS`; a raw pass would
+  have been uninterpretable.
+- **Owner-sealed CONTAINMENT review** (`INDIA_LAKE_LINKAGE_REVIEW_V1`)
+  admits bounded nested growth/shrink candidates → V3 cohort: 13,781
+  paths, 5,047 complete (`scripts/hma_lake_trajectory_poc_v3.py`).
+- **NKP frozen H1→H2→H3** (`scripts/hma_nkp_evaluation.py`):
+  `CONTRAST_ONLY_NO_PERSISTENCE` — positive-control label contrast
+  recovered (stratified AUC 0.758 [0.73, 0.79], placebo-checked) but no
+  within-path growth persistence (1 of 3 pairs); H3 never ran.
+- **Event association closed** for this dataset:
+  `HMA_EVENT_LINKABILITY_CENSUS_V0` — ceiling 111 catalog records
+  linkable to ≥3-epoch paths, 23 joint; not an eligible event sample.
+- **`HMA_POC_CLOSEOUT_RECONCILIATION_V0`** is the bound claim ceiling —
+  what may and may not be said about every number above.
+- No event, territory, causal, risk, forecast, or operational claim is
+  made; the Error field is a perimeter-derived proxy (disposition
+  sealed); Hi-MAG replication is deferred pending a separate owner
+  intake decision.
+
+Current green receipt at the frozen head:
+`docs/science/SUITE_RECEIPT_20260929_R25.json`
+(4,536 passed / 3 skipped / 0 failed / 4,539 collected;
+R23–R24 receipts preserved as dated evidence). The detached India
+Phase-0 release closure (binding
 release HEAD, tested content HEAD, manifest, receipt, exclusions, and
 the clean-history scan) lives outside the repository in the external
 evidence root — a closure cannot contain the digest of the object set

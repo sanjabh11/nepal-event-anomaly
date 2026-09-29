@@ -353,6 +353,35 @@ def _receipt_problems(receipt_path: Path, expected_digest: str,
                 problems.append("receipt collected count does not reconcile")
             if counts["failed"] or counts["errors"]:
                 problems.append("receipt records test failures or errors")
+    # V2.1 run-tree proof fields (additive; older receipts unaffected):
+    proof = receipt.get("run_tree_proof")
+    if proof is not None:
+        if not isinstance(proof, dict):
+            problems.append("run_tree_proof must be an object")
+        else:
+            if proof.get("worktree_clean_throughout") is not True:
+                problems.append(
+                    "receipt does not attest a clean tree throughout the run")
+            if proof.get("head_after_suite") != receipt.get(
+                    "repository_head"):
+                problems.append("receipt head_after_suite differs from "
+                                "repository_head")
+            if proof.get("manifest_sha256_after_suite") != receipt.get(
+                    "manifest_sha256"):
+                problems.append("receipt post-suite manifest digest differs")
+    timing = receipt.get("timing")
+    if timing is not None:
+        if not isinstance(timing, dict):
+            problems.append("timing must be an object")
+        else:
+            consistency = timing.get("timing_consistency")
+            if not isinstance(consistency, str) or not consistency:
+                problems.append("timing_consistency must be a declared string")
+            # An inconsistent span is disclosed, not failed — but the
+            # disclosure must be recorded, not silent.
+            if "EXCEEDS" in consistency and not isinstance(
+                    timing.get("span_exceeds_monotonic_s"), (int, float)):
+                problems.append("timing span disclosure lacks the delta")
     return problems, receipt
 
 
@@ -581,6 +610,7 @@ def build(repo_root: Path, receipt_path: Path, release_head: str,
             "The pre-rewrite backup is held offline in a mode-restricted directory and contains historical repository bytes; it is not published.",
             "Backup custody v0 is retained append-only; custody v1 supersedes its placeholder verification time with a measured UTC timestamp.",
             "Checksums establish byte integrity, not source authenticity or legal permission.",
+            "Receipt SUITE_RECEIPT_20260929_R25 recorded monotonic duration_s 1395.739 against a UTC span of 4739 s (delta 3343.261 s), consistent with a wall-clock adjustment or suspend that cannot be retro-verified; the receipt builder was hardened (V2.1) so successor receipts bind monotonic vs UTC timing and clean-tree attestations explicitly.",
         ],
     }
 

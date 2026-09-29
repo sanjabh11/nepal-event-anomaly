@@ -39,10 +39,16 @@ def _completed(argv, returncode, stdout="", stderr=""):
 
 def _fake_run(*, head=_FAKE_HEAD, head_rc=0,
               collect_out=_COLLECT_OUT, run_out=_RUN_OUT, run_rc=0,
-              on_run=None):
+              on_run=None, status_out="", status_after=None):
     """Dispatch fake subprocess calls for git/pytest argv."""
+    state = {"suite_done": False}
+
     def fake(argv, cwd=None, capture_output=False, text=False,
              check=False):
+        if argv[:2] == ["git", "status"]:
+            if status_after is not None and state["suite_done"]:
+                return _completed(argv, 0, stdout=status_after)
+            return _completed(argv, 0, stdout=status_out)
         if argv[:2] == ["git", "rev-parse"]:
             return _completed(argv, head_rc,
                               stdout=(head + "\n") if head else "")
@@ -50,6 +56,7 @@ def _fake_run(*, head=_FAKE_HEAD, head_rc=0,
             return _completed(argv, 0, stdout=collect_out)
         if on_run is not None:
             on_run()
+        state["suite_done"] = True
         return _completed(argv, run_rc, stdout=run_out)
     return fake
 
@@ -98,17 +105,16 @@ def test_manifest_sha256_binds_live_bytes(tmp_path, manifest,
 
 def test_manifest_digest_captured_before_pytest(tmp_path, manifest,
                                                 monkeypatch):
-    """A manifest mutated DURING the suite must not change the bound
-    digest — the binding is taken at run start."""
-    original = hashlib.sha256(manifest.read_bytes()).hexdigest()
-
+    """A manifest mutated DURING the suite fails closed: the post-run
+    re-bind detects the drift and refuses the receipt."""
     def _mutate():
-        manifest.write_text('{"content_head": "f" * 40}',
-                            encoding="utf-8")
+        manifest.write_text(
+            json.dumps({"content_head": "f" * 40,
+                        "manifest_commit": "e" * 40, "files": {}}),
+            encoding="utf-8")
 
-    receipt = _run(tmp_path, manifest, monkeypatch, on_run=_mutate)
-    assert receipt["manifest_sha256"] == original
-    assert receipt["content_head"] == _MANIFEST_CONTENT_HEAD
+    with pytest.raises(bsr.ClosureError, match="manifest"):
+        _run(tmp_path, manifest, monkeypatch, on_run=_mutate)
 
 
 def test_execution_window_fields(tmp_path, manifest, monkeypatch):
@@ -145,6 +151,58 @@ def test_counts_include_collected_and_warnings(tmp_path, manifest,
     assert isinstance(receipt["duration_s"], float)
     assert isinstance(receipt["command_digest"], str)
     assert len(receipt["command_digest"]) == 64
+
+
+# ------------------------------------------------------------------
+# V2.1 run-tree proof + timing reconciliation
+# ------------------------------------------------------------------
+
+def test_run_tree_proof_attests_clean_run(tmp_path, manifest,
+                                        monkeypatch):
+    receipt = _run(tmp_path, manifest, monkeypatch)
+    proof = receipt["run_tree_proof"]
+    assert proof["worktree_clean_throughout"] is True
+    assert proof["head_after_suite"] == _FAKE_HEAD
+    assert proof["manifest_sha256_after_suite"] == (
+        receipt["manifest_sha256"])
+
+
+def test_head_drift_during_suite_fails_closed(tmp_path, manifest,
+                                              monkeypatch):
+    state = {"suite_done": False}
+
+    def fake(argv, cwd=None, capture_output=False, text=False,
+             check=False):
+        if argv[:2] == ["git", "status"]:
+            return _completed(argv, 0, stdout="")
+        if argv[:2] == ["git", "rev-parse"]:
+            head = "9" * 40 if state["suite_done"] else _FAKE_HEAD
+            return _completed(argv, 0, stdout=head + "\n")
+        if "--collect-only" in argv:
+            return _completed(argv, 0, stdout=_COLLECT_OUT)
+        state["suite_done"] = True
+        return _completed(argv, 0, stdout=_RUN_OUT)
+
+    monkeypatch.setattr(subprocess, "run", fake)
+    with pytest.raises(bsr.ClosureError, match="HEAD changed"):
+        bsr.run_suite(repo=tmp_path, pytest_args="tests/ -q",
+                      manifest_path=manifest)
+
+
+def test_dirty_worktree_during_suite_fails_closed(tmp_path, manifest,
+                                                  monkeypatch):
+    with pytest.raises(bsr.ClosureError, match="not clean|changed"):
+        _run(tmp_path, manifest, monkeypatch,
+             status_after=" M scripts/touched_during_run.py\n")
+
+
+def test_timing_reconciliation_block(tmp_path, manifest, monkeypatch):
+    receipt = _run(tmp_path, manifest, monkeypatch)
+    timing = receipt["timing"]
+    assert timing["monotonic_duration_s"] == receipt["duration_s"]
+    assert isinstance(timing["utc_span_s"], float)
+    assert isinstance(timing["span_exceeds_monotonic_s"], float)
+    assert timing["timing_consistency"]
 
 
 # ------------------------------------------------------------------
