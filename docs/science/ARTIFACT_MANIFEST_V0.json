@@ -1,6 +1,6 @@
 {
  "baseline_head": "54aa612f7d478082716dfe5d0bca7d92d62d493b",
- "content_head": "4d3f5e93093cf87eb551ed82e5c801d2b8fdf3e4",
+ "content_head": "7fe5dccddc545258d09166542fff910d476df182",
  "files": [
   {
    "relpath": ".github/workflows/p5-verification.yml",
@@ -858,6 +858,11 @@
    "size_bytes": 26060
   },
   {
+   "relpath": "scripts/hma_closeout_reconciliation.py",
+   "sha256": "3090869d4190855428ba7f8797bf46eacd215630ad62179d878eb2183e1b8050",
+   "size_bytes": 9801
+  },
+  {
    "relpath": "scripts/hma_error_field_disposition.py",
    "sha256": "96dd22ac1e97693e2e04fa60728366ba0090600a2b3671b30731eee26784eab3",
    "size_bytes": 14176
@@ -869,8 +874,8 @@
   },
   {
    "relpath": "scripts/hma_gate_calibration.py",
-   "sha256": "cac2c650129bc3c516a0fa4555a07c84d3ad4f7e0cd91f46f99ba699a7037107",
-   "size_bytes": 17515
+   "sha256": "998d0cd21b3039794c74f9e90a498482dfa7826c2f72ca6d6d0a52c0befe902b",
+   "size_bytes": 23218
   },
   {
    "relpath": "scripts/hma_high_frequency_assessment_v1.py",
@@ -899,8 +904,8 @@
   },
   {
    "relpath": "scripts/hma_nkp_evaluation.py",
-   "sha256": "e77dd4273f99cb4df2eb36f258b8750efae98c600137f6e61e5f880e70f653f0",
-   "size_bytes": 19314
+   "sha256": "4bb3752a45ca7cb944da764a1bc37b25e969f0129e2c01516381efa6bf93b243",
+   "size_bytes": 23291
   },
   {
    "relpath": "scripts/india_adjudication_workflow.py",
@@ -1154,8 +1159,8 @@
   },
   {
    "relpath": "tests/test_hma_gate_calibration.py",
-   "sha256": "33302b097ef5096bdb135941f720d51b21a7cbbba491d5cb15ebb81a8857cc90",
-   "size_bytes": 2117
+   "sha256": "eb463339a7007c094588f8bad066ed38c6613290209eb6d287dd98ef42be48ce",
+   "size_bytes": 9196
   },
   {
    "relpath": "tests/test_hma_high_frequency_assessment_v1.py",
@@ -1184,8 +1189,8 @@
   },
   {
    "relpath": "tests/test_hma_nkp_evaluation.py",
-   "sha256": "34a57e0ac82d8113e0adc2bb9041399725c390b26127cb18afa41b034236742d",
-   "size_bytes": 3018
+   "sha256": "3ef8bba644d41c73cf8cd1c3e1226fae0c19fd8146615dd0a6247d8ff00e38d3",
+   "size_bytes": 5439
   },
   {
    "relpath": "tests/test_incident_surface.py",
@@ -1560,7 +1565,7 @@
  ],
  "generated": "post-P5 phase-B/C bind \u2014 model re-execution proof (MODEL_REEXECUTED both lanes, digest-exact), preregistered promotion protocol, clean-room export + verification-ladder harness, owner-scoped Arm C amendment (retrieval deferred)",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "4d3f5e93093cf87eb551ed82e5c801d2b8fdf3e4",
+ "manifest_commit": "7fe5dccddc545258d09166542fff910d476df182",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -1570,7 +1575,7 @@
  "test_results": {
   "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
   "claim_scan": "clean on all governed files",
-  "collection_guard": "repo-wide collection == tests/ (4509 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
+  "collection_guard": "repo-wide collection == tests/ (4539 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
   "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
   "full_suite_venv": "R23 at 35889ee: 4420 passed, 3 skipped, 72 failed (4495 collected). 71 failures are environmental: science_contract_package tests refuse to write because free disk 6.4GiB < 8.0GiB reserve guard; not a code regression. 1 failure was this record's own staleness after the 4495 rebind, corrected here. Prior: R22 green 4426/3/0 (4429 collected), R20 green 4422/3/0 (4425 collected); R21 sealed with 1 consistency failure. Receipts R1-R18 are append-only dated evidence.",
   "india_nrsc_atlas_extraction": "NRSC atlas Tables 68/69 parsed to row-level records: 2433 + 299 rows, serial-set completeness enforced, printed-serial duplicates (S.No 2001/2002) recorded as anomalies; deterministic replay verified; extraction sealed under the external evidence root",
