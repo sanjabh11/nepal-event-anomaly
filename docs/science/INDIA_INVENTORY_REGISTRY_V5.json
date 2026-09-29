@@ -1,0 +1,336 @@
+{
+ "acquisition": {
+  "metadata_only_queries_run": true,
+  "payload_requests_issued": false,
+  "policy": "REGISTRY_ONLY",
+  "prohibited_actions": [
+   "No weather payload acquisition",
+   "No satellite payload acquisition",
+   "No seismic waveform acquisition",
+   "No operational inference",
+   "No row-level inventory ingestion until a separately approved intake"
+  ],
+  "source_bytes_retained": false
+ },
+ "authority": {
+  "bulk_acquisition_authorized": false,
+  "causal_authorized": false,
+  "detector_authorized": false,
+  "forecast_authorized": false,
+  "odds_authorized": false,
+  "operational_authorized": false,
+  "satellite_bulk_authorized": false,
+  "seismic_waveform_authorized": false,
+  "warning_authorized": false,
+  "weather_download_authorized": false
+ },
+ "claim_scope": "research_only_phase0_registry",
+ "correction_note": "V5 adds the sealed-intake Figshare Greater Himalaya source row (archive, owner decision, and candidate-linkage extraction all byte-bound), closing the INDIA_LAKE_EPOCH_CANDIDATE_LINKAGE_V0 unresolved_registry_note.",
+ "created_utc": "2026-09-29",
+ "limitations": [
+  "Reported counts are pinned to each product's own scope and vintage and are not independent event counts",
+  "No row-level inventory payload was acquired in this phase",
+  "No source bytes are retained by this registry; official URLs, versions, and terms are pinned for the next approved ingestion step",
+  "No lake is classified as a verified non-event from absence in a catalog",
+  "NRSC 28043 (>=0.25 ha, 2016-2017), CWC 902 (Sep-2024 monitored), and the 2026 parliamentary 2485 (>10 ha) are different products and must never be read as a trend",
+  "Figshare entry records the retained archive and bounded linkage extraction only; no confirmed lake identities or event associations"
+ ],
+ "next_gate": "GCAL_GATE_CALIBRATION_RESULT_REVIEW; owner CONTAINMENT linkage review required before any relaxed-cohort trajectory lane",
+ "schema": "INDIA_INVENTORY_REGISTRY_V5",
+ "sources": [
+  {
+   "access_terms": "NRSC terms permit attributed non-commercial use and value-added derivatives; original materials remain NRSC/ISRO property; retained in restricted evidence root for research verification only",
+   "bounded_extraction": {
+    "anomalies": "Atlas print defect: serials 2001/2002 duplicated on distinct lake IDs; two rows fall below the >=10 ha table threshold. All printed rows retained; anomaly recorded.",
+    "artifact": "india-phase0-source-intake/NRSC_GLA_IHR_TABLE_EXTRACTION_V0.json",
+    "artifact_sha256": "ee63485674db14b38e60e2a08274c51b2d3e17d6c1242c32f2149c8dd21ebd58",
+    "full_inventory_ingested": false,
+    "packet": "docs/science/INDIA_PHASE0_SOURCE_INTAKE_V2.json",
+    "status": "SUBSET_EXTRACTED_BOUNDED",
+    "tables": {
+     "table_68_ge10ha": 2433,
+     "table_69_ge50ha": 299
+    }
+   },
+   "comparable_to": null,
+   "evidence_register_refs": [
+    "EV:NRSC_GLA_IHR_ATLAS_PDF",
+    "EV:NRSC_GLA_IHR_METADATA"
+   ],
+   "file_format": "PDF atlas / web publication",
+   "id": "NRSC_GLA_IHR",
+   "interpretation_limit": "Mapped lakes >=0.25 ha in the 2016-2017 epoch plus an extracted >=10/>=50 ha printed-table row subset bound to the acquired bytes. Not a lake frame, not an event/control cohort, not observation history, not an India-administered count.",
+   "local_payload_sha256": null,
+   "mapping_epoch": "2016-2017",
+   "minimum_lake_area_ha": 0.25,
+   "publication_or_period": "2023-03-16",
+   "publisher": "National Remote Sensing Centre (NRSC), ISRO",
+   "reported_counts": {
+    "brahmaputra": 18001,
+    "ganga": 4707,
+    "indus": 5335,
+    "mapped_lakes_ge_0_25ha": 28043
+   },
+   "retrieval_instructions": "Atlas PDF bytes are already acquired and byte-bound in the restricted evidence root (see status_detail.source_pdf_retained). Bounded Tables 68/69 extraction is complete and bound. The full 28,043-lake inventory still requires a separately approved intake; do not re-fetch or retain additional bytes outside the packet scope.",
+   "retrieval_receipt": {
+    "bytes_retained": false,
+    "content_type": "text/html; charset=UTF-8",
+    "final_url": "https://www.nrsc.gov.in/nrscnew/resources_atlas_glacialLake.php",
+    "http_status": 200,
+    "redirects": [],
+    "request_method": "HEAD",
+    "request_params": null,
+    "requested_url": "https://www.nrsc.gov.in/nrscnew/resources_atlas_glacialLake.php",
+    "response_sha256": null,
+    "retrieved_utc": "2026-09-27T15:34:33.661869+00:00",
+    "terms_reviewed": "Government of India publication; citation only until redistribution terms confirmed"
+   },
+   "row_level_inventory_ingested": false,
+   "scope": "Indian Himalayan river basins: Indus, Ganga, and Brahmaputra",
+   "source_access_status": "OFFICIAL_PAGE_METADATA_VERIFIED",
+   "source_bytes_retained": true,
+   "source_url": "https://www.nrsc.gov.in/nrscnew/resources_atlas_glacialLake.php",
+   "source_version": "atlas-2016-2017-epoch",
+   "status_detail": {
+    "bounded_extraction": {
+     "artifact": "india-phase0-source-intake/NRSC_GLA_IHR_TABLE_EXTRACTION_V0.json",
+     "artifact_sha256": "ee63485674db14b38e60e2a08274c51b2d3e17d6c1242c32f2149c8dd21ebd58",
+     "extracted": true,
+     "note": "Rows span the full atlas basin domain incl. transboundary reaches; India-administered subset unresolved. Printed-serial defect rows retained.",
+     "tables": {
+      "table_68_ge10ha": 2433,
+      "table_69_ge50ha": 299
+     }
+    },
+    "full_inventory_ingested": false,
+    "full_inventory_note": "28,043-lake row-level inventory at >=0.25 ha is NOT ingested; only the >=10/>=50 ha printed-table subset is.",
+    "metadata_only_queries_run": true,
+    "source_pdf_retained": {
+     "bytes": 109055478,
+     "location": "external evidence root (outside Git), mode 0600/0700",
+     "relpath": "india-phase0-source-intake/IHR_GlacialLake_Atlas.pdf",
+     "retained": true,
+     "sha256": "579b61a1592ff1eb977fa97b0b980e24f8baeb91e60f2f63c58c8d6f2b5a5162"
+    }
+   },
+   "terms_note": "NRSC terms permit non-commercial use with attribution and value-added derivatives; original materials remain NRSC property. Rows are retained in the restricted evidence root for research verification only.",
+   "title": "Glacial Lake Atlas of Indian Himalayan River Basins"
+  },
+  {
+   "access_terms": "Government of India publication; no explicit open-data license on record \u2014 citation only until redistribution terms are confirmed in writing",
+   "comparable_to": null,
+   "file_format": "PDF report",
+   "id": "CWC_GLWB_SEP_2024",
+   "interpretation_limit": "Monitoring coverage and reported no-change cannot be treated as verified non-event histories without lake-level observation evidence",
+   "local_payload_sha256": null,
+   "monitoring_method": "Remote-sensing water-spread measurement with automatic processing and manual digitization where required",
+   "publication_or_period": "2024-09",
+   "publisher": "Central Water Commission (CWC), Ministry of Jal Shakti",
+   "reported_counts": {
+    "between_10ha_and_50ha_monitored_from_2022": 425,
+    "monitored_glacial_lakes_and_water_bodies": 902,
+    "over_50ha_monitored_since_2011": 477
+   },
+   "retrieval_instructions": "Re-fetch the September 2024 monitoring report PDF from the official CWC URL; lake-level monitoring rows require a separately approved intake",
+   "retrieval_receipt": {
+    "bytes_retained": false,
+    "content_type": "application/pdf",
+    "final_url": "https://www.cwc.gov.in/sites/default/files/monitoring-report-september-2024.pdf",
+    "http_status": 200,
+    "redirects": [],
+    "request_method": "HEAD",
+    "request_params": null,
+    "requested_url": "https://www.cwc.gov.in/sites/default/files/monitoring-report-september-2024.pdf",
+    "response_sha256": null,
+    "retrieved_utc": "2026-09-27T15:34:34.346184+00:00",
+    "terms_reviewed": "Government of India publication; citation only until redistribution terms confirmed"
+   },
+   "row_level_inventory_ingested": false,
+   "scope": "CWC monitored glacial lakes and water bodies; monitoring portfolio, not a complete national event census",
+   "source_access_status": "OFFICIAL_REPORT_METADATA_VERIFIED",
+   "source_bytes_retained": false,
+   "source_url": "https://www.cwc.gov.in/sites/default/files/monitoring-report-september-2024.pdf",
+   "source_version": "monthly-report-2024-09",
+   "status_detail": {
+    "bounded_extraction": {
+     "extracted": false
+    },
+    "full_inventory_ingested": false,
+    "metadata_only_queries_run": true,
+    "source_pdf_retained": {
+     "retained": false
+    }
+   },
+   "title": "Monthly monitoring report of Glacial Lakes & Water Bodies"
+  },
+  {
+   "access_terms": "Government of India parliamentary document; citation only",
+   "comparable_to": null,
+   "file_format": "PDF parliamentary annexure",
+   "id": "CWC_LOKSABHA_AU883_2026",
+   "interpretation_limit": "A different product, scope, and threshold (>10 ha monitored lakes) than NRSC 2016-2017 (>=0.25 ha mapped) or CWC Sep-2024 (902 monitored); counts must not be treated as a trend or combined into a shared denominator",
+   "local_payload_sha256": null,
+   "publication_or_period": "2026",
+   "publisher": "Lok Sabha Secretariat / Ministry of Jal Shakti (parliamentary answer AU883)",
+   "reported_counts": {
+    "monitored_lakes_gt_10ha": 2485
+   },
+   "retrieval_instructions": "Re-fetch the annexure PDF from the official sansad.in URL",
+   "retrieval_receipt": {
+    "bytes_retained": false,
+    "content_length": 65845,
+    "content_type": "application/pdf",
+    "final_url": "https://sansad.in/getFile/lsapps/loksabhaquestions/annex/188/AU883_Vsdm5C.pdf",
+    "http_status": 206,
+    "note": "HEAD returns 403 on this host; single-byte Range GET used to prove the endpoint without retaining payload bytes",
+    "redirects": [],
+    "request_method": "GET_METADATA_ONLY",
+    "request_params": {
+     "Range": "bytes=0-0"
+    },
+    "requested_url": "https://sansad.in/getFile/lsapps/loksabhaquestions/annex/188/AU883_Vsdm5C.pdf",
+    "response_sha256": null,
+    "retrieved_utc": "2026-09-27T15:35:17.587336+00:00",
+    "terms_reviewed": "Government of India parliamentary document; citation only"
+   },
+   "row_level_inventory_ingested": false,
+   "scope": "Lakes monitored by CWC exceeding 10 ha as reported to Parliament",
+   "source_access_status": "OFFICIAL_DOCUMENT_METADATA_VERIFIED",
+   "source_bytes_retained": false,
+   "source_url": "https://sansad.in/getFile/lsapps/loksabhaquestions/annex/188/AU883_Vsdm5C.pdf",
+   "source_version": "AU883-session-2026",
+   "status_detail": {
+    "bounded_extraction": {
+     "extracted": false
+    },
+    "full_inventory_ingested": false,
+    "metadata_only_queries_run": true,
+    "source_pdf_retained": {
+     "retained": false
+    }
+   },
+   "title": "Parliamentary response on glacial lake monitoring"
+  },
+  {
+   "access_terms": "CC BY 4.0 (RDS canonical record); attribution required",
+   "comparable_to": null,
+   "evidence_register_refs": [
+    "EV:HMAGLOFDB_V1_3_0_ARCHIVE",
+    "EV:HMAGLOFDB_V1_3_0_CSV"
+   ],
+   "file_format": "CSV catalog (on request from RDS)",
+   "id": "ICIMOD_HMAGLOFDB_V130",
+   "interpretation_limit": "Catalog of GLOF events; rows are catalog claims, not adjudicated episodes. Recurrence and identity limits are documented upstream.",
+   "local_payload_sha256": null,
+   "publication_or_period": "2023",
+   "publisher": "ICIMOD (Regional Database System)",
+   "reported_counts": {},
+   "retrieval_instructions": "v1.3.0 archive and extracted CSV are byte-bound in the evidence root; do not re-fetch. ICIMOD RDS annual updates are different vintages requiring separate approved intake.",
+   "retrieval_receipt": {
+    "bytes_retained": false,
+    "content_type": "text/html",
+    "final_url": "https://rds.icimod.org/metadata/8881454b-6f7c-461b-95c2-eaf7618230d9",
+    "http_status": 200,
+    "redirects": [],
+    "request_method": "HEAD",
+    "request_params": null,
+    "requested_url": "https://rds.icimod.org/metadata/8881454b-6f7c-461b-95c2-eaf7618230d9",
+    "response_sha256": null,
+    "retrieved_utc": "2026-09-27T15:34:35.669303+00:00",
+    "terms_reviewed": "CC BY 4.0"
+   },
+   "row_level_inventory_ingested": false,
+   "scope": "Himalayan-wide GLOF event catalog; not an India-only adjudicated cohort",
+   "source_access_status": "BYTES_VERIFIED_V1_3_0",
+   "source_bytes_retained": true,
+   "source_url": "https://rds.icimod.org/metadata/8881454b-6f7c-461b-95c2-eaf7618230d9",
+   "source_version": "1.3.0",
+   "status_detail": {
+    "bounded_extraction": {
+     "artifact": "india-phase0-source-intake/INDIA_HMAGLOFDB_CROSSWALK_V2.json",
+     "artifact_sha256": "bdacfae397ef846c46d76b0b670524e37d06167042f32a7f66920354e3798fc9",
+     "extracted": true,
+     "note": "768 rows incl. 4 GF_ID collisions retained; row identity = version+ordinal+digest",
+     "rows": 768
+    },
+    "full_inventory_ingested": false,
+    "metadata_only_queries_run": true,
+    "source_pdf_retained": {
+     "bytes": 107879,
+     "inner_member": "fidelsteiner-HMAGLOFDB-1d975de/Database/GLOFs/HMAGLOFDB.csv",
+     "inner_member_sha256": "34e923e3729800f61ce3757e93577483b00c46e0d14c986f47e58ed6d4ee2bc5",
+     "location": "external evidence root",
+     "relpath": "p5-glof-2026-09-19/glof-events/HMAGLOFDB-v1.3.0.zip",
+     "retained": true,
+     "sha256": "7903cd5abf95265705824f7e1f54e7e52bf514b2d300b828718e781fbe2622ca"
+    },
+    "vintage_note": "v1.3.0 GitHub snapshot; ICIMOD RDS live page (766 events, Dec 2025) is a different vintage"
+   },
+   "title": "HMAGLOFDB \u2014 glacial lake outburst flood database for the Hindu Kush Himalaya"
+  },
+  {
+   "access_terms": "CC BY 4.0",
+   "comparable_to": null,
+   "evidence_register_refs": [
+    "EV:GREATER_HIMALAYA_FIGSHARE_21708590_ZIP"
+   ],
+   "file_format": "zip archive of ESRI shapefiles (Asia North Albers Equal-Area, WGS84 datum)",
+   "id": "GREATER_HIMALAYA_FIGSHARE_21708590",
+   "interpretation_limit": "Snapshot inventory only; not an event history, not verified non-event lake-years, not an India-administered subset. Candidate epoch linkage is spatial and unconfirmed.",
+   "local_payload_sha256": "f4decdc6a5e0703c9c90f04f9fe1f2dc356ae1bd32b5e3380ea9afd45a8103b4",
+   "publication_or_period": "2022-07-26 deposit; Landsat epochs 1990/2000/2010/2015/2020",
+   "publisher": "figshare (NIE/IITM Greater Himalaya inventory deposit)",
+   "reported_counts": {
+    "archive_bytes": 15764506,
+    "features_by_epoch": {
+     "1990": 7334,
+     "2000": 7361,
+     "2010": 7833,
+     "2015": 8143,
+     "2020": 9208
+    },
+    "total_source_features": 39879
+   },
+   "retrieval_instructions": "Payload intake was authorized by the sealed owner decision INDIA_OBSERVATION_INTAKE_DECISION_V0; do not re-fetch. Bytes are bound in the restricted evidence root.",
+   "retrieval_receipt": null,
+   "row_level_inventory_ingested": false,
+   "scope": "Greater Himalaya glacial lake polygons at five Landsat epochs; not a full HMA census",
+   "source_access_status": "PUBLIC_DOWNLOAD_BYTES_VERIFIED_UNDER_SEALED_INTAKE",
+   "source_bytes_retained": true,
+   "source_url": "https://doi.org/10.6084/m9.figshare.21708590.v1",
+   "source_version": "v1 (21708590)",
+   "status_detail": {
+    "bounded_extraction": {
+     "artifact": "india-phase0-source-intake/INDIA_LAKE_EPOCH_CANDIDATE_LINKAGE_V0.json",
+     "artifact_sha256": "e8b966e3a31fc040e68a5fe90a83fc1f0b75d9d23feace7be1aef48c349d8b01",
+     "extracted": true,
+     "feature_counts": {
+      "1990": 7334,
+      "2000": 7361,
+      "2010": 7833,
+      "2015": 8143,
+      "2020": 9208
+     },
+     "full_inventory_ingested": false,
+     "status": "BOUNDED_CANDIDATE_LINKAGE_EXTRACTION"
+    },
+    "full_inventory_ingested": false,
+    "intake_decision": {
+     "artifact": "india-phase0-source-intake/INDIA_OBSERVATION_INTAKE_DECISION_V0.json",
+     "artifact_sha256": "ff22397344faf8a936be8fb1516896d05844d67439c830b43a128620b248ed90",
+     "decision": "INTAKE_PAYLOAD"
+    },
+    "source_archive_retained": {
+     "bytes": 15764506,
+     "relpath": "india-phase0-source-intake/observation-inventory-figshare/Glacial_Lake_Inventory.zip",
+     "retained": true,
+     "sha256": "f4decdc6a5e0703c9c90f04f9fe1f2dc356ae1bd32b5e3380ea9afd45a8103b4"
+    }
+   },
+   "title": "Glacial lake inventory (1990, 2000, 2010, 2015, 2020) in the greater Himalaya"
+  }
+ ],
+ "supersedes": "docs/science/INDIA_INVENTORY_REGISTRY_V4.json",
+ "supersedes_sha256": "3c98228782c8b45798594cb3c8090f2d7a9c2be3327bab63ebaeeb60b916c492",
+ "version": 5
+}

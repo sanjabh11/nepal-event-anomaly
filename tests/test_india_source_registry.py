@@ -239,3 +239,55 @@ def test_registry_v4_rejects_wrong_supersedes():
     doc["supersedes_sha256"] = "0" * 64
     problems = sr.validate_registry(doc)
     assert any("supersedes" in p for p in problems)
+
+
+# --- V5: Figshare intake reconciliation -------------------------------------
+
+def _v5_doc():
+    import json
+    root = Path(__file__).resolve().parents[1]
+    return json.loads(
+        (root / "docs/science/INDIA_INVENTORY_REGISTRY_V5.json").read_text())
+
+
+@_v3
+def test_registry_v5_figshare_source_byte_bound():
+    doc = _v5_doc()
+    assert sr.validate_registry(doc) == []
+    fig = next(s for s in doc["sources"]
+               if s["id"] == "GREATER_HIMALAYA_FIGSHARE_21708590")
+    sd = fig["status_detail"]
+    assert fig["source_bytes_retained"] is True
+    assert sd["source_archive_retained"]["retained"] is True
+    assert sd["intake_decision"]["decision"] == "INTAKE_PAYLOAD"
+    assert sd["bounded_extraction"]["extracted"] is True
+    assert sum(sd["bounded_extraction"]["feature_counts"].values()) == 39879
+
+
+@_v3
+def test_registry_v5_rejects_wrong_archive_digest():
+    doc = _v5_doc()
+    fig = next(s for s in doc["sources"]
+               if s["id"] == "GREATER_HIMALAYA_FIGSHARE_21708590")
+    fig["status_detail"]["source_archive_retained"]["sha256"] = "0" * 64
+    problems = sr.validate_registry(doc)
+    assert any("archive sha256" in p for p in problems)
+
+
+@_v3
+def test_registry_v5_requires_figshare_source():
+    import copy
+    doc = _v5_doc()
+    bad = copy.deepcopy(doc)
+    bad["sources"] = [s for s in bad["sources"]
+                      if s["id"] != "GREATER_HIMALAYA_FIGSHARE_21708590"]
+    problems = sr.validate_registry(bad)
+    assert any("GREATER_HIMALAYA_FIGSHARE" in p for p in problems)
+
+
+@_v3
+def test_registry_v5_rejects_wrong_supersedes():
+    doc = _v5_doc()
+    doc["supersedes_sha256"] = "0" * 64
+    problems = sr.validate_registry(doc)
+    assert any("supersedes" in p for p in problems)

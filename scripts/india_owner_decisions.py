@@ -16,7 +16,10 @@ what the owner authorized or deferred.
   linkage-worksheet    Export the ambiguous cross-epoch candidate pairs
                        as a CSV worksheet for human review.
   linkage-review       Seal the owner's disposition of the candidate
-                       pairs: THRESHOLD policy or WORKSHEET ingest.
+                       pairs: THRESHOLD policy, WORKSHEET ingest, or
+                       CONTAINMENT (one-to-one edges approve via the
+                       strict channel or a bounded nested-containment
+                       channel admitting grown/shrunk candidates).
 """
 from __future__ import annotations
 
@@ -40,7 +43,7 @@ LINKAGE = E / "INDIA_LAKE_EPOCH_CANDIDATE_LINKAGE_V0.json"
 INTAKE_STATES = ("INTAKE_PAYLOAD", "METADATA_ONLY", "DEFER", "REJECT")
 CONTRACT_STATES = ("RECORD_RULE", "DEFER", "DECLINE")
 SCOPE_STATES = ("REGION_AGNOSTIC_POC", "INDIA_SCOPED")
-LINKAGE_REVIEW_MODES = ("THRESHOLD", "WORKSHEET")
+LINKAGE_REVIEW_MODES = ("THRESHOLD", "WORKSHEET", "CONTAINMENT")
 WORKSHEET_DECISIONS = ("CONFIRM_SAME_LAKE", "REJECT", "UNSURE")
 WORKSHEET_FIELDS = ("from_epoch", "to_epoch", "from_feature_id",
                     "to_feature_id", "intersection_over_union",
@@ -190,6 +193,7 @@ def _worksheet_rows(ws_path) -> tuple[list[dict], list[str]]:
 
 def linkage_review(mode, reviewer, rationale, out_path, linkage_path,
                    iou_min=None, from_frac_min=None,
+                   containment_min=None, area_ratio_max=None,
                    worksheet=None) -> list[str]:
     linkage = Path(linkage_path)
     if not linkage.is_file():
@@ -198,6 +202,9 @@ def linkage_review(mode, reviewer, rationale, out_path, linkage_path,
     verdicts: dict[str, int] = {}
     detail: dict[str, object] = {"mode": mode}
     problems: list[str] = []
+    schema = "INDIA_LAKE_LINKAGE_REVIEW_V0"
+    version = 0
+    approved_refs: set[str] = set()
     if mode == "THRESHOLD":
         if iou_min is None or from_frac_min is None:
             return ["THRESHOLD requires --iou-min and --from-frac-min"]
@@ -210,6 +217,74 @@ def linkage_review(mode, reviewer, rationale, out_path, linkage_path,
             key = ("APPROVED_IDENTITY_CANDIDATE" if ok
                    else "UNCONFIRMED_CANDIDATE")
             verdicts[key] = verdicts.get(key, 0) + 1
+            if ok:
+                approved_refs.add(
+                    f"{p['from_feature_id']}->{p['to_feature_id']}")
+    elif mode == "CONTAINMENT":
+        schema = "INDIA_LAKE_LINKAGE_REVIEW_V1"
+        version = 1
+        if (iou_min is None or from_frac_min is None
+                or containment_min is None or area_ratio_max is None):
+            return ["CONTAINMENT requires --iou-min, --from-frac-min, "
+                    "--containment-min and --area-ratio-max"]
+        detail.update({
+            "iou_min": iou_min,
+            "from_frac_min": from_frac_min,
+            "containment_min": containment_min,
+            "area_ratio_max": area_ratio_max,
+            "rule_text": (
+                "ONE_TO_ONE_OVERLAP_CANDIDATE edges approve via either "
+                "channel: (a) strict threshold iou>=iou_min AND "
+                "from_frac>=from_frac_min, or (b) containment "
+                "max(from_frac,to_frac)>=containment_min AND implied "
+                "area_ratio max(from/to, to/from)<=area_ratio_max where "
+                "area_ratio derives from the shared intersection area "
+                "(from_frac/to_frac). Containment admits grown or shrunk "
+                "same-lake candidates the strict channel excludes; it "
+                "does not confirm physical identity. Merge/split/"
+                "many-to-many patterns stay unconfirmed regardless."),
+        })
+        via_strict = via_containment = 0
+        for _, _, p in pairs:
+            strict_ok = False
+            contain_ok = False
+            if p.get("overlap_pattern") == "ONE_TO_ONE_OVERLAP_CANDIDATE":
+                iou = p.get("intersection_over_union", 0.0) or 0.0
+                ff = p.get("fraction_of_from_area", 0.0) or 0.0
+                tf = p.get("fraction_of_to_area", 0.0) or 0.0
+                strict_ok = (iou >= iou_min and ff >= from_frac_min)
+                if ff > 0.0 and tf > 0.0:
+                    ratio = max(ff / tf, tf / ff)
+                    contain_ok = (max(ff, tf) >= containment_min
+                                  and ratio <= area_ratio_max)
+            if strict_ok:
+                via_strict += 1
+            elif contain_ok:
+                via_containment += 1
+            key = ("APPROVED_IDENTITY_CANDIDATE" if strict_ok or contain_ok
+                   else "UNCONFIRMED_CANDIDATE")
+            verdicts[key] = verdicts.get(key, 0) + 1
+            if strict_ok or contain_ok:
+                approved_refs.add(
+                    f"{p['from_feature_id']}->{p['to_feature_id']}")
+        detail["approved_via_strict_threshold"] = via_strict
+        detail["approved_via_containment"] = via_containment
+        # Degree-1 safety: approved edges must never branch.  The linkage
+        # generator enforces this for ONE_TO_ONE labels, but the review
+        # re-verifies independently rather than trusting the label.
+        seen_from: set[str] = set()
+        seen_to: set[str] = set()
+        for ref in approved_refs:
+            left, right = ref.split("->", 1)
+            if left in seen_from or right in seen_to:
+                problems.append(
+                    "approved candidate edge branches; degree-1 invariant "
+                    f"violated at {ref}")
+                break
+            seen_from.add(left)
+            seen_to.add(right)
+        if problems:
+            return problems
     else:
         if worksheet is None:
             return ["WORKSHEET requires --worksheet"]
@@ -235,8 +310,8 @@ def linkage_review(mode, reviewer, rationale, out_path, linkage_path,
         detail["worksheet"] = str(worksheet)
         detail["worksheet_sha256"] = sha(worksheet)
     record = {
-        "schema": "INDIA_LAKE_LINKAGE_REVIEW_V0",
-        "version": 0,
+        "schema": schema,
+        "version": version,
         "claim_scope": "research_only_phase0_candidate_linkage_review",
         "decided_by": reviewer,
         "decided_utc": _now(),
@@ -288,6 +363,12 @@ def main() -> int:
     lr.add_argument("--mode", required=True, choices=LINKAGE_REVIEW_MODES)
     lr.add_argument("--iou-min", type=float)
     lr.add_argument("--from-frac-min", type=float)
+    lr.add_argument("--containment-min", type=float,
+                    help="CONTAINMENT: approve one-to-one edges with "
+                         "max(from_frac,to_frac) at or above this value")
+    lr.add_argument("--area-ratio-max", type=float,
+                    help="CONTAINMENT: cap on implied to/from area ratio "
+                         "for the containment channel")
     lr.add_argument("--worksheet")
     lr.add_argument("--linkage", default=str(LINKAGE))
     lr.add_argument("--by", required=True)
@@ -316,6 +397,8 @@ def main() -> int:
                                   args.out, args.linkage,
                                   iou_min=args.iou_min,
                                   from_frac_min=args.from_frac_min,
+                                  containment_min=args.containment_min,
+                                  area_ratio_max=args.area_ratio_max,
                                   worksheet=args.worksheet)
     if problems:
         for p in problems:

@@ -145,3 +145,108 @@ def test_linkage_review_worksheet_validates(tmp_path):
                                  tmp_path / "r2.json", linkage,
                                  worksheet=str(bad))
     assert any("review_decision" in p for p in problems)
+
+
+# --- CONTAINMENT review mode ------------------------------------------------
+
+def _nested_linkage(tmp_path) -> Path:
+    doc = {
+        "schema": "INDIA_LAKE_EPOCH_CANDIDATE_LINKAGE_V0",
+        "adjacent_epoch_relations": [{
+            "from_epoch": "1990", "to_epoch": "2000",
+            "overlap_candidates": [
+                # strict-channel pass: iou .9, from .95
+                {"from_feature_id": "A", "to_feature_id": "B",
+                 "intersection_over_union": 0.9,
+                 "fraction_of_from_area": 0.95,
+                 "fraction_of_to_area": 0.85,
+                 "overlap_pattern": "ONE_TO_ONE_OVERLAP_CANDIDATE"},
+                # nested growth: from 98% inside to, to grew 2.1x -> iou .47
+                {"from_feature_id": "C", "to_feature_id": "D",
+                 "intersection_over_union": 0.47,
+                 "fraction_of_from_area": 0.98,
+                 "fraction_of_to_area": 0.47,
+                 "overlap_pattern": "ONE_TO_ONE_OVERLAP_CANDIDATE"},
+                # nested but imploded 8x -> area ratio 8.3 > cap
+                {"from_feature_id": "G", "to_feature_id": "H",
+                 "intersection_over_union": 0.11,
+                 "fraction_of_from_area": 0.91,
+                 "fraction_of_to_area": 0.11,
+                 "overlap_pattern": "ONE_TO_ONE_OVERLAP_CANDIDATE"},
+                # ambiguous pattern must stay unconfirmed even if nested
+                {"from_feature_id": "E", "to_feature_id": "F",
+                 "intersection_over_union": 0.5,
+                 "fraction_of_from_area": 0.99,
+                 "fraction_of_to_area": 0.5,
+                 "overlap_pattern": "POSSIBLE_MERGE"},
+            ]}],
+    }
+    p = tmp_path / "linkage.json"
+    p.write_text(json.dumps(doc))
+    return p
+
+
+def test_containment_requires_all_parameters(tmp_path):
+    problems = od.linkage_review("CONTAINMENT", "owner:x", "r",
+                                 tmp_path / "r.json",
+                                 _nested_linkage(tmp_path),
+                                 iou_min=0.8, from_frac_min=0.8)
+    assert problems and "containment-min" in problems[0]
+
+
+def test_containment_approves_nested_growth(tmp_path):
+    out = tmp_path / "r.json"
+    problems = od.linkage_review(
+        "CONTAINMENT", "owner:x", "r", out, _nested_linkage(tmp_path),
+        iou_min=0.8, from_frac_min=0.8,
+        containment_min=0.8, area_ratio_max=4.0)
+    assert problems == []
+    doc = json.loads(out.read_text())
+    assert doc["schema"] == "INDIA_LAKE_LINKAGE_REVIEW_V1"
+    assert doc["version"] == 1
+    # strict A->B + nested C->D; G->H rejected on area ratio; E->F merge
+    assert doc["verdict_counts"] == {"APPROVED_IDENTITY_CANDIDATE": 2,
+                                     "UNCONFIRMED_CANDIDATE": 2}
+    assert doc["detail"]["approved_via_strict_threshold"] == 1
+    assert doc["detail"]["approved_via_containment"] == 1
+    assert doc["detail"]["containment_min"] == 0.8
+
+
+def test_containment_area_ratio_cap_blocks_implosion(tmp_path):
+    out = tmp_path / "r.json"
+    problems = od.linkage_review(
+        "CONTAINMENT", "owner:x", "r", out, _nested_linkage(tmp_path),
+        iou_min=0.8, from_frac_min=0.8,
+        containment_min=0.8, area_ratio_max=1.5)
+    assert problems == []
+    doc = json.loads(out.read_text())
+    # only the strict edge approves; C->D ratio 2.09 exceeds the 1.5 cap
+    assert doc["verdict_counts"]["APPROVED_IDENTITY_CANDIDATE"] == 1
+
+
+def test_containment_rejects_branching_approved_edges(tmp_path):
+    doc = {
+        "schema": "INDIA_LAKE_EPOCH_CANDIDATE_LINKAGE_V0",
+        "adjacent_epoch_relations": [{
+            "from_epoch": "1990", "to_epoch": "2000",
+            "overlap_candidates": [
+                {"from_feature_id": "A", "to_feature_id": "B",
+                 "intersection_over_union": 0.9,
+                 "fraction_of_from_area": 0.95,
+                 "fraction_of_to_area": 0.9,
+                 "overlap_pattern": "ONE_TO_ONE_OVERLAP_CANDIDATE"},
+                # mislabeled pattern: same source, second target
+                {"from_feature_id": "A", "to_feature_id": "C",
+                 "intersection_over_union": 0.85,
+                 "fraction_of_from_area": 0.9,
+                 "fraction_of_to_area": 0.85,
+                 "overlap_pattern": "ONE_TO_ONE_OVERLAP_CANDIDATE"},
+            ]}],
+    }
+    linkage = tmp_path / "linkage.json"
+    linkage.write_text(json.dumps(doc))
+    problems = od.linkage_review(
+        "CONTAINMENT", "owner:x", "r", tmp_path / "r.json", linkage,
+        iou_min=0.8, from_frac_min=0.8,
+        containment_min=0.8, area_ratio_max=4.0)
+    assert any("degree-1" in p for p in problems)
