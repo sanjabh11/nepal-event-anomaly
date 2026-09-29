@@ -1,6 +1,6 @@
 {
  "baseline_head": "54aa612f7d478082716dfe5d0bca7d92d62d493b",
- "content_head": "1609800c3e047c70db74b058c913d7787f35639a",
+ "content_head": "35889eeb58d52ea887a5d554b27e6bf4a9bdf580",
  "files": [
   {
    "relpath": ".github/workflows/p5-verification.yml",
@@ -165,6 +165,16 @@
   {
    "relpath": "docs/science/INDIA_INVENTORY_REGISTRY_V4.json.sha256",
    "sha256": "ef3ef8522b9c48cf70e9e7f7a52af7b1a5733c0185ebd8e5e0128cd743178006",
+   "size_bytes": 99
+  },
+  {
+   "relpath": "docs/science/INDIA_INVENTORY_REGISTRY_V5.json",
+   "sha256": "6beab4eeb7649edf7f7c284013ebf29da91f9a4c5e0be5cb6498efbcd7895c4c",
+   "size_bytes": 16430
+  },
+  {
+   "relpath": "docs/science/INDIA_INVENTORY_REGISTRY_V5.json.sha256",
+   "sha256": "9a37a4f651deb8e41fce7f4704bd3f81ce4d2e2961cab579705c5d226db2dec2",
    "size_bytes": 99
   },
   {
@@ -465,6 +475,16 @@
   {
    "relpath": "docs/science/SUITE_RECEIPT_20260928_R21.json.sha256",
    "sha256": "f27ee2cf7c46797ca09b3cb6db933ec87da7f48f71d5645bbfca1c0d3cb9ac0c",
+   "size_bytes": 98
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20260928_R22.json",
+   "sha256": "396f0b03c460a3b7c17716a821cd36de950a03c041711756946e52b9b2252d3e",
+   "size_bytes": 3848
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20260928_R22.json.sha256",
+   "sha256": "2905b7943501b26fee596f5eacc445ca73d34e004f080b7d3f69aaa9373ee4bf",
    "size_bytes": 98
   },
   {
@@ -838,6 +858,41 @@
    "size_bytes": 26060
   },
   {
+   "relpath": "scripts/hma_error_field_disposition.py",
+   "sha256": "96dd22ac1e97693e2e04fa60728366ba0090600a2b3671b30731eee26784eab3",
+   "size_bytes": 14176
+  },
+  {
+   "relpath": "scripts/hma_event_linkability_census.py",
+   "sha256": "991b547040fb969de865598568c41357bd0cb4961be4f9eeb048c2f3da054d67",
+   "size_bytes": 32715
+  },
+  {
+   "relpath": "scripts/hma_gate_calibration.py",
+   "sha256": "cac2c650129bc3c516a0fa4555a07c84d3ad4f7e0cd91f46f99ba699a7037107",
+   "size_bytes": 17515
+  },
+  {
+   "relpath": "scripts/hma_high_frequency_assessment_v1.py",
+   "sha256": "c94eeb9143ba1b42a31e19f48ed095e6f72a0bbb18d5eacc1a782b579dba82fa",
+   "size_bytes": 4822
+  },
+  {
+   "relpath": "scripts/hma_independent_audit_v0.py",
+   "sha256": "88f0a6bcba6e89bf3f7e9895ee7924134c4b90d43c3b87b64cc58e42be81f24e",
+   "size_bytes": 38270
+  },
+  {
+   "relpath": "scripts/hma_lake_trajectory_poc.py",
+   "sha256": "daa2ebb89437f6f9532914a2ee271ed4064f8f260425be9925a90a9d7fb6b38d",
+   "size_bytes": 51386
+  },
+  {
+   "relpath": "scripts/hma_lake_trajectory_poc_v2.py",
+   "sha256": "edfc83758ccfb05f398101c8a4586c3f29780e5c1cd676ca7a53ef258c6e7f96",
+   "size_bytes": 17835
+  },
+  {
    "relpath": "scripts/india_adjudication_workflow.py",
    "sha256": "e9fd7b07d242e51ef1502955cb0b4823ad7564899bb0ca58f60cd1de52c4c557",
    "size_bytes": 11428
@@ -868,6 +923,11 @@
    "size_bytes": 5993
   },
   {
+   "relpath": "scripts/india_lake_epoch_linkage.py",
+   "sha256": "4c1bc9f5c80925a155a58f38038c23c3918915e46c76dea63ef388d1819fcf70",
+   "size_bytes": 37536
+  },
+  {
    "relpath": "scripts/india_lake_frame.py",
    "sha256": "3d2317a4fba23809627b333e3d285d72290940e480fd7dfc14f1f166c9b40ed6",
    "size_bytes": 25919
@@ -879,13 +939,13 @@
   },
   {
    "relpath": "scripts/india_owner_decisions.py",
-   "sha256": "6f46cc677a47cad3847d22e63788f7d65ba38c8218079b597d8243c2a30c76e6",
-   "size_bytes": 4772
+   "sha256": "9271c27f8d3eb845c777e31b563b6dc291cdc645e4bdcbc6e4518897dbb07002",
+   "size_bytes": 18511
   },
   {
    "relpath": "scripts/india_source_registry.py",
-   "sha256": "21242374d113066b8bd9d6f44a9fe880ad9a324ebf921ade7f8215426bd9d6f1",
-   "size_bytes": 21323
+   "sha256": "8303f6727ca4648b082781d41c2cc1c08716efe2a48a363f75d85fcb31ab2b68",
+   "size_bytes": 25386
   },
   {
    "relpath": "scripts/india_territory_classify.py",
@@ -978,6 +1038,11 @@
    "size_bytes": 20165
   },
   {
+   "relpath": "scripts/verify_india_lake_epoch_linkage.py",
+   "sha256": "7905488a055cc01764b7cbc4fdfbb8c4e95698667356fcff9aaaa406896cea61",
+   "size_bytes": 18930
+  },
+  {
    "relpath": "tests/fixtures/__init__.py",
    "sha256": "554e2961161d47e79350cb29bbaef5ef1aec830ad01405caf89a7c286a1d0084",
    "size_bytes": 334
@@ -1068,6 +1133,41 @@
    "size_bytes": 18675
   },
   {
+   "relpath": "tests/test_hma_error_field_disposition.py",
+   "sha256": "a5261ded6c5a891b075d321295240b6ad2933c2db5bca6a5349cb96ac9da6c62",
+   "size_bytes": 3254
+  },
+  {
+   "relpath": "tests/test_hma_event_linkability_census.py",
+   "sha256": "32b4061eef2ff73ff7949b1759c7021c93c5e689a8cbe145960a54d6967a27ea",
+   "size_bytes": 5745
+  },
+  {
+   "relpath": "tests/test_hma_gate_calibration.py",
+   "sha256": "33302b097ef5096bdb135941f720d51b21a7cbbba491d5cb15ebb81a8857cc90",
+   "size_bytes": 2117
+  },
+  {
+   "relpath": "tests/test_hma_high_frequency_assessment_v1.py",
+   "sha256": "96e30ae905db266eb0938226638784a63c1178a548ed60743e29171a7802f516",
+   "size_bytes": 1894
+  },
+  {
+   "relpath": "tests/test_hma_independent_audit.py",
+   "sha256": "39332bfce2ef79ef9623303192125d0af60846be835338cb926739c632441ae6",
+   "size_bytes": 4846
+  },
+  {
+   "relpath": "tests/test_hma_lake_trajectory_poc.py",
+   "sha256": "1573d8aeeb5bb9298bc38ae2ef93575d847f3d5da5e325cbf8e59b7c3b96fa5a",
+   "size_bytes": 10592
+  },
+  {
+   "relpath": "tests/test_hma_lake_trajectory_poc_v2.py",
+   "sha256": "137298d3dcc1ad21840c39e7bc957dbe3143524eb8970516c58cf6170c75caeb",
+   "size_bytes": 4162
+  },
+  {
    "relpath": "tests/test_incident_surface.py",
    "sha256": "1c38deadd4bb282617a0d4067476ff11d7dc6cf34cd53dc9ab2287c6151e1470",
    "size_bytes": 5074
@@ -1088,14 +1188,19 @@
    "size_bytes": 2264
   },
   {
+   "relpath": "tests/test_india_lake_epoch_linkage.py",
+   "sha256": "65dfc31853eac32331de0ed92654c0675bcab95d83234c7016580b603528e240",
+   "size_bytes": 6701
+  },
+  {
    "relpath": "tests/test_india_nrsc_extract.py",
    "sha256": "9420efad6eebcf73d45654e4a750e2fb0008ab87651c603a45387e2dbd08fff6",
    "size_bytes": 4231
   },
   {
    "relpath": "tests/test_india_owner_decisions.py",
-   "sha256": "463c6b1f731ca5ef7cfc555951b77e18f2110a3652ed77dd9977077fd7b0c26e",
-   "size_bytes": 1966
+   "sha256": "745cdf572aa854b34b997b40d88a767c317a6fe7f7a74075fb69b529a75bf19c",
+   "size_bytes": 10765
   },
   {
    "relpath": "tests/test_india_phase0.py",
@@ -1114,8 +1219,8 @@
   },
   {
    "relpath": "tests/test_india_source_registry.py",
-   "sha256": "adcce580b67022407aa0a3f044eee9a504dbeaba200f3eb3c2045192d8afcb9d",
-   "size_bytes": 9842
+   "sha256": "28738a4675eef30d8ece7f14660b892e99677ff1bf1c4f4b170c9546e7dbd7c3",
+   "size_bytes": 11588
   },
   {
    "relpath": "tests/test_india_territory.py",
@@ -1426,11 +1531,16 @@
    "relpath": "tests/test_verify_exported_bundle.py",
    "sha256": "7fd2ad1838ef153c371439c4354de1ecc67034b7c30a5b35915e32603de9cc8e",
    "size_bytes": 4985
+  },
+  {
+   "relpath": "tests/test_verify_india_lake_epoch_linkage.py",
+   "sha256": "9ad6a1fa4f4dabb2f36aaef4a9b807bdada21f958599cc79c13af5c295d156d9",
+   "size_bytes": 5557
   }
  ],
  "generated": "post-P5 phase-B/C bind \u2014 model re-execution proof (MODEL_REEXECUTED both lanes, digest-exact), preregistered promotion protocol, clean-room export + verification-ladder harness, owner-scoped Arm C amendment (retrieval deferred)",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "1609800c3e047c70db74b058c913d7787f35639a",
+ "manifest_commit": "35889eeb58d52ea887a5d554b27e6bf4a9bdf580",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -1440,7 +1550,7 @@
  "test_results": {
   "adversarial_probes": "coordinator pass ~60 executable probes (crash/exactness/consistency/temporal/IO/fixture classes) \u2014 one residual found and fixed in-round (cutoff_iso rebound to max train date); all others reject at every boundary",
   "claim_scan": "clean on all governed files",
-  "collection_guard": "repo-wide collection == tests/ (4429 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
+  "collection_guard": "repo-wide collection == tests/ (4495 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
   "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
   "full_suite_venv": "R22 expected 4426 passed, 3 skipped, 0 failed (4429 collected). Prior diagnostics: R20 green 4422/3/0 at 4425 collected (head 82ae0ea, all six R19 issues resolved); R21 sealed with 1 failure = this record internal-consistency gate (manifest census said 4425, live was 4429) \u2014 corrected here. Receipts R1-R18 are append-only dated evidence.",
   "india_nrsc_atlas_extraction": "NRSC atlas Tables 68/69 parsed to row-level records: 2433 + 299 rows, serial-set completeness enforced, printed-serial duplicates (S.No 2001/2002) recorded as anomalies; deterministic replay verified; extraction sealed under the external evidence root",
