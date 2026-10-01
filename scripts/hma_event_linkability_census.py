@@ -486,7 +486,8 @@ def _split_bucket(
     return dict(sorted(buckets.items()))
 
 
-def build_census(evidence_root: Path) -> dict[str, Any]:
+def build_census(evidence_root: Path,
+                 trajectory_path: Path | None = None) -> dict[str, Any]:
     evidence_root = Path(evidence_root).resolve()
 
     intake_root = evidence_root / "india-phase0-source-intake"
@@ -495,8 +496,11 @@ def build_census(evidence_root: Path) -> dict[str, Any]:
     crosswalk_path = intake_root / CROSSWALK_PATH.name
     adjudication_path = intake_root / ADJUDICATION_PATH.name
     linkage_path = intake_root / LINKAGE_PATH.name
-    trajectory_path = (intake_root / "hma-lake-trajectory-poc-v2"
-                       / TRAJECTORY_PATH.name)
+    if trajectory_path is None:
+        trajectory_path = (intake_root / "hma-lake-trajectory-poc-v2"
+                           / TRAJECTORY_PATH.name)
+    else:
+        trajectory_path = Path(trajectory_path).resolve()
 
     catalog_sha = verify_sidecar(catalog_path)
     crosswalk, crosswalk_sha = _load_json_sidecar_verified(crosswalk_path)
@@ -641,6 +645,9 @@ def build_census(evidence_root: Path) -> dict[str, Any]:
         "dormancy_statement": DORMANCY_STATEMENT,
         "authority": dict(AUTHORITY_FLAGS),
         "analysis_code_sha256": sha256_file(Path(__file__)),
+        "trajectory_basis": (
+            "v3_containment" if "V3" in trajectory_path.name.upper()
+            else "v2_strict"),
         "inputs": {
             "catalog": {"path": str(catalog_path), "sha256": catalog_sha},
             "crosswalk": {"path": str(crosswalk_path), "sha256": crosswalk_sha},
@@ -716,9 +723,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--evidence-root", type=Path, default=EVIDENCE_ROOT)
     parser.add_argument("--output", type=Path, required=True,
                         help="write-once JSON output path")
+    parser.add_argument("--trajectory-artifact", type=Path, default=None,
+                        help="trajectory artifact to census against "
+                             "(default: the V2 strict-linkage paths)")
     args = parser.parse_args(argv)
     try:
-        report = build_census(args.evidence_root.resolve())
+        report = build_census(args.evidence_root.resolve(),
+                              args.trajectory_artifact)
         output = args.output.resolve()
         root = args.evidence_root.resolve()
         if root not in output.parents:
