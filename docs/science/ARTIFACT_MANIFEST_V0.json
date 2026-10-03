@@ -1,6 +1,6 @@
 {
  "baseline_head": "54aa612f7d478082716dfe5d0bca7d92d62d493b",
- "content_head": "a7bcc5104e966c4fca3b72bdd74bbcf06ee6d31b",
+ "content_head": "4ff83e4238d0c496c7e68ea75e285e28bc0e4759",
  "files": [
   {
    "relpath": ".github/workflows/p5-verification.yml",
@@ -266,6 +266,11 @@
    "relpath": "docs/science/OPEN_DISTRIBUTION_NOTE_V0.md",
    "sha256": "361706d99fcbf65360bd320417dd5b252f66f39e7b4429a4da36a7269f347334",
    "size_bytes": 6732
+  },
+  {
+   "relpath": "docs/science/OPEN_DISTRIBUTION_NOTE_V1.md",
+   "sha256": "a1ad4a49621d9dc4a4d4dcd76bc50f859951ee987d00400e0afbc280ffcbc3aa",
+   "size_bytes": 2698
   },
   {
    "relpath": "docs/science/P0_BASELINE_LEDGER.md",
@@ -535,6 +540,16 @@
   {
    "relpath": "docs/science/SUITE_RECEIPT_20260929_R25.json.sha256",
    "sha256": "cdcd73551eab9c7c82abd1d6feacc4053205628e3df956feeb44d3851f847bbc",
+   "size_bytes": 98
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20260929_R26.json",
+   "sha256": "d437564c2cddd74453741354a7a1c839c980af035c4ed26ad74cb90cebe6b509",
+   "size_bytes": 4439
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20260929_R26.json.sha256",
+   "sha256": "b106e01c8002ef90c27465c94c4de2b051f321e0e31098256d11eca072544ac7",
    "size_bytes": 98
   },
   {
@@ -889,8 +904,8 @@
   },
   {
    "relpath": "scripts/hma_event_linkability_census.py",
-   "sha256": "991b547040fb969de865598568c41357bd0cb4961be4f9eeb048c2f3da054d67",
-   "size_bytes": 32715
+   "sha256": "130b6f420a53c9d942c18b954ae7ea0f251462474b6c4589fd17efdd21272608",
+   "size_bytes": 33278
   },
   {
    "relpath": "scripts/hma_gate_calibration.py",
@@ -1590,7 +1605,7 @@
  ],
  "generated": "post-P5 phase-B/C bind \u2014 model re-execution proof (MODEL_REEXECUTED both lanes, digest-exact), preregistered promotion protocol, clean-room export + verification-ladder harness, owner-scoped Arm C amendment (retrieval deferred)",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "a7bcc5104e966c4fca3b72bdd74bbcf06ee6d31b",
+ "manifest_commit": "4ff83e4238d0c496c7e68ea75e285e28bc0e4759",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -1602,7 +1617,7 @@
   "claim_scan": "clean on all governed files",
   "collection_guard": "repo-wide collection == tests/ (4558 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
   "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
-  "full_suite_venv": "R26 pending at post-hardening head (V2.1 receipt: run-tree proof + monotonic-vs-UTC timing disclosure): expected green 4555 passed, 3 skipped, 0 failed (4558 collected); receipt SUITE_RECEIPT_20260929_R26.json. R25 sealed green: 4536 passed, 3 skipped, 0 failed (4539 collected) at 7b63e4c (SUITE_RECEIPT_20260929_R25.json; note: monotonic duration 1395.7s vs UTC span 4739s - wall-clock adjustment/suspend, disclosed). R24 at 7cd3da3: 4535 passed, 3 skipped, 1 failed (4539 collected) - sole failure was this record's own staleness (record said 4495 while guard said 4509->4539); receipt SUITE_RECEIPT_20260929_R24.json. Disk-reserve environmental failures cleared after non-destructive cache cleanup (uv cache + pytest tmp; free 6.4->11 GiB). R25 rerun expected green 4536/3/0 at the frozen head. Prior: R23 env-bound 4420/3/72 (4495); R22 green 4426/3/0 (4429); R20 green 4422/3/0 (4425); R21 sealed 1 consistency failure. Receipts R1-R18 are append-only dated evidence.",
+  "full_suite_venv": "R27 pending at post-rebind head (census trajectory-artifact override 21fdac4 + OPEN_DISTRIBUTION_NOTE_V1 adoption): expected green 4555 passed, 3 skipped, 0 failed (4558 collected); receipt to be sealed as SUITE_RECEIPT_*_R27.json. R26 sealed green: 4555 passed, 3 skipped, 0 failed (4558 collected) at 43f388c (SUITE_RECEIPT_20260929_R26.json; run_tree_proof worktree_clean_throughout; UTC_SPAN_EXCEEDS_MONOTONIC disclosed). R25 sealed green: 4536 passed, 3 skipped, 0 failed (4539 collected) at 7b63e4c (SUITE_RECEIPT_20260929_R25.json; note: monotonic duration 1395.7s vs UTC span 4739s - wall-clock adjustment/suspend, disclosed). R24 at 7cd3da3: 4535 passed, 3 skipped, 1 failed (4539 collected) - sole failure was this record's own staleness (record said 4495 while guard said 4509->4539); receipt SUITE_RECEIPT_20260929_R24.json. Disk-reserve environmental failures cleared after non-destructive cache cleanup (uv cache + pytest tmp; free 6.4->11 GiB). R25 rerun expected green 4536/3/0 at the frozen head. Prior: R23 env-bound 4420/3/72 (4495); R22 green 4426/3/0 (4429); R20 green 4422/3/0 (4425); R21 sealed 1 consistency failure. Receipts R1-R18 are append-only dated evidence.",
   "india_nrsc_atlas_extraction": "NRSC atlas Tables 68/69 parsed to row-level records: 2433 + 299 rows, serial-set completeness enforced, printed-serial duplicates (S.No 2001/2002) recorded as anomalies; deterministic replay verified; extraction sealed under the external evidence root",
   "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
   "p5_a2_status_consistency": "local guard passed; CI guard configured \u2014 current CANDIDATE_ONLY / UNSUPERVISED_STRUCTURE_NOT_STABLE result, false authority flags, and release metadata aligned",
