@@ -1,6 +1,6 @@
 {
  "baseline_head": "54aa612f7d478082716dfe5d0bca7d92d62d493b",
- "content_head": "4ff83e4238d0c496c7e68ea75e285e28bc0e4759",
+ "content_head": "e1827b23bf0214c4f24eaf4553e511187d61ab0e",
  "files": [
   {
    "relpath": ".github/workflows/p5-verification.yml",
@@ -550,6 +550,16 @@
   {
    "relpath": "docs/science/SUITE_RECEIPT_20260929_R26.json.sha256",
    "sha256": "b106e01c8002ef90c27465c94c4de2b051f321e0e31098256d11eca072544ac7",
+   "size_bytes": 98
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20261005_R27.json",
+   "sha256": "f0994b0a3140bf9d187861cb34a112661d0d0d11357a2a35c59fd294120aa59e",
+   "size_bytes": 4312
+  },
+  {
+   "relpath": "docs/science/SUITE_RECEIPT_20261005_R27.json.sha256",
+   "sha256": "01042bb7d66bb4bc348c0badd84543923309bde10bee8da28a6469d802b72abe",
    "size_bytes": 98
   },
   {
@@ -1605,7 +1615,7 @@
  ],
  "generated": "post-P5 phase-B/C bind \u2014 model re-execution proof (MODEL_REEXECUTED both lanes, digest-exact), preregistered promotion protocol, clean-room export + verification-ladder harness, owner-scoped Arm C amendment (retrieval deferred)",
  "interpreter": ".venv/bin/python",
- "manifest_commit": "4ff83e4238d0c496c7e68ea75e285e28bc0e4759",
+ "manifest_commit": "e1827b23bf0214c4f24eaf4553e511187d61ab0e",
  "manifest_version": "ARTIFACT_MANIFEST_V0.3",
  "repository_relative_root": ".",
  "requirements_sha256": "26aac08433abd2f1c350f67d7e501bfb085d20a4de5087bd5580fb85657ed6d5",
@@ -1617,7 +1627,7 @@
   "claim_scan": "clean on all governed files",
   "collection_guard": "repo-wide collection == tests/ (4558 nodes); ignored data/framework_inputs_v1_reconciled symlink never collected",
   "era5_anchor_intake": "9 passed incl. manifest-floor probes + real-bytes smoke",
-  "full_suite_venv": "R27 pending at post-rebind head (census trajectory-artifact override 21fdac4 + OPEN_DISTRIBUTION_NOTE_V1 adoption): expected green 4555 passed, 3 skipped, 0 failed (4558 collected); receipt to be sealed as SUITE_RECEIPT_*_R27.json. R26 sealed green: 4555 passed, 3 skipped, 0 failed (4558 collected) at 43f388c (SUITE_RECEIPT_20260929_R26.json; run_tree_proof worktree_clean_throughout; UTC_SPAN_EXCEEDS_MONOTONIC disclosed). R25 sealed green: 4536 passed, 3 skipped, 0 failed (4539 collected) at 7b63e4c (SUITE_RECEIPT_20260929_R25.json; note: monotonic duration 1395.7s vs UTC span 4739s - wall-clock adjustment/suspend, disclosed). R24 at 7cd3da3: 4535 passed, 3 skipped, 1 failed (4539 collected) - sole failure was this record's own staleness (record said 4495 while guard said 4509->4539); receipt SUITE_RECEIPT_20260929_R24.json. Disk-reserve environmental failures cleared after non-destructive cache cleanup (uv cache + pytest tmp; free 6.4->11 GiB). R25 rerun expected green 4536/3/0 at the frozen head. Prior: R23 env-bound 4420/3/72 (4495); R22 green 4426/3/0 (4429); R20 green 4422/3/0 (4425); R21 sealed 1 consistency failure. Receipts R1-R18 are append-only dated evidence.",
+  "full_suite_venv": "R28 pending at post-R27-rebind head: expected green 4555 passed, 3 skipped, 0 failed (4558 collected); receipt to be sealed as SUITE_RECEIPT_*_R28.json. R27 sealed green: 4555 passed, 3 skipped, 0 failed (4558 collected) at 85dfc2d (SUITE_RECEIPT_20261005_R27.json; run_tree_proof clean; timing CONSISTENT). R26 sealed green: 4555 passed, 3 skipped, 0 failed (4558 collected) at 43f388c (SUITE_RECEIPT_20260929_R26.json; run_tree_proof worktree_clean_throughout; UTC_SPAN_EXCEEDS_MONOTONIC disclosed). R25 sealed green: 4536 passed, 3 skipped, 0 failed (4539 collected) at 7b63e4c (SUITE_RECEIPT_20260929_R25.json; note: monotonic duration 1395.7s vs UTC span 4739s - wall-clock adjustment/suspend, disclosed). R24 at 7cd3da3: 4535 passed, 3 skipped, 1 failed (4539 collected) - sole failure was this record's own staleness (record said 4495 while guard said 4509->4539); receipt SUITE_RECEIPT_20260929_R24.json. Disk-reserve environmental failures cleared after non-destructive cache cleanup (uv cache + pytest tmp; free 6.4->11 GiB). R25 rerun expected green 4536/3/0 at the frozen head. Prior: R23 env-bound 4420/3/72 (4495); R22 green 4426/3/0 (4429); R20 green 4422/3/0 (4425); R21 sealed 1 consistency failure. Receipts R1-R18 are append-only dated evidence.",
   "india_nrsc_atlas_extraction": "NRSC atlas Tables 68/69 parsed to row-level records: 2433 + 299 rows, serial-set completeness enforced, printed-serial duplicates (S.No 2001/2002) recorded as anomalies; deterministic replay verified; extraction sealed under the external evidence root",
   "p3_hmaglofdb_intake": "19 passed incl. real-bytes; +5 adapter tests",
   "p5_a2_status_consistency": "local guard passed; CI guard configured \u2014 current CANDIDATE_ONLY / UNSUPERVISED_STRUCTURE_NOT_STABLE result, false authority flags, and release metadata aligned",
